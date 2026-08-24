@@ -10927,7 +10927,7 @@ export interface components {
         YearlyMethodology: {
             /**
              * Content Version
-             * @default yearly_review_v2_13
+             * @default yearly_review_v2_14
              */
             content_version: string;
             /**
@@ -10937,12 +10937,12 @@ export interface components {
             relationship_policy_version: string;
             /**
              * Highlight Policy Version
-             * @default highlight_policy_v2
+             * @default highlight_policy_v3
              */
             highlight_policy_version: string;
             /**
              * Season Stage Policy Version
-             * @default season_stage_v1
+             * @default season_stage_v2
              */
             season_stage_policy_version: string;
             /** Metric Definitions */
@@ -10984,6 +10984,14 @@ export interface components {
             comparison_value?: number | null;
             /** Comparison Label */
             comparison_label?: string | null;
+            /** Observed Start */
+            observed_start?: string | null;
+            /** Observed End */
+            observed_end?: string | null;
+            /** Comparison Start */
+            comparison_start?: string | null;
+            /** Comparison End */
+            comparison_end?: string | null;
         };
         /** YearlyMonthSummary */
         YearlyMonthSummary: {
@@ -11067,7 +11075,7 @@ export interface components {
         YearlyRecordsChapter: {
             /**
              * Policy Version
-             * @default highlight_policy_v2
+             * @default highlight_policy_v3
              */
             policy_version: string;
             /** Featured */
@@ -11232,7 +11240,7 @@ export interface components {
         YearlyReviewRecordsPage: {
             /**
              * Content Version
-             * @default yearly_review_v2_13
+             * @default yearly_review_v2_14
              */
             content_version: string;
             /** Year */
@@ -11289,7 +11297,7 @@ export interface components {
         YearlySeasonChapter: {
             /**
              * Policy Version
-             * @default season_stage_v1
+             * @default season_stage_v2
              */
             policy_version: string;
             /**

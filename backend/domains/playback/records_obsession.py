@@ -189,6 +189,10 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
     daily["unique_tracks"] = daily["unique_tracks"].fillna(0).astype(int)
     if daily.empty:
         return pd.DataFrame()
+    daily["plays_rank"] = daily["total_plays"].rank(method="min", ascending=False).astype(int)
+    daily["hours_rank"] = daily["total_hours"].rank(method="min", ascending=False).astype(int)
+    plays_top_tied = bool(daily["plays_rank"].eq(1).sum() > 1)
+    hours_top_tied = bool(daily["hours_rank"].eq(1).sum() > 1)
 
     album_source = album_frame if album_frame is not None and not album_frame.empty else event_frame
     album_group_col = (
@@ -229,10 +233,12 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
     daily = daily.sort_values("_date_order")
 
     records = []
-    for rank, (_, row) in enumerate(daily.iterrows(), start=1):
+    for _, row in daily.iterrows():
         date = str(row["ts_date"])
         record = {
-            "rank": rank,
+            "rank": int(row["plays_rank"]),
+            "plays_rank": int(row["plays_rank"]),
+            "hours_rank": int(row["hours_rank"]),
             "entity_type": "day",
             "name": date,
             "value": float(row["total_plays"]),
@@ -243,6 +249,11 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
             "total_plays": int(row["total_plays"]),
             "total_hours": float(row["total_hours"]),
             "unique_tracks": int(row["unique_tracks"]),
+            "rank_basis": "total_plays",
+            "is_top": bool(int(row["plays_rank"]) == 1),
+            "is_tied_top": plays_top_tied,
+            "plays_top_tied": plays_top_tied,
+            "hours_top_tied": hours_top_tied,
             "caption": (
                 f"當日播放 {int(row['total_plays'])} 次，共 {row['total_hours']} 小時，"
                 f"涵蓋 {int(row['unique_tracks'])} 首歌曲"

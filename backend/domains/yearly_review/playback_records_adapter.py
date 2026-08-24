@@ -14,8 +14,11 @@ from urllib.parse import quote
 import numpy as np
 import pandas as pd
 
+from backend.domains.playback.records_behavior import _playback_milestones
+from backend.domains.playback.records_discovery import _discovery_day, _group_col_for
 from backend.models.yearly_review import (
     YearlyEntityRef,
+    YearlyFactSemantics,
     YearlyHighlightCandidate,
     YearlyMetric,
     YearlyReviewFilterContext,
@@ -167,6 +170,49 @@ def _primary_metric(row: Mapping[str, Any]) -> YearlyMetric | None:
     return None
 
 
+def _candidate_semantics(row: Mapping[str, Any], record_key: str) -> YearlyFactSemantics:
+    raw_scope = str(row.get("scope") or "annual")
+    allowed_scopes = {
+        "annual",
+        "lifetime",
+        "annual_first_seen",
+        "lifetime_first_seen",
+        "full_month",
+        "month_to_date_aligned",
+    }
+    scope = raw_scope if raw_scope in allowed_scopes else "annual"
+    rank_value = row.get("rank")
+    rank: int | None = None
+    if isinstance(rank_value, (int, float, np.integer, np.floating)) and not isinstance(
+        rank_value, bool
+    ):
+        parsed_rank = int(rank_value)
+        rank = parsed_rank if parsed_rank > 0 else None
+    rank_basis = row.get("rank_basis")
+    if not rank_basis:
+        if "daily_total_plays" in record_key:
+            rank_basis = "total_plays"
+        elif "daily_total_hours" in record_key:
+            rank_basis = "total_hours"
+        elif "discovery.discovery_day" in record_key:
+            rank_basis = "new_entities"
+        elif "playback_milestones" in record_key:
+            rank_basis = "lifetime_play_index" if scope == "lifetime" else "annual_play_index"
+    explicit_top = row.get("is_top")
+    return YearlyFactSemantics(
+        scope=scope,
+        rank=rank,
+        rank_basis=str(rank_basis) if rank_basis else None,
+        is_top=bool(explicit_top) if explicit_top is not None else rank == 1,
+        is_tied_top=bool(row.get("is_tied_top", False)),
+        observed_start=str(row["observed_start"]) if row.get("observed_start") else None,
+        observed_end=str(row["observed_end"]) if row.get("observed_end") else None,
+        comparison_start=(str(row["comparison_start"]) if row.get("comparison_start") else None),
+        comparison_end=str(row["comparison_end"]) if row.get("comparison_end") else None,
+        denominator_scope=(str(row["denominator_scope"]) if row.get("denominator_scope") else None),
+    )
+
+
 def _candidate_id(
     source: CandidateSource,
     record_key: str,
@@ -196,6 +242,42 @@ def _candidate_id(
         default=str,
     )
     return hashlib.sha256(payload.encode()).hexdigest()[:20]
+
+
+def _normalize_top_ties(
+    candidates: list[YearlyHighlightCandidate],
+) -> list[YearlyHighlightCandidate]:
+    """Recover tied first place from legacy record lists with sequential ranks."""
+
+    groups: dict[tuple[str, str, str], list[YearlyHighlightCandidate]] = {}
+    for candidate in candidates:
+        if candidate.primary_metric is None or not isinstance(
+            candidate.primary_metric.value, (int, float)
+        ):
+            continue
+        group_key = (
+            candidate.record_key,
+            candidate.primary_metric.key,
+            str(candidate.primary_metric.unit or ""),
+        )
+        groups.setdefault(group_key, []).append(candidate)
+
+    for group in groups.values():
+        first = next((item for item in group if item.semantics.rank == 1), None)
+        if first is None or first.primary_metric is None:
+            continue
+        top_value = float(first.primary_metric.value)
+        tied = [
+            item
+            for item in group
+            if item.primary_metric is not None and float(item.primary_metric.value) == top_value
+        ]
+        is_tied = len(tied) > 1
+        for item in tied:
+            item.semantics = item.semantics.model_copy(
+                update={"rank": 1, "is_top": True, "is_tied_top": is_tied}
+            )
+    return candidates
 
 
 def normalize_record_catalog(
@@ -236,6 +318,7 @@ def normalize_record_catalog(
                 fact_type=path[-1],
                 entity_refs=refs,
                 primary_metric=metric,
+                semantics=_candidate_semantics(row, record_key),
                 raw_values=row,
                 eligible=structurally_eligible,
                 eligibility_reasons=reasons,
@@ -245,7 +328,125 @@ def normalize_record_catalog(
             )
         )
         family_counts[family] += 1
-    return candidates, dict(sorted(family_counts.items()))
+    return _normalize_top_ties(candidates), dict(sorted(family_counts.items()))
+
+
+def _ranked_daily_rows(
+    rows: list[dict[str, Any]],
+    *,
+    value_key: str,
+    rank_key: str,
+    rank_basis: str,
+    unit: str,
+) -> list[dict[str, Any]]:
+    if not rows:
+        return []
+    values = sorted(
+        {
+            float(row.get(value_key, 0))
+            for row in rows
+            if isinstance(row.get(value_key), (int, float))
+        },
+        reverse=True,
+    )
+    ranks = {value: index + 1 for index, value in enumerate(values)}
+    top_value = values[0] if values else None
+    tied_top = sum(float(row.get(value_key, 0)) == top_value for row in rows) > 1
+    ranked: list[dict[str, Any]] = []
+    for raw in rows:
+        value = raw.get(value_key)
+        if not isinstance(value, (int, float)):
+            continue
+        item = dict(raw)
+        rank = int(item.get(rank_key) or ranks[float(value)])
+        item.update(
+            {
+                "rank": rank,
+                "value": float(value),
+                "unit": unit,
+                "rank_basis": rank_basis,
+                "is_top": rank == 1,
+                "is_tied_top": tied_top if rank == 1 else False,
+                "scope": "annual",
+            }
+        )
+        ranked.append(item)
+    return sorted(ranked, key=lambda row: (int(row["rank"]), str(row.get("date") or "")))
+
+
+def _annual_daily_total_candidates(
+    records: Mapping[str, Any],
+) -> list[YearlyHighlightCandidate]:
+    obsession = records.get("obsession", {})
+    raw_rows = obsession.get("daily_total_record", []) if isinstance(obsession, Mapping) else []
+    # The public payload shape is a list; malformed injected payloads must not
+    # leak into annual selection.
+    source_rows = (
+        [dict(row) for row in raw_rows if isinstance(row, Mapping)]
+        if isinstance(raw_rows, list)
+        else []
+    )
+    overrides = {
+        "obsession": {
+            "daily_total_plays": _ranked_daily_rows(
+                source_rows,
+                value_key="total_plays",
+                rank_key="plays_rank",
+                rank_basis="total_plays",
+                unit="次",
+            ),
+            "daily_total_hours": _ranked_daily_rows(
+                source_rows,
+                value_key="total_hours",
+                rank_key="hours_rank",
+                rank_basis="total_hours",
+                unit="小时",
+            ),
+        }
+    }
+    candidates, _ = normalize_record_catalog(overrides, source="playback_records")
+    return candidates
+
+
+def _lifetime_milestone_candidates(
+    history_event_frame: pd.DataFrame,
+    year: int,
+) -> list[YearlyHighlightCandidate]:
+    rows = _playback_milestones(history_event_frame, target_year=year)
+    records = {
+        "behavior": {
+            "playback_milestones": [_json_value(row) for row in rows.to_dict(orient="records")]
+        }
+    }
+    candidates, _ = normalize_record_catalog(records, source="playback_records")
+    return candidates
+
+
+def _lifetime_discovery_candidates(
+    history_entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
+    year: int,
+) -> list[YearlyHighlightCandidate]:
+    discovery: dict[str, list[dict[str, Any]]] = {"track": [], "album": [], "artist": []}
+    for entity_type, frame in zip(("track", "album", "artist"), history_entity_frames):
+        if frame.empty:
+            continue
+        group_col, name_col, artist_col = _group_col_for(frame, entity_type)
+        rows = _discovery_day(
+            frame,
+            group_col,
+            name_col,
+            artist_col,
+            entity_type,
+            target_year=year,
+        )
+        discovery[entity_type] = [
+            {**_json_value(row), "year": year} for row in rows.to_dict(orient="records")
+        ]
+    candidates, _ = normalize_record_catalog(
+        {"discovery": {"discovery_day": discovery}},
+        source="playback_records",
+    )
+    return candidates
 
 
 def build_playback_record_candidates(
@@ -256,6 +457,8 @@ def build_playback_record_candidates(
     payload: Mapping[str, Any] | None = None,
     event_frame: pd.DataFrame | None = None,
     entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | None = None,
+    history_event_frame: pd.DataFrame | None = None,
+    history_entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | None = None,
 ) -> dict[str, Any]:
     """Compute the annual custom-range catalog and normalize it for M3."""
     if payload is None:
@@ -278,6 +481,24 @@ def build_playback_record_candidates(
         payload.get("records", {}),
         source="playback_records",
     )
+    candidates = [
+        candidate
+        for candidate in candidates
+        if "obsession.daily_total_record" not in candidate.record_key
+        and not (
+            history_event_frame is not None
+            and "behavior.playback_milestones" in candidate.record_key
+        )
+        and not (
+            history_entity_frames is not None and "discovery.discovery_day" in candidate.record_key
+        )
+    ]
+    candidates.extend(_annual_daily_total_candidates(payload.get("records", {})))
+    if history_event_frame is not None:
+        candidates.extend(_lifetime_milestone_candidates(history_event_frame, year))
+    if history_entity_frames is not None:
+        candidates.extend(_lifetime_discovery_candidates(history_entity_frames, year))
+    family_counts = Counter(candidate.source_family for candidate in candidates)
     return {
         "year": year,
         "period": dict(payload.get("period", {})),
@@ -285,7 +506,7 @@ def build_playback_record_candidates(
         "catalog_counts": {
             "total": len(candidates),
             "eligible": sum(candidate.eligible for candidate in candidates),
-            **family_counts,
+            **dict(sorted(family_counts.items())),
         },
         "candidates": candidates,
     }

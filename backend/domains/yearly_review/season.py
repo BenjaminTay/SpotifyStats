@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from calendar import monthrange
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -125,12 +126,23 @@ def _change_pct(current: float, previous: float) -> float | None:
     return round((current - previous) / previous * 100, 1)
 
 
+def _daily_hours_between(stats: Mapping[str, Any], start: str, end: str) -> float:
+    total = 0.0
+    for row in stats.get("daily_trend", []):
+        date = str(row.get("date") or "")[:10]
+        if start <= date <= end:
+            total += float(row.get("hours", 0))
+    return round(total, 2)
+
+
 def build_monthly_fact_table(
     stats: Mapping[str, Any],
     *,
     entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | None = None,
     billboard_monthly_leaders: Mapping[int, Mapping[str, YearlyEntityRef]] | None = None,
     baseline_monthly: Sequence[Mapping[str, Any]] | None = None,
+    complete: bool = True,
+    observed_end: str | None = None,
 ) -> list[YearlyMonthSummary]:
     monthly_rows = {int(row["month"]): row for row in stats.get("monthly_distribution", [])}
     baseline_rows = {int(row["month"]): row for row in baseline_monthly or []}
@@ -140,35 +152,97 @@ def build_monthly_fact_table(
 
     months: list[YearlyMonthSummary] = []
     previous_hours = 0.0
+    report_year = int(stats.get("year", 0) or 0)
+    observed_end_date = pd.to_datetime(observed_end, errors="coerce")
     for month in range(1, 13):
         row = monthly_rows.get(month, {})
         hours = round(float(row.get("hours", 0)), 2)
         comparisons: list[YearlyMetric] = []
         month_change = _change_pct(hours, previous_hours)
+        comparison_key = "hours_vs_previous_month_pct"
+        comparison_label = "上月小时数"
+        observed_start = None
+        metric_observed_end = None
+        comparison_start = None
+        comparison_end = None
+        is_partial_current_month = (
+            not complete
+            and report_year > 0
+            and pd.notna(observed_end_date)
+            and int(observed_end_date.year) == report_year
+            and int(observed_end_date.month) == month
+            and int(observed_end_date.day) < monthrange(report_year, month)[1]
+            and month > 1
+        )
+        comparison_value = previous_hours
+        if is_partial_current_month:
+            prior_month = month - 1
+            aligned_day = min(
+                int(observed_end_date.day),
+                monthrange(report_year, prior_month)[1],
+            )
+            observed_start = f"{report_year:04d}-{month:02d}-01"
+            metric_observed_end = f"{report_year:04d}-{month:02d}-{aligned_day:02d}"
+            comparison_start = f"{report_year:04d}-{prior_month:02d}-01"
+            comparison_end = f"{report_year:04d}-{prior_month:02d}-{aligned_day:02d}"
+            aligned_hours = _daily_hours_between(stats, observed_start, metric_observed_end)
+            comparison_value = _daily_hours_between(stats, comparison_start, comparison_end)
+            month_change = _change_pct(aligned_hours, comparison_value)
+            comparison_key = "hours_vs_previous_period_pct"
+            comparison_label = "上月同期小时数"
         if month_change is not None:
             comparisons.append(
                 YearlyMetric(
-                    key="hours_vs_previous_month_pct",
-                    label="较上月时长变化",
+                    key=comparison_key,
+                    label=(
+                        "较上月同期收听时长变化" if is_partial_current_month else "较上月时长变化"
+                    ),
                     value=month_change,
                     unit="%",
-                    comparison_value=previous_hours,
-                    comparison_label="上月小时数",
+                    comparison_value=comparison_value,
+                    comparison_label=comparison_label,
+                    observed_start=observed_start,
+                    observed_end=metric_observed_end,
+                    comparison_start=comparison_start,
+                    comparison_end=comparison_end,
                 )
             )
         baseline = baseline_rows.get(month)
         if baseline:
             baseline_hours = float(baseline.get("hours", 0))
-            year_change = _change_pct(hours, baseline_hours)
+            current_hours = hours
+            prior_year_key = "hours_vs_prior_year_month_pct"
+            prior_year_label = "较上年同月时长变化"
+            prior_observed_start = None
+            prior_observed_end = None
+            prior_comparison_start = None
+            prior_comparison_end = None
+            if is_partial_current_month:
+                current_hours = _daily_hours_between(stats, observed_start, metric_observed_end)
+                prior_year_key = "hours_vs_prior_year_period_pct"
+                prior_year_label = "较上年同期收听时长变化"
+                prior_observed_start = observed_start
+                prior_observed_end = metric_observed_end
+                prior_comparison_start = f"{report_year - 1:04d}-{month:02d}-01"
+                prior_comparison_end = (
+                    f"{report_year - 1:04d}-{month:02d}-{int(observed_end_date.day):02d}"
+                )
+            year_change = _change_pct(current_hours, baseline_hours)
             if year_change is not None:
                 comparisons.append(
                     YearlyMetric(
-                        key="hours_vs_prior_year_month_pct",
-                        label="较上年同月时长变化",
+                        key=prior_year_key,
+                        label=prior_year_label,
                         value=year_change,
                         unit="%",
                         comparison_value=baseline_hours,
-                        comparison_label="上年同月小时数",
+                        comparison_label=(
+                            "上年同期小时数" if is_partial_current_month else "上年同月小时数"
+                        ),
+                        observed_start=prior_observed_start,
+                        observed_end=prior_observed_end,
+                        comparison_start=prior_comparison_start,
+                        comparison_end=prior_comparison_end,
                     )
                 )
         months.append(
@@ -239,6 +313,8 @@ def _timeline_eligible(candidate: YearlyHighlightCandidate) -> bool:
         token in key
         for token in (
             "daily_total_record",
+            "daily_total_plays",
+            "daily_total_hours",
             "late_night_peak_day",
             "new_year_eve",
             "discovery_day",
@@ -251,6 +327,37 @@ def _timeline_eligible(candidate: YearlyHighlightCandidate) -> bool:
             "consecutive_marathon",
         )
     )
+
+
+def _semantically_valid_timeline_candidate(candidate: YearlyHighlightCandidate) -> bool:
+    """Keep editorial diversity from changing the truth of a fact."""
+    key = candidate.record_key.casefold()
+    semantics = candidate.semantics
+    superlative_tokens = (
+        "daily_binge",
+        "daily_total_plays",
+        "daily_total_hours",
+        "consecutive_marathon",
+        "daily_champion",
+        "longest_streak",
+        "discovery_day",
+        "late_night_peak_day",
+        "weekday_preference",
+        "biggest_jump",
+        "biggest_drop",
+        "skip_storm",
+    )
+    has_explicit_rank = candidate.raw_values.get("rank") is not None
+    if any(token in key for token in superlative_tokens) and has_explicit_rank:
+        if semantics.rank != 1 or not semantics.is_top:
+            return False
+    if "discovery.discovery_day" in key and has_explicit_rank:
+        if semantics.scope != "lifetime_first_seen":
+            return False
+    if "behavior.playback_milestones" in key and candidate.raw_values.get("scope"):
+        if semantics.scope != "lifetime":
+            return False
+    return True
 
 
 def _record_month(candidate: YearlyHighlightCandidate) -> tuple[int | None, str | None]:
@@ -336,6 +443,8 @@ def _candidate_events(
             continue
         if not _timeline_eligible(candidate):
             continue
+        if not _semantically_valid_timeline_candidate(candidate):
+            continue
         record_month, date = _record_month(candidate)
         if record_month is None:
             continue
@@ -376,33 +485,51 @@ def _candidate_events(
         )
 
     for month in active:
-        change = next(
+        change_metric = next(
             (
-                float(metric.value)
+                metric
                 for metric in month.comparisons
-                if metric.key == "hours_vs_previous_month_pct"
+                if metric.key in {"hours_vs_previous_month_pct", "hours_vs_previous_period_pct"}
             ),
             None,
         )
-        if change is None:
+        if change_metric is None:
             continue
+        change = float(change_metric.value)
+        aligned_copy = change_metric.key == "hours_vs_previous_period_pct"
+        cutoff = (
+            pd.to_datetime(change_metric.observed_end, errors="coerce")
+            if change_metric.observed_end
+            else None
+        )
         events.append(
             _EventCandidate(
                 month=month.month,
                 event_type="monthly_shift",
                 title="这个月的听歌节奏变了",
                 statement=(
-                    f"{month.month} 月比上月{'多' if change >= 0 else '少'}听了 "
+                    (
+                        f"截至 {month.month} 月{int(cutoff.day)}日，{month.month} 月比上月同期"
+                        if aligned_copy and cutoff is not None and pd.notna(cutoff)
+                        else f"{month.month} 月比上月"
+                    )
+                    + f"{'多' if change >= 0 else '少'}听了 "
                     f"{abs(change):.1f}%。"
                 ),
                 score=50 + abs(change),
                 refs=list(month.leaders.values())[:1],
                 metrics=[
                     YearlyMetric(
-                        key="hours_vs_previous_month_pct",
-                        label="较上月时长变化",
+                        key=change_metric.key,
+                        label=change_metric.label,
                         value=round(change, 1),
                         unit="%",
+                        comparison_value=change_metric.comparison_value,
+                        comparison_label=change_metric.comparison_label,
+                        observed_start=change_metric.observed_start,
+                        observed_end=change_metric.observed_end,
+                        comparison_start=change_metric.comparison_start,
+                        comparison_end=change_metric.comparison_end,
                     )
                 ],
             )
@@ -450,12 +577,15 @@ def build_season(
     baseline_monthly: Sequence[Mapping[str, Any]] | None = None,
     record_candidates: Sequence[YearlyHighlightCandidate] = (),
     complete: bool = True,
+    observed_end: str | None = None,
 ) -> YearlySeasonChapter:
     months = build_monthly_fact_table(
         stats,
         entity_frames=entity_frames,
         billboard_monthly_leaders=billboard_monthly_leaders,
         baseline_monthly=baseline_monthly,
+        complete=complete,
+        observed_end=observed_end,
     )
     stable_runs = _stable_runs(months)
     stage_status = "available" if stable_runs else "no_stable_phase"

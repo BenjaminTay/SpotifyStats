@@ -155,6 +155,43 @@ def _carryover_refs(season: YearlySeasonChapter) -> list[Any]:
     return [ref for count, ref in ordered if count >= 2][:6]
 
 
+def _metric_value(metrics: list[Any], key: str) -> int | float | None:
+    for metric in metrics:
+        if metric.key == key and isinstance(metric.value, (int, float)):
+            return metric.value
+    return None
+
+
+def _validate_cross_chapter_semantics(
+    passport: Any,
+    listening_life: YearlyListeningLifeChapter,
+) -> None:
+    if passport is None:
+        return
+    passport_tracks = _metric_value(passport.metrics, "unique_tracks")
+    listening_tracks = _metric_value(listening_life.metrics, "unique_tracks")
+    if (
+        passport_tracks is not None
+        and listening_tracks is not None
+        and int(passport_tracks) != int(listening_tracks)
+    ):
+        raise ValueError(
+            "yearly_unique_track_identity_mismatch:"
+            f"passport={int(passport_tracks)}:listening_life={int(listening_tracks)}"
+        )
+
+    total_plays = _metric_value(passport.metrics, "total_plays")
+    artist_plays = _metric_value(listening_life.metrics, "top_artist_plays")
+    artist_share = _metric_value(listening_life.metrics, "top_artist_share_pct")
+    if total_plays and artist_plays is not None and artist_share is not None:
+        expected_share = round(float(artist_plays) / float(total_plays) * 100, 1)
+        if abs(float(artist_share) - expected_share) > 0.05:
+            raise ValueError(
+                "yearly_artist_share_denominator_mismatch:"
+                f"expected={expected_share}:actual={float(artist_share)}"
+            )
+
+
 def build_yearly_review_artifact(
     conn: sqlite3.Connection,
     year: int,
@@ -313,6 +350,8 @@ def build_yearly_review_artifact(
                 context,
                 event_frame=annual_events,
                 entity_frames=annual_entity_frames,
+                history_event_frame=event_frame,
+                history_entity_frames=entity_frames,
             ),
             lambda: {"catalog_counts": {"total": 0, "eligible": 0}, "candidates": []},
             limitations,
@@ -342,6 +381,7 @@ def build_yearly_review_artifact(
             baseline_monthly=(baseline_stats or {}).get("monthly_distribution"),
             record_candidates=all_candidates,
             complete=coverage.status == "complete",
+            observed_end=coverage.play.observed_end,
         ),
         YearlySeasonChapter,
         limitations,
@@ -368,11 +408,14 @@ def build_yearly_review_artifact(
             play_rankings=play_rankings,
             event_frame=annual_events,
             history_frame=event_frame,
+            track_frame=annual_entity_frames[0],
+            history_track_frame=entity_frames[0],
             record_candidates=all_candidates,
         ),
         YearlyListeningLifeChapter,
         limitations,
     )
+    _validate_cross_chapter_semantics(passport, listening_life)
     selected_records = _safe_section(
         "records",
         lambda: select_yearly_records(

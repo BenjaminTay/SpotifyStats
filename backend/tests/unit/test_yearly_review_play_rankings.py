@@ -103,6 +103,7 @@ def test_builds_two_rankings_and_enriches_activity(monkeypatch) -> None:
 
     track = result["charts"]["track"]
     album = result["charts"]["album"]
+    artist = result["charts"]["artist"]
     assert result["limits"] == {"track": 50, "album": 30, "artist": 30}
     assert track["available_count"] == 7
     assert track["by_plays"][0]["sort_metric"] == "plays"
@@ -113,6 +114,9 @@ def test_builds_two_rankings_and_enriches_activity(monkeypatch) -> None:
     assert track["by_plays"][0]["last_played"] == "2025-02-03"
     assert track["by_plays"][0]["deep_link"] == "/music/tracks/10"
     assert album["by_plays"][0]["identity_key"] == "album-project:99"
+    assert artist["by_plays"][0]["share_pct"] == 100.0
+    assert artist["by_plays"][0]["share_denominator"] == 2
+    assert artist["by_plays"][0]["share_denominator_scope"] == ("annual_logical_play_events")
 
 
 def test_empty_year_has_stable_empty_contract() -> None:

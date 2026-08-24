@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 import hashlib
 import json
 import re
 import sys
 import time
 from contextlib import nullcontext
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -31,7 +33,7 @@ from backend.services.yearly_review_service import (  # noqa: E402
     get_yearly_review_records,
 )
 
-PROBE_VERSION = "yearly_review_v2_probe_v5"
+PROBE_VERSION = "yearly_review_v2_probe_v6"
 
 CONSUMER_BANNED_COPY = (
     "统计口径",
@@ -226,6 +228,105 @@ def _consumer_issues(payload: dict[str, Any]) -> list[str]:
     return issues
 
 
+def _metric_values(metrics: list[dict[str, Any]]) -> dict[str, Any]:
+    return {str(metric.get("key")): metric.get("value") for metric in metrics}
+
+
+def _semantic_issues(payload: dict[str, Any]) -> list[str]:
+    """Reject numerically valid payloads whose consumer meaning is contradictory."""
+
+    issues: list[str] = []
+    passport = payload.get("passport") or {}
+    passport_metrics = _metric_values(passport.get("metrics", []))
+    life_metrics = _metric_values((payload.get("listening_life") or {}).get("metrics", []))
+
+    passport_tracks = passport_metrics.get("unique_tracks")
+    life_tracks = life_metrics.get("unique_tracks")
+    if passport_tracks is not None and life_tracks is not None:
+        if int(passport_tracks) != int(life_tracks):
+            issues.append(
+                "unique_track_identity_mismatch:"
+                f"passport={int(passport_tracks)}:listening_life={int(life_tracks)}"
+            )
+
+    total_plays = passport_metrics.get("total_plays")
+    artist_plays = life_metrics.get("top_artist_plays")
+    artist_share = life_metrics.get("top_artist_share_pct")
+    if total_plays and artist_plays is not None and artist_share is not None:
+        expected = round(float(artist_plays) / float(total_plays) * 100, 1)
+        if abs(float(artist_share) - expected) > 0.05:
+            issues.append(
+                "artist_share_denominator_mismatch:"
+                f"expected={expected}:actual={float(artist_share)}"
+            )
+
+    observed_end_raw = passport.get("observed_end")
+    if payload.get("status") == "year_to_date" and observed_end_raw:
+        observed_end = date.fromisoformat(str(observed_end_raw))
+        month_rows = (payload.get("season") or {}).get("months", [])
+        current_month = next(
+            (row for row in month_rows if int(row.get("month", 0)) == observed_end.month),
+            None,
+        )
+        is_partial_month = (
+            observed_end.day < calendar.monthrange(observed_end.year, observed_end.month)[1]
+        )
+        if current_month and is_partial_month:
+            comparisons = current_month.get("comparisons", [])
+            keys = {metric.get("key") for metric in comparisons}
+            if "hours_vs_previous_month_pct" in keys:
+                issues.append("partial_month_uses_full_month_baseline")
+            if "hours_vs_prior_year_month_pct" in keys:
+                issues.append("partial_month_uses_full_prior_year_baseline")
+            for metric in comparisons:
+                if metric.get("key") not in {
+                    "hours_vs_previous_period_pct",
+                    "hours_vs_prior_year_period_pct",
+                }:
+                    continue
+                window_values = [
+                    metric.get("observed_start"),
+                    metric.get("observed_end"),
+                    metric.get("comparison_start"),
+                    metric.get("comparison_end"),
+                ]
+                if not all(window_values):
+                    issues.append("aligned_month_comparison_window_missing")
+                    continue
+                observed_days = (
+                    date.fromisoformat(str(window_values[1]))
+                    - date.fromisoformat(str(window_values[0]))
+                ).days + 1
+                comparison_days = (
+                    date.fromisoformat(str(window_values[3]))
+                    - date.fromisoformat(str(window_values[2]))
+                ).days + 1
+                if observed_days != comparison_days:
+                    issues.append(
+                        "aligned_month_comparison_window_mismatch:"
+                        f"observed={observed_days}:comparison={comparison_days}"
+                    )
+
+    claim_groups = {
+        "daily_plays_max": ("听歌次数最多的一天", "今年听歌最多的一天"),
+        "daily_hours_max": ("听歌时间最长的一天",),
+    }
+    consumer_facts = [
+        *((payload.get("season") or {}).get("turning_points", [])),
+        *((payload.get("records") or {}).get("featured", [])),
+    ]
+    for claim_key, tokens in claim_groups.items():
+        unique_claims: list[str] = []
+        for item in consumer_facts:
+            text = f"{item.get('title', '')} {item.get('statement', '')}"
+            if any(token in text for token in tokens) and "并列" not in text:
+                unique_claims.append(str(item.get("point_id") or item.get("record_id") or text))
+        if len(unique_claims) > 1:
+            issues.append(f"conflicting_unique_claim:{claim_key}:{len(unique_claims)}")
+
+    return issues
+
+
 def probe_year(
     year: int,
     context,
@@ -270,6 +371,7 @@ def probe_year(
     issues.extend(_identity_issues(payload))
     issues.extend(_editorial_issues(payload))
     issues.extend(_consumer_issues(payload))
+    issues.extend(_semantic_issues(payload))
     return {
         "year": year,
         "status": report.status,

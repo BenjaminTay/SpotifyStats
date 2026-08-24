@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
 
 from backend.domains.playback.records_helpers import (
@@ -148,28 +150,55 @@ def _milestone_targets(total_plays: int) -> list[int]:
     return sorted(set(targets))
 
 
-def _playback_milestones(event_frame):
-    """播放里程碑：按有效播放总量选择可读的已完成节点。"""
+def _playback_milestones(event_frame, target_year: int | None = None):
+    """Return lifetime play milestones, optionally limited to one calendar year.
+
+    ``event_frame`` must contain the complete valid-play history.  A custom
+    period frame would turn an annual ordinal into a false lifetime claim.
+    """
     if event_frame.empty:
         return pd.DataFrame()
-    df_sorted = event_frame.sort_values("ts").copy()
-    milestones = []
+    sort_columns = ["ts", "play_id"] if "play_id" in event_frame.columns else ["ts"]
+    df_sorted = event_frame.sort_values(sort_columns, kind="stable").copy()
+    milestones: list[dict[str, Any]] = []
     total_plays = len(df_sorted)
     for target in _milestone_targets(total_plays):
         row = df_sorted.iloc[target - 1]
-        track_id = row.get("canonical_track_id", row.get("track_id"))
+        milestone_date = str(row["ts_date"])
+        parsed_year = pd.to_datetime(milestone_date, errors="coerce")
+        if target_year is not None and (
+            pd.isna(parsed_year) or int(parsed_year.year) != target_year
+        ):
+            continue
+        track_id = row.get("track_id")
+        canonical_track_id = row.get("canonical_track_id")
+        display_entity_id = (
+            canonical_track_id
+            if canonical_track_id is not None and pd.notna(canonical_track_id)
+            else track_id
+        )
         milestones.append(
             {
                 "rank": len(milestones) + 1,
                 "entity_type": "track",
-                "entity_id": str(int(track_id)) if pd.notna(track_id) else None,
+                "entity_id": (str(int(display_entity_id)) if pd.notna(display_entity_id) else None),
+                "track_id": int(track_id) if pd.notna(track_id) else None,
+                "canonical_track_id": (
+                    str(int(canonical_track_id))
+                    if canonical_track_id is not None and pd.notna(canonical_track_id)
+                    else None
+                ),
                 "name": str(row.get("track_name", "")),
+                "track_name": str(row.get("track_name", "")),
                 "artist_name": str(row.get("artist_name", "")),
                 "value": float(target),
                 "unit": "次播放里程碑",
-                "date": str(row["ts_date"]),
+                "date": milestone_date,
                 "caption": f"第 {target:,} 次播放",
                 "total_plays": total_plays,
+                "lifetime_index": target,
+                "scope": "lifetime",
+                "rank_basis": "lifetime_play_index",
             }
         )
     return pd.DataFrame(milestones) if milestones else pd.DataFrame()

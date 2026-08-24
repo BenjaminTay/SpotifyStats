@@ -9,6 +9,7 @@ from scripts.yearly_review_v2_probe import (
     _editorial_issues,
     _identity_issues,
     _semantic_fingerprint,
+    _semantic_issues,
     _taste_issues,
     parse_years,
 )
@@ -120,3 +121,110 @@ def test_consumer_probe_rejects_audit_copy_ytd_full_year_and_missing_artwork() -
     assert any(issue.startswith("ytd_full_year_copy:") for issue in issues)
     assert any(issue.startswith("consumer_pp_copy:") for issue in issues)
     assert "consumer_entity_cover_missing" in issues
+
+
+def test_semantic_probe_rejects_cross_chapter_denominators_and_conflicting_maxima() -> None:
+    payload = {
+        "status": "year_to_date",
+        "passport": {
+            "observed_end": "2026-08-21",
+            "metrics": [
+                {"key": "total_plays", "value": 100},
+                {"key": "unique_tracks", "value": 40},
+            ],
+        },
+        "listening_life": {
+            "metrics": [
+                {"key": "unique_tracks", "value": 39},
+                {"key": "top_artist_plays", "value": 20},
+                {"key": "top_artist_share_pct", "value": 25.0},
+            ]
+        },
+        "season": {
+            "months": [
+                {
+                    "month": 8,
+                    "comparisons": [
+                        {"key": "hours_vs_previous_month_pct", "value": -10.0},
+                        {"key": "hours_vs_prior_year_month_pct", "value": 20.0},
+                    ],
+                }
+            ],
+            "turning_points": [
+                {
+                    "point_id": "june",
+                    "title": "听歌次数最多的一天",
+                    "statement": "6 月 13 日是今年听歌最多的一天。",
+                },
+                {
+                    "point_id": "july",
+                    "title": "听歌次数最多的一天",
+                    "statement": "7 月 25 日是今年听歌最多的一天。",
+                },
+            ],
+        },
+        "records": {"featured": []},
+    }
+
+    issues = _semantic_issues(payload)
+
+    assert any(issue.startswith("unique_track_identity_mismatch:") for issue in issues)
+    assert any(issue.startswith("artist_share_denominator_mismatch:") for issue in issues)
+    assert "partial_month_uses_full_month_baseline" in issues
+    assert "partial_month_uses_full_prior_year_baseline" in issues
+    assert "conflicting_unique_claim:daily_plays_max:2" in issues
+
+
+def test_semantic_probe_accepts_aligned_partial_month_window() -> None:
+    payload = {
+        "status": "year_to_date",
+        "passport": {
+            "observed_end": "2026-08-21",
+            "metrics": [
+                {"key": "total_plays", "value": 200},
+                {"key": "unique_tracks", "value": 40},
+            ],
+        },
+        "listening_life": {
+            "metrics": [
+                {"key": "unique_tracks", "value": 40},
+                {"key": "top_artist_plays", "value": 20},
+                {"key": "top_artist_share_pct", "value": 10.0},
+            ]
+        },
+        "season": {
+            "months": [
+                {
+                    "month": 8,
+                    "comparisons": [
+                        {
+                            "key": "hours_vs_previous_period_pct",
+                            "value": -7.0,
+                            "observed_start": "2026-08-01",
+                            "observed_end": "2026-08-21",
+                            "comparison_start": "2026-07-01",
+                            "comparison_end": "2026-07-21",
+                        },
+                        {
+                            "key": "hours_vs_prior_year_period_pct",
+                            "value": 10.0,
+                            "observed_start": "2026-08-01",
+                            "observed_end": "2026-08-21",
+                            "comparison_start": "2025-08-01",
+                            "comparison_end": "2025-08-21",
+                        },
+                    ],
+                }
+            ],
+            "turning_points": [
+                {
+                    "point_id": "july",
+                    "title": "听歌次数最多的一天",
+                    "statement": "7 月 25 日是今年听歌次数最多的一天。",
+                }
+            ],
+        },
+        "records": {"featured": []},
+    }
+
+    assert _semantic_issues(payload) == []

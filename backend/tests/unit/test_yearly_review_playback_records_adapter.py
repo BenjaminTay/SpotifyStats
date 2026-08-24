@@ -76,6 +76,26 @@ def test_normalizes_nested_catalog_with_stable_provenance() -> None:
     assert first[2].primary_metric.unit == "次"
 
 
+def test_normalizer_recovers_tied_first_place_from_sequential_legacy_ranks() -> None:
+    candidates, _ = normalize_record_catalog(
+        {
+            "obsession": {
+                "daily_binge": {
+                    "track": [
+                        {"rank": 1, "track_id": 1, "track_name": "A", "plays": 20},
+                        {"rank": 2, "track_id": 2, "track_name": "B", "plays": 20},
+                        {"rank": 3, "track_id": 3, "track_name": "C", "plays": 18},
+                    ]
+                }
+            }
+        },
+        source="playback_records",
+    )
+
+    assert [item.semantics.rank for item in candidates] == [1, 1, 3]
+    assert [item.semantics.is_tied_top for item in candidates] == [True, True, False]
+
+
 def test_build_adapter_uses_injected_annual_payload_without_exposing_it_as_main_report() -> None:
     payload = {
         "period": {"period": "custom", "start_date": "2025-01-01", "end_date": "2025-12-31"},
@@ -144,3 +164,134 @@ def test_localized_billboard_record_keeps_track_reference() -> None:
     assert candidates[0].entity_refs[0].entity_type == "track"
     assert candidates[0].entity_refs[0].name == "三冠曲"
     assert candidates[0].deep_link == "/music/tracks/88"
+
+
+def test_annual_adapter_uses_lifetime_milestones_and_lifetime_first_seen() -> None:
+    history_events = pd.DataFrame(
+        [
+            {
+                "play_id": index,
+                "track_id": 10 if index < 1000 else 20,
+                "track_name": "Before" if index < 1000 else "Milestone",
+                "artist_name": "Singer",
+                "ts": f"{'2024' if index <= 700 else '2025'}-{index:04d}",
+                "ts_date": "2024-01-01" if index <= 700 else "2025-01-01",
+            }
+            for index in range(1, 1002)
+        ]
+    )
+    annual_events = history_events[history_events["ts_date"] == "2025-01-01"].copy()
+    history_tracks = pd.DataFrame(
+        [
+            {
+                "play_id": 1,
+                "track_id": 1,
+                "canonical_track_id": 100,
+                "canonical_track_name": "Known",
+                "artist_name": "A",
+                "ts_date": "2024-12-31",
+            },
+            {
+                "play_id": 2,
+                "track_id": 2,
+                "canonical_track_id": 100,
+                "canonical_track_name": "Known",
+                "artist_name": "A",
+                "ts_date": "2025-01-01",
+            },
+            {
+                "play_id": 3,
+                "track_id": 3,
+                "canonical_track_id": 200,
+                "canonical_track_name": "New",
+                "artist_name": "B",
+                "ts_date": "2025-01-02",
+            },
+            {
+                "play_id": 4,
+                "track_id": 4,
+                "canonical_track_id": 200,
+                "canonical_track_name": "Renamed New",
+                "artist_name": "C",
+                "ts_date": "2025-01-03",
+            },
+        ]
+    )
+    payload = {
+        "period": {"period": "custom"},
+        "meta": {"total_plays": len(annual_events)},
+        "records": {
+            "obsession": {
+                "daily_total_record": [
+                    {
+                        "date": "2025-01-02",
+                        "name": "2025-01-02",
+                        "value": 80,
+                        "unit": "次",
+                        "total_plays": 80,
+                        "total_hours": 6.0,
+                        "plays_rank": 2,
+                        "hours_rank": 1,
+                    },
+                    {
+                        "date": "2025-01-01",
+                        "name": "2025-01-01",
+                        "value": 100,
+                        "unit": "次",
+                        "total_plays": 100,
+                        "total_hours": 5.0,
+                        "plays_rank": 1,
+                        "hours_rank": 2,
+                    },
+                ]
+            },
+            "behavior": {
+                "playback_milestones": [
+                    {"rank": 1, "name": "Wrong", "value": 100, "date": "2025-01-01"}
+                ]
+            },
+            "discovery": {
+                "discovery_day": {
+                    "track": [
+                        {
+                            "rank": 1,
+                            "name": "2025-01-01",
+                            "value": 51,
+                            "unit": "首新歌",
+                            "date": "2025-01-01",
+                        }
+                    ],
+                    "album": [],
+                    "artist": [],
+                }
+            },
+        },
+    }
+
+    result = build_playback_record_candidates(
+        sqlite3.connect(":memory:"),
+        2025,
+        _context(),
+        payload=payload,
+        event_frame=annual_events,
+        entity_frames=(pd.DataFrame(), pd.DataFrame(), pd.DataFrame()),
+        history_event_frame=history_events,
+        history_entity_frames=(history_tracks, pd.DataFrame(), pd.DataFrame()),
+    )
+    candidates = result["candidates"]
+
+    milestones = [c for c in candidates if "playback_milestones" in c.record_key]
+    assert [(c.primary_metric.value, c.semantics.scope) for c in milestones] == [
+        (1000.0, "lifetime")
+    ]
+    assert milestones[0].entity_refs[0].deep_link == "/music/tracks/20"
+
+    discoveries = [c for c in candidates if c.record_key == "discovery.discovery_day.track"]
+    assert len(discoveries) == 1
+    assert discoveries[0].primary_metric.value == 1.0
+    assert discoveries[0].semantics.scope == "lifetime_first_seen"
+
+    plays = [c for c in candidates if c.record_key == "obsession.daily_total_plays"]
+    hours = [c for c in candidates if c.record_key == "obsession.daily_total_hours"]
+    assert next(c for c in plays if c.semantics.rank == 1).raw_values["date"] == "2025-01-01"
+    assert next(c for c in hours if c.semantics.rank == 1).raw_values["date"] == "2025-01-02"

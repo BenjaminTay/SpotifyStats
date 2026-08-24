@@ -3,9 +3,10 @@ from __future__ import annotations
 from collections import Counter
 
 from backend.domains.yearly_review.record_presenters import present_record_candidate
-from backend.domains.yearly_review.records import select_yearly_records
+from backend.domains.yearly_review.records import qualified_yearly_candidates, select_yearly_records
 from backend.models.yearly_review import (
     YearlyEntityRef,
+    YearlyFactSemantics,
     YearlyHighlightCandidate,
     YearlyMetric,
 )
@@ -190,3 +191,91 @@ def test_simultaneous_chart_records_without_a_count_are_not_public() -> None:
     )
 
     assert present_record_candidate(candidate) is None
+
+
+def test_ranked_superlative_candidates_must_be_true_top_records() -> None:
+    runner_up = _candidate(60, "obsession").model_copy(
+        update={
+            "record_key": "obsession.daily_total_plays",
+            "fact_type": "daily_total_plays",
+            "entity_refs": [],
+            "primary_metric": YearlyMetric(key="value", label="2025-06-13", value=130, unit="次"),
+            "raw_values": {
+                "rank": 4,
+                "date": "2025-06-13",
+                "year": 2025,
+            },
+            "semantics": YearlyFactSemantics(
+                scope="annual",
+                rank=4,
+                rank_basis="total_plays",
+                is_top=False,
+            ),
+        }
+    )
+
+    presented = present_record_candidate(runner_up)
+    selected = select_yearly_records(2025, [[runner_up]])
+
+    assert presented is not None
+    assert "第 4" in presented.title
+    assert "最多" not in presented.statement
+    assert selected.featured == []
+
+
+def test_annual_first_seen_candidate_is_not_a_personal_discovery_record() -> None:
+    annual_only = _candidate(61, "discovery").model_copy(
+        update={
+            "record_key": "discovery.discovery_day.track",
+            "fact_type": "track",
+            "entity_refs": [],
+            "raw_values": {"rank": 1, "date": "2025-08-07", "year": 2025},
+            "semantics": YearlyFactSemantics(
+                scope="annual_first_seen",
+                rank=1,
+                rank_basis="new_tracks",
+                is_top=True,
+            ),
+        }
+    )
+    lifetime = annual_only.model_copy(
+        update={
+            "candidate_id": "lifetime-discovery",
+            "semantics": YearlyFactSemantics(
+                scope="lifetime_first_seen",
+                rank=1,
+                rank_basis="new_tracks",
+                is_top=True,
+            ),
+        }
+    )
+
+    assert select_yearly_records(2025, [[annual_only]]).featured == []
+    assert len(select_yearly_records(2025, [[lifetime]]).featured) == 1
+
+
+def test_discovery_entity_types_do_not_collapse_on_the_same_date() -> None:
+    track = _candidate(70, "discovery").model_copy(
+        update={
+            "candidate_id": "discovery-track",
+            "record_key": "discovery.discovery_day.track",
+            "fact_type": "track",
+            "entity_refs": [],
+            "raw_values": {"rank": 1, "date": "2025-03-11", "year": 2025},
+            "semantics": YearlyFactSemantics(
+                scope="lifetime_first_seen", rank=1, rank_basis="new_tracks", is_top=True
+            ),
+        }
+    )
+    album = track.model_copy(
+        update={
+            "candidate_id": "discovery-album",
+            "record_key": "discovery.discovery_day.album",
+            "fact_type": "album",
+            "semantics": YearlyFactSemantics(
+                scope="lifetime_first_seen", rank=1, rank_basis="new_albums", is_top=True
+            ),
+        }
+    )
+
+    assert len(qualified_yearly_candidates(2025, [track, album])) == 2

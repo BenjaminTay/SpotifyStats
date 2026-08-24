@@ -3,12 +3,16 @@ from __future__ import annotations
 import sqlite3
 
 import pandas as pd
+import pytest
 
 from backend.domains.yearly_review import orchestrator
 from backend.models.yearly_review import (
     YearlyBillboardCoverage,
     YearlyFeaturedRecord,
+    YearlyListeningLifeChapter,
+    YearlyMetric,
     YearlyRecordsChapter,
+    YearlyReportPassport,
     YearlyReviewFilterContext,
 )
 
@@ -259,3 +263,31 @@ def test_noncritical_section_failure_degrades_without_losing_report(monkeypatch)
     )
     assert any("年度荣誉" in item for item in result.report.methodology.limitations)
     assert any("收听生活" in item for item in result.report.methodology.limitations)
+
+
+def test_cross_chapter_semantic_gate_rejects_identity_and_denominator_mismatch() -> None:
+    passport = YearlyReportPassport(
+        year=2026,
+        label="2026 年截至目前",
+        observed_start="2026-01-01",
+        observed_end="2026-08-21",
+        status="year_to_date",
+        metrics=[
+            YearlyMetric(key="total_plays", label="播放", value=100),
+            YearlyMetric(key="unique_tracks", label="曲目", value=40),
+        ],
+    )
+    life = YearlyListeningLifeChapter(
+        metrics=[
+            YearlyMetric(key="unique_tracks", label="曲目", value=39),
+            YearlyMetric(key="top_artist_plays", label="艺人播放", value=20),
+            YearlyMetric(key="top_artist_share_pct", label="占比", value=25.0),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="yearly_unique_track_identity_mismatch"):
+        orchestrator._validate_cross_chapter_semantics(passport, life)
+
+    life.metrics[0] = YearlyMetric(key="unique_tracks", label="曲目", value=40)
+    with pytest.raises(ValueError, match="yearly_artist_share_denominator_mismatch"):
+        orchestrator._validate_cross_chapter_semantics(passport, life)

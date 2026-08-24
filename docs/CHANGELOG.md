@@ -2,6 +2,14 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-24 — 年度总结统计语义修复
+
+- 个人历史播放里程碑改为先按完整历史累计、再筛选阈值跨越发生在报告年的事件；真实首次发现同样从完整历史确定，避免把年度切片内的第 1,000 次或第一次出现误写成个人历史事实。
+- 每日播放次数与收听时长拆成独立 dense rank；精选和时间线只允许第一名使用“最多/最长”，并列必须明确标注，非第一名改为中性名次文案。
+- 当前未完整月份的环比与同比改为上月同期、上年同期等长窗口，并将两侧日期写入 metric；曲目总数、新歌率和复听率统一 canonical track identity，艺人播放占比统一以年度逻辑播放总数为分母。
+- 新增跨章节拒绝发布门禁与 probe v6，检查曲目 identity、艺人占比分母、部分月窗口和互斥唯一结论；内容与策略升级到 `yearly_review_v2_14`、`highlight_policy_v3`、`season_stage_v2`，旧缓存不再被当前报告命中。
+- 完整修复和真实数据/浏览器证据见 [`reports/2026-08-24-yearly-review-semantic-correction.md`](reports/2026-08-24-yearly-review-semantic-correction.md)。
+
 ## 2026-08-24 — 首页与音乐详情加载性能修复
 
 - 详情 `summary` 改为直接读取精确音乐查找 snapshot 与轻量元数据，不再先构建完整 Billboard 详情；歌曲、专辑、艺人冷摘要均进入 500ms 门禁。

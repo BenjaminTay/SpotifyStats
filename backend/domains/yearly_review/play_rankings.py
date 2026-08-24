@@ -115,6 +115,37 @@ def _enrich_rows(
     return enriched
 
 
+def _normalize_artist_shares(
+    rows: list[dict[str, Any]],
+    *,
+    metric: str,
+    annual_events: pd.DataFrame,
+) -> list[dict[str, Any]]:
+    """Use logical annual plays/hours as the artist-share denominator.
+
+    Artist rows fan one logical event out to every valid credited artist, so
+    the artist frame row count is not a valid denominator for a reader-facing
+    share of listening.
+    """
+    denominator: float
+    if metric == "plays":
+        denominator = max(int(len(annual_events)), 1)
+        value_key = "plays"
+        denominator_scope = "annual_logical_play_events"
+    else:
+        denominator = max(float(annual_events["ms_played"].sum()) / 3_600_000, 0.000001)
+        value_key = "hours"
+        denominator_scope = "annual_logical_play_hours"
+    normalized: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["share_pct"] = round(float(item.get(value_key, 0)) / denominator * 100, 2)
+        item["share_denominator"] = denominator
+        item["share_denominator_scope"] = denominator_scope
+        normalized.append(item)
+    return normalized
+
+
 def build_play_rankings(
     conn: sqlite3.Connection,
     year: int,
@@ -185,6 +216,17 @@ def build_play_rankings(
             merge_level=context.merge_level,
             include_compilations=context.include_compilations,
         )
+        if entity == "artist":
+            plays_rows = _normalize_artist_shares(
+                plays_rows,
+                metric="plays",
+                annual_events=annual_events,
+            )
+            hours_rows = _normalize_artist_shares(
+                hours_rows,
+                metric="hours",
+                annual_events=annual_events,
+            )
         charts[entity] = {
             "available_count": total,
             "by_plays": _enrich_rows(entity, "plays", plays_rows, activity_maps[entity]),

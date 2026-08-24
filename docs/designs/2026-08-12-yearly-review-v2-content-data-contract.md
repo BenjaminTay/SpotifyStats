@@ -347,8 +347,23 @@ YearlyHighlightCandidate
 - coverage_status
 - source_refs
 - deep_link
+- semantics
+  - scope
+  - rank / rank_basis
+  - is_top / is_tied_top
+  - observed_start / observed_end
+  - comparison_start / comparison_end
+  - denominator_scope
 - noteworthiness_components
 ```
+
+候选必须携带机器可读语义，renderer 和选择器不得仅凭 `record_key` 或自然语言猜测“个人历史”“本年第一”或比较窗口：
+
+- 播放里程碑只允许从完整个人历史累计序列计算，再筛选“阈值跨越日期发生在报告年”的事件；年内计数不得冒充个人历史累计。
+- “第一次听到”先从完整历史确定 canonical 实体的真实首播日期，再筛选首播发生在报告年的歌曲、album project 或 canonical artist；报告年切片内的首次出现不能称为第一次听到。
+- 每日播放次数和每日收听时长分属两个独立排名族，各自使用 dense rank；只有 `rank=1` 可以使用“最多/最长”，并列第一必须明确写“并列”。
+- 不完整月份的环比和同比只能分别与上月同期、上年同期的等长窗口比较，并在 metric 中同时记录观察与比较起止日期；完整月才可使用完整自然月比较。
+- 歌曲数量、探索率和复听率统一使用 canonical track identity；艺人播放占比的分母是年度逻辑播放总数，分子允许按有效署名 fan-out 后包含该艺人的播放。
 
 筛选流程：
 
@@ -358,7 +373,7 @@ YearlyHighlightCandidate
 4. 多样性约束：避免同一艺人、同一类别或同一指标占满正文。
 5. 最终选择：固定规则选出 6–8 条，不由 LLM 决定。
 
-当前冻结 `highlight_policy_v2`：
+当前冻结 `highlight_policy_v3`：
 
 - 只接收 A/B 级事实和由至少两个 A/B 指标支持的 C 级事实；范围或覆盖不一致的候选直接淘汰。
 - 先按 `entity identity + fact family + period + underlying metric` 语义去重，再排序；图片 URL、展示标题和名次字段不参与去重。
@@ -366,6 +381,7 @@ YearlyHighlightCandidate
 - 最终选择 6–8 条；每个一级类别最多 2 条、同一实体最多 2 条、同一底层指标最多 1 条。
 - 在存在合格候选时，正文至少覆盖高峰/着迷、持续/陪伴、发现/回归、收听行为四种事实家族；个人 Billboard honors 已在第二章展示，不为凑数重复进入纪录簿。
 - 若严格多样性约束后不足 6 条，可放宽类别上限到 3 条，但不得放宽证据、覆盖和语义去重门槛。
+- 任何自称年度唯一极值的候选都必须携带 `rank=1`；非第一名只能使用中性名次文案。`annual_first_seen` discovery 与非 lifetime milestone 直接淘汰。
 
 筛选策略通过 `highlight_policy_version` 版本化，并记录在响应与缓存键中。M0 三年审计每年发现 69–70 个非空纪录叶节点和 2,173–2,268 条候选，因此 V1 的核心问题是去重与多样性，而不是扩大候选池。
 
@@ -696,6 +712,11 @@ frontend/src/features/yearly-review/
 - 同比必须裁剪到真实 aligned window，基线覆盖不足时不向章节传递 baseline stats。
 - 工作日/周末日均使用观察区间内真实自然日数量；YTD 品味只比较两个完整季度，不足时为 distribution-only。
 - `stage_status` 与 stages 必须一致；无法证明稳定阶段时 stages 为空。
+- Passport 与收听生活的年度歌曲数必须完全一致，均使用 canonical track identity。
+- 收听生活的头号艺人播放占比必须能由“包含该艺人的逻辑播放数 / 年度逻辑播放总数”复算。
+- 不完整月份的环比与同比必须使用等长同日窗口，并公开保存两侧日期；不得把当月至今与上月或上年整月相比。
+- 同一年度不得产生多个未标注并列的“播放次数最多的一天”或“听歌时间最长的一天”。
+- 个人历史里程碑和真实首次发现必须由完整历史计算；报告年只负责筛选事件发生时间。
 
 ### 范围验收
 

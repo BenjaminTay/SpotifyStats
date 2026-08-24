@@ -76,14 +76,24 @@ def _fact_family(candidate: YearlyHighlightCandidate) -> str:
 
 def _metric_key(candidate: YearlyHighlightCandidate) -> str:
     metric = candidate.primary_metric.key if candidate.primary_metric else "raw"
-    return f"{_fact_family(candidate)}:{metric}"
+    return ":".join(
+        (
+            candidate.record_key.casefold(),
+            candidate.fact_type.casefold(),
+            str(candidate.semantics.rank_basis or ""),
+            metric,
+        )
+    )
 
 
 def _semantic_key(candidate: YearlyHighlightCandidate) -> str:
     return "|".join(
         (
             _entity_key(candidate),
-            _fact_family(candidate),
+            candidate.record_key.casefold(),
+            candidate.fact_type.casefold(),
+            candidate.semantics.scope,
+            str(candidate.semantics.rank_basis or ""),
             _period_key(candidate),
             _metric_key(candidate),
         )
@@ -105,6 +115,31 @@ def _eligible(candidate: YearlyHighlightCandidate, year: int) -> bool:
         return False
     if "year_end_no1" in candidate.record_key:
         return False
+    key = candidate.record_key.casefold()
+    has_explicit_rank = candidate.raw_values.get("rank") is not None
+    superlative_tokens = (
+        "daily_binge",
+        "daily_total_plays",
+        "daily_total_hours",
+        "consecutive_marathon",
+        "daily_champion",
+        "longest_streak",
+        "discovery_day",
+        "late_night_peak_day",
+        "weekday_preference",
+        "biggest_jump",
+        "biggest_drop",
+        "skip_storm",
+    )
+    if any(token in key for token in superlative_tokens) and has_explicit_rank:
+        if candidate.semantics.rank != 1 or not candidate.semantics.is_top:
+            return False
+    if "discovery.discovery_day" in key and has_explicit_rank:
+        if candidate.semantics.scope != "lifetime_first_seen":
+            return False
+    if "behavior.playback_milestones" in key and candidate.raw_values.get("scope"):
+        if candidate.semantics.scope != "lifetime":
+            return False
     return has_public_record_copy(candidate)
 
 

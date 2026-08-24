@@ -22,6 +22,14 @@ EvidenceDisplayStatus = Literal["sufficient", "limited", "unavailable"]
 HighlightCandidateSource = Literal["playback_records", "billboard_records"]
 TasteComparisonMode = Literal["half_years", "completed_quarters", "distribution_only"]
 TasteComparisonStatus = Literal["available", "insufficient_completed_periods"]
+YearlyFactScope = Literal[
+    "annual",
+    "lifetime",
+    "annual_first_seen",
+    "lifetime_first_seen",
+    "full_month",
+    "month_to_date_aligned",
+]
 
 
 class YearlyReviewFilterContext(BaseModel):
@@ -120,6 +128,29 @@ class YearlyMetric(BaseModel):
     unit: str | None = None
     comparison_value: int | float | None = None
     comparison_label: str | None = None
+    observed_start: str | None = None
+    observed_end: str | None = None
+    comparison_start: str | None = None
+    comparison_end: str | None = None
+
+
+class YearlyFactSemantics(BaseModel):
+    """Machine-readable meaning carried from fact builders to public copy.
+
+    Annual selection and presentation must not infer a unique maximum, a
+    lifetime claim, or a comparison window from the record key alone.
+    """
+
+    scope: YearlyFactScope = "annual"
+    rank: int | None = Field(default=None, ge=1)
+    rank_basis: str | None = None
+    is_top: bool = False
+    is_tied_top: bool = False
+    observed_start: str | None = None
+    observed_end: str | None = None
+    comparison_start: str | None = None
+    comparison_end: str | None = None
+    denominator_scope: str | None = None
 
 
 class YearlyReportPassport(BaseModel):
@@ -199,7 +230,7 @@ class YearlyMonthSummary(BaseModel):
 
 
 class YearlySeasonChapter(BaseModel):
-    policy_version: str = "season_stage_v1"
+    policy_version: str = "season_stage_v2"
     stage_status: Literal["available", "no_stable_phase", "insufficient"] = "insufficient"
     stage_note: str | None = None
     stages: list[YearlySeasonStage] = Field(default_factory=list)
@@ -256,6 +287,7 @@ class YearlyHighlightCandidate(BaseModel):
     secondary_metrics: list[YearlyMetric] = Field(default_factory=list)
     period: dict[str, Any] = Field(default_factory=dict)
     comparison: dict[str, Any] = Field(default_factory=dict)
+    semantics: YearlyFactSemantics = Field(default_factory=YearlyFactSemantics)
     raw_values: dict[str, Any] = Field(default_factory=dict)
     eligible: bool = True
     eligibility_reasons: list[str] = Field(default_factory=list)
@@ -267,7 +299,7 @@ class YearlyHighlightCandidate(BaseModel):
 
 
 class YearlyRecordsChapter(BaseModel):
-    policy_version: str = "highlight_policy_v2"
+    policy_version: str = "highlight_policy_v3"
     featured: list[YearlyFeaturedRecord] = Field(default_factory=list)
     catalog_counts: dict[str, int] = Field(default_factory=dict)
 
@@ -307,10 +339,10 @@ class YearlyAppendix(BaseModel):
 
 
 class YearlyMethodology(BaseModel):
-    content_version: str = "yearly_review_v2_13"
+    content_version: str = "yearly_review_v2_14"
     relationship_policy_version: str = "relationship_policy_v2"
-    highlight_policy_version: str = "highlight_policy_v2"
-    season_stage_policy_version: str = "season_stage_v1"
+    highlight_policy_version: str = "highlight_policy_v3"
+    season_stage_policy_version: str = "season_stage_v2"
     metric_definitions: dict[str, str] = Field(default_factory=dict)
     comparison_periods: dict[str, str | None] = Field(default_factory=dict)
     entity_grains: dict[str, str] = Field(default_factory=dict)
@@ -370,7 +402,7 @@ class YearlyReviewGenerationResponse(BaseModel):
 
 
 class YearlyReviewRecordsPage(BaseModel):
-    content_version: str = "yearly_review_v2_13"
+    content_version: str = "yearly_review_v2_14"
     year: int = Field(ge=2000)
     filter_fingerprint: str
     page: int = Field(ge=1)

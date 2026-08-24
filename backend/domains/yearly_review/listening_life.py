@@ -87,6 +87,8 @@ def build_listening_life(
     play_rankings: Mapping[str, Any] | None = None,
     event_frame: pd.DataFrame | None = None,
     history_frame: pd.DataFrame | None = None,
+    track_frame: pd.DataFrame | None = None,
+    history_track_frame: pd.DataFrame | None = None,
     record_candidates: Sequence[YearlyHighlightCandidate] = (),
 ) -> YearlyListeningLifeChapter:
     summary = dict(stats.get("summary", {}))
@@ -188,25 +190,40 @@ def build_listening_life(
     top_artist_rows = dict(charts.get("artist", {})).get("by_plays", [])
     if top_artist_rows:
         top = top_artist_rows[0]
-        concentration = round(float(top.get("share_pct", 0)), 1)
+        artist_plays = int(top.get("plays", 0))
+        concentration = round(artist_plays / max(total_plays, 1) * 100, 1)
         concentration_metrics = [
-            _metric("top_artist_share_pct", "年度播放占比", concentration, "%"),
-            _metric("top_artist_plays", "播放次数", int(top.get("plays", 0)), "次"),
+            _metric("top_artist_share_pct", "含该艺人的播放占比", concentration, "%"),
+            _metric("top_artist_plays", "包含该艺人的播放", artist_plays, "次"),
         ]
         metrics.extend(concentration_metrics)
         observations.append(
             _headline(
                 "artist_concentration",
                 "最常听的艺人",
-                f"{top.get('artist_name')} 占{period}播放的 {concentration:.1f}%，一共听了 {int(top.get('plays', 0)):,} 次。",
+                f"{period}有 {concentration:.1f}% 的播放包含 {top.get('artist_name')}，"
+                f"一共 {artist_plays:,} 次。",
                 concentration_metrics,
                 "play_rankings.artist.by_plays.0",
                 entity_refs=[ref] if (ref := entity_ref_from_row(top, "artist")) else [],
             )
         )
 
-    if event_frame is not None and not event_frame.empty:
-        unique_tracks = int(event_frame["track_id"].nunique()) if "track_id" in event_frame else 0
+    annual_track_frame = (
+        track_frame if track_frame is not None and not track_frame.empty else event_frame
+    )
+    full_track_frame = (
+        history_track_frame
+        if history_track_frame is not None and not history_track_frame.empty
+        else history_frame
+    )
+    if annual_track_frame is not None and not annual_track_frame.empty:
+        track_identity = (
+            "canonical_track_id"
+            if "canonical_track_id" in annual_track_frame.columns
+            else "track_id"
+        )
+        unique_tracks = int(annual_track_frame[track_identity].nunique())
         replay_rate = round(max(total_plays - unique_tracks, 0) / total_plays * 100, 1)
         replay_metrics = [
             _metric("replay_rate_pct", "再次播放", replay_rate, "%"),
@@ -219,16 +236,23 @@ def build_listening_life(
                 "熟悉的歌，还是新鲜感",
                 f"{period}听过 {unique_tracks:,} 首歌，其中 {replay_rate:.1f}% 的播放是在重听今年已经听过的歌。",
                 replay_metrics,
-                "event_frame.track_id",
+                f"track_frame.{track_identity}",
             )
         )
 
-        if history_frame is not None and not history_frame.empty and "track_id" in history_frame:
-            annual_ids = set(event_frame["track_id"].dropna().astype(int))
-            prior_dates = pd.to_datetime(history_frame["ts_date"], errors="coerce")
-            annual_start = pd.to_datetime(event_frame["ts_date"], errors="coerce").min()
+        if full_track_frame is not None and not full_track_frame.empty:
+            history_identity = (
+                "canonical_track_id"
+                if "canonical_track_id" in full_track_frame.columns
+                else "track_id"
+            )
+            annual_ids = set(annual_track_frame[track_identity].dropna().astype(str))
+            prior_dates = pd.to_datetime(full_track_frame["ts_date"], errors="coerce")
+            annual_start = pd.to_datetime(annual_track_frame["ts_date"], errors="coerce").min()
             prior_ids = set(
-                history_frame.loc[prior_dates < annual_start, "track_id"].dropna().astype(int)
+                full_track_frame.loc[prior_dates < annual_start, history_identity]
+                .dropna()
+                .astype(str)
             )
             discovered = len(annual_ids - prior_ids)
             discovery_rate = round(discovered / max(len(annual_ids), 1) * 100, 1)
@@ -243,8 +267,8 @@ def build_listening_life(
                     "今年认识的新歌",
                     f"{period}第一次听到 {discovered:,} 首歌，占所有不同曲目的 {discovery_rate:.1f}%。",
                     discovery_metrics,
-                    "event_frame.track_id",
-                    "history_frame.track_id",
+                    f"track_frame.{track_identity}",
+                    f"history_track_frame.{history_identity}",
                 )
             )
 

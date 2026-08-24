@@ -48,6 +48,7 @@
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
 - [`reports/2026-08-24-home-detail-loading-performance-repair.md`](reports/2026-08-24-home-detail-loading-performance-repair.md)：首页/详情冷加载、实体统计分层、按键并发与子榜错误空态的完整修复证据
+- [`reports/2026-08-24-yearly-review-semantic-correction.md`](reports/2026-08-24-yearly-review-semantic-correction.md)：年度里程碑、日极值、首次发现、部分月窗口与跨章节 identity/分母修复证据
 - [`reports/2026-08-19-music-detail-performance-delivery.md`](reports/2026-08-19-music-detail-performance-delivery.md)：音乐详情按需加载、旧子页收口与优化前后数据等价性证据
 - [`reports/2026-08-23-incremental-import-phase-d2.md`](reports/2026-08-23-incremental-import-phase-d2.md)：同一开放周搜索 snapshot delta、lineage/周账本与真实库等价性证据
 - [`reports/2026-08-23-incremental-import-phase-d1.md`](reports/2026-08-23-incremental-import-phase-d1.md)：Billboard 周分区、六套搜索 shared-full 复用和真实库等价性证据

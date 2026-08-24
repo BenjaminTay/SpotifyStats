@@ -31,6 +31,10 @@ export interface YearlyMetric {
   unit: string | null
   comparison_value: number | null
   comparison_label: string | null
+  observed_start?: string | null
+  observed_end?: string | null
+  comparison_start?: string | null
+  comparison_end?: string | null
 }
 
 export interface YearlyEntityRef {

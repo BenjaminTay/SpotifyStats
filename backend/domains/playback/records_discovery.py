@@ -28,15 +28,41 @@ def _group_col_for(frame, entity_type):
         return "artist_name", "artist_name", "artist_name"
 
 
-def _discovery_day(frame, group_col, name_col, artist_col, entity_type):
-    """單日首次播放新 entity 數量最多的日期。"""
+def _discovery_day(
+    frame,
+    group_col,
+    name_col,
+    artist_col,
+    entity_type,
+    *,
+    target_year: int | None = None,
+):
+    """Return daily first-seen counts at the identity grain of ``frame``.
+
+    Passing a complete history frame plus ``target_year`` yields genuine
+    personal discoveries in that year.  Passing an already sliced frame keeps
+    the standalone Playback Records period semantics.
+    """
     if frame.empty:
         return pd.DataFrame()
-    gb_cols = safe_groupby_cols([], group_col, name_col, artist_col)
+    gb_cols = (
+        [group_col]
+        if target_year is not None and group_col in frame.columns
+        else safe_groupby_cols([], group_col, name_col, artist_col)
+    )
     first_seen = frame.groupby(gb_cols)["ts_date"].min().reset_index(name="first_date")
+    if target_year is not None:
+        first_dates = pd.to_datetime(first_seen["first_date"], errors="coerce")
+        first_seen = first_seen[first_dates.dt.year == target_year]
+        if first_seen.empty:
+            return pd.DataFrame()
     new_per_day = first_seen.groupby("first_date").size().reset_index(name="new_count")
-    best = new_per_day.sort_values("new_count", ascending=False).head(TOP_RECORD_LIMIT).copy()
-    best["rank"] = range(1, len(best) + 1)
+    best = (
+        new_per_day.sort_values(["new_count", "first_date"], ascending=[False, True], kind="stable")
+        .head(TOP_RECORD_LIMIT)
+        .copy()
+    )
+    best["rank"] = best["new_count"].rank(method="min", ascending=False).astype(int)
     best["name"] = best["first_date"].astype(str)
     best["value"] = best["new_count"].astype(float)
     best["unit"] = {
@@ -45,6 +71,11 @@ def _discovery_day(frame, group_col, name_col, artist_col, entity_type):
         "artist": "位新艺人",
     }.get(entity_type, "个新发现")
     best["date"] = best["first_date"].astype(str)
+    best["entity_type"] = entity_type
+    best["rank_basis"] = f"new_{entity_type}s"
+    best["is_top"] = best["rank"].eq(1)
+    best["is_tied_top"] = best["rank"].eq(1) & bool(best["rank"].eq(1).sum() > 1)
+    best["scope"] = "lifetime_first_seen" if target_year is not None else "annual_first_seen"
     return best
 
 

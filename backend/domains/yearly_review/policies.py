@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 RELATIONSHIP_POLICY_VERSION = "relationship_policy_v2"
-HIGHLIGHT_POLICY_VERSION = "highlight_policy_v2"
-SEASON_STAGE_POLICY_VERSION = "season_stage_v1"
+HIGHLIGHT_POLICY_VERSION = "highlight_policy_v3"
+SEASON_STAGE_POLICY_VERSION = "season_stage_v2"
 
 MIN_RELATIONSHIP_SPAN_DAYS = 90
 RELATIONSHIP_ENTITY_CAP = 2
