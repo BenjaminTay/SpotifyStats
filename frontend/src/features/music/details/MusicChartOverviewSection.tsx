@@ -14,6 +14,9 @@ import {
 import { MusicChartEmptyState } from './MusicChartEmptyState'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileChartHistoryList } from '@/features/mobile/music/MobileMusicDetail'
+import type { DetailYearEndFields } from '@/types/billboard'
+import { YearEndHistorySection } from './YearEndHistorySection'
+import { YearEndSummaryKpis } from './YearEndSummaryKpis'
 
 type ChartSummary = {
   peak_position: number
@@ -68,6 +71,9 @@ export function MusicChartOverviewSection({
   bestSinglesOverlay,
   bestAlbumsOverlay,
   effectivePlayCount,
+  yearEndStatus = 'unavailable',
+  yearEndSummary = null,
+  yearEndHistory = [],
 }: {
   kind: 'artist' | 'album'
   chartSummary: ChartSummary | null
@@ -75,6 +81,9 @@ export function MusicChartOverviewSection({
   bestSinglesOverlay: { week: string; rank: number; track_name: string }[]
   bestAlbumsOverlay?: { week: string; rank: number; album_name: string }[]
   effectivePlayCount?: number
+  yearEndStatus?: DetailYearEndFields['year_end_status']
+  yearEndSummary?: DetailYearEndFields['year_end_summary']
+  yearEndHistory?: DetailYearEndFields['year_end_history']
 }) {
   const isPhone = useViewportMode() === 'phone'
   const historyPageSize = 50
@@ -123,6 +132,7 @@ export function MusicChartOverviewSection({
           value={formatTimeSpan(chartSummary.first_week, chartSummary.latest_week)}
           sub={`${formatDateShort(chartSummary.first_week)} — ${formatDateShort(chartSummary.latest_week)}`}
         />
+        <YearEndSummaryKpis status={yearEndStatus} summary={yearEndSummary} variant="cards" />
       </div>
 
       {weeklyHistory.length > 0 && (
@@ -302,6 +312,7 @@ export function MusicChartOverviewSection({
           </GlassCard>}
         </div>
       )}
+      <YearEndHistorySection status={yearEndStatus} history={yearEndHistory} />
     </>
   )
 }

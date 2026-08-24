@@ -4,7 +4,13 @@ import sqlite3
 
 import pytest
 
-from backend.core.migrations import migrate_032, migrate_034, migrate_035
+from backend.core.migrations import (
+    migrate_032,
+    migrate_034,
+    migrate_035,
+    migrate_042,
+    migrate_046,
+)
 from backend.domains.music_search import context as context_module
 from backend.domains.music_search import index as index_module
 from backend.domains.music_search import normalization as normalization_module
@@ -84,6 +90,21 @@ def _seed_ready_candidate_and_statistics(
     )
     conn.commit()
     return contexts
+
+
+def _seed_ready_year_end_projection_states(
+    conn: sqlite3.Connection,
+    contexts: tuple,
+) -> None:
+    migrate_042(conn)
+    migrate_046(conn)
+    conn.executemany(
+        """INSERT INTO music_search_year_end_projection_state(
+               snapshot_key, builder_version, status
+           ) VALUES (?, 'music_search_year_end_projection_v1', 'ready')""",
+        [(context.filter_fingerprint,) for context in contexts],
+    )
+    conn.commit()
 
 
 def _built_snapshot_set_report(contexts: tuple) -> dict:
@@ -217,6 +238,7 @@ def test_enqueue_skips_an_existing_ready_exact_snapshot(monkeypatch) -> None:
         ],
     )
     conn.commit()
+    _seed_ready_year_end_projection_states(conn, contexts)
     captured = []
 
     class Queue:
@@ -230,6 +252,31 @@ def test_enqueue_skips_an_existing_ready_exact_snapshot(monkeypatch) -> None:
     assert captured == []
 
     conn.execute(
+        """UPDATE music_search_year_end_projection_state
+           SET status='failed' WHERE snapshot_key=?""",
+        (contexts[-1].filter_fingerprint,),
+    )
+    conn.commit()
+
+    assert maintenance.enqueue_music_search_snapshot_rebuild(conn=conn)
+    assert len(captured) == 1
+    assert (
+        conn.execute(
+            """SELECT status FROM music_search_year_end_projection_state
+           WHERE snapshot_key=?""",
+            (contexts[-1].filter_fingerprint,),
+        ).fetchone()[0]
+        == "pending"
+    )
+
+    captured.clear()
+    conn.execute(
+        """UPDATE music_search_year_end_projection_state
+           SET status='ready' WHERE snapshot_key=?""",
+        (contexts[-1].filter_fingerprint,),
+    )
+
+    conn.execute(
         "UPDATE music_search_snapshot_meta SET status='stale' WHERE snapshot_key=?",
         (contexts[-1].filter_fingerprint,),
     )
@@ -237,6 +284,61 @@ def test_enqueue_skips_an_existing_ready_exact_snapshot(monkeypatch) -> None:
 
     assert maintenance.enqueue_music_search_snapshot_rebuild(conn=conn)
     assert len(captured) == 1
+
+
+def test_enqueue_queues_missing_projection_for_ready_snapshot_set_and_marks_warming(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    contexts = _seed_ready_candidate_and_statistics(conn)
+    migrate_042(conn)
+    migrate_046(conn)
+    captured = []
+
+    class Queue:
+        def enqueue_if_not_pending(self, job):
+            captured.append(job)
+            return job.job_id
+
+    monkeypatch.setattr(maintenance, "get_job_queue", lambda: Queue())
+
+    job_id = maintenance.enqueue_music_search_snapshot_rebuild(conn=conn)
+
+    assert job_id
+    assert len(captured) == 1
+    assert captured[0].entity_id == f"snapshot-set:{contexts[0].semantic_base_key}"
+    states = conn.execute(
+        """SELECT snapshot_key, builder_version, status
+           FROM music_search_year_end_projection_state ORDER BY snapshot_key"""
+    ).fetchall()
+    assert len(states) == 6
+    assert {str(row[1]) for row in states} == {"music_search_year_end_projection_v1"}
+    assert {str(row[2]) for row in states} == {"pending"}
+
+
+def test_enqueue_failure_exposes_pending_projection_as_failed(monkeypatch) -> None:
+    conn = _conn()
+    _seed_ready_candidate_and_statistics(conn)
+    migrate_042(conn)
+    migrate_046(conn)
+
+    class Queue:
+        def enqueue_if_not_pending(self, job):
+            raise OSError("queue unavailable")
+
+    monkeypatch.setattr(maintenance, "get_job_queue", lambda: Queue())
+
+    with pytest.raises(OSError, match="queue unavailable"):
+        maintenance.enqueue_music_search_snapshot_rebuild(conn=conn)
+
+    states = conn.execute(
+        """SELECT builder_version, status, last_error
+           FROM music_search_year_end_projection_state"""
+    ).fetchall()
+    assert len(states) == 6
+    assert {str(row[0]) for row in states} == {"music_search_year_end_projection_v1"}
+    assert {str(row[1]) for row in states} == {"failed"}
+    assert {str(row[2]) for row in states} == {"OSError"}
 
 
 def test_snapshot_only_revalidates_an_existing_exact_set_without_rebuilding(

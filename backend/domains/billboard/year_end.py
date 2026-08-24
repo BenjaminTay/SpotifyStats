@@ -285,6 +285,46 @@ def _add_year_end_score(scores: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def build_year_end_metric_frame(
+    annual_df: pd.DataFrame,
+    group_cols: str | list[str],
+) -> pd.DataFrame:
+    """Return the shared Year-End metrics for one already-filtered year.
+
+    The public Year-End endpoint and compact detail projections both consume
+    this helper.  Keeping the score, peak, chart-week and chart-play fields in
+    one function prevents detail surfaces from drifting into a second annual
+    ranking implementation.
+    """
+    keys = [group_cols] if isinstance(group_cols, str) else list(group_cols)
+    if annual_df.empty:
+        return pd.DataFrame(
+            columns=[
+                *keys,
+                "year_end_score",
+                "peak_position",
+                "weeks_on_chart",
+                "weeks_at_peak",
+                "weeks_at_no1",
+                "weeks_top5",
+                "weeks_top10",
+                "chart_plays",
+                "first_week",
+                "last_week",
+            ]
+        )
+
+    scored = _score_ranked_rows(annual_df)
+    metrics = _add_year_end_score(_aggregate_scored_rows(scored, keys))
+    metrics = metrics.merge(_weeks_at_no1(annual_df, keys), on=keys, how="left")
+    metrics["weeks_at_no1"] = metrics["weeks_at_no1"].fillna(0).astype(int)
+    metrics = metrics.merge(_first_last_map(annual_df, keys), on=keys, how="left")
+    chart_plays = (
+        annual_df.groupby(keys, sort=False)["play_count"].sum().reset_index(name="chart_plays")
+    )
+    return metrics.merge(chart_plays, on=keys, how="left")
+
+
 def _track_rows(
     full_weekly: pd.DataFrame,
     annual_weekly: pd.DataFrame,
@@ -295,8 +335,7 @@ def _track_rows(
         return []
 
     annual_weekly = _ensure_artist_names(annual_weekly)
-    scored = _score_ranked_rows(annual_weekly)
-    scores = _add_year_end_score(_aggregate_scored_rows(scored, "track_id"))
+    scores = build_year_end_metric_frame(annual_weekly, "track_id")
     scores = scores.merge(_first_chart_map(full_weekly, ["track_id"]), on="track_id", how="left")
 
     scores["is_true_debut_no1"] = scores.apply(
@@ -306,9 +345,6 @@ def _track_rows(
         ),
         axis=1,
     )
-    scores = scores.merge(_weeks_at_no1(annual_weekly, ["track_id"]), on="track_id", how="left")
-    scores["weeks_at_no1"] = scores["weeks_at_no1"].fillna(0).astype(int)
-
     dim_cols = [
         col
         for col in ["track_id", "track_name", "artist_name", "artist_names", "album_name"]
@@ -316,10 +352,7 @@ def _track_rows(
     ]
     dims = annual_weekly.drop_duplicates("track_id", keep="first")[dim_cols]
     rows = scores.merge(dims, on="track_id", how="left")
-    rows = rows.merge(_first_last_map(annual_weekly, ["track_id"]), on="track_id", how="left")
     rows = rows.merge(_cover_map(annual_weekly, ["track_id"]), on="track_id", how="left")
-    plays = annual_weekly.groupby("track_id", sort=False)["play_count"].sum()
-    rows = rows.merge(plays.reset_index(name="chart_plays"), on="track_id", how="left")
     annual_plays = annual_all_weekly.groupby("track_id", sort=False)["play_count"].sum()
     rows = rows.merge(annual_plays.reset_index(name="annual_plays"), on="track_id", how="left")
     rows["weeks_at_no1"] = rows["weeks_at_no1"].fillna(0).astype(int)
@@ -365,20 +398,10 @@ def _album_or_artist_rows(
     if annual_df.empty:
         return []
 
-    scored = _score_ranked_rows(annual_df)
-    scores = _add_year_end_score(_aggregate_scored_rows(scored, group_cols))
-    scores = scores.merge(_weeks_at_no1(annual_df, group_cols), on=group_cols, how="left")
-    scores["weeks_at_no1"] = scores["weeks_at_no1"].fillna(0).astype(int)
+    scores = build_year_end_metric_frame(annual_df, group_cols)
 
     scores = scores.merge(_first_chart_map(full_df, group_cols), on=group_cols, how="left")
-    scores = scores.merge(_first_last_map(annual_df, group_cols), on=group_cols, how="left")
     scores = scores.merge(_cover_map(annual_df, group_cols), on=group_cols, how="left")
-    plays = (
-        annual_df.groupby(group_cols, sort=False)["play_count"]
-        .sum()
-        .reset_index(name="chart_plays")
-    )
-    scores = scores.merge(plays, on=group_cols, how="left")
     annual_plays = (
         annual_all_df.groupby(group_cols, sort=False)["play_count"]
         .sum()

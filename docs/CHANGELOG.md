@@ -2,6 +2,14 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-25 — 音乐详情页年榜历史
+
+- 歌曲、专辑和艺人“榜单成绩”在周榜趋势/历史下增加独立年榜历史；Desktop 使用年度表格，Phone 使用年度卡片，并将“年榜最佳 / 年榜入榜”作为榜单成绩页内的同级 KPI。阶段年度明确标注，名次沿用 Billboard 衬线数字，年榜内容不进入 Hero。
+- migration 46 从六套精确音乐查找周账本派生独立版本的年榜投影，migration 47 修复已应用早期 v46 的覆盖枚举约束；详情 GET 只读轻量摘要/历史，不触发完整 Billboard 或 Year-End 冷构建。shared-full、delta、旧 snapshot 补建、重发失效和 pruning 生命周期均纳入维护。
+- 修复旧数据库升级时“六套搜索 snapshot 已 ready，启动逻辑却未检查年榜投影”导致详情持续无年榜的问题：启动跳过条件改为 snapshot 与投影组合 readiness，缺失投影只排入一个后台任务并先显示 warming；异常会落为 failed，完成后再次启动不会重复排队。
+- 详情响应统一增加 `year_end_status`、`year_end_summary` 和 `year_end_history`；`summary` 保持空默认值，仅 `overview/full` 读取年榜投影。年榜继续复用 `year_end_v4` 计分与覆盖规则；年度样本稀疏且阶段/完整年度不可直接连线，因此本次不增加年榜趋势图。
+- 年榜历史视觉与周榜历史统一：移除独立覆盖范围列和完整年度标签，进行中状态移到年份旁；排名改用两位 Playfair 数字与既有色阶，上榜播放增加同宽视觉条，积分/周数采用数值加小单位层级，Phone 重排为三层年度成绩卡。
+
 ## 2026-08-25 — 专辑详情发行日期版本消歧
 
 - 专辑详情摘要与完整响应统一使用共享元数据解析器；L2/L3 以 `album_projects.release_date` 为规范发行日，并优先选择发行日期、项目主版本和名称匹配的 Spotify 元数据，不再让日期更晚的 Deluxe、Anniversary、Bonus、精选集或原声带覆盖原版。

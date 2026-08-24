@@ -183,6 +183,9 @@ export function ArtistDetailExperience() {
                       bestSinglesOverlay={overviewData.best_singles_overlay}
                       bestAlbumsOverlay={overviewData.best_albums_overlay}
                       effectivePlayCount={overviewData.effective_play_count}
+                      yearEndStatus={overviewData.year_end_status}
+                      yearEndSummary={overviewData.year_end_summary}
+                      yearEndHistory={overviewData.year_end_history ?? []}
                     />
               )}
 

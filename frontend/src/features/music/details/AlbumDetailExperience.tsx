@@ -171,6 +171,9 @@ export function AlbumDetailExperience() {
                       weeklyHistory={overviewData.album_weekly_history}
                       bestSinglesOverlay={overviewData.best_singles_overlay}
                       effectivePlayCount={overviewData.effective_play_count}
+                      yearEndStatus={overviewData.year_end_status}
+                      yearEndSummary={overviewData.year_end_summary}
+                      yearEndHistory={overviewData.year_end_history ?? []}
                     />
               )}
 

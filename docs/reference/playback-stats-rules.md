@@ -618,6 +618,10 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 
 年榜必须返回年份覆盖元数据。`period_start` / `period_end` 表示实际有效播放日期范围，`first_billboard_week` / `last_billboard_week` 表示榜单周边界；两者不得混用。只有首个预期榜单周至最后一个预期榜单周全部存在且无内部缺口时，`is_complete_year=true`；当年尚未结束、导入从年中开始或中间缺周时，必须显示阶段/不完整提示，荣誉不得写成已确定的完整年度冠军。
 
+歌曲、专辑和艺人详情页复用同一套年榜计分与覆盖口径。详情 `summary` 不读取年榜投影并返回稳定空值，`overview/full` 读取持久化摘要和按年份降序的年榜历史；请求不得同步构建完整 Billboard 或 Year-End。详情页年榜只展示 `chart_plays` 并标为“上榜播放”，不把 `annual_plays` 混入榜单成绩。
+
+详情页年榜成绩采用独立投影状态：`ready` 表示当前精确统计 fingerprint 已完成投影，`warming` 表示投影已排队或正在后台构建，`unavailable` 表示缺少精确 snapshot、投影失败或版本不兼容。应用启动必须同时检查六套精确 snapshot 与六套当前版本投影；旧库已有 ready snapshot 但缺少账本/投影时，由一个幂等后台维护任务补齐，详情 GET 始终只读且不得触发计算。`ready` 且历史为空表示实体从未进入年榜，不得显示 `#0`。年榜最佳与入榜年度数只作为“榜单成绩”页内的同级 KPI，不进入详情 Hero；阶段年度必须在 KPI 和历史中显示覆盖标签，不得省略完整性边界。所有名次数值沿用 Billboard 衬线数字样式。
+
 只读一致性检查：
 
 ```bash
@@ -641,6 +645,7 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 - 艺人 `chart_status`、`track_chart_status`、`album_chart_status` 分别表示艺人榜、其歌曲单曲榜和其专辑专辑榜事实。
 - 未入榜成绩使用 `not_charted`、`null` summary 和空 history/list 表达，并显示精确空态；不得用峰值 `#0`、`0 周`等数值伪装成绩。
 - `effective_play_count` 用于解释未入榜实体仍可访问的个人播放事实，继续遵循当前有效播放、动态阈值、连续播放合并和实体 identity 规则。
+- “榜单成绩”先展示周榜趋势与周榜历史，再展示独立年榜历史；Desktop 使用年度表格，Phone 使用年度卡片。完整年度不显示冗余覆盖标签；进行中或其他不完整年度必须在年份旁显示轻量状态，不单设“覆盖范围”列。年榜年度样本稀疏且完整/阶段年度不可无提示连线，当前不提供年榜趋势图。
 
 专辑自身榜单成绩必须优先按 album project identity + canonical artist 匹配 `weekly_album`；成员曲的 `album_track_counts` / `track_per_album` 只服务“单曲成绩”，不得作为专辑是否入榜的前置条件。
 

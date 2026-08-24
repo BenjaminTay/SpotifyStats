@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 45
+LATEST_SCHEMA_VERSION = 47
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -1811,6 +1811,119 @@ def migrate_045(conn: sqlite3.Connection):
                   AND automatic_spotify_track_id IS NOT NULL
                   AND automatic_artist_id IS NOT NULL;
             """
+        )
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
+@migration(46, "music_search_year_end_projection")
+def migrate_046(conn: sqlite3.Connection):
+    """Persist lightweight Year-End facts alongside exact search snapshots.
+
+    The projection has an independent lifecycle: an existing search snapshot
+    remains readable while its annual rows are absent, warming, or failed.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS music_search_year_end_projection_state (
+            snapshot_key TEXT PRIMARY KEY
+                REFERENCES music_search_snapshot_meta(snapshot_key) ON DELETE CASCADE,
+            builder_version TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed')),
+            built_at TEXT,
+            last_error TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS music_search_year_end_meta (
+            snapshot_key TEXT NOT NULL
+                REFERENCES music_search_snapshot_meta(snapshot_key) ON DELETE CASCADE,
+            year INTEGER NOT NULL CHECK (year >= 1900 AND year <= 9999),
+            coverage_status TEXT NOT NULL
+                CHECK (coverage_status IN (
+                    'complete', 'incomplete', 'partial_start',
+                    'year_to_date', 'partial_range', 'empty'
+                )),
+            is_complete_year INTEGER NOT NULL CHECK (is_complete_year IN (0, 1)),
+            observed_weeks INTEGER NOT NULL CHECK (observed_weeks >= 0),
+            expected_weeks INTEGER NOT NULL CHECK (expected_weeks >= 0),
+            first_billboard_week TEXT,
+            last_billboard_week TEXT,
+            PRIMARY KEY(snapshot_key, year)
+        );
+
+        CREATE TABLE IF NOT EXISTS music_search_entity_year_end (
+            snapshot_key TEXT NOT NULL,
+            family TEXT NOT NULL CHECK (family IN ('track', 'album', 'artist')),
+            entity_key TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            year_end_rank INTEGER NOT NULL CHECK (year_end_rank > 0),
+            year_end_score INTEGER NOT NULL CHECK (year_end_score >= 0),
+            peak_position INTEGER NOT NULL CHECK (peak_position > 0),
+            weeks_on_chart INTEGER NOT NULL CHECK (weeks_on_chart > 0),
+            weeks_at_peak INTEGER NOT NULL CHECK (weeks_at_peak > 0),
+            weeks_at_no1 INTEGER NOT NULL CHECK (weeks_at_no1 >= 0),
+            weeks_top5 INTEGER NOT NULL CHECK (weeks_top5 >= 0),
+            weeks_top10 INTEGER NOT NULL CHECK (weeks_top10 >= 0),
+            chart_plays INTEGER NOT NULL CHECK (chart_plays > 0),
+            first_week TEXT,
+            last_week TEXT,
+            PRIMARY KEY(snapshot_key, family, entity_key, year),
+            FOREIGN KEY(snapshot_key, year)
+                REFERENCES music_search_year_end_meta(snapshot_key, year) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_search_entity_year_end_lookup
+            ON music_search_entity_year_end(snapshot_key, family, entity_key, year DESC);
+        """
+    )
+
+
+@migration(47, "music_search_year_end_coverage_constraint_repair")
+def migrate_047(conn: sqlite3.Connection):
+    """Repair the short-lived v46 coverage CHECK on already-migrated databases."""
+    row = conn.execute(
+        """SELECT sql FROM sqlite_master
+           WHERE type='table' AND name='music_search_year_end_meta'"""
+    ).fetchone()
+    if row is None or "partial_start" in str(row[0] or ""):
+        return
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("DROP TABLE IF EXISTS music_search_year_end_meta_v47")
+        conn.execute(
+            """CREATE TABLE music_search_year_end_meta_v47 (
+                snapshot_key TEXT NOT NULL
+                    REFERENCES music_search_snapshot_meta(snapshot_key) ON DELETE CASCADE,
+                year INTEGER NOT NULL CHECK (year >= 1900 AND year <= 9999),
+                coverage_status TEXT NOT NULL
+                    CHECK (coverage_status IN (
+                        'complete', 'incomplete', 'partial_start',
+                        'year_to_date', 'partial_range', 'empty'
+                    )),
+                is_complete_year INTEGER NOT NULL CHECK (is_complete_year IN (0, 1)),
+                observed_weeks INTEGER NOT NULL CHECK (observed_weeks >= 0),
+                expected_weeks INTEGER NOT NULL CHECK (expected_weeks >= 0),
+                first_billboard_week TEXT,
+                last_billboard_week TEXT,
+                PRIMARY KEY(snapshot_key, year)
+            )"""
+        )
+        conn.execute(
+            """INSERT INTO music_search_year_end_meta_v47(
+                   snapshot_key, year, coverage_status, is_complete_year,
+                   observed_weeks, expected_weeks,
+                   first_billboard_week, last_billboard_week
+               )
+               SELECT snapshot_key, year,
+                      CASE WHEN coverage_status='partial'
+                           THEN 'partial_range' ELSE coverage_status END,
+                      is_complete_year, observed_weeks, expected_weeks,
+                      first_billboard_week, last_billboard_week
+               FROM music_search_year_end_meta"""
+        )
+        conn.execute("DROP TABLE music_search_year_end_meta")
+        conn.execute(
+            "ALTER TABLE music_search_year_end_meta_v47 RENAME TO music_search_year_end_meta"
         )
     finally:
         conn.execute("PRAGMA foreign_keys=ON")

@@ -96,3 +96,37 @@ def test_enabled_search_startup_rebuild_skips_when_six_variants_are_ready(
     _run_startup()
 
     assert _search_jobs() == []
+
+
+def test_enabled_search_startup_rebuild_queues_old_ready_set_missing_year_end(
+    use_seed_db,
+    monkeypatch,
+) -> None:
+    _prepare_database()
+    with db_mod.get_db(readonly=False) as conn:
+        report = rebuild_current_music_search_derived_data(conn, rebuild_documents=True)
+        assert report["snapshot_set"]["ready_count"] == 6
+        conn.execute("DELETE FROM music_search_entity_year_end")
+        conn.execute("DELETE FROM music_search_year_end_meta")
+        conn.execute("DELETE FROM music_search_year_end_projection_state")
+        conn.execute("DELETE FROM music_search_weekly_chart_context")
+        conn.commit()
+
+    _install_non_processing_queue(monkeypatch)
+    monkeypatch.setenv("SPOTIFY_STATS_SEARCH_STARTUP_REBUILD", "1")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    _run_startup()
+    _run_startup()
+
+    jobs = _search_jobs()
+    assert len(jobs) == 1
+    assert jobs[0]["status"] == "pending"
+    with sqlite3.connect(db_mod.DB_PATH) as conn:
+        states = conn.execute(
+            """SELECT builder_version, status
+               FROM music_search_year_end_projection_state"""
+        ).fetchall()
+    assert len(states) == 6
+    assert {str(row[0]) for row in states} == {"music_search_year_end_projection_v1"}
+    assert {str(row[1]) for row in states} == {"pending"}

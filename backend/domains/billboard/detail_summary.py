@@ -22,6 +22,8 @@ from backend.domains.music_search.context import (
     MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     build_music_search_filter_context,
 )
+from backend.domains.music_search.snapshot_ledger import LedgerFamily
+from backend.domains.music_search.year_end_projection import load_entity_year_end
 
 
 def _filter_values(args: tuple, *, album_name: str | None = None) -> dict[str, Any]:
@@ -181,6 +183,95 @@ def _chart_summary(row: sqlite3.Row) -> dict | None:
     }
 
 
+def _year_end_fields(
+    conn: sqlite3.Connection,
+    *,
+    snapshot_key: str,
+    family: LedgerFamily,
+    entity_key: str,
+    include_history: bool,
+) -> dict[str, Any]:
+    projection = load_entity_year_end(
+        conn,
+        snapshot_key=snapshot_key,
+        family=family,
+        entity_key=entity_key,
+        include_history=include_history,
+    )
+    return {
+        "year_end_status": projection["status"],
+        "year_end_summary": projection["summary"],
+        "year_end_history": projection["history"],
+    }
+
+
+def unavailable_year_end_fields() -> dict[str, Any]:
+    """Return stable defaults for detail views that do not consume annual facts."""
+    return {
+        "year_end_status": "unavailable",
+        "year_end_summary": None,
+        "year_end_history": [],
+    }
+
+
+def load_detail_year_end_fields(
+    args: tuple,
+    *,
+    entity: str,
+    include_history: bool,
+) -> dict[str, Any]:
+    """Resolve annual facts for a detail view using only persisted projections."""
+    album_name = str(args[0]) if entity == "album" else None
+    values = _filter_values(args, album_name=album_name)
+    if values["year_start"] is not None or values["year_end"] is not None:
+        return unavailable_year_end_fields()
+    conn = get_db(readonly=True)
+    try:
+        snapshot_key = _snapshot_key(conn, values)
+        document: sqlite3.Row | None
+        family: LedgerFamily
+        if entity == "track":
+            family = "track"
+            document = _active_document(
+                conn,
+                kind="track",
+                merge_level=int(values["merge_level"]),
+                track_id=int(args[0]),
+            )
+        elif entity == "album":
+            family = "album"
+            kind = "album" if int(values["merge_level"]) <= 1 else "album_project"
+            document = _active_document(
+                conn,
+                kind=kind,
+                merge_level=int(values["merge_level"]),
+                name=str(args[0]),
+                artist_name=str(args[1]),
+            )
+        else:
+            family = "artist"
+            requested = str(args[0])
+            identity = resolve_artist_name(conn, requested)
+            resolved = identity.display_name if identity else requested
+            document = _active_document(
+                conn,
+                kind="artist",
+                merge_level=int(values["merge_level"]),
+                name=resolved,
+            )
+        if snapshot_key is None or document is None:
+            return unavailable_year_end_fields()
+        return _year_end_fields(
+            conn,
+            snapshot_key=snapshot_key,
+            family=family,
+            entity_key=str(document["entity_key"]),
+            include_history=include_history,
+        )
+    finally:
+        conn.close()
+
+
 def build_track_detail_summary(args: tuple) -> dict | None:
     values = _filter_values(args)
     if values["year_start"] is not None or values["year_end"] is not None:
@@ -250,6 +341,7 @@ def build_track_detail_summary(args: tuple) -> dict | None:
             "summary": summary,
             "history": [],
             "chart_data": {},
+            **unavailable_year_end_fields(),
         }
     finally:
         conn.close()
@@ -302,6 +394,7 @@ def build_album_detail_summary(args: tuple) -> dict | None:
             "album_no1_by_week": [],
             "best_singles_overlay": [],
             "tracks": [],
+            **unavailable_year_end_fields(),
         }
     finally:
         conn.close()
@@ -345,6 +438,7 @@ def build_artist_detail_summary(args: tuple) -> dict | None:
             "best_albums_overlay": [],
             "tracks": [],
             "albums": [],
+            **unavailable_year_end_fields(),
         }
     finally:
         conn.close()

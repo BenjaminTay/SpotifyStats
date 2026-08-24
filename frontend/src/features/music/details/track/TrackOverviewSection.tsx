@@ -8,6 +8,8 @@ import type { TrackDetailResponse } from '@/types/billboard'
 import { MusicChartEmptyState } from '../MusicChartEmptyState'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileChartHistoryList } from '@/features/mobile/music/MobileMusicDetail'
+import { YearEndHistorySection } from '../YearEndHistorySection'
+import { YearEndSummaryKpis } from '../YearEndSummaryKpis'
 
 function parseChange(change: string | undefined): { type: 'up' | 'down' | 'same' | 'new' | 're'; delta?: number } {
   if (change === 'NEW') return { type: 'new' }
@@ -50,6 +52,7 @@ interface Props {
 
 export function TrackOverviewSection({ data }: Props) {
   const isPhone = useViewportMode() === 'phone'
+  const hasYearEndSummary = data.year_end_status === 'ready' && data.year_end_summary != null
   if (data.chart_status === 'not_charted' || !data.summary) {
     return (
       <MusicChartEmptyState
@@ -62,7 +65,7 @@ export function TrackOverviewSection({ data }: Props) {
   return (
     <>
       {/* KPI Row */}
-      <div className={cn('mb-8 grid grid-cols-4 gap-x-10 gap-y-6 pb-8', isPhone && 'mobile-track-overview-kpis')}>
+      <div className={cn('mb-8 grid gap-x-10 gap-y-6 pb-8', hasYearEndSummary ? 'grid-cols-5' : 'grid-cols-4', isPhone && 'mobile-track-overview-kpis')}>
         <KpiItem
           label="入榜峰值"
           value={`#${data.summary.peak_position}${data.summary.weeks_at_peak > 0 ? ` (${data.summary.weeks_at_peak}wks)` : ''}`}
@@ -97,6 +100,7 @@ export function TrackOverviewSection({ data }: Props) {
           value={formatNumber(data.summary.power_score)}
           accent
         />
+        <YearEndSummaryKpis status={data.year_end_status} summary={data.year_end_summary} variant="plain" />
       </div>
 
       {/* Rank Trend Chart */}
@@ -122,7 +126,7 @@ export function TrackOverviewSection({ data }: Props) {
 
       {/* History Table */}
       <div className="mb-8">
-        <h3 className="mb-4 font-serif text-xl font-semibold">榜单历史</h3>
+        <h3 className="mb-4 font-serif text-xl font-semibold">周榜历史</h3>
         {isPhone ? (
           <MobileChartHistoryList entries={data.history.map((entry) => ({
             week: entry.week,
@@ -222,9 +226,11 @@ export function TrackOverviewSection({ data }: Props) {
         </GlassCard>}
       </div>
 
-      <p className="mt-6 font-serif text-[13px] italic text-muted-foreground">
+      <p className="mb-8 mt-6 font-serif text-[13px] italic text-muted-foreground">
         共 {data.history.length} 周在榜 · 首发 {data.summary.first_week} · 末次 {data.summary.last_week}
       </p>
+
+      <YearEndHistorySection status={data.year_end_status ?? 'unavailable'} history={data.year_end_history ?? []} />
     </>
   )
 }

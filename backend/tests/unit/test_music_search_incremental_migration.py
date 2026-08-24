@@ -4,7 +4,13 @@ import sqlite3
 
 import pytest
 
-from backend.core.migrations import LATEST_SCHEMA_VERSION, MIGRATIONS, migrate_042
+from backend.core.migrations import (
+    LATEST_SCHEMA_VERSION,
+    MIGRATIONS,
+    migrate_042,
+    migrate_046,
+    migrate_047,
+)
 
 
 def _legacy_search_connection() -> sqlite3.Connection:
@@ -166,6 +172,133 @@ def test_migrate_042_weekly_rows_follow_snapshot_lifecycle() -> None:
         conn.close()
 
 
+def test_migrate_046_creates_independent_constrained_year_end_projection() -> None:
+    conn = _legacy_search_connection()
+    try:
+        migrate_042(conn)
+        migrate_046(conn)
+        migrate_046(conn)
+        conn.execute(
+            """INSERT INTO music_search_year_end_projection_state(
+                   snapshot_key, builder_version, status
+               ) VALUES ('legacy-ready', 'projection-v1', 'running')"""
+        )
+        conn.execute(
+            """INSERT INTO music_search_year_end_meta(
+                   snapshot_key, year, coverage_status, is_complete_year,
+                   observed_weeks, expected_weeks,
+                   first_billboard_week, last_billboard_week
+               ) VALUES ('legacy-ready', 2025, 'complete', 1, 52, 52,
+                         '2024-12-27', '2025-12-19')"""
+        )
+        conn.execute(
+            """INSERT INTO music_search_entity_year_end(
+                   snapshot_key, family, entity_key, year,
+                   year_end_rank, year_end_score, peak_position,
+                   weeks_on_chart, weeks_at_peak, weeks_at_no1,
+                   weeks_top5, weeks_top10, chart_plays,
+                   first_week, last_week
+               ) VALUES ('legacy-ready', 'track', 'track:1', 2025,
+                         3, 800, 1, 12, 2, 2, 4, 8, 30,
+                         '2025-01-03', '2025-03-21')"""
+        )
+
+        assert tuple(
+            conn.execute(
+                """SELECT year, year_end_rank, peak_position, weeks_on_chart
+                   FROM music_search_entity_year_end"""
+            ).fetchone()
+        ) == (2025, 3, 1, 12)
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                """INSERT INTO music_search_year_end_projection_state(
+                       snapshot_key, builder_version, status
+                   ) VALUES ('missing', 'projection-v1', 'ready')"""
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                """INSERT INTO music_search_entity_year_end(
+                       snapshot_key, family, entity_key, year,
+                       year_end_rank, year_end_score, peak_position,
+                       weeks_on_chart, weeks_at_peak, weeks_at_no1,
+                       weeks_top5, weeks_top10, chart_plays
+                   ) VALUES ('legacy-ready', 'track', 'track:2', 2024,
+                             1, 1, 1, 1, 1, 1, 1, 1, 1)"""
+            )
+    finally:
+        conn.close()
+
+
+def test_migrate_046_projection_rows_follow_snapshot_lifecycle() -> None:
+    conn = _legacy_search_connection()
+    try:
+        migrate_042(conn)
+        migrate_046(conn)
+        conn.execute(
+            """INSERT INTO music_search_year_end_projection_state(
+                   snapshot_key, builder_version, status
+               ) VALUES ('legacy-ready', 'projection-v1', 'ready')"""
+        )
+        conn.execute(
+            """INSERT INTO music_search_year_end_meta(
+                   snapshot_key, year, coverage_status, is_complete_year,
+                   observed_weeks, expected_weeks
+               ) VALUES ('legacy-ready', 2025, 'partial_range', 0, 3, 52)"""
+        )
+
+        conn.execute("DELETE FROM music_search_snapshot_meta WHERE snapshot_key='legacy-ready'")
+        assert (
+            conn.execute("SELECT COUNT(*) FROM music_search_year_end_projection_state").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert conn.execute("SELECT COUNT(*) FROM music_search_year_end_meta").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_migrate_047_repairs_short_lived_v46_coverage_constraint() -> None:
+    conn = _legacy_search_connection()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE music_search_year_end_meta (
+                snapshot_key TEXT NOT NULL,
+                year INTEGER NOT NULL,
+                coverage_status TEXT NOT NULL
+                    CHECK (coverage_status IN ('complete', 'partial', 'empty')),
+                is_complete_year INTEGER NOT NULL,
+                observed_weeks INTEGER NOT NULL,
+                expected_weeks INTEGER NOT NULL,
+                first_billboard_week TEXT,
+                last_billboard_week TEXT,
+                PRIMARY KEY(snapshot_key, year)
+            );
+            INSERT INTO music_search_year_end_meta(
+                snapshot_key, year, coverage_status, is_complete_year,
+                observed_weeks, expected_weeks
+            ) VALUES ('legacy-ready', 2025, 'partial', 0, 3, 52);
+            """
+        )
+
+        migrate_047(conn)
+        migrate_047(conn)
+
+        assert (
+            conn.execute("SELECT coverage_status FROM music_search_year_end_meta").fetchone()[0]
+            == "partial_range"
+        )
+        conn.execute(
+            """INSERT INTO music_search_year_end_meta(
+                   snapshot_key, year, coverage_status, is_complete_year,
+                   observed_weeks, expected_weeks
+               ) VALUES ('legacy-ready', 2026, 'year_to_date', 0, 30, 52)"""
+        )
+    finally:
+        conn.close()
+
+
 def test_latest_schema_version_matches_registered_migrations() -> None:
-    assert LATEST_SCHEMA_VERSION == 45
+    assert LATEST_SCHEMA_VERSION == 47
     assert max(version for version, _name, _migration in MIGRATIONS) == LATEST_SCHEMA_VERSION

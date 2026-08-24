@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.dependencies import BillboardFilters, MergeConfig
 from backend.domains.music_search.timing import MusicSearchTiming
@@ -55,6 +55,9 @@ class TrackHistoryResponse(BaseModel):
     summary: dict | None = None
     history: list[dict] | None = None
     chart_data: dict | None = None
+    year_end_status: Literal["ready", "warming", "unavailable"] = "unavailable"
+    year_end_summary: dict | None = None
+    year_end_history: list[dict] = Field(default_factory=list)
 
 
 class ArtistChartDetailResponse(BaseModel):
@@ -76,6 +79,9 @@ class ArtistChartDetailResponse(BaseModel):
     best_albums_overlay: list[dict] | None = None
     tracks: list[dict] | None = None
     albums: list[dict] | None = None
+    year_end_status: Literal["ready", "warming", "unavailable"] = "unavailable"
+    year_end_summary: dict | None = None
+    year_end_history: list[dict] = Field(default_factory=list)
 
 
 class AlbumChartDetailResponse(BaseModel):
@@ -95,6 +101,9 @@ class AlbumChartDetailResponse(BaseModel):
     album_no1_by_week: list[dict] | None = None
     best_singles_overlay: list[dict] | None = None
     tracks: list[dict] | None = None
+    year_end_status: Literal["ready", "warming", "unavailable"] = "unavailable"
+    year_end_summary: dict | None = None
+    year_end_history: list[dict] = Field(default_factory=list)
 
 
 class EntityListsResponse(BaseModel):

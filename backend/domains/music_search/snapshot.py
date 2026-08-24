@@ -40,6 +40,7 @@ from backend.domains.music_search.snapshot_lineage import (
     music_search_snapshot_dependency_digest,
 )
 from backend.domains.music_search.variants import MUSIC_SEARCH_SNAPSHOT_VARIANTS
+from backend.domains.music_search.year_end_projection import clear_year_end_projection
 from backend.domains.playback.album_projects import compute_album_project_plays
 from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
 from backend.domains.playback.track_groups import load_track_group_keys
@@ -701,6 +702,30 @@ def _shared_chart_lookups(
     return result
 
 
+def build_exact_weekly_ledger_for_context(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+) -> list[WeeklyLedgerRow]:
+    """Build one compact exact ledger during explicit maintenance work."""
+    frames = _load_shared_logical_frames(
+        conn,
+        (context,),
+        ("track", "album", "artist"),
+    )
+    ledger: dict[tuple[int, bool], tuple[list[WeeklyLedgerRow], bool]] = {}
+    try:
+        _shared_chart_lookups(conn, (context,), frames, weekly_ledger=ledger)
+        rows, complete = ledger[(context.merge_level, context.dynamic_threshold)]
+        if not complete:
+            raise RuntimeError("music-search weekly ledger is not exact")
+        return rows
+    finally:
+        frames.clear()
+        invalidate_except("billboard", {"latest_snapshot"})
+        invalidate("db")
+        gc.collect()
+
+
 def _chart_has_fact(chart: MusicSearchChartSummary | None) -> bool:
     return chart is not None and any(
         value is not None
@@ -886,6 +911,7 @@ def build_music_search_snapshot(
         rows = _context_rows(conn, context)
         _validate_context_rows(rows)
         with conn:
+            clear_year_end_projection(conn, snapshot_key)
             conn.execute(
                 "DELETE FROM music_search_entity_context WHERE snapshot_key=?",
                 (snapshot_key,),
@@ -968,6 +994,26 @@ def _prune_old_music_search_snapshot_bases(
                     )""",
                 tuple(keep),
             )
+        if conn.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='music_search_entity_year_end'"""
+        ).fetchone():
+            for table in (
+                "music_search_entity_year_end",
+                "music_search_year_end_meta",
+                "music_search_year_end_projection_state",
+            ):
+                conn.execute(
+                    f"""DELETE FROM {table}
+                        WHERE snapshot_key IN (
+                            SELECT snapshot_key
+                            FROM music_search_snapshot_meta
+                            WHERE (semantic_base_key IS NULL
+                                   OR semantic_base_key NOT IN ({placeholders}))
+                              AND status NOT IN ('pending', 'running')
+                        )""",
+                    tuple(keep),
+                )
         snapshot_columns = {
             str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_snapshot_meta)")
         }
@@ -1178,6 +1224,7 @@ def _publish_shared_full_snapshot_set(
         )
         for context in contexts:
             snapshot_key = context.filter_fingerprint
+            clear_year_end_projection(conn, snapshot_key)
             conn.execute(
                 "DELETE FROM music_search_entity_context WHERE snapshot_key=?",
                 (snapshot_key,),

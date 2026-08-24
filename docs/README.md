@@ -43,12 +43,14 @@
 - [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md)：Settings 流派审核面板
 - [`designs/2026-08-12-yearly-review-v2-content-data-contract.md`](designs/2026-08-12-yearly-review-v2-content-data-contract.md)：年度总结 V2 内容与数据契约
 - [`designs/2026-08-23-yearly-artifact-key-invalidation-contract.md`](designs/2026-08-23-yearly-artifact-key-invalidation-contract.md)：年度事实等价、受影响年份失效与路径历史 key 契约
+- [`designs/2026-08-25-music-detail-year-end-history.md`](designs/2026-08-25-music-detail-year-end-history.md)：歌曲、专辑与艺人详情的年榜投影、榜单 KPI、API 和年度历史展示
 - [`designs/mobile-web-m0-prototype/README.md`](designs/mobile-web-m0-prototype/README.md)：移动端 M0 视觉原型
 
 ## 交付与验证报告
 
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
+- [`reports/2026-08-25-music-detail-year-end-history.md`](reports/2026-08-25-music-detail-year-end-history.md)：详情年榜投影、榜单 KPI、真实数据库副本、性能与响应式浏览器验收证据
 - [`reports/2026-08-24-home-detail-loading-performance-repair.md`](reports/2026-08-24-home-detail-loading-performance-repair.md)：首页/详情冷加载、实体统计分层、按键并发与子榜错误空态的完整修复证据
 - [`reports/2026-08-24-yearly-review-semantic-correction.md`](reports/2026-08-24-yearly-review-semantic-correction.md)：年度里程碑、日极值、首次发现、部分月窗口与跨章节 identity/分母修复证据
 - [`reports/2026-08-24-fullstack-gate-repair.md`](reports/2026-08-24-fullstack-gate-repair.md)：真实数据断言、艺人 provider ID、浏览器门禁、社区并发与最终全栈 Pass 证据

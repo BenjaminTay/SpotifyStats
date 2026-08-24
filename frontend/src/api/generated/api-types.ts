@@ -3598,6 +3598,20 @@ export interface components {
             tracks?: {
                 [key: string]: unknown;
             }[] | null;
+            /**
+             * Year End Status
+             * @default unavailable
+             * @enum {string}
+             */
+            year_end_status: "ready" | "warming" | "unavailable";
+            /** Year End Summary */
+            year_end_summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Year End History */
+            year_end_history?: {
+                [key: string]: unknown;
+            }[];
         } & {
             [key: string]: unknown;
         };
@@ -5198,6 +5212,20 @@ export interface components {
             albums?: {
                 [key: string]: unknown;
             }[] | null;
+            /**
+             * Year End Status
+             * @default unavailable
+             * @enum {string}
+             */
+            year_end_status: "ready" | "warming" | "unavailable";
+            /** Year End Summary */
+            year_end_summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Year End History */
+            year_end_history?: {
+                [key: string]: unknown;
+            }[];
         } & {
             [key: string]: unknown;
         };
@@ -10290,6 +10318,20 @@ export interface components {
             chart_data?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Year End Status
+             * @default unavailable
+             * @enum {string}
+             */
+            year_end_status: "ready" | "warming" | "unavailable";
+            /** Year End Summary */
+            year_end_summary?: {
+                [key: string]: unknown;
+            } | null;
+            /** Year End History */
+            year_end_history?: {
+                [key: string]: unknown;
+            }[];
         } & {
             [key: string]: unknown;
         };

@@ -18,6 +18,8 @@ from backend.domains.billboard.detail_summary import (
     build_album_detail_summary,
     build_artist_detail_summary,
     build_track_detail_summary,
+    load_detail_year_end_fields,
+    unavailable_year_end_fields,
 )
 from backend.domains.billboard.details import (
     get_album_chart_detail,
@@ -220,7 +222,13 @@ def get_track_detail_view(*args, view: DetailView = "full") -> dict:
         if summary is not None:
             return summary
     payload = _track_detail_cached(tuple(args), detail_revision_state())
-    return select_track_detail_view(payload, view)
+    result = select_track_detail_view(payload, view)
+    result.update(
+        load_detail_year_end_fields(tuple(args), entity="track", include_history=True)
+        if view in {"full", "overview"}
+        else unavailable_year_end_fields()
+    )
+    return result
 
 
 def get_album_detail_view(*args, view: DetailView = "full") -> dict:
@@ -229,7 +237,13 @@ def get_album_detail_view(*args, view: DetailView = "full") -> dict:
         if summary is not None:
             return summary
     payload = _album_detail_cached(tuple(args), detail_revision_state())
-    return select_album_detail_view(payload, view)
+    result = select_album_detail_view(payload, view)
+    result.update(
+        load_detail_year_end_fields(tuple(args), entity="album", include_history=True)
+        if view in {"full", "overview"}
+        else unavailable_year_end_fields()
+    )
+    return result
 
 
 def get_artist_detail_view(
@@ -243,7 +257,13 @@ def get_artist_detail_view(
         if summary is not None:
             return summary
     payload = _artist_detail_cached(tuple(args), detail_revision_state())
-    return select_artist_detail_view(payload, view, limit=limit, offset=offset)
+    result = select_artist_detail_view(payload, view, limit=limit, offset=offset)
+    result.update(
+        load_detail_year_end_fields(tuple(args), entity="artist", include_history=True)
+        if view in {"full", "overview"}
+        else unavailable_year_end_fields()
+    )
+    return result
 
 
 register_lru("billboard", "track_detail", _track_detail_cached)

@@ -44,6 +44,13 @@ from backend.domains.music_search.snapshot_delta import (
     build_music_search_incremental_plan,
 )
 from backend.domains.music_search.variants import build_music_search_variant_contexts
+from backend.domains.music_search.year_end_projection import (
+    clear_year_end_projection,
+    ensure_year_end_projection_set,
+    fail_pending_year_end_projection_set,
+    mark_year_end_projection_set_pending,
+    year_end_projection_set_status,
+)
 from backend.domains.playback.logical_timeline import PLAYBACK_EVENT_POLICY_VERSION
 from backend.domains.settings.repository import SettingsRepository
 
@@ -219,10 +226,19 @@ def _adopt_legacy_v2_snapshot_set(
             new_snapshot_key = context.filter_fingerprint
             if old_snapshot_key == new_snapshot_key:
                 continue
+            clear_year_end_projection(conn, new_snapshot_key)
             conn.execute(
                 "DELETE FROM music_search_entity_context WHERE snapshot_key=?",
                 (new_snapshot_key,),
             )
+            if conn.execute(
+                """SELECT 1 FROM sqlite_master
+                   WHERE type='table' AND name='music_search_weekly_chart_context'"""
+            ).fetchone():
+                conn.execute(
+                    "DELETE FROM music_search_weekly_chart_context WHERE snapshot_key=?",
+                    (new_snapshot_key,),
+                )
             conn.execute(
                 "DELETE FROM music_search_snapshot_meta WHERE snapshot_key=?",
                 (new_snapshot_key,),
@@ -252,6 +268,16 @@ def _adopt_legacy_v2_snapshot_set(
                    WHERE snapshot_key=?""",
                 (new_snapshot_key, old_snapshot_key),
             )
+            if conn.execute(
+                """SELECT 1 FROM sqlite_master
+                   WHERE type='table' AND name='music_search_weekly_chart_context'"""
+            ).fetchone():
+                conn.execute(
+                    """UPDATE music_search_weekly_chart_context SET snapshot_key=?
+                       WHERE snapshot_key=?""",
+                    (new_snapshot_key, old_snapshot_key),
+                )
+            clear_year_end_projection(conn, old_snapshot_key)
             conn.execute(
                 "DELETE FROM music_search_snapshot_meta WHERE snapshot_key=?",
                 (old_snapshot_key,),
@@ -501,6 +527,8 @@ def rebuild_current_music_search_derived_data(
         if shared_frame_fallback_reason is not None:
             snapshot_set_report["strategy"] = "full_fallback"
             snapshot_set_report["fallback_reason"] = shared_frame_fallback_reason
+    year_end_projection_report = ensure_year_end_projection_set(conn, contexts)
+    snapshot_set_report["year_end_projection"] = year_end_projection_report
     default_snapshot = snapshot_set_report["variants"][0]
     return {
         "status": snapshot_set_report["status"],
@@ -509,31 +537,59 @@ def rebuild_current_music_search_derived_data(
         # Compatibility for callers that report the default L2/dynamic result.
         "snapshot": default_snapshot,
         "snapshot_set": snapshot_set_report,
+        "year_end_projection": year_end_projection_report,
     }
 
 
 def handle_music_search_snapshot_rebuild(job: Job) -> None:
     conn = get_db(readonly=False)
     try:
-        report = rebuild_current_music_search_derived_data(
-            conn,
-            rebuild_documents=bool(job.payload.get("rebuild_documents", False)),
-            shared_full_snapshot_plan=(
-                job.payload.get("shared_full_snapshot_plan")
-                if isinstance(job.payload.get("shared_full_snapshot_plan"), dict)
-                else None
-            ),
-        )
-        # A setting/import mutation may land while a long six-variant build is
-        # running.  Its exact base key differs, so enqueue one follow-up set;
-        # the all-ready check makes this a no-op for an unchanged base.
-        enqueue_music_search_snapshot_rebuild(conn=conn)
-        if report["status"] != "ready":
-            snapshot_set = report["snapshot_set"]
-            raise RuntimeError(
-                "music-search snapshot set incomplete: "
-                f"ready={snapshot_set['ready_count']} failed={snapshot_set['failed_count']}"
+        try:
+            report = rebuild_current_music_search_derived_data(
+                conn,
+                rebuild_documents=bool(job.payload.get("rebuild_documents", False)),
+                shared_full_snapshot_plan=(
+                    job.payload.get("shared_full_snapshot_plan")
+                    if isinstance(job.payload.get("shared_full_snapshot_plan"), dict)
+                    else None
+                ),
             )
+            # A setting/import mutation may land while a long six-variant build is
+            # running.  Its exact base key differs, so enqueue one follow-up set;
+            # the all-ready check makes this a no-op for an unchanged base.
+            enqueue_music_search_snapshot_rebuild(conn=conn)
+            if report["status"] != "ready":
+                snapshot_set = report["snapshot_set"]
+                raise RuntimeError(
+                    "music-search snapshot set incomplete: "
+                    f"ready={snapshot_set['ready_count']} "
+                    f"failed={snapshot_set['failed_count']}"
+                )
+            if report["year_end_projection"]["status"] != "ready":
+                projection = report["year_end_projection"]
+                raise RuntimeError(
+                    "music-search Year-End projection set incomplete: "
+                    f"ready={projection['ready_count']} "
+                    f"failed={projection['failed_count']}"
+                )
+        except Exception as exc:
+            try:
+                contexts = build_music_search_variant_contexts(
+                    conn,
+                    _current_filter_values(conn),
+                )
+                fail_pending_year_end_projection_set(
+                    conn,
+                    contexts,
+                    error_type=type(exc).__name__,
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                logger.exception(
+                    "Failed to expose pending music-search Year-End projections as failed"
+                )
+            raise
     finally:
         conn.close()
     if job.payload.get("prewarm_yearly_review"):
@@ -622,6 +678,7 @@ def enqueue_music_search_snapshot_rebuild(
         rebuild_documents=rebuild_documents,
         conn=conn,
     )
+    pending_projection_contexts: tuple[MusicSearchFilterContext, ...] | None = None
     if entity_id is None and exact_key.startswith("snapshot-set:"):
         target = conn or get_db()
         try:
@@ -629,11 +686,15 @@ def enqueue_music_search_snapshot_rebuild(
                 target,
                 _current_filter_values(target),
             )
-            if all(
+            snapshots_ready = all(
                 get_ready_music_search_snapshot_key(target, context.filter_fingerprint) is not None
                 for context in contexts
-            ):
-                return None
+            )
+            if snapshots_ready:
+                projection_status = year_end_projection_set_status(target, contexts)
+                if projection_status["status"] == "ready":
+                    return None
+                pending_projection_contexts = contexts
         finally:
             if conn is None:
                 target.close()
@@ -647,4 +708,35 @@ def enqueue_music_search_snapshot_rebuild(
             dict(shared_full_snapshot_plan) if shared_full_snapshot_plan is not None else None
         ),
     )
-    return queue.enqueue_if_not_pending(job)
+    if pending_projection_contexts is not None:
+        target = conn or get_db(readonly=False)
+        try:
+            mark_year_end_projection_set_pending(target, pending_projection_contexts)
+            target.commit()
+        except Exception:
+            target.rollback()
+            logger.exception("Failed to mark queued music-search Year-End projections pending")
+        finally:
+            if conn is None:
+                target.close()
+    try:
+        return queue.enqueue_if_not_pending(job)
+    except Exception as exc:
+        if pending_projection_contexts is not None:
+            target = conn or get_db(readonly=False)
+            try:
+                fail_pending_year_end_projection_set(
+                    target,
+                    pending_projection_contexts,
+                    error_type=type(exc).__name__,
+                )
+                target.commit()
+            except Exception:
+                target.rollback()
+                logger.exception(
+                    "Failed to expose unqueued music-search Year-End projections as failed"
+                )
+            finally:
+                if conn is None:
+                    target.close()
+        raise

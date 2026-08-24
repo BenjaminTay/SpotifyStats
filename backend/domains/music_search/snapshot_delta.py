@@ -24,6 +24,7 @@ from backend.domains.music_search.snapshot_lineage import (
     active_playback_lineage,
     music_search_snapshot_dependency_digest,
 )
+from backend.domains.music_search.year_end_projection import clear_year_end_projection
 from backend.domains.playback.album_projects import (
     compute_album_project_plays,
 )
@@ -601,6 +602,7 @@ def build_incremental_music_search_snapshot_set(
         for context in contexts:
             snapshot_key = context.filter_fingerprint
             base_key = base_keys[snapshot_key]
+            clear_year_end_projection(conn, snapshot_key)
             conn.execute(
                 "DELETE FROM music_search_entity_context WHERE snapshot_key=?",
                 (snapshot_key,),

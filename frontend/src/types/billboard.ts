@@ -865,7 +865,42 @@ export interface TrackChartData {
   peak_position: number
 }
 
-export interface TrackDetailResponse {
+export type DetailYearEndStatus = 'ready' | 'warming' | 'unavailable'
+
+export interface DetailYearEndSummary {
+  best_year: number
+  best_rank: number
+  best_year_is_complete: boolean
+  latest_year: number
+  latest_rank: number
+  latest_year_is_complete: boolean
+  ranked_years: number
+}
+
+export interface DetailYearEndHistoryEntry {
+  year: number
+  year_end_rank: number
+  year_end_score: number
+  peak_position: number
+  weeks_on_chart: number
+  weeks_at_peak: number
+  weeks_at_no1: number
+  weeks_top5: number
+  weeks_top10: number
+  chart_plays: number
+  first_week: string | null
+  last_week: string | null
+  coverage_status: 'complete' | 'incomplete' | 'partial_start' | 'year_to_date' | 'partial_range' | 'empty'
+  is_complete_year: boolean
+}
+
+export interface DetailYearEndFields {
+  year_end_status?: DetailYearEndStatus
+  year_end_summary?: DetailYearEndSummary | null
+  year_end_history?: DetailYearEndHistoryEntry[]
+}
+
+export interface TrackDetailResponse extends DetailYearEndFields {
   [key: string]: any
   found: boolean
   chart_status?: 'charted' | 'not_charted'
@@ -982,7 +1017,7 @@ export interface ArtistAlbumEntry {
   power_rank: number | null
 }
 
-export interface ArtistDetailResponse {
+export interface ArtistDetailResponse extends DetailYearEndFields {
   [key: string]: any
   found: boolean
   chart_status?: 'charted' | 'not_charted'
@@ -1105,7 +1140,7 @@ export interface AlbumProject {
   source_breakdown: AlbumSourceBreakdownItem[]
 }
 
-export interface AlbumDetailResponse {
+export interface AlbumDetailResponse extends DetailYearEndFields {
   [key: string]: any
   found: boolean
   chart_status?: 'charted' | 'not_charted'
