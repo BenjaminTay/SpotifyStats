@@ -272,4 +272,27 @@ describe('Billboard Year-End experience', () => {
 
     expect(useBillboardYearEndMock).toHaveBeenCalledWith(2026, 2, true, true)
   })
+
+  it.each([
+    ['tracks', '单曲榜'],
+    ['albums', '专辑榜'],
+    ['artists', '艺人榜'],
+  ] as const)('opens the %s tab requested by the URL', (tab, label) => {
+    useBillboardYearEndMock.mockReturnValue({
+      data: response(2026, 'Linked Leader'),
+      loading: false,
+      fetching: false,
+      placeholder: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    render(
+      <MemoryRouter initialEntries={[`/billboard/year-end?year=2026&tab=${tab}`]}>
+        <YearEndExperience />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('tab', { name: label })).toHaveAttribute('aria-selected', 'true')
+  })
 })

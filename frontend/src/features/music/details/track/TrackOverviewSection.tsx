@@ -2,12 +2,13 @@ import { Link } from 'react-router-dom'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
-import { formatNumber, formatDateShort, formatWeekStart } from '../MusicDetailPrimitives'
+import { KpiCard, formatNumber, formatDateShort, formatWeekStart } from '../MusicDetailPrimitives'
 import { cn } from '@/lib/utils'
 import type { TrackDetailResponse } from '@/types/billboard'
 import { MusicChartEmptyState } from '../MusicChartEmptyState'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileChartHistoryList } from '@/features/mobile/music/MobileMusicDetail'
+import { weeklyChartHref } from '@/features/billboard/weekly/weeklyPresentation'
 import { YearEndHistorySection } from '../YearEndHistorySection'
 import { YearEndSummaryKpis } from '../YearEndSummaryKpis'
 
@@ -20,30 +21,6 @@ function parseChange(change: string | undefined): { type: 'up' | 'down' | 'same'
   const down = change?.match(/^▼(\d+)$/)
   if (down) return { type: 'down', delta: parseInt(down[1]) }
   return { type: 'same' }
-}
-
-function KpiItem({
-  label,
-  value,
-  accent,
-}: {
-  label: string
-  value: string
-  accent?: boolean
-}) {
-  return (
-    <div>
-      <p className="mb-1.5 font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className="font-serif text-[36px] font-bold leading-none tracking-[-0.5px]"
-        style={accent ? { color: 'var(--accent-foreground)' } : undefined}
-      >
-        {value}
-      </p>
-    </div>
-  )
 }
 
 interface Props {
@@ -65,42 +42,38 @@ export function TrackOverviewSection({ data }: Props) {
   return (
     <>
       {/* KPI Row */}
-      <div className={cn('mb-8 grid gap-x-10 gap-y-6 pb-8', hasYearEndSummary ? 'grid-cols-5' : 'grid-cols-4', isPhone && 'mobile-track-overview-kpis')}>
-        <KpiItem
-          label="入榜峰值"
+      <div
+        data-music-chart-kpi-grid
+        data-track-chart-kpi-grid
+        className={cn(
+          'mb-8 grid grid-cols-2 gap-5',
+          hasYearEndSummary ? 'lg:grid-cols-3' : 'lg:grid-cols-4',
+          isPhone && 'mobile-detail-kpi-grid',
+        )}
+      >
+        <KpiCard
+          label="最高排名"
           value={`#${data.summary.peak_position}${data.summary.weeks_at_peak > 0 ? ` (${data.summary.weeks_at_peak}wks)` : ''}`}
+          sub={`首次达峰 ${data.summary.first_peak_week ? formatDateShort(data.summary.first_peak_week) : '—'}`}
           accent={data.summary.peak_position === 1}
         />
-        <KpiItem
+        <KpiCard
           label="在榜周数"
           value={formatNumber(data.summary.weeks_on_chart)}
+          sub={`首次入榜 ${formatDateShort(data.summary.first_week)}`}
         />
-        <KpiItem
-          label="首次入榜"
-          value={formatDateShort(data.summary.first_week)}
-        />
-        <KpiItem
-          label="首次达峰"
-          value={data.summary.first_peak_week ? formatDateShort(data.summary.first_peak_week) : '—'}
-        />
-        <KpiItem
-          label="总上榜播放"
-          value={formatNumber(data.summary.total_chart_plays)}
-        />
-        <KpiItem
-          label="总播放次数"
-          value={formatNumber(data.summary.total_plays)}
-        />
-        <KpiItem
-          label="走势总榜排名"
-          value={data.summary.power_rank ? `#${formatNumber(data.summary.power_rank)}` : '—'}
-        />
-        <KpiItem
+        <KpiCard
           label="走势点数"
           value={formatNumber(data.summary.power_score)}
-          accent
+          sub={data.summary.power_rank ? `走势排名 #${formatNumber(data.summary.power_rank)}` : '—'}
+          accentColor="#d94a4a"
         />
-        <YearEndSummaryKpis status={data.year_end_status} summary={data.year_end_summary} variant="plain" />
+        <KpiCard
+          label="总上榜播放"
+          value={formatNumber(data.summary.total_chart_plays)}
+          sub={`总播放 ${formatNumber(data.summary.total_plays)}`}
+        />
+        <YearEndSummaryKpis status={data.year_end_status} summary={data.year_end_summary} variant="cards" />
       </div>
 
       {/* Rank Trend Chart */}
@@ -128,15 +101,18 @@ export function TrackOverviewSection({ data }: Props) {
       <div className="mb-8">
         <h3 className="mb-4 font-serif text-xl font-semibold">周榜历史</h3>
         {isPhone ? (
-          <MobileChartHistoryList entries={data.history.map((entry) => ({
-            week: entry.week,
-            rank: entry.rank,
-            change: entry.change,
-            playCount: entry.play_count,
-            runningPeak: entry.running_peak,
-            runningWeeks: entry.running_wks,
-            runningPeakWeeks: entry.running_peak_wks,
-          }))} />
+          <MobileChartHistoryList
+            tab="tracks"
+            entries={data.history.map((entry) => ({
+              week: entry.week,
+              rank: entry.rank,
+              change: entry.change,
+              playCount: entry.play_count,
+              runningPeak: entry.running_peak,
+              runningWeeks: entry.running_wks,
+              runningPeakWeeks: entry.running_peak_wks,
+            }))}
+          />
         ) : <GlassCard className="overflow-hidden p-0">
           <table className="mx-7 my-0 w-[calc(100%-56px)] border-collapse">
             <thead>
@@ -177,7 +153,7 @@ export function TrackOverviewSection({ data }: Props) {
                     >
                       <td className="pb-3.5 pt-3.5">
                         <Link
-                          to={`/billboard?week=${entry.week}`}
+                          to={weeklyChartHref(entry.week, 'tracks')}
                           className="font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
                         >
                           {formatWeekStart(entry.week)}
@@ -230,7 +206,12 @@ export function TrackOverviewSection({ data }: Props) {
         共 {data.history.length} 周在榜 · 首发 {data.summary.first_week} · 末次 {data.summary.last_week}
       </p>
 
-      <YearEndHistorySection status={data.year_end_status ?? 'unavailable'} history={data.year_end_history ?? []} />
+      <YearEndHistorySection
+        status={data.year_end_status ?? 'unavailable'}
+        history={data.year_end_history ?? []}
+        kind="track"
+        bestYear={data.year_end_summary?.best_year}
+      />
     </>
   )
 }

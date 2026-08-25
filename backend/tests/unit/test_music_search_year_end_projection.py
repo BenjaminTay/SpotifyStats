@@ -357,6 +357,87 @@ def test_projection_read_state_and_summary_do_not_trigger_computation() -> None:
         conn.close()
 
 
+def test_projection_summary_uses_first_year_to_reach_tied_best_rank() -> None:
+    conn = _projection_connection()
+    try:
+        meta_rows = [
+            (2022, "partial_start", 0, 28, 52, "2022-06-24", "2022-12-30"),
+            (2023, "complete", 1, 52, 52, "2023-01-06", "2023-12-29"),
+            (2025, "complete", 1, 50, 50, "2025-01-03", "2025-12-19"),
+        ]
+        entity_rows = [
+            (
+                "artist",
+                "artist:20",
+                2022,
+                1,
+                10_178,
+                1,
+                28,
+                27,
+                27,
+                28,
+                28,
+                3_708,
+                "2022-06-24",
+                "2022-12-30",
+            ),
+            (
+                "artist",
+                "artist:20",
+                2023,
+                1,
+                18_427,
+                1,
+                52,
+                39,
+                39,
+                52,
+                52,
+                5_188,
+                "2023-01-06",
+                "2023-12-29",
+            ),
+            (
+                "artist",
+                "artist:20",
+                2025,
+                1,
+                12_160,
+                1,
+                50,
+                14,
+                14,
+                46,
+                46,
+                2_573,
+                "2025-01-03",
+                "2025-12-19",
+            ),
+        ]
+        publish_year_end_projection(conn, "snapshot", meta_rows, entity_rows)
+
+        result = load_entity_year_end(
+            conn,
+            snapshot_key="snapshot",
+            family="artist",
+            entity_key="artist:20",
+            include_history=True,
+        )
+
+        assert result["summary"] == {
+            "best_year": 2022,
+            "best_rank": 1,
+            "best_year_is_complete": False,
+            "latest_year": 2025,
+            "latest_rank": 1,
+            "latest_year_is_complete": True,
+            "ranked_years": 3,
+        }
+    finally:
+        conn.close()
+
+
 def test_projection_set_status_and_pending_marker_accept_empty_ready_projection() -> None:
     conn = _projection_connection()
     try:

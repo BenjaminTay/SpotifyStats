@@ -33,9 +33,12 @@ describe('M5 mobile music search and details', () => {
             { label: '走势排名', value: '#3' },
           ]}
         />
-        <MobileChartHistoryList entries={[
-          { week: '2026-07-31', rank: 3, change: '▲2', playCount: 88, runningPeak: 1, runningWeeks: 12, runningPeakWeeks: 3 },
-        ]} />
+        <MobileChartHistoryList
+          tab="albums"
+          entries={[
+            { week: '2026-07-31', rank: 3, change: '▲2', playCount: 88, runningPeak: 1, runningWeeks: 12, runningPeakWeeks: 3 },
+          ]}
+        />
       </MemoryRouter>,
     )
 
@@ -43,7 +46,7 @@ describe('M5 mobile music search and details', () => {
     expect(screen.queryByText(/Personal Listening/i)).not.toBeInTheDocument()
     expect(screen.getByText('有效播放').closest('dl')?.querySelectorAll(':scope > div')).toHaveLength(4)
     expect(screen.getByText('1,651 次')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Peak 1 · 在榜 12周 · 峰值 3周/ })).toHaveAttribute('href', '/billboard?week=2026-07-31')
+    expect(screen.getByRole('link', { name: /Peak 1 · 在榜 12周 · 峰值 3周/ })).toHaveAttribute('href', '/billboard?week=2026-07-31&tab=albums')
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 

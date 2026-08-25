@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { MobileBottomSheet, MobilePagination } from '@/components/mobile'
 import { ChangeCell, type RankChange } from '@/components/shared/ChangeCell'
 import { RankNumber } from '@/components/shared/RankNumber'
+import { weeklyChartHref, type BillboardWeeklyTab } from '@/features/billboard/weekly/weeklyPresentation'
 import { cn } from '@/lib/utils'
 
 export type MobileMusicDetailKind = 'track' | 'album' | 'artist'
@@ -188,7 +189,13 @@ function parseHistoryChange(value?: string): RankChange {
   return { type: 'same' }
 }
 
-export function MobileChartHistoryList({ entries }: { entries: MobileChartHistoryEntry[] }) {
+export function MobileChartHistoryList({
+  entries,
+  tab = 'tracks',
+}: {
+  entries: MobileChartHistoryEntry[]
+  tab?: BillboardWeeklyTab
+}) {
   const pageSize = 10
   const [pageState, setPageState] = useState({ source: entries, page: 1 })
   const pageCount = Math.max(1, Math.ceil(entries.length / pageSize))
@@ -199,7 +206,7 @@ export function MobileChartHistoryList({ entries }: { entries: MobileChartHistor
     <div className="mobile-detail-history">
       <div className="mobile-detail-history-list">
         {visibleEntries.map((entry) => (
-          <Link key={entry.week} to={`/billboard?week=${entry.week}`} className="mobile-detail-history-row">
+          <Link key={entry.week} to={weeklyChartHref(entry.week, tab)} className="mobile-detail-history-row">
             <time>{entry.week.slice(0, 10)}</time>
             <span className="mobile-detail-history-rank">
               <RankNumber rank={entry.rank} highlightTopThree />

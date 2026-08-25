@@ -27,6 +27,10 @@ export function isBillboardWeeklyTab(value: string | null): value is BillboardWe
   return value === 'tracks' || value === 'albums' || value === 'artists'
 }
 
+export function weeklyChartHref(week: string, tab: BillboardWeeklyTab): string {
+  return `/billboard?week=${encodeURIComponent(week)}&tab=${tab}`
+}
+
 export function formatWeekLabel(iso: string): string {
   if (!iso) return ''
   const date = new Date(`${iso}T00:00:00`)

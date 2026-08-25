@@ -42,6 +42,10 @@ function parseMergeLevel(value: string | null): number {
   return level === 1 || level === 2 || level === 3 ? level : 2
 }
 
+function parseTab(value: string | null): YearEndTab | null {
+  return YEAR_END_TABS.some((tab) => tab.key === value) ? value as YearEndTab : null
+}
+
 function SkeletonBlock() {
   return (
     <div className="space-y-5 py-6">
@@ -93,6 +97,7 @@ export function YearEndExperience() {
   const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedYear = parseYear(searchParams.get('year'))
+  const requestedTab = parseTab(searchParams.get('tab'))
   const mergeLevel = parseMergeLevel(searchParams.get('merge_level'))
   const { settings, loading: settingsLoading } = useSettings()
   const includeCompilationsParam = searchParams.get('include_compilations')
@@ -105,7 +110,7 @@ export function YearEndExperience() {
     includeCompilations,
     !settingsLoading,
   )
-  const [activeTab, setActiveTab] = useState<YearEndTab>(cachedTab)
+  const [activeTab, setActiveTab] = useState<YearEndTab>(requestedTab ?? cachedTab)
   const [page, setPage] = useState(cachedPage)
   const [sortKey, setSortKey] = useState<YearEndSortKey>(cachedSortKey)
   const [sortDir, setSortDir] = useState<YearEndSortDir>(cachedSortDir)
@@ -126,6 +131,14 @@ export function YearEndExperience() {
   useEffect(() => { cachedPage = page }, [page])
   useEffect(() => { cachedSortKey = sortKey }, [sortKey])
   useEffect(() => { cachedSortDir = sortDir }, [sortDir])
+  useEffect(() => {
+    if (requestedTab === null || requestedTab === activeTab) return
+    const nextSort = defaultSortForTab(requestedTab)
+    setActiveTab(requestedTab)
+    setPage(1)
+    setSortKey(nextSort.key)
+    setSortDir(nextSort.dir)
+  }, [activeTab, requestedTab])
 
   const rows = useMemo(() => rowsForTab(visibleData, activeTab), [activeTab, visibleData])
   const sortedRows = useMemo(
@@ -146,6 +159,9 @@ export function YearEndExperience() {
     setPage(1)
     setSortKey(nextSort.key)
     setSortDir(nextSort.dir)
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', tab)
+    setSearchParams(next)
   }
 
   function handleSortChange(key: YearEndSortKey) {

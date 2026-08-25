@@ -5,17 +5,19 @@ export interface RankChange {
   delta?: number
 }
 
+export const CHART_MOVEMENT_LABEL_CLASS = 'font-sans text-[10px] font-bold uppercase tracking-[1px]'
+
 export function ChangeCell({ change }: { change: RankChange }) {
   if (change.type === 'new') {
     return (
-      <span className="text-[10px] font-bold uppercase tracking-[1px] text-[#3B5998] dark:text-[#7B9CC8]">
+      <span className={cn(CHART_MOVEMENT_LABEL_CLASS, 'text-[#3B5998] dark:text-[#7B9CC8]')}>
         NEW
       </span>
     )
   }
   if (change.type === 're') {
     return (
-      <span className="text-[10px] font-bold uppercase tracking-[1px] text-[#B8860B] dark:text-[#D4A24E]">
+      <span className={cn(CHART_MOVEMENT_LABEL_CLASS, 'text-[#B8860B] dark:text-[#D4A24E]')}>
         RE
       </span>
     )

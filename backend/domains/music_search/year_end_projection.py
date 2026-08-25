@@ -640,8 +640,7 @@ def load_entity_year_end(
         history,
         key=lambda row: (
             int(row["year_end_rank"]),
-            -int(bool(row["is_complete_year"])),
-            -int(row["year"]),
+            int(row["year"]),
         ),
     )
     latest = history[0]

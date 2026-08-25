@@ -14,6 +14,7 @@ import {
 import { MusicChartEmptyState } from './MusicChartEmptyState'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileChartHistoryList } from '@/features/mobile/music/MobileMusicDetail'
+import { weeklyChartHref } from '@/features/billboard/weekly/weeklyPresentation'
 import type { DetailYearEndFields } from '@/types/billboard'
 import { YearEndHistorySection } from './YearEndHistorySection'
 import { YearEndSummaryKpis } from './YearEndSummaryKpis'
@@ -107,9 +108,18 @@ export function MusicChartOverviewSection({
     )
   }
 
+  const hasYearEndSummary = yearEndStatus === 'ready' && yearEndSummary != null
+
   return (
     <>
-      <div className={cn('mb-8 grid grid-cols-2 gap-5', isPhone && 'mobile-detail-kpi-grid')}>
+      <div
+        data-music-chart-kpi-grid
+        className={cn(
+          'mb-8 grid grid-cols-2 gap-5',
+          hasYearEndSummary ? 'lg:grid-cols-3' : 'lg:grid-cols-4',
+          isPhone && 'mobile-detail-kpi-grid',
+        )}
+      >
         <KpiCard
           label="最高排名"
           value={`#${chartSummary.peak_position}${chartSummary.peak_weeks > 1 ? ` (${chartSummary.peak_weeks}wks)` : ''}`}
@@ -183,15 +193,18 @@ export function MusicChartOverviewSection({
         <div className="mb-8">
           <h3 className="mb-4 font-serif text-xl font-semibold">周榜历史</h3>
           {isPhone ? (
-            <MobileChartHistoryList entries={weeklyHistory.map((entry) => ({
-              week: entry.week,
-              rank: entry.rank,
-              change: entry.change,
-              playCount: entry.play_count,
-              runningPeak: entry.running_peak,
-              runningWeeks: entry.running_wks,
-              runningPeakWeeks: entry.running_peak_wks,
-            }))} />
+            <MobileChartHistoryList
+              tab={kind === 'artist' ? 'artists' : 'albums'}
+              entries={weeklyHistory.map((entry) => ({
+                week: entry.week,
+                rank: entry.rank,
+                change: entry.change,
+                playCount: entry.play_count,
+                runningPeak: entry.running_peak,
+                runningWeeks: entry.running_wks,
+                runningPeakWeeks: entry.running_peak_wks,
+              }))}
+            />
           ) : <GlassCard className="overflow-hidden p-0">
             <table className="mx-7 my-0 w-[calc(100%-56px)] border-collapse">
               <thead>
@@ -229,7 +242,7 @@ export function MusicChartOverviewSection({
                       <tr key={entry.week} className="transition-colors hover:bg-muted/50">
                         <td className="pb-3.5 pt-3.5">
                           <Link
-                            to={`/billboard?week=${entry.week}`}
+                            to={weeklyChartHref(entry.week, kind === 'artist' ? 'artists' : 'albums')}
                             className="font-sans text-[12px] text-muted-foreground transition-colors hover:text-accent-foreground"
                           >
                             {formatWeekStart(entry.week)}
@@ -312,7 +325,12 @@ export function MusicChartOverviewSection({
           </GlassCard>}
         </div>
       )}
-      <YearEndHistorySection status={yearEndStatus} history={yearEndHistory} />
+      <YearEndHistorySection
+        status={yearEndStatus}
+        history={yearEndHistory}
+        kind={kind}
+        bestYear={yearEndSummary?.best_year}
+      />
     </>
   )
 }

@@ -15,7 +15,7 @@ function PlainKpi({
 }: {
   label: string
   value: string
-  sub: string
+  sub?: string
   accent?: boolean
 }) {
   return (
@@ -29,7 +29,7 @@ function PlainKpi({
       >
         {value}
       </p>
-      <p className="mt-1.5 font-sans text-[11px] text-muted-foreground">{sub}</p>
+      {sub && <p className="mt-1.5 font-sans text-[11px] text-muted-foreground">{sub}</p>}
     </div>
   )
 }
@@ -55,13 +55,12 @@ export function YearEndSummaryKpis({ status, summary, variant }: Props) {
           <KpiCard
             label="年榜入榜"
             value={rankedYearsValue}
-            sub="进入年度年终榜"
           />
         </>
       ) : (
         <>
           <PlainKpi label="年榜最佳" value={`#${summary.best_rank}`} sub={bestYearSub} accent />
-          <PlainKpi label="年榜入榜" value={rankedYearsValue} sub="进入年度年终榜" />
+          <PlainKpi label="年榜入榜" value={rankedYearsValue} />
         </>
       )}
     </>
