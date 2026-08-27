@@ -85,6 +85,8 @@ def select_track_detail_view(payload: dict, view: DetailView) -> dict:
             "chart_status",
             "effective_play_count",
             "track_id",
+            "l1_id",
+            "representative_track_id",
             "track_name",
             "artist_name",
             "artist_names",

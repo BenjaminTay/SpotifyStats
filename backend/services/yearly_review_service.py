@@ -183,6 +183,8 @@ def build_yearly_review_cache_key(
         "language_revision": language_revision,
         "artist_identity_revision": context.artist_identity_revision,
         "track_credit_revision": context.track_credit_revision,
+        "track_identity_revision": context.track_identity_revision,
+        "track_identity_policy": context.track_identity_policy,
         "scoped_dependency_revision": scoped_dependency_revision
         or _fallback_dependency_revision(context),
         "database_revision": db_revision,

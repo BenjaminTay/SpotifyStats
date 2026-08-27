@@ -52,12 +52,12 @@ def test_openapi_parameter_boundary_audit_records_evidence_for_high_risk_paramet
     audit = build_parameter_boundary_audit(app)
     obligations = audit.obligations_by_key
 
-    assert obligations[("query", "merge_level", "integer|maximum=3|minimum=1")].category == (
+    assert obligations[("query", "merge_level", "integer|maximum=3|minimum=2")].category == (
         "boundary_probe"
     )
     assert (
         "analysis_charts_merge_level_low"
-        in obligations[("query", "merge_level", "integer|maximum=3|minimum=1")].evidence
+        in obligations[("query", "merge_level", "integer|maximum=3|minimum=2")].evidence
     )
     assert obligations[
         ("query", "bb_week_start_hour", "integer|maximum=23|minimum=0")

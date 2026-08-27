@@ -45,12 +45,7 @@ def test_confirm_track_candidate_creates_l3_group_and_rebuilds(isolated_seed_db)
     finally:
         conn.close()
 
-    result = confirm_track_group_candidate(
-        original_track_id=920,
-        candidate_track_id=926,
-        scope="composition",
-    )
-
+    result = confirm_track_group_candidate(920, 926, scope="composition")
     assert result["status"] == "ok"
     assert result["scope"] == "composition"
     assert result["album_projects_rebuilt"] is True
@@ -59,13 +54,199 @@ def test_confirm_track_candidate_creates_l3_group_and_rebuilds(isolated_seed_db)
     try:
         l2_keys = load_track_group_keys(conn, merge_level=2)
         assert 926 not in set(l2_keys["track_id"])
-
         l3_keys = load_track_group_keys(conn, merge_level=3)
         l3_map = l3_keys.set_index("track_id")
         assert int(l3_map.loc[920, "track_agg_id"]) == int(l3_map.loc[926, "track_agg_id"])
         assert l3_map.loc[926, "track_group_scope"] == "composition"
     finally:
         conn.close()
+
+
+def test_confirm_track_candidate_unifies_existing_same_scope_groups(isolated_seed_db):
+    """Manual pair selection must not leave a track in two groups at one scope."""
+    from backend.core.db import get_db
+    from backend.core.version_merge import confirm_track_group_candidate
+
+    conn = get_db(readonly=False)
+    try:
+        conn.execute("DELETE FROM track_group_members WHERE group_id IN (920, 921, 9920, 9921)")
+        conn.execute("DELETE FROM track_groups WHERE group_id IN (920, 921, 9920, 9921)")
+        conn.execute(
+            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, scope, is_manual) VALUES (9920, 'Original group', 920, 'composition', 1)"
+        )
+        conn.execute(
+            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, scope, is_manual) VALUES (9921, 'Candidate group', 926, 'composition', 1)"
+        )
+        conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (9920, 920)")
+        conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (9921, 925)")
+        conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (9921, 926)")
+        conn.commit()
+    finally:
+        conn.close()
+
+    result = confirm_track_group_candidate(920, 926, scope="composition")
+    assert result["status"] == "ok"
+    assert result["group_id"] == 9920
+    assert result["member_count"] == 3
+
+    conn = get_db(readonly=True)
+    try:
+        rows = conn.execute(
+            """SELECT tg.group_id, tg.primary_track_id, tgm.track_id FROM track_groups tg JOIN track_group_members tgm ON tgm.group_id = tg.group_id WHERE tg.scope = 'composition' AND tgm.track_id IN (920, 925, 926) ORDER BY tgm.track_id"""
+        ).fetchall()
+        assert [(row["group_id"], row["track_id"]) for row in rows] == [
+            (9920, 920),
+            (9920, 925),
+            (9920, 926),
+        ]
+        assert all(row["primary_track_id"] == 920 for row in rows)
+        assert (
+            conn.execute("SELECT COUNT(*) FROM track_groups WHERE group_id = 9921").fetchone()[0]
+            == 0
+        )
+    finally:
+        conn.close()
+
+
+def test_saved_track_group_management_uses_stable_track_ids(isolated_seed_db):
+    """The shared saved-groups UI can list and maintain track groups by stable IDs."""
+    from backend.core.db import get_db
+    from backend.core.version_merge import (
+        delete_track_group,
+        get_all_track_groups,
+        get_track_group_members,
+        set_primary_track,
+        update_track_group_members,
+    )
+
+    conn = get_db(readonly=False)
+    try:
+        conn.execute("DELETE FROM track_group_members WHERE group_id = 9930")
+        conn.execute("DELETE FROM track_groups WHERE group_id = 9930")
+        conn.execute(
+            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, scope, is_manual) VALUES (9930, 'UI CRUD group', 920, 'composition', 0)"
+        )
+        conn.executemany(
+            "INSERT INTO track_group_members(group_id, track_id) VALUES (9930, ?)", [(920,), (926,)]
+        )
+        # Historical imports can retain a raw artist id after its artist row was
+        # rebuilt.  Saved-group labels should still resolve from album metadata.
+        conn.execute("UPDATE tracks SET artist_id = 999999 WHERE track_id = 920")
+        conn.commit()
+    finally:
+        conn.close()
+
+    groups = get_all_track_groups().set_index("group_id")
+    assert int(groups.loc[9930, "member_count"]) == 2
+    assert groups.loc[9930, "scope"] == "composition"
+    assert int(groups.loc[9930, "primary_album_id"]) == 920
+    assert groups.loc[9930, "artist_name"] == "Fixture Artist Alpha"
+    members = get_track_group_members(9930).set_index("track_id")
+    assert int(members.loc[920, "is_primary"]) == 1
+    assert int(members.loc[920, "album_id"]) == 920
+    assert members.loc[920, "artist_name"] == "Fixture Artist Alpha"
+    assert set(members.index) == {920, 926}
+    assert set_primary_track(9930, 926) is True
+    assert update_track_group_members(9930, add_ids=[925], remove_ids=[920]) is True
+    members = get_track_group_members(9930).set_index("track_id")
+    assert set(members.index) == {925, 926}
+    assert int(members.loc[926, "is_primary"]) == 1
+    assert int(get_all_track_groups().set_index("group_id").loc[9930, "is_manual"]) == 1
+    assert delete_track_group(9930) is True
+    assert 9930 not in set(get_all_track_groups()["group_id"])
+
+
+def test_manual_candidate_search_and_confirmation_use_one_spotify_owner(isolated_seed_db):
+    from backend.core.db import get_db
+    from backend.core.version_merge import (
+        confirm_track_group_candidate,
+        search_track_l1_candidates,
+    )
+
+    spotify_id = "5DpQ7EYvM9aCG90luO9PQW"
+    conn = get_db(readonly=False)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE track_l1_identities(
+                l1_id INTEGER PRIMARY KEY, provider TEXT NOT NULL,
+                fallback_track_id INTEGER, identity_status TEXT NOT NULL,
+                representative_track_id INTEGER
+            );
+            CREATE TABLE track_l1_external_ids(
+                provider TEXT NOT NULL, external_track_id TEXT NOT NULL,
+                l1_id INTEGER NOT NULL, evidence_type TEXT NOT NULL,
+                is_primary INTEGER NOT NULL
+            );
+            CREATE TABLE track_l1_source_links(
+                l1_id INTEGER NOT NULL, track_id INTEGER NOT NULL,
+                evidence_type TEXT NOT NULL, observed_plays INTEGER NOT NULL,
+                first_seen_at TEXT, last_seen_at TEXT
+            );
+            CREATE TABLE spotify_track_owners(
+                spotify_track_id TEXT PRIMARY KEY, track_id INTEGER NOT NULL,
+                evidence_type TEXT NOT NULL
+            );
+            CREATE TABLE track_group_l1_members(
+                group_id INTEGER NOT NULL, l1_id INTEGER NOT NULL
+            );
+            """
+        )
+        conn.executemany(
+            """INSERT INTO tracks(
+                   track_id, track_name, artist_id, album_id, spotify_track_id
+               ) VALUES (?, ?, ?, 920, ?)""",
+            [
+                (12001, "假如我们还爱着", 901, spotify_id),
+                (12002, "假如我們還愛著", 902, spotify_id),
+                (12003, "假如我们还爱着", 1, spotify_id),
+            ],
+        )
+        conn.executemany(
+            """INSERT INTO track_l1_identities(
+                   l1_id, provider, fallback_track_id,
+                   identity_status, representative_track_id
+               ) VALUES (?, 'local', ?, 'active', ?)""",
+            ((track_id, track_id, track_id) for track_id in (12001, 12002, 12003)),
+        )
+        conn.execute(
+            """INSERT INTO spotify_track_owners(
+                   spotify_track_id, track_id, evidence_type
+               ) VALUES (?, 12002, 'play_majority')""",
+            (spotify_id,),
+        )
+        conn.execute(
+            """INSERT INTO track_l1_external_ids(
+                   provider, external_track_id, l1_id, evidence_type, is_primary
+               ) VALUES ('spotify', ?, 12002, 'migration', 1)""",
+            (spotify_id,),
+        )
+        conn.executemany(
+            """INSERT INTO track_l1_source_links(
+                   l1_id, track_id, evidence_type, observed_plays
+               ) VALUES (12002, ?, 'track_projection', 0)""",
+            ((track_id,) for track_id in (12001, 12002, 12003)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    rows = search_track_l1_candidates("假如我们还爱着")
+    assert [int(row["l1_id"]) for row in rows] == [12002]
+    assert search_track_l1_candidates("12001")[0]["l1_id"] == 12002
+    assert search_track_l1_candidates(spotify_id)[0]["l1_id"] == 12002
+
+    result = confirm_track_group_candidate(
+        12001,
+        12003,
+        scope="recording",
+        references_are_l1=True,
+    )
+    assert result == {
+        "status": "error",
+        "error_code": "same_spotify_identity",
+        "message": "它们已经是同一个 Spotify 曲目，不需要归并",
+    }
 
 
 def test_composition_release_group_is_l3_only_and_rebuilds_projects(isolated_seed_db):

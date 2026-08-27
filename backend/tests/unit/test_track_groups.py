@@ -22,10 +22,10 @@ class TestNormalizeMergeLevel:
         assert normalize_merge_level("abc") == 2
 
     def test_parses_valid_string(self):
-        assert normalize_merge_level("1") == 1
+        assert normalize_merge_level("1") == 2
         assert normalize_merge_level("3") == 3
 
     def test_passes_valid_integers(self):
-        assert normalize_merge_level(1) == 1
+        assert normalize_merge_level(1) == 2
         assert normalize_merge_level(2) == 2
         assert normalize_merge_level(3) == 3

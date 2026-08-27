@@ -87,7 +87,7 @@ def test_rebuild_publishes_one_valid_generation_with_fts_or_fallback() -> None:
     state = get_music_search_index_state(conn)
 
     assert report["status"] in {"ready", "degraded"}
-    assert report["document_count"] == (3 * 3) + 2 + 2
+    assert report["document_count"] == (3 * 2) + 2 + 2
     assert state["active_generation_id"] == report["generation_id"]
     assert state["normalization_version"] == "nfkc_casefold_ws_punctuation_v1"
     assert state["candidate_index_version"] == report["candidate_index_version"]
@@ -97,7 +97,7 @@ def test_rebuild_publishes_one_valid_generation_with_fts_or_fallback() -> None:
             "SELECT COUNT(*) FROM music_search_documents WHERE generation_id=?",
             (report["generation_id"],),
         ).fetchone()[0]
-        == 13
+        == 10
     )
 
 
@@ -148,7 +148,7 @@ def test_rebuild_uses_current_playback_album_when_reconcile_reuses_track() -> No
     track = conn.execute(
         """SELECT album_id, album_name, secondary
            FROM music_search_documents
-           WHERE generation_id=? AND entity_key='track:103' AND merge_level=1""",
+               WHERE generation_id=? AND entity_key='track:103' AND merge_level=2""",
         (report["generation_id"],),
     ).fetchone()
     old_album_count = conn.execute(
@@ -177,14 +177,6 @@ def test_track_candidates_follow_l1_l2_merge_semantics_and_keep_version_aliases(
     )
     rebuild_music_search_index(conn)
 
-    l1 = search_music_index(
-        conn,
-        query="cardigan remaster",
-        kind="track",
-        page=1,
-        page_size=20,
-        merge_level=1,
-    )
     l2 = search_music_index(
         conn,
         query="cardigan remaster",
@@ -194,7 +186,6 @@ def test_track_candidates_follow_l1_l2_merge_semantics_and_keep_version_aliases(
         merge_level=2,
     )
 
-    assert [item.entity_key for item in l1.tracks] == ["track:103"]
     assert [item.entity_key for item in l2.tracks] == ["track:100"]
     assert l2.tracks[0].match_field == "alias"
 

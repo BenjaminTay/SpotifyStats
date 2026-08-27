@@ -76,6 +76,17 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("path", "l1_id", "integer"): ParameterEvidence(
+        "boundary_probe",
+        ("music_track_canonical_identity_path_nonint",),
+        "canonical L1 identity routes reject non-integer path identifiers",
+    ),
+    ("path", "canonical_track_id", "integer"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "canonical track split validates the stable local identity path id",
+        ("backend/tests/contract/test_track_identity_api.py",),
+    ),
     ("query", "mode", "string|enum=auto,append,replace"): ParameterEvidence(
         "targeted_contract",
         (),
@@ -243,7 +254,7 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("library_saved_tracks_limit_nonint",),
         "type-only saved-track pagination limit rejects non-integers",
     ),
-    ("query", "merge_level", "integer|maximum=3|minimum=1"): ParameterEvidence(
+    ("query", "merge_level", "integer|maximum=3|minimum=2"): ParameterEvidence(
         "boundary_probe",
         ("analysis_charts_merge_level_low", "analysis_charts_merge_level_high"),
         "merge-level shared dependency is validated below and above the allowed range",

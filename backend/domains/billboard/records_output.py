@@ -43,13 +43,27 @@ def _add_cover_urls(weekly, weekly_album, weekly_artist):
     if not weekly.empty and "track_id" in weekly.columns:
         track_ids = weekly["track_id"].unique().tolist()
         placeholders = ",".join("?" for _ in track_ids)
-        rows = conn.execute(
-            f"""SELECT t.track_id, al.album_id, al.image_path, al.image_url
-                FROM tracks t
-                LEFT JOIN albums al ON t.album_id = al.album_id
-                WHERE t.track_id IN ({placeholders})""",
-            track_ids,
-        ).fetchall()
+        has_l1 = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+        ).fetchone()
+        if has_l1:
+            rows = conn.execute(
+                f"""SELECT li.l1_id AS track_id, al.album_id,
+                           al.image_path, al.image_url
+                    FROM track_l1_identities li
+                    JOIN tracks t ON t.track_id=li.representative_track_id
+                    LEFT JOIN albums al ON t.album_id=al.album_id
+                    WHERE li.l1_id IN ({placeholders})""",
+                track_ids,
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                f"""SELECT t.track_id, al.album_id, al.image_path, al.image_url
+                    FROM tracks t
+                    LEFT JOIN albums al ON t.album_id = al.album_id
+                    WHERE t.track_id IN ({placeholders})""",
+                track_ids,
+            ).fetchall()
         cover_map = {
             r["track_id"]: _build_url(r["image_path"], r["image_url"], "albums", r["album_id"])
             if r["album_id"]

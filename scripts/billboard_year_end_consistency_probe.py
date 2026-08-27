@@ -278,7 +278,7 @@ def main() -> int:
     parser.add_argument(
         "--merge-levels",
         type=_parse_merge_levels,
-        default=[1, 2, 3],
+        default=[2, 3],
         help="Comma-separated merge levels (default: 1,2,3)",
     )
     parser.add_argument("--json-output", type=Path)

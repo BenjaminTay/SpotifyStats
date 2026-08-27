@@ -105,8 +105,8 @@ export function MobileTopBar() {
     if (location.pathname.startsWith('/music/tracks/')) {
       const trackId = location.pathname.split('/')[3] ?? ''
       return {
-        label: '管理曲目署名',
-        to: `/settings?metadata=track-credits&track_id=${encodeURIComponent(trackId)}&return_to=${encodeURIComponent(returnTo)}#music-metadata-management`,
+        label: '管理曲目信息',
+        to: `/settings?metadata=merge&merge_type=track&track_id=${encodeURIComponent(trackId)}&return_to=${encodeURIComponent(returnTo)}#music-metadata-management`,
       }
     }
     if (location.pathname.startsWith('/music/albums/')) {

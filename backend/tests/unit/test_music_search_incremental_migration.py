@@ -10,6 +10,8 @@ from backend.core.migrations import (
     migrate_042,
     migrate_046,
     migrate_047,
+    migrate_055,
+    migrate_056,
 )
 
 
@@ -300,5 +302,102 @@ def test_migrate_047_repairs_short_lived_v46_coverage_constraint() -> None:
 
 
 def test_latest_schema_version_matches_registered_migrations() -> None:
-    assert LATEST_SCHEMA_VERSION == 47
+    assert LATEST_SCHEMA_VERSION == 56
     assert max(version for version, _name, _migration in MIGRATIONS) == LATEST_SCHEMA_VERSION
+
+
+def test_migrate_055_retires_only_public_l1_ready_snapshots() -> None:
+    conn = _legacy_search_connection()
+    try:
+        conn.executemany(
+            """INSERT INTO music_search_snapshot_meta(
+                   snapshot_key, filter_fingerprint, source_revision, status,
+                   merge_level, dynamic_threshold, builder_version
+               ) VALUES (?, ?, 'revision', 'ready', ?, 1, 'legacy')""",
+            [
+                ("l1", "l1", 1),
+                ("l2", "l2", 2),
+                ("l3", "l3", 3),
+                ("current-l2", "current-l2", 2),
+            ],
+        )
+        conn.execute(
+            """UPDATE music_search_snapshot_meta
+                  SET builder_version='music_search_snapshot_v8_canonical_track'
+                WHERE snapshot_key='current-l2'"""
+        )
+        migrate_055(conn)
+        migrate_055(conn)
+        states = {
+            str(row[0]): str(row[1])
+            for row in conn.execute(
+                "SELECT snapshot_key, status FROM music_search_snapshot_meta ORDER BY snapshot_key"
+            ).fetchall()
+        }
+        assert states == {
+            "current-l2": "ready",
+            "l1": "stale",
+            "l2": "stale",
+            "l3": "stale",
+            "legacy-ready": "stale",
+        }
+    finally:
+        conn.close()
+
+
+def test_migrate_056_invalidates_derivatives_without_blocking_metadata_dependencies() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE plays(play_id INTEGER PRIMARY KEY);
+            INSERT INTO plays(play_id) VALUES (1);
+            CREATE TABLE agg_weekly_tracks(value INTEGER);
+            CREATE TABLE agg_weekly_track_sources(value INTEGER);
+            CREATE TABLE agg_weekly_albums(value INTEGER);
+            CREATE TABLE agg_weekly_artists(value INTEGER);
+            CREATE TABLE agg_config(key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO agg_config VALUES ('param_hash', 'stale');
+            CREATE TABLE artist_identity_state(
+                state_id INTEGER PRIMARY KEY,
+                current_revision INTEGER,
+                active_aggregate_revision INTEGER,
+                rebuild_status TEXT,
+                last_error TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO artist_identity_state VALUES (1, 3, 3, 'ready', NULL, NULL);
+            CREATE TABLE track_credit_state(
+                state_id INTEGER PRIMARY KEY,
+                current_revision INTEGER,
+                active_aggregate_revision INTEGER,
+                rebuild_status TEXT,
+                last_error TEXT,
+                updated_at TEXT
+            );
+            INSERT INTO track_credit_state VALUES (1, 4, 4, 'ready', NULL, NULL);
+            CREATE TABLE music_search_snapshot_meta(
+                snapshot_key TEXT PRIMARY KEY,
+                status TEXT,
+                last_error TEXT
+            );
+            INSERT INTO music_search_snapshot_meta VALUES ('v8-l2', 'ready', NULL);
+            """
+        )
+        migrate_056(conn)
+        migrate_056(conn)
+        artist = conn.execute(
+            "SELECT active_aggregate_revision, rebuild_status FROM artist_identity_state"
+        ).fetchone()
+        credit = conn.execute(
+            "SELECT active_aggregate_revision, rebuild_status FROM track_credit_state"
+        ).fetchone()
+        snapshot = conn.execute(
+            "SELECT status FROM music_search_snapshot_meta WHERE snapshot_key='v8-l2'"
+        ).fetchone()
+        assert artist == (3, "ready")
+        assert credit == (4, "ready")
+        assert snapshot == ("stale",)
+        assert conn.execute("SELECT COUNT(*) FROM agg_config").fetchone()[0] == 0
+    finally:
+        conn.close()

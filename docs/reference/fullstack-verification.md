@@ -1,6 +1,6 @@
 # 全栈验证与阶段执行规则
 
-> 更新日期：2026-08-25
+> 更新日期：2026-08-27
 > 状态：当前规则
 > 适用范围：本地 Phase 5、全栈门禁、局部排障和机器可读验收报告
 
@@ -76,6 +76,17 @@ sh scripts/fullstack_verification_check.sh \
 - 未执行和跳过阶段。
 
 脚本失败时也必须写出已完成阶段，不能只凭最终退出码判断覆盖。
+
+使用真实数据库副本做验收时，应显式设置 `SPOTIFY_STATS_TEST_SOURCE_DB`：
+
+```bash
+SPOTIFY_STATS_TEST_SOURCE_DB=/absolute/path/to/acceptance-copy.db \
+sh scripts/fullstack_verification_check.sh \
+  --backend-url http://127.0.0.1:8000 \
+  --frontend-url http://localhost:5173
+```
+
+父门禁会把该路径同时传给 pytest 和两个进程内 API 探针。`api_smoke_probe.py`、`api_boundary_probe.py` 不得在已指定副本时重新打开默认数据库；否则探针触发的 schema/派生缓存写入会污染正式本地库。HTTP benchmark 与浏览器阶段仍以传入的 `backend-url` 为准，因此该后端进程也必须使用同一验收副本启动。
 
 ## 4. Phase 5 边界
 

@@ -249,12 +249,18 @@ def _artist_metadata_revision(conn: sqlite3.Connection) -> str:
     genre_revision = "|".join(parts) or "no-artist-genre-tables"
     from backend.domains.metadata.artist_identity import get_identity_revision
     from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_identity import (
+        TRACK_IDENTITY_POLICY_VERSION,
+        get_track_identity_revision,
+    )
 
     return (
         f"{genre_revision}|display:{GENRE_DISPLAY_TAXONOMY_VERSION}"
         f"|language:{artist_language_fact_revision(conn)}"
         f"|identity:{get_identity_revision(conn)}"
         f"|track_credit:{get_track_credit_revision(conn)}"
+        f"|track_identity:{get_track_identity_revision(conn)}"
+        f"|track_identity_policy:{TRACK_IDENTITY_POLICY_VERSION}"
     )
 
 
@@ -268,7 +274,7 @@ def _get_wrapped_full_cached(
     year: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes=5,
-    merge_level: int = 1,
+    merge_level: int = 2,
 ) -> dict:
     _ = artist_metadata_revision
     conn = connect_sqlite_path(db_path, timeout=30, check_same_thread=False)
@@ -296,7 +302,7 @@ def get_wrapped_full(
     year: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes=5,
-    merge_level: int = 1,
+    merge_level: int = 2,
 ) -> dict:
     """Generate the full multi-module yearly Wrapped report.
 
@@ -334,7 +340,7 @@ def _build_wrapped_full(
     year: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes=5,
-    merge_level: int = 1,
+    merge_level: int = 2,
 ) -> dict:
     df = load_plays(
         conn,

@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 _INT32_COLUMNS = frozenset(
     {
         "track_id",
+        "l1_id",
+        "source_track_id",
+        "representative_track_id",
         "artist_id",
         "album_id",
         "source_album_id",
@@ -88,8 +91,7 @@ CREATE TABLE IF NOT EXISTS tracks (
     artist_id          INTEGER NOT NULL REFERENCES artists(artist_id),
     album_id           INTEGER REFERENCES albums(album_id),
     spotify_track_uri  TEXT,
-    spotify_track_id   TEXT,
-    UNIQUE(artist_id, track_name)
+    spotify_track_id   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS plays (
@@ -144,6 +146,25 @@ CREATE INDEX IF NOT EXISTS idx_albums_artist  ON albums(artist_id);
 CREATE INDEX IF NOT EXISTS idx_track_albums_track ON track_albums(track_id);
 CREATE INDEX IF NOT EXISTS idx_track_albums_album ON track_albums(album_id);
 
+-- Spotify ids are provider aliases owned by the existing application track.
+-- This is intentionally directional: one track_id may own several Spotify
+-- ids, while a Spotify id can never resolve to more than one track_id.
+CREATE TABLE IF NOT EXISTS spotify_track_owners (
+    spotify_track_id TEXT PRIMARY KEY,
+    track_id         INTEGER NOT NULL REFERENCES tracks(track_id),
+    evidence_type    TEXT NOT NULL DEFAULT 'import_match'
+                     CHECK(evidence_type IN (
+                         'import_match', 'play_majority',
+                         'catalog_projection', 'manual_override'
+                     )),
+    first_seen_at    TEXT,
+    last_seen_at     TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_spotify_track_owners_track
+    ON spotify_track_owners(track_id);
+
 CREATE TABLE IF NOT EXISTS track_artists (
     track_id INTEGER NOT NULL REFERENCES tracks(track_id),
     artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
@@ -156,10 +177,11 @@ CREATE INDEX IF NOT EXISTS idx_track_artists_artist ON track_artists(artist_id);
 -- Pre-aggregated weekly Billboard data (built after import, invalidated on param change)
 CREATE TABLE IF NOT EXISTS agg_weekly_tracks (
     billboard_week TEXT NOT NULL,
-    track_id INTEGER NOT NULL,
+    l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+    track_id INTEGER NOT NULL REFERENCES tracks(track_id),
     play_count INTEGER NOT NULL,
     total_ms INTEGER NOT NULL,
-    PRIMARY KEY (billboard_week, track_id)
+    PRIMARY KEY (billboard_week, l1_id)
 );
 
 CREATE TABLE IF NOT EXISTS agg_weekly_albums (
@@ -173,11 +195,12 @@ CREATE TABLE IF NOT EXISTS agg_weekly_albums (
 CREATE TABLE IF NOT EXISTS agg_weekly_track_sources (
     billboard_week TEXT NOT NULL,
     play_date TEXT NOT NULL,
-    track_id INTEGER NOT NULL,
+    l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+    track_id INTEGER NOT NULL REFERENCES tracks(track_id),
     source_album_id INTEGER NOT NULL DEFAULT 0,
     play_count INTEGER NOT NULL,
     total_ms INTEGER NOT NULL,
-    PRIMARY KEY (billboard_week, play_date, track_id, source_album_id)
+    PRIMARY KEY (billboard_week, play_date, l1_id, source_album_id)
 );
 
 CREATE TABLE IF NOT EXISTS agg_weekly_artists (
@@ -238,6 +261,9 @@ CREATE TABLE IF NOT EXISTS track_groups (
     is_manual         INTEGER NOT NULL DEFAULT 0,
     automatic_spotify_track_id TEXT,
     automatic_artist_id INTEGER,
+    primary_l1_id     INTEGER REFERENCES track_l1_identities(l1_id),
+    group_status      TEXT NOT NULL DEFAULT 'active'
+                      CHECK(group_status IN ('active', 'archived', 'conflict')),
     created_at        TEXT DEFAULT (datetime('now')),
     CHECK(
         is_manual = 1
@@ -254,6 +280,160 @@ CREATE TABLE IF NOT EXISTS track_group_members (
 CREATE INDEX IF NOT EXISTS idx_track_groups_scope ON track_groups(scope);
 CREATE INDEX IF NOT EXISTS idx_track_groups_parent ON track_groups(parent_group_id);
 CREATE INDEX IF NOT EXISTS idx_track_group_members_track ON track_group_members(track_id);
+
+CREATE TABLE IF NOT EXISTS track_group_l1_members (
+    group_id INTEGER NOT NULL REFERENCES track_groups(group_id),
+    l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+    PRIMARY KEY(group_id, l1_id)
+);
+CREATE INDEX IF NOT EXISTS idx_track_group_l1_member ON track_group_l1_members(l1_id);
+
+CREATE TRIGGER IF NOT EXISTS trg_track_group_l1_single_active_scope_insert
+BEFORE INSERT ON track_group_l1_members
+WHEN EXISTS (
+    SELECT 1 FROM track_groups incoming
+     WHERE incoming.group_id=NEW.group_id AND incoming.group_status='active'
+) AND EXISTS (
+    SELECT 1
+      FROM track_group_l1_members existing
+      JOIN track_groups existing_group ON existing_group.group_id=existing.group_id
+      JOIN track_groups incoming ON incoming.group_id=NEW.group_id
+     WHERE existing.l1_id=NEW.l1_id
+       AND existing.group_id!=NEW.group_id
+       AND existing_group.group_status='active'
+       AND existing_group.scope=incoming.scope
+)
+BEGIN
+    SELECT RAISE(ABORT, 'canonical track already belongs to an active group at this scope');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_track_group_single_active_scope_update
+BEFORE UPDATE OF group_status, scope ON track_groups
+WHEN NEW.group_status='active' AND EXISTS (
+    SELECT 1
+      FROM track_group_l1_members incoming_member
+      JOIN track_group_l1_members existing_member
+        ON existing_member.l1_id=incoming_member.l1_id
+       AND existing_member.group_id!=incoming_member.group_id
+      JOIN track_groups existing_group ON existing_group.group_id=existing_member.group_id
+     WHERE incoming_member.group_id=NEW.group_id
+       AND existing_group.group_status='active'
+       AND existing_group.scope=NEW.scope
+)
+BEGIN
+    SELECT RAISE(ABORT, 'activating group would overlap another active group at this scope');
+END;
+
+CREATE TABLE IF NOT EXISTS track_group_migration_audit (
+    audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    distinct_l1_count INTEGER NOT NULL,
+    details TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS track_group_candidates (
+    candidate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope TEXT NOT NULL CHECK(scope IN ('recording', 'composition')),
+    original_l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+    candidate_l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+    confidence REAL,
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'accepted', 'rejected')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK(original_l1_id != candidate_l1_id),
+    UNIQUE(scope, original_l1_id, candidate_l1_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_track_group_candidate_unordered_pair
+    ON track_group_candidates(
+        scope,
+        MIN(original_l1_id, candidate_l1_id),
+        MAX(original_l1_id, candidate_l1_id)
+    );
+
+-- Deprecated compatibility projection. l1_id is always the existing track_id;
+-- authoritative Spotify ownership lives in spotify_track_owners. New product
+-- code must not expose this as a separate public identity namespace.
+CREATE TABLE IF NOT EXISTS track_l1_identities (
+    l1_id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Compatibility/display projection only. Authoritative ownership lives in
+    -- track_l1_external_ids and may contain several rows per l1_id.
+    provider                TEXT NOT NULL DEFAULT 'local',
+    external_track_id       TEXT,
+    fallback_track_id       INTEGER REFERENCES tracks(track_id),
+    identity_status         TEXT NOT NULL DEFAULT 'active'
+                            CHECK(identity_status IN ('active', 'unresolved', 'superseded')),
+    representative_track_id INTEGER REFERENCES tracks(track_id),
+    created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_track_l1_local_identity
+    ON track_l1_identities(fallback_track_id)
+    WHERE fallback_track_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_track_l1_representative
+    ON track_l1_identities(representative_track_id);
+
+CREATE TABLE IF NOT EXISTS track_l1_external_ids (
+    provider          TEXT NOT NULL,
+    external_track_id TEXT NOT NULL,
+    l1_id             INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+    evidence_type     TEXT NOT NULL DEFAULT 'provider_observed'
+                      CHECK(evidence_type IN (
+                          'provider_observed', 'provider_relink',
+                          'manual_confirmed', 'migration'
+                      )),
+    is_primary        INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0, 1)),
+    first_seen_at     TEXT,
+    last_seen_at      TEXT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(provider, external_track_id)
+);
+CREATE INDEX IF NOT EXISTS idx_track_l1_external_owner
+    ON track_l1_external_ids(l1_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_track_l1_primary_external
+    ON track_l1_external_ids(l1_id, provider)
+    WHERE is_primary=1;
+
+CREATE TABLE IF NOT EXISTS track_l1_source_links (
+    l1_id          INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+    track_id       INTEGER NOT NULL REFERENCES tracks(track_id),
+    evidence_type  TEXT NOT NULL
+                   CHECK(evidence_type IN ('play_at_time', 'track_projection', 'manual')),
+    observed_plays INTEGER NOT NULL DEFAULT 0 CHECK(observed_plays >= 0),
+    first_seen_at  TEXT,
+    last_seen_at   TEXT,
+    PRIMARY KEY(l1_id, track_id, evidence_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_track_l1_source_track
+    ON track_l1_source_links(track_id);
+
+CREATE TABLE IF NOT EXISTS track_identity_events (
+    event_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    action          TEXT NOT NULL CHECK(action IN ('merge', 'split', 'attach_external_id')),
+    survivor_l1_id  INTEGER REFERENCES track_l1_identities(l1_id),
+    affected_l1_ids TEXT NOT NULL DEFAULT '[]',
+    before_json     TEXT NOT NULL DEFAULT '{}',
+    after_json      TEXT NOT NULL DEFAULT '{}',
+    reason          TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_track_identity_events_survivor
+    ON track_identity_events(survivor_l1_id, event_id);
+
+CREATE TABLE IF NOT EXISTS track_identity_state (
+    state_id        INTEGER PRIMARY KEY CHECK(state_id = 1),
+    current_revision INTEGER NOT NULL DEFAULT 0,
+    policy_version  TEXT NOT NULL DEFAULT 'spotify_owner_track_v1',
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT OR IGNORE INTO track_identity_state(state_id, current_revision, policy_version)
+VALUES (1, 0, 'spotify_owner_track_v1');
 
 -- Album projects (statistics-level album membership)
 CREATE TABLE IF NOT EXISTS album_projects (
@@ -945,6 +1125,7 @@ def merge_consecutive_plays(
     return reconstruct_logical_plays(
         df,
         min_ms,
+        identity_column="l1_id" if "l1_id" in df.columns else "track_id",
         dynamic_threshold=dynamic_threshold,
         max_gap_minutes=max_gap_minutes,
         boundary_column=boundary_column,
@@ -972,7 +1153,7 @@ _AGG_SHADOW_TABLES = {
     "agg_weekly_artists": "agg_weekly_artists_shadow",
 }
 
-_BILLBOARD_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v2"
+_BILLBOARD_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v3_l1"
 
 
 def _prepare_aggregation_shadows(conn: sqlite3.Connection) -> None:
@@ -1008,12 +1189,12 @@ def _copy_unaffected_aggregation_weeks(
 def _validate_aggregation_shadows(conn: sqlite3.Connection) -> None:
     """Reject corrupt staged partitions before the atomic four-table publish."""
     keys = {
-        "agg_weekly_tracks": ("billboard_week", "track_id"),
+        "agg_weekly_tracks": ("billboard_week", "l1_id"),
         "agg_weekly_albums": ("billboard_week", "album_id"),
         "agg_weekly_track_sources": (
             "billboard_week",
             "play_date",
-            "track_id",
+            "l1_id",
             "source_album_id",
         ),
         "agg_weekly_artists": ("billboard_week", "artist_id"),
@@ -1088,6 +1269,15 @@ def _publish_aggregation_shadows(
         ).fetchone():
             conn.execute(
                 """UPDATE track_credit_state
+                   SET active_aggregate_revision=current_revision,
+                       rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
+                   WHERE state_id=1"""
+            )
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artist_identity_state'"
+        ).fetchone():
+            conn.execute(
+                """UPDATE artist_identity_state
                    SET active_aggregate_revision=current_revision,
                        rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
                    WHERE state_id=1"""
@@ -1245,6 +1435,7 @@ def _aggregation_semantic_dependencies(
     *,
     identity_revision: int,
     track_credit_revision: int,
+    track_identity_revision: int,
     excluded_generation_id: str | None = None,
 ) -> dict[str, str]:
     from backend.domains.yearly_review.context import _album_project_semantic_revision
@@ -1256,6 +1447,7 @@ def _aggregation_semantic_dependencies(
         ),
         "identity_revision": str(identity_revision),
         "track_credit_revision": str(track_credit_revision),
+        "track_identity_revision": str(track_identity_revision),
         "album_project_revision": _album_project_semantic_revision(conn),
     }
 
@@ -1280,6 +1472,15 @@ def _clear_aggregations_for_generation(
         ).fetchone():
             conn.execute(
                 """UPDATE track_credit_state
+                   SET active_aggregate_revision=current_revision,
+                       rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
+                   WHERE state_id=1"""
+            )
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artist_identity_state'"
+        ).fetchone():
+            conn.execute(
+                """UPDATE artist_identity_state
                    SET active_aggregate_revision=current_revision,
                        rebuild_status='ready', last_error=NULL, updated_at=datetime('now')
                    WHERE state_id=1"""
@@ -1340,6 +1541,7 @@ def _load_plays_cached(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
     boundary_column: str | None = None,
+    track_identity_revision: int = 0,
 ) -> pd.DataFrame:
     """Cacheable inner loader — connection is created internally so it
     doesn't appear in the LRU cache key."""
@@ -1363,37 +1565,86 @@ def _load_plays_cached(
             where += f" AND {extra_where}" if where else f"WHERE {extra_where}"
         params = fp + list(extra_params)
 
+        identity_ready = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_external_ids'"
+        ).fetchone()
+        if identity_ready:
+            identity_columns = (
+                "p.track_id AS source_track_id, "
+                "COALESCE(li_spotify.l1_id, li_local.l1_id, p.track_id) AS l1_id, "
+                "COALESCE(li_spotify.representative_track_id, "
+                "li_local.representative_track_id, p.track_id) AS resolved_track_id"
+            )
+            identity_joins = (
+                "LEFT JOIN tracks t_source ON p.track_id = t_source.track_id "
+                "LEFT JOIN track_l1_external_ids external_spotify "
+                "ON external_spotify.provider='spotify' "
+                "AND external_spotify.external_track_id="
+                "COALESCE(NULLIF(p.spotify_track_id_at_play, ''), "
+                "NULLIF(t_source.spotify_track_id, '')) "
+                "LEFT JOIN track_l1_identities li_spotify "
+                "ON li_spotify.l1_id=external_spotify.l1_id "
+                "AND li_spotify.identity_status!='superseded' "
+                "LEFT JOIN track_l1_identities li_local "
+                "ON li_local.fallback_track_id=p.track_id "
+                "AND li_local.identity_status!='superseded' "
+                "AND COALESCE(NULLIF(p.spotify_track_id_at_play, ''), "
+                "NULLIF(t_source.spotify_track_id, '')) IS NULL "
+                "LEFT JOIN tracks t ON t.track_id=COALESCE("
+                "li_spotify.representative_track_id, "
+                "li_local.representative_track_id, p.track_id) "
+            )
+        else:
+            # Compatibility for isolated legacy/unit-test databases. Production
+            # databases are migrated before serving and therefore use L1.
+            identity_columns = (
+                "p.track_id AS source_track_id, p.track_id AS l1_id, "
+                "p.track_id AS resolved_track_id"
+            )
+            identity_joins = (
+                "LEFT JOIN tracks t_source ON p.track_id = t_source.track_id "
+                "LEFT JOIN tracks t ON p.track_id = t.track_id "
+            )
         if columns == "*":
             if join_albums:
-                cols = "p.*, t.track_name, t.spotify_track_uri, t.album_id AS track_album_id, t.artist_id, a.artist_name, al.album_name, al_src.album_name AS source_album_name"
+                cols = f"p.*, {identity_columns}, t.track_name, t.spotify_track_uri, t.album_id AS track_album_id, t.artist_id, a.artist_name, al.album_name, al_src.album_name AS source_album_name"
             else:
-                cols = "p.*, t.track_name, t.spotify_track_uri, t.artist_id, a.artist_name"
+                cols = f"p.*, {identity_columns}, t.track_name, t.spotify_track_uri, t.artist_id, a.artist_name"
             if filtered:
                 cols += ", stm.duration_ms"
         else:
-            cols = columns
+            cols = f"{columns}, {identity_columns}"
 
         if join_albums:
             from_clause = (
                 "FROM plays p "
-                "LEFT JOIN tracks t ON p.track_id = t.track_id "
-                "LEFT JOIN artists a ON t.artist_id = a.artist_id "
+                + identity_joins
+                + "LEFT JOIN artists a ON t.artist_id = a.artist_id "
                 "LEFT JOIN albums al ON t.album_id = al.album_id "
                 "LEFT JOIN albums al_src ON p.source_album_id = al_src.album_id"
             )
         else:
             from_clause = (
                 "FROM plays p "
-                "LEFT JOIN tracks t ON p.track_id = t.track_id "
-                "LEFT JOIN artists a ON t.artist_id = a.artist_id"
+                + identity_joins
+                + "LEFT JOIN artists a ON t.artist_id = a.artist_id"
             )
         if filtered:
             from_clause += (
-                " LEFT JOIN spotify_track_meta stm ON t.spotify_track_id = stm.spotify_track_id"
+                " LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id="
+                "COALESCE(NULLIF(p.spotify_track_id_at_play, ''), "
+                "NULLIF(t_source.spotify_track_id, ''))"
             )
 
         sql = f"SELECT {cols} {from_clause} {where} ORDER BY p.ts"
         df = pd.read_sql_query(sql, conn, params=params)
+        if "resolved_track_id" in df.columns:
+            df["representative_track_id"] = df["resolved_track_id"]
+            if "l1_id" in df.columns:
+                df["track_id"] = df["l1_id"].fillna(df["resolved_track_id"])
+            else:
+                df["track_id"] = df["resolved_track_id"]
+            df = df.drop(columns=["resolved_track_id"])
 
         if filtered and merge_enabled:
             df = merge_consecutive_plays(
@@ -1450,6 +1701,8 @@ def load_plays(
     boundary_column 默认 "source_album_id"，跨 source album 的连续同曲不合并；
     列不存在时自动忽略。
     """
+    from backend.domains.metadata.track_identity import get_track_identity_revision
+
     return _load_plays_cached(
         min_ms=min_ms,
         music_only=music_only,
@@ -1462,6 +1715,7 @@ def load_plays(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         boundary_column=boundary_column,
+        track_identity_revision=get_track_identity_revision(conn),
     ).copy()
 
 
@@ -1481,6 +1735,7 @@ def _load_plays_for_artists_cached(
     boundary_column: str | None = None,
     identity_revision: int = 0,
     track_credit_revision: int = 0,
+    track_identity_revision: int = 0,
 ) -> pd.DataFrame:
     """Same as _load_plays_cached but fans out through effective credits after merge
     so featured artists get their own rows. One play on a multi-artist track
@@ -1509,37 +1764,84 @@ def _load_plays_for_artists_cached(
             where += f" AND {extra_where}" if where else f"WHERE {extra_where}"
         params = fp + list(extra_params)
 
+        identity_ready = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_external_ids'"
+        ).fetchone()
+        if identity_ready:
+            identity_columns = (
+                "p.track_id AS source_track_id, "
+                "COALESCE(li_spotify.l1_id, li_local.l1_id, p.track_id) AS l1_id, "
+                "COALESCE(li_spotify.representative_track_id, "
+                "li_local.representative_track_id, p.track_id) AS resolved_track_id"
+            )
+            identity_joins = (
+                "LEFT JOIN tracks t_source ON p.track_id = t_source.track_id "
+                "LEFT JOIN track_l1_external_ids external_spotify "
+                "ON external_spotify.provider='spotify' "
+                "AND external_spotify.external_track_id="
+                "COALESCE(NULLIF(p.spotify_track_id_at_play, ''), "
+                "NULLIF(t_source.spotify_track_id, '')) "
+                "LEFT JOIN track_l1_identities li_spotify "
+                "ON li_spotify.l1_id=external_spotify.l1_id "
+                "AND li_spotify.identity_status!='superseded' "
+                "LEFT JOIN track_l1_identities li_local "
+                "ON li_local.fallback_track_id=p.track_id "
+                "AND li_local.identity_status!='superseded' "
+                "AND COALESCE(NULLIF(p.spotify_track_id_at_play, ''), "
+                "NULLIF(t_source.spotify_track_id, '')) IS NULL "
+                "LEFT JOIN tracks t ON t.track_id=COALESCE("
+                "li_spotify.representative_track_id, "
+                "li_local.representative_track_id, p.track_id) "
+            )
+        else:
+            identity_columns = (
+                "p.track_id AS source_track_id, p.track_id AS l1_id, "
+                "p.track_id AS resolved_track_id"
+            )
+            identity_joins = (
+                "LEFT JOIN tracks t_source ON p.track_id = t_source.track_id "
+                "LEFT JOIN tracks t ON p.track_id = t.track_id "
+            )
         if columns == "*":
             if join_albums:
-                cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name, al.album_name"
+                cols = f"p.*, {identity_columns}, t.track_name, t.spotify_track_uri, a.artist_name, al.album_name"
             else:
-                cols = "p.*, t.track_name, t.spotify_track_uri, a.artist_name"
+                cols = f"p.*, {identity_columns}, t.track_name, t.spotify_track_uri, a.artist_name"
             if filtered:
                 cols += ", stm.duration_ms"
         else:
-            cols = columns
+            cols = f"{columns}, {identity_columns}"
 
         # Step 1: Load single-artist data (same as _load_plays_cached)
         if join_albums:
             from_clause = (
                 "FROM plays p "
-                "LEFT JOIN tracks t ON p.track_id = t.track_id "
-                "LEFT JOIN artists a ON t.artist_id = a.artist_id "
+                + identity_joins
+                + "LEFT JOIN artists a ON t.artist_id = a.artist_id "
                 "LEFT JOIN albums al ON t.album_id = al.album_id"
             )
         else:
             from_clause = (
                 "FROM plays p "
-                "LEFT JOIN tracks t ON p.track_id = t.track_id "
-                "LEFT JOIN artists a ON t.artist_id = a.artist_id"
+                + identity_joins
+                + "LEFT JOIN artists a ON t.artist_id = a.artist_id"
             )
         if filtered:
             from_clause += (
-                " LEFT JOIN spotify_track_meta stm ON t.spotify_track_id = stm.spotify_track_id"
+                " LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id="
+                "COALESCE(NULLIF(p.spotify_track_id_at_play, ''), "
+                "NULLIF(t_source.spotify_track_id, ''))"
             )
 
         sql = f"SELECT {cols} {from_clause} {where} ORDER BY p.ts"
         df = pd.read_sql_query(sql, conn, params=params)
+        if "resolved_track_id" in df.columns:
+            df["representative_track_id"] = df["resolved_track_id"]
+            if "l1_id" in df.columns:
+                df["track_id"] = df["l1_id"].fillna(df["resolved_track_id"])
+            else:
+                df["track_id"] = df["resolved_track_id"]
+            df = df.drop(columns=["resolved_track_id"])
 
         if filtered and merge_enabled:
             df = merge_consecutive_plays(
@@ -1563,12 +1865,16 @@ def _load_plays_for_artists_cached(
         df = assign_logical_event_id(df, preserve_legacy_artist_event_id=True)
         from backend.domains.metadata.track_credits import get_effective_track_credit_frame
 
-        track_artists_df = get_effective_track_credit_frame(conn)
+        track_artists_df = get_effective_track_credit_frame(conn).rename(
+            columns={"track_id": "representative_track_id"}
+        )
         # Drop the single-artist artist_name (will be replaced by fan-out join)
         df = df.drop(columns=["artist_name"], errors="ignore")
         df = df.merge(
-            track_artists_df[["track_id", "artist_id", "raw_artist_id", "artist_name"]],
-            on="track_id",
+            track_artists_df[
+                ["representative_track_id", "artist_id", "raw_artist_id", "artist_name"]
+            ],
+            on="representative_track_id",
             how="inner",
         )
         df["artist_id"] = df["raw_artist_id"]
@@ -1613,6 +1919,7 @@ def load_plays_for_artists(
     """
     from backend.domains.metadata.artist_identity import get_identity_revision
     from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_identity import get_track_identity_revision
 
     return _load_plays_for_artists_cached(
         min_ms=min_ms,
@@ -1628,6 +1935,7 @@ def load_plays_for_artists(
         boundary_column=boundary_column,
         identity_revision=get_identity_revision(conn),
         track_credit_revision=get_track_credit_revision(conn),
+        track_identity_revision=get_track_identity_revision(conn),
     ).copy()
 
 
@@ -1652,28 +1960,80 @@ def db_exists() -> bool:
 
 @lru_cache(maxsize=1)
 def get_track_all_artists_map() -> dict[int, str]:
-    """Return {track_id: 'Primary, Featured1, Featured2, ...'} for tracks with
-    multiple credited artists. Tracks with only a primary artist are excluded
-    from the dict so callers can use .get() with the existing artist_name as
-    fallback."""
+    """Return the effective multi-artist display map keyed only by L1 ID.
+
+    L1 IDs and raw ``tracks.track_id`` values are independent numeric
+    namespaces and can collide.  Mixing both in one dictionary silently
+    overwrites unrelated songs, so raw-source consumers must use
+    :func:`get_raw_track_all_artists_map` explicitly.
+    """
     conn = get_db()
     from backend.domains.metadata.track_credits import canonical_artist_names_for_effective_tracks
 
-    resolved = canonical_artist_names_for_effective_tracks(conn)
+    raw_resolved = canonical_artist_names_for_effective_tracks(conn)
+    resolved: dict[int, list[str]] = {}
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+    ).fetchone():
+        for l1_id, representative_track_id in conn.execute(
+            """SELECT l1_id, representative_track_id
+                 FROM track_l1_identities
+                WHERE representative_track_id IS NOT NULL"""
+        ).fetchall():
+            names = raw_resolved.get(int(representative_track_id))
+            if names:
+                resolved[int(l1_id)] = names
+    else:
+        resolved = raw_resolved
     conn.close()
     return {tid: ", ".join(names) for tid, names in resolved.items() if len(names) > 1}
 
 
 @lru_cache(maxsize=1)
 def get_track_artist_names_map() -> dict[int, list[str]]:
-    """Return {track_id: [artist_name, ...]} for ALL tracks that have
-    track_artists entries (at minimum the primary artist)."""
+    """Return effective artist names keyed only by canonical L1 ID."""
     conn = get_db()
     from backend.domains.metadata.track_credits import canonical_artist_names_for_effective_tracks
 
-    result = canonical_artist_names_for_effective_tracks(conn)
+    raw_result = canonical_artist_names_for_effective_tracks(conn)
+    result: dict[int, list[str]] = {}
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+    ).fetchone():
+        for l1_id, representative_track_id in conn.execute(
+            """SELECT l1_id, representative_track_id
+                 FROM track_l1_identities
+                WHERE representative_track_id IS NOT NULL"""
+        ).fetchall():
+            names = raw_result.get(int(representative_track_id))
+            if names:
+                result[int(l1_id)] = names
+    else:
+        result = raw_result
     conn.close()
     return result
+
+
+def get_raw_track_artist_names_map() -> dict[int, list[str]]:
+    """Return effective artist names keyed by immutable source ``track_id``."""
+    conn = get_db()
+    try:
+        from backend.domains.metadata.track_credits import (
+            canonical_artist_names_for_effective_tracks,
+        )
+
+        return canonical_artist_names_for_effective_tracks(conn)
+    finally:
+        conn.close()
+
+
+def get_raw_track_all_artists_map() -> dict[int, str]:
+    """Return multi-artist display labels keyed by source ``track_id``."""
+    return {
+        track_id: ", ".join(names)
+        for track_id, names in get_raw_track_artist_names_map().items()
+        if len(names) > 1
+    }
 
 
 def enrich_track_artist_names(df: pd.DataFrame) -> pd.DataFrame:
@@ -1776,6 +2136,7 @@ def _agg_param_hash(
     max_merge_gap_minutes: int | None = 5,
     identity_revision: int = 0,
     track_credit_revision: int = 0,
+    track_identity_revision: int = 0,
 ) -> str:
     """Compute a content-hash of the parameters that affect aggregation results."""
     from backend.domains.playback.logical_timeline import PLAYBACK_EVENT_POLICY_VERSION
@@ -1791,6 +2152,7 @@ def _agg_param_hash(
             max_merge_gap_minutes,
             identity_revision,
             track_credit_revision,
+            track_identity_revision,
         ],
         sort_keys=True,
     )
@@ -1849,6 +2211,12 @@ def build_aggregations(
     """
     import pandas as pd
 
+    # Rebuilders are also used by maintenance scripts and portable fixtures
+    # that may predate the versioned L1 identity tables.  Upgrade the writable
+    # target before opening the build connection so the projection repair
+    # below never silently falls back to raw ``track_id`` grain.
+    ensure_schema()
+
     conn = get_db(readonly=False)
     build_generation_id = _active_playback_generation(conn)
     build_dataset_digest = _active_playback_dataset_digest(conn)
@@ -1860,13 +2228,20 @@ def build_aggregations(
 
     from backend.domains.metadata.artist_identity import get_identity_revision
     from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_identity import (
+        get_track_identity_revision,
+        synchronize_track_identity_projection,
+    )
 
+    synchronize_track_identity_projection(conn)
     identity_revision = get_identity_revision(conn)
     track_credit_revision = get_track_credit_revision(conn)
+    track_identity_revision = get_track_identity_revision(conn)
     semantic_dependencies = _aggregation_semantic_dependencies(
         conn,
         identity_revision=identity_revision,
         track_credit_revision=track_credit_revision,
+        track_identity_revision=track_identity_revision,
     )
     param_hash = _agg_param_hash(
         min_ms,
@@ -1877,6 +2252,7 @@ def build_aggregations(
         max_merge_gap_minutes=max_merge_gap_minutes,
         identity_revision=identity_revision,
         track_credit_revision=track_credit_revision,
+        track_identity_revision=track_identity_revision,
     )
 
     f, fp = base_filters(min_ms=0, music_only=music_only)
@@ -1885,12 +2261,38 @@ def build_aggregations(
     # Load raw data with track dimensions needed for merge and aggregation
     # (ms_played filter is applied AFTER merge to preserve short fragments)
     df = pd.read_sql_query(
-        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
+        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played,
+                   p.track_id AS source_track_id,
+                   COALESCE(li_spotify.l1_id, li_local.l1_id) AS l1_id,
+                   COALESCE(li_spotify.representative_track_id,
+                            li_local.representative_track_id, p.track_id) AS track_id,
                    p.source_album_id, t.album_id, t.artist_id, stm.duration_ms
             FROM plays p
-            JOIN tracks t ON p.track_id = t.track_id
+            JOIN tracks t_source ON p.track_id = t_source.track_id
+            LEFT JOIN track_l1_external_ids external_spotify
+              ON external_spotify.provider='spotify'
+             AND external_spotify.external_track_id=COALESCE(
+                    NULLIF(p.spotify_track_id_at_play, ''),
+                    NULLIF(t_source.spotify_track_id, '')
+                 )
+            LEFT JOIN track_l1_identities li_spotify
+              ON li_spotify.l1_id=external_spotify.l1_id
+             AND li_spotify.identity_status!='superseded'
+            LEFT JOIN track_l1_identities li_local
+              ON li_local.fallback_track_id=p.track_id
+             AND li_local.identity_status!='superseded'
+             AND COALESCE(NULLIF(p.spotify_track_id_at_play, ''),
+                          NULLIF(t_source.spotify_track_id, '')) IS NULL
+            JOIN tracks t ON t.track_id=COALESCE(
+                    li_spotify.representative_track_id,
+                    li_local.representative_track_id,
+                    p.track_id
+                 )
             LEFT JOIN spotify_track_meta stm
-              ON t.spotify_track_id = stm.spotify_track_id
+              ON stm.spotify_track_id=COALESCE(
+                    NULLIF(p.spotify_track_id_at_play, ''),
+                    NULLIF(t_source.spotify_track_id, '')
+                 )
             {where}
             ORDER BY p.ts, p.play_id""",
         conn,
@@ -1955,19 +2357,25 @@ def build_aggregations(
     if progress_callback:
         progress_callback("预聚合: 单曲...", 0.0)
     tracks_agg = (
-        df.groupby(["billboard_week", "track_id"])
+        df.groupby(["billboard_week", "l1_id", "track_id"])
         .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
         .reset_index()
     )
     t_rows = [
-        (str(r.billboard_week), int(r.track_id), int(r.play_count), int(r.total_ms))
+        (
+            str(r.billboard_week),
+            int(r.l1_id),
+            int(r.track_id),
+            int(r.play_count),
+            int(r.total_ms),
+        )
         for r in tracks_agg.itertuples(index=False)
     ]
     _write_agg_batch(
         conn,
         _AGG_SHADOW_TABLES["agg_weekly_tracks"],
         t_rows,
-        ["billboard_week", "track_id", "play_count", "total_ms"],
+        ["billboard_week", "l1_id", "track_id", "play_count", "total_ms"],
     )
     results["tracks"] = len(t_rows)
     if progress_callback:
@@ -1980,7 +2388,7 @@ def build_aggregations(
         df["_source_album_id"] = df.get("source_album_id", 0)
     df["_source_album_id"] = df["_source_album_id"].fillna(0).astype(int)
     track_sources_agg = (
-        df.groupby(["billboard_week", "ts_date", "track_id", "_source_album_id"])
+        df.groupby(["billboard_week", "ts_date", "l1_id", "track_id", "_source_album_id"])
         .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
         .reset_index()
         .rename(columns={"ts_date": "play_date", "_source_album_id": "source_album_id"})
@@ -1989,6 +2397,7 @@ def build_aggregations(
         (
             str(r.billboard_week),
             str(r.play_date),
+            int(r.l1_id),
             int(r.track_id),
             int(r.source_album_id),
             int(r.play_count),
@@ -2000,7 +2409,15 @@ def build_aggregations(
         conn,
         _AGG_SHADOW_TABLES["agg_weekly_track_sources"],
         ts_rows,
-        ["billboard_week", "play_date", "track_id", "source_album_id", "play_count", "total_ms"],
+        [
+            "billboard_week",
+            "play_date",
+            "l1_id",
+            "track_id",
+            "source_album_id",
+            "play_count",
+            "total_ms",
+        ],
     )
     results["track_sources"] = len(ts_rows)
 
@@ -2146,11 +2563,12 @@ def _billboard_aggregate_maps(
     import pandas as pd
 
     key_columns = {
-        "agg_weekly_tracks": ("billboard_week", "track_id"),
+        "agg_weekly_tracks": ("billboard_week", "l1_id", "track_id"),
         "agg_weekly_albums": ("billboard_week", "album_id"),
         "agg_weekly_track_sources": (
             "billboard_week",
             "play_date",
+            "l1_id",
             "track_id",
             "source_album_id",
         ),
@@ -2167,14 +2585,14 @@ def _billboard_aggregate_maps(
         week_start_hour=week_start_hour,
     )
     weighted["source_album_id"] = weighted["_source_album_id"].fillna(0).astype(int)
-    track_map = _weekly_aggregate_map(weighted, ["billboard_week", "track_id"])
+    track_map = _weekly_aggregate_map(weighted, ["billboard_week", "l1_id", "track_id"])
     source_map = _weekly_aggregate_map(
         weighted,
-        ["billboard_week", "ts_date", "track_id", "source_album_id"],
+        ["billboard_week", "ts_date", "l1_id", "track_id", "source_album_id"],
     )
     source_map = {
-        (week, play_date, track_id, source_album_id): values
-        for (week, play_date, track_id, source_album_id), values in source_map.items()
+        (week, play_date, l1_id, track_id, source_album_id): values
+        for (week, play_date, l1_id, track_id, source_album_id), values in source_map.items()
     }
 
     album_weighted = weighted.copy()
@@ -2298,12 +2716,37 @@ def _billboard_week_windows(
 
 def _historical_replacement_row_query() -> str:
     return """SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour,
-                     p.ms_played, p.track_id, p.source_album_id,
-                     t.album_id, t.artist_id, stm.duration_ms
+                     p.ms_played, p.track_id AS source_track_id,
+                     COALESCE(li_spotify.l1_id, li_local.l1_id) AS l1_id,
+                     COALESCE(li_spotify.representative_track_id,
+                              li_local.representative_track_id, p.track_id) AS track_id,
+                     p.source_album_id, t.album_id, t.artist_id, stm.duration_ms
               FROM plays p
-              JOIN tracks t ON p.track_id=t.track_id
+              JOIN tracks t_source ON p.track_id=t_source.track_id
+              LEFT JOIN track_l1_external_ids external_spotify
+                ON external_spotify.provider='spotify'
+               AND external_spotify.external_track_id=COALESCE(
+                      NULLIF(p.spotify_track_id_at_play, ''),
+                      NULLIF(t_source.spotify_track_id, '')
+                   )
+              LEFT JOIN track_l1_identities li_spotify
+                ON li_spotify.l1_id=external_spotify.l1_id
+               AND li_spotify.identity_status!='superseded'
+              LEFT JOIN track_l1_identities li_local
+                ON li_local.fallback_track_id=p.track_id
+               AND li_local.identity_status!='superseded'
+               AND COALESCE(NULLIF(p.spotify_track_id_at_play, ''),
+                            NULLIF(t_source.spotify_track_id, '')) IS NULL
+              JOIN tracks t ON t.track_id=COALESCE(
+                      li_spotify.representative_track_id,
+                      li_local.representative_track_id,
+                      p.track_id
+                   )
               LEFT JOIN spotify_track_meta stm
-                ON t.spotify_track_id=stm.spotify_track_id"""
+                ON stm.spotify_track_id=COALESCE(
+                     NULLIF(p.spotify_track_id_at_play, ''),
+                     NULLIF(t_source.spotify_track_id, '')
+                   )"""
 
 
 def _historical_rows_can_merge(
@@ -2314,7 +2757,7 @@ def _historical_rows_can_merge(
 ) -> bool:
     import pandas as pd
 
-    if left["track_id"] != right["track_id"]:
+    if left["l1_id"] != right["l1_id"]:
         return False
     if left["source_album_id"] != right["source_album_id"]:
         return False
@@ -2490,6 +2933,8 @@ def build_aggregations_for_replaced_weeks(
     """Exactly replace proven historical week partitions from current facts."""
     import pandas as pd
 
+    ensure_schema()
+
     def full_fallback(reason: str) -> dict[str, int | str]:
         result = build_aggregations(
             min_ms=min_ms,
@@ -2525,13 +2970,20 @@ def build_aggregations_for_replaced_weeks(
 
         from backend.domains.metadata.artist_identity import get_identity_revision
         from backend.domains.metadata.track_credits import get_track_credit_revision
+        from backend.domains.metadata.track_identity import (
+            get_track_identity_revision,
+            synchronize_track_identity_projection,
+        )
 
+        synchronize_track_identity_projection(conn)
         identity_revision = get_identity_revision(conn)
         credit_revision = get_track_credit_revision(conn)
+        track_identity_revision = get_track_identity_revision(conn)
         current_dependencies = _aggregation_semantic_dependencies(
             conn,
             identity_revision=identity_revision,
             track_credit_revision=credit_revision,
+            track_identity_revision=track_identity_revision,
         )
         reusable_dependencies = dict(current_dependencies)
         reusable_dependencies.pop("album_project_revision", None)
@@ -2544,6 +2996,7 @@ def build_aggregations_for_replaced_weeks(
             max_merge_gap_minutes=max_merge_gap_minutes,
             identity_revision=identity_revision,
             track_credit_revision=credit_revision,
+            track_identity_revision=track_identity_revision,
         )
         config = _aggregation_config(conn)
         if config.get("param_hash") != param_hash or any(
@@ -2672,6 +3125,8 @@ def build_aggregations_for_weeks(
 ) -> dict[str, int | str]:
     """Apply a proven tail contribution delta or safely fall back to full."""
 
+    ensure_schema()
+
     def full_fallback(reason: str) -> dict[str, int | str]:
         result = build_aggregations(
             min_ms=min_ms,
@@ -2699,18 +3154,26 @@ def build_aggregations_for_weeks(
         )
     from backend.domains.metadata.artist_identity import get_identity_revision
     from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_identity import (
+        get_track_identity_revision,
+        synchronize_track_identity_projection,
+    )
 
+    synchronize_track_identity_projection(conn)
     identity_revision = get_identity_revision(conn)
     credit_revision = get_track_credit_revision(conn)
+    track_identity_revision = get_track_identity_revision(conn)
     current_dependencies = _aggregation_semantic_dependencies(
         conn,
         identity_revision=identity_revision,
         track_credit_revision=credit_revision,
+        track_identity_revision=track_identity_revision,
     )
     base_dependencies = _aggregation_semantic_dependencies(
         conn,
         identity_revision=identity_revision,
         track_credit_revision=credit_revision,
+        track_identity_revision=track_identity_revision,
         excluded_generation_id=change_generation_id,
     )
     # Album Project membership is applied from track-source rows at read time;
@@ -2725,6 +3188,7 @@ def build_aggregations_for_weeks(
         max_merge_gap_minutes=max_merge_gap_minutes,
         identity_revision=identity_revision,
         track_credit_revision=credit_revision,
+        track_identity_revision=track_identity_revision,
     )
     base_generation_id = _partition_base_generation(
         conn,
@@ -2830,7 +3294,11 @@ def load_agg_weekly_tracks(conn: sqlite3.Connection) -> pd.DataFrame:
     import pandas as pd
 
     df = pd.read_sql_query(
-        """SELECT awt.billboard_week, awt.track_id, t.track_name,
+        """SELECT awt.billboard_week,
+                  awt.l1_id,
+                  awt.l1_id AS track_id,
+                  awt.track_id AS representative_track_id,
+                  t.track_name,
                   t.artist_id, a.artist_name,
                   al.album_name, awt.play_count, awt.total_ms
            FROM agg_weekly_tracks awt
@@ -2873,7 +3341,9 @@ def load_agg_weekly_track_sources(conn: sqlite3.Connection) -> pd.DataFrame:
     df = pd.read_sql_query(
         """SELECT awts.billboard_week,
                   awts.play_date,
-                  awts.track_id,
+                  awts.l1_id,
+                  awts.l1_id AS track_id,
+                  awts.track_id AS representative_track_id,
                   t.track_name,
                   t.artist_id,
                   a.artist_name,

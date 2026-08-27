@@ -158,9 +158,9 @@ def main() -> int:
             for context in contexts
         }
         actual = {(int(row[0]), bool(row[1])): str(row[2]) for row in rows}
-        if len(rows) != 6 or actual != expected:
+        if len(rows) != 4 or actual != expected:
             raise SystemExit(
-                "music-search runtime gate failed: current fingerprint matrix is not exact 6/6"
+                "music-search runtime gate failed: current fingerprint matrix is not exact 4/4"
             )
         if any(str(row[3]) != "ready" for row in rows):
             raise SystemExit("music-search runtime gate failed: a current variant is not ready")
@@ -199,7 +199,7 @@ def main() -> int:
     elapsed_ms = (time.perf_counter() - started_at) * 1000
     print(
         "Music-search runtime gate passed: "
-        f"migration={LATEST_SCHEMA_VERSION} variants=6/6 "
+        f"migration={LATEST_SCHEMA_VERSION} variants=4/4 "
         f"builder={MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION} orphans=0 "
         f"exact={search_status['exact']} fuzzy={search_status['fuzzy']} "
         f"cjk={search_status['cjk']} short_cjk={search_status['short_cjk']} "

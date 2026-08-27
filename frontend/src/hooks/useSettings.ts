@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryKeys } from '@/api/query-keys'
-import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type UngroupedAlbum, type DetectionResult, type TrackGroupCandidate, type TrackGroupConfirmResult, type AlbumRelationConfirmResult, type TrackComparison, type RebuildResult, type VersionMergeScope, type TrackGroupScope, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
+import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type TrackGroup, type TrackGroupMember, type UngroupedAlbum, type DetectionResult, type TrackGroupCandidate, type TrackGroupConfirmResult, type TrackCreditTrackCandidate, type AlbumRelationConfirmResult, type CanonicalTrackEvent, type CanonicalTrackMutationResult, type TrackComparison, type RebuildResult, type VersionMergeScope, type TrackGroupScope, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
 import type { StreamingImportOptions } from '@/types/data-import'
 
 // ── useSettings ─────────────────────────────────────────────
@@ -13,22 +13,25 @@ interface ClearCacheResult {
   deleted_count: number
 }
 
-interface SpotifyAuthUrl { auth_url: string; state: string }
-interface SpotifyStatus { connected: boolean; scope?: string; connected_at?: string }
-interface SpotifySyncResult { success: boolean; total_in_spotify?: number; total_in_db?: number; matched?: number; new_dates?: number; error?: string }
+interface SpotifyAuthUrl {
+  auth_url: string
+  state: string
+}
+interface SpotifyStatus {
+  connected: boolean
+  scope?: string
+  connected_at?: string
+}
+interface SpotifySyncResult {
+  success: boolean
+  total_in_spotify?: number
+  total_in_db?: number
+  matched?: number
+  new_dates?: number
+  error?: string
+}
 
-const STATS_SETTING_KEYS = new Set<keyof SettingsUpdatePayload>([
-  'min_ms',
-  'music_only',
-  'merge_enabled',
-  'max_merge_gap_minutes',
-  'bb_top_n',
-  'bb_album_top_n',
-  'bb_artist_top_n',
-  'bb_week_start_dow',
-  'bb_week_start_hour',
-  'include_compilations',
-])
+const STATS_SETTING_KEYS = new Set<keyof SettingsUpdatePayload>(['min_ms', 'music_only', 'merge_enabled', 'max_merge_gap_minutes', 'bb_top_n', 'bb_album_top_n', 'bb_artist_top_n', 'bb_week_start_dow', 'bb_week_start_hour', 'include_compilations'])
 
 function touchesStatsSettings(payload: SettingsUpdatePayload): boolean {
   return Object.keys(payload).some((key) => STATS_SETTING_KEYS.has(key as keyof SettingsUpdatePayload))
@@ -39,7 +42,9 @@ function getStoredBool(key: string, fallback: boolean): boolean {
     const v = localStorage.getItem(key)
     if (v === 'true') return true
     if (v === 'false') return false
-  } catch { /* localStorage unavailable */ }
+  } catch {
+    /* localStorage unavailable */
+  }
   return fallback
 }
 
@@ -93,25 +98,39 @@ export function useSettings(): UseSettingsResult {
     }
   }, [])
 
-  const updateSettings = useCallback(async (payload: SettingsUpdatePayload) => {
-    const updated = await api.put<SettingsData>('/settings', payload)
-    queryClient.setQueryData(queryKeys.settings.data(), updated)
-    if (touchesStatsSettings(payload)) {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.home.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.billboard.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.analysis.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.music.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.community.all })
-    }
-  }, [queryClient])
+  const updateSettings = useCallback(
+    async (payload: SettingsUpdatePayload) => {
+      const updated = await api.put<SettingsData>('/settings', payload)
+      queryClient.setQueryData(queryKeys.settings.data(), updated)
+      if (touchesStatsSettings(payload)) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.home.all })
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.billboard.all,
+        })
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.analysis.all,
+        })
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.dashboard.all,
+        })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.music.all })
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.community.all,
+        })
+      }
+    },
+    [queryClient],
+  )
 
-  const updateApiKey = useCallback(async (apiKey: string, baseUrl?: string) => {
-    const payload: Record<string, string> = { llm_api_key: apiKey }
-    if (baseUrl !== undefined) payload.llm_base_url = baseUrl
-    await api.put('/settings', payload)
-    await settingsQuery.refetch()
-  }, [settingsQuery])
+  const updateApiKey = useCallback(
+    async (apiKey: string, baseUrl?: string) => {
+      const payload: Record<string, string> = { llm_api_key: apiKey }
+      if (baseUrl !== undefined) payload.llm_base_url = baseUrl
+      await api.put('/settings', payload)
+      await settingsQuery.refetch()
+    },
+    [settingsQuery],
+  )
 
   const rebuildAgg = useCallback(() => {
     const params = new URLSearchParams()
@@ -130,38 +149,61 @@ export function useSettings(): UseSettingsResult {
     })
   }, [queryClient])
 
-  const getProfileDetail = useCallback((profileId: number) => {
-    return queryClient.fetchQuery({
-      queryKey: queryKeys.settings.llmProfile(profileId),
-      queryFn: () => api.get<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`),
-    })
-  }, [queryClient])
+  const getProfileDetail = useCallback(
+    (profileId: number) => {
+      return queryClient.fetchQuery({
+        queryKey: queryKeys.settings.llmProfile(profileId),
+        queryFn: () => api.get<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`),
+      })
+    },
+    [queryClient],
+  )
 
-  const createProfile = useCallback(async (payload: LLMProfileCreatePayload) => {
-    const result = await api.post<LLMProfileCreateResult>('/settings/llm-profiles', payload)
-    await queryClient.invalidateQueries({ queryKey: queryKeys.settings.llmProfiles() })
-    return result
-  }, [queryClient])
+  const createProfile = useCallback(
+    async (payload: LLMProfileCreatePayload) => {
+      const result = await api.post<LLMProfileCreateResult>('/settings/llm-profiles', payload)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.llmProfiles(),
+      })
+      return result
+    },
+    [queryClient],
+  )
 
-  const updateProfile = useCallback(async (profileId: number, payload: LLMProfileUpdatePayload) => {
-    const result = await api.put<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`, payload)
-    queryClient.setQueryData(queryKeys.settings.llmProfile(profileId), result)
-    await queryClient.invalidateQueries({ queryKey: queryKeys.settings.llmProfiles() })
-    return result
-  }, [queryClient])
+  const updateProfile = useCallback(
+    async (profileId: number, payload: LLMProfileUpdatePayload) => {
+      const result = await api.put<LLMProfileDetail>(`/settings/llm-profiles/${profileId}`, payload)
+      queryClient.setQueryData(queryKeys.settings.llmProfile(profileId), result)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.llmProfiles(),
+      })
+      return result
+    },
+    [queryClient],
+  )
 
-  const deleteProfile = useCallback(async (profileId: number) => {
-    const result = await api.del<{ status: string }>(`/settings/llm-profiles/${profileId}`)
-    queryClient.removeQueries({ queryKey: queryKeys.settings.llmProfile(profileId) })
-    await queryClient.invalidateQueries({ queryKey: queryKeys.settings.llmProfiles() })
-    return result
-  }, [queryClient])
+  const deleteProfile = useCallback(
+    async (profileId: number) => {
+      const result = await api.del<{ status: string }>(`/settings/llm-profiles/${profileId}`)
+      queryClient.removeQueries({
+        queryKey: queryKeys.settings.llmProfile(profileId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.settings.llmProfiles(),
+      })
+      return result
+    },
+    [queryClient],
+  )
 
-  const applyProfile = useCallback(async (profileId: number) => {
-    const result = await api.post<{ status: string; profile_id: number }>(`/settings/llm-profiles/${profileId}/apply`)
-    await settingsQuery.refetch()
-    return result
-  }, [settingsQuery])
+  const applyProfile = useCallback(
+    async (profileId: number) => {
+      const result = await api.post<{ status: string; profile_id: number }>(`/settings/llm-profiles/${profileId}/apply`)
+      await settingsQuery.refetch()
+      return result
+    },
+    [settingsQuery],
+  )
 
   const spotifyConnect = useCallback(() => {
     return api.get<SpotifyAuthUrl>('/spotify/auth/login')
@@ -183,51 +225,75 @@ export function useSettings(): UseSettingsResult {
     })
   }, [queryClient])
 
-  const pollImport = useCallback((jobId: string, setter: Dispatch<SetStateAction<ImportJob | null>>) => {
-    // Clear any existing poll for this setter's job
-    const existing = pollRef.current.get('streaming')
-    if (existing) clearInterval(existing)
+  const pollImport = useCallback(
+    (jobId: string, setter: Dispatch<SetStateAction<ImportJob | null>>) => {
+      // Clear any existing poll for this setter's job
+      const existing = pollRef.current.get('streaming')
+      if (existing) clearInterval(existing)
 
-    const interval = setInterval(() => {
-      api.get<ImportJob>(`/import/status/${jobId}`).then((status) => {
-        setter(status)
-        if (status.status === 'done' || status.status === 'error' || status.status === 'blocked' || status.status === 'needs_confirmation') {
-          clearInterval(interval)
-          pollRef.current.delete('streaming')
-          if (status.status === 'done') refetch()
-        }
-      }).catch(() => {})
-    }, 1000)
+      const interval = setInterval(() => {
+        api
+          .get<ImportJob>(`/import/status/${jobId}`)
+          .then((status) => {
+            setter(status)
+            if (status.status === 'done' || status.status === 'error' || status.status === 'blocked' || status.status === 'needs_confirmation') {
+              clearInterval(interval)
+              pollRef.current.delete('streaming')
+              if (status.status === 'done') refetch()
+            }
+          })
+          .catch(() => {})
+      }, 1000)
 
-    pollRef.current.set('streaming', interval)
-  }, [refetch])
+      pollRef.current.set('streaming', interval)
+    },
+    [refetch],
+  )
 
-  const startStreamingImport = useCallback((options: StreamingImportOptions = {}) => {
-    const params: Record<string, string | boolean> = {
-      mode: options.mode ?? 'auto',
-      confirm_warnings: options.confirmWarnings ?? false,
-      confirm_plan: options.confirmPlan ?? false,
-    }
-    if (options.confirmationToken) params.confirmation_token = options.confirmationToken
-    api.postWithParams<{ job_id: string }>('/import/streaming', undefined, params).then(({ job_id }) => {
-      setStreamingJob({ job_id, status: 'running', progress_pct: 0, message: '初始化...', result: null })
-      pollImport(job_id, setStreamingJob)
-    })
-  }, [pollImport])
+  const startStreamingImport = useCallback(
+    (options: StreamingImportOptions = {}) => {
+      const params: Record<string, string | boolean> = {
+        mode: options.mode ?? 'auto',
+        confirm_warnings: options.confirmWarnings ?? false,
+        confirm_plan: options.confirmPlan ?? false,
+      }
+      if (options.confirmationToken) params.confirmation_token = options.confirmationToken
+      api.postWithParams<{ job_id: string }>('/import/streaming', undefined, params).then(({ job_id }) => {
+        setStreamingJob({
+          job_id,
+          status: 'running',
+          progress_pct: 0,
+          message: '初始化...',
+          result: null,
+        })
+        pollImport(job_id, setStreamingJob)
+      })
+    },
+    [pollImport],
+  )
 
   const startAccountImport = useCallback(() => {
     api.post<{ job_id: string }>('/import/account').then(({ job_id }) => {
-      setAccountJob({ job_id, status: 'running', progress_pct: 0, message: '初始化...', result: null })
+      setAccountJob({
+        job_id,
+        status: 'running',
+        progress_pct: 0,
+        message: '初始化...',
+        result: null,
+      })
       // Use separate track for account polling
       const interval = setInterval(() => {
-        api.get<ImportJob>(`/import/status/${job_id}`).then((status) => {
-          setAccountJob(status)
-          if (status.status === 'done' || status.status === 'error' || status.status === 'blocked' || status.status === 'needs_confirmation') {
-            clearInterval(interval)
-            pollRef.current.delete('account')
-            if (status.status === 'done') refetch()
-          }
-        }).catch(() => {})
+        api
+          .get<ImportJob>(`/import/status/${job_id}`)
+          .then((status) => {
+            setAccountJob(status)
+            if (status.status === 'done' || status.status === 'error' || status.status === 'blocked' || status.status === 'needs_confirmation') {
+              clearInterval(interval)
+              pollRef.current.delete('account')
+              if (status.status === 'done') refetch()
+            }
+          })
+          .catch(() => {})
       }, 1000)
       pollRef.current.set('account', interval)
     })
@@ -242,10 +308,20 @@ export function useSettings(): UseSettingsResult {
     updateApiKey,
     clearTranslationCache,
     rebuildAgg,
-    startStreamingImport, startAccountImport, streamingJob, accountJob,
-    spotifyConnect, spotifyDisconnect, spotifySync, checkSpotifyStatus,
+    startStreamingImport,
+    startAccountImport,
+    streamingJob,
+    accountJob,
+    spotifyConnect,
+    spotifyDisconnect,
+    spotifySync,
+    checkSpotifyStatus,
     applyProfile,
-    fetchProfiles, getProfileDetail, createProfile, updateProfile, deleteProfile,
+    fetchProfiles,
+    getProfileDetail,
+    createProfile,
+    updateProfile,
+    deleteProfile,
   }
 }
 
@@ -255,12 +331,17 @@ interface UseVersionMergeResult {
   groups: ReleaseGroup[]
   groupsLoading: boolean
   fetchGroups: () => Promise<ReleaseGroup[]>
+  trackGroups: TrackGroup[]
+  trackGroupsLoading: boolean
+  fetchTrackGroups: () => Promise<TrackGroup[]>
   detectGroups: (overlapThreshold: number) => Promise<DetectionResult[]>
   applyDetected: (confirmedGroups: DetectionResult[]) => Promise<{ created_count: number; skipped_count: number }>
   fetchCollaborationCandidates: () => Promise<TrackGroupCandidate[]>
-  confirmTrackCandidate: (originalTrackId: number, candidateTrackId: number, scope?: TrackGroupScope) => Promise<TrackGroupConfirmResult>
+  searchTracks: (query: string) => Promise<TrackCreditTrackCandidate[]>
+  confirmTrackCandidate: (originalL1Id: number, candidateL1Id: number, scope?: TrackGroupScope) => Promise<TrackGroupConfirmResult>
   rebuildAlbumProjects: () => Promise<{ status: string }>
   getGroupMembers: (groupId: number) => Promise<GroupMember[]>
+  getTrackGroupMembers: (groupId: number) => Promise<TrackGroupMember[]>
   getUngroupedAlbums: (artistName?: string) => Promise<UngroupedAlbum[]>
   compareAlbums: (aId: number, bId: number) => Promise<TrackComparison>
   getAlbumTypes: (ids: number[]) => Promise<Record<string, string>>
@@ -269,6 +350,12 @@ interface UseVersionMergeResult {
   updateMembers: (groupId: number, addIds?: number[], removeIds?: number[]) => Promise<{ status: string }>
   setPrimary: (groupId: number, albumId: number) => Promise<{ status: string }>
   deleteGroup: (groupId: number) => Promise<{ status: string }>
+  updateTrackMembers: (groupId: number, addIds?: number[], removeIds?: number[]) => Promise<{ status: string }>
+  setPrimaryTrack: (groupId: number, trackId: number) => Promise<{ status: string }>
+  deleteTrackGroup: (groupId: number) => Promise<{ status: string }>
+  fetchCanonicalTrackEvents: () => Promise<CanonicalTrackEvent[]>
+  mergeCanonicalTracks: (survivorId: number, absorbedIds: number[], reason: string) => Promise<CanonicalTrackMutationResult>
+  splitCanonicalTrack: (canonicalTrackId: number, spotifyTrackId: string, reason: string) => Promise<CanonicalTrackMutationResult>
 }
 
 export function useVersionMerge(): UseVersionMergeResult {
@@ -279,13 +366,25 @@ export function useVersionMerge(): UseVersionMergeResult {
     enabled: false,
   })
   const { refetch: refetchGroups } = groupsQuery
+  const trackGroupsQuery = useQuery({
+    queryKey: queryKeys.versionMerge.trackGroups(),
+    queryFn: () => api.get<TrackGroup[]>('/version-merge/track-groups'),
+    enabled: false,
+  })
+  const { refetch: refetchTrackGroups } = trackGroupsQuery
 
   const fetchGroups = useCallback(() => {
     return refetchGroups().then((r) => r.data ?? [])
   }, [refetchGroups])
 
+  const fetchTrackGroups = useCallback(() => {
+    return refetchTrackGroups().then((r) => r.data ?? [])
+  }, [refetchTrackGroups])
+
   const invalidateMergeDependents = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.all })
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.versionMerge.all,
+    })
     void queryClient.invalidateQueries({ queryKey: queryKeys.home.all })
     void queryClient.invalidateQueries({ queryKey: queryKeys.analysis.all })
     void queryClient.invalidateQueries({ queryKey: queryKeys.billboard.all })
@@ -296,13 +395,15 @@ export function useVersionMerge(): UseVersionMergeResult {
     return api.post<DetectionResult[]>(`/version-merge/detect?overlap_threshold=${overlapThreshold}`)
   }, [])
 
-  const applyDetected = useCallback((confirmedGroups: DetectionResult[]) => {
-    return api.post<{ created_count: number; skipped_count: number }>('/version-merge/apply', { confirmed_groups: confirmedGroups })
-      .then((result) => {
+  const applyDetected = useCallback(
+    (confirmedGroups: DetectionResult[]) => {
+      return api.post<{ created_count: number; skipped_count: number }>('/version-merge/apply', { confirmed_groups: confirmedGroups }).then((result) => {
         invalidateMergeDependents()
         return result
       })
-  }, [invalidateMergeDependents])
+    },
+    [invalidateMergeDependents],
+  )
 
   const fetchCollaborationCandidates = useCallback(() => {
     return queryClient.fetchQuery({
@@ -311,123 +412,284 @@ export function useVersionMerge(): UseVersionMergeResult {
     })
   }, [queryClient])
 
-  const confirmTrackCandidate = useCallback((originalTrackId: number, candidateTrackId: number, scope: TrackGroupScope = 'composition') => {
-    return api.post<TrackGroupConfirmResult>('/version-merge/track-groups/confirm', {
-      original_track_id: originalTrackId,
-      candidate_track_id: candidateTrackId,
-      scope,
-    }).then((result) => {
-      invalidateMergeDependents()
-      return result
-    })
-  }, [invalidateMergeDependents])
+  const searchTracks = useCallback(
+    (query: string) => {
+      const normalized = query.trim()
+      if (!normalized) return Promise.resolve([])
+      return queryClient.fetchQuery({
+        queryKey: queryKeys.versionMerge.trackSearch(normalized),
+        queryFn: () => api.get<TrackCreditTrackCandidate[]>('/version-merge/track-candidates', { q: normalized, limit: 40 }),
+      })
+    },
+    [queryClient],
+  )
+
+  const confirmTrackCandidate = useCallback(
+    (originalL1Id: number, candidateL1Id: number, scope: TrackGroupScope = 'composition') => {
+      return api
+        .post<TrackGroupConfirmResult>('/version-merge/track-groups/confirm', {
+          original_l1_id: originalL1Id,
+          candidate_l1_id: candidateL1Id,
+          scope,
+        })
+        .then((result) => {
+          invalidateMergeDependents()
+          return result
+        })
+    },
+    [invalidateMergeDependents],
+  )
 
   const rebuildAlbumProjects = useCallback(() => {
-    return api.post<{ status: string }>('/version-merge/album-projects/rebuild')
-      .then((result) => {
-        invalidateMergeDependents()
-        return result
-      })
-  }, [invalidateMergeDependents])
-
-  const getGroupMembers = useCallback((groupId: number) => {
-    return queryClient.fetchQuery({
-      queryKey: queryKeys.versionMerge.members(groupId),
-      queryFn: () => api.get<GroupMember[]>(`/version-merge/groups/${groupId}/members`),
-    })
-  }, [queryClient])
-
-  const getUngroupedAlbums = useCallback((artistName?: string) => {
-    const params = artistName ? { artist_name: artistName } : undefined
-    return queryClient.fetchQuery({
-      queryKey: queryKeys.versionMerge.ungrouped(artistName),
-      queryFn: () => api.get<UngroupedAlbum[]>('/version-merge/ungrouped', params as Record<string, string | number | boolean>),
-    })
-  }, [queryClient])
-
-  const compareAlbums = useCallback((aId: number, bId: number) => {
-    return queryClient.fetchQuery({
-      queryKey: queryKeys.versionMerge.comparison(aId, bId),
-      queryFn: () => api.get<TrackComparison>(`/version-merge/compare?album_id_a=${aId}&album_id_b=${bId}`),
-    })
-  }, [queryClient])
-
-  const getAlbumTypes = useCallback((ids: number[]) => {
-    return queryClient.fetchQuery({
-      queryKey: queryKeys.versionMerge.albumTypes(ids),
-      queryFn: () => api.get<Record<string, string>>(`/version-merge/album-types?album_ids=${ids.join(',')}`),
-    })
-  }, [queryClient])
-
-  const createGroup = useCallback((canonicalName: string, artistId: number, primaryAlbumId: number, memberIds: number[], scope: VersionMergeScope = 'release') => {
-    return api.post<{ group_id: number }>('/version-merge/groups', {
-      canonical_name: canonicalName,
-      artist_id: artistId,
-      primary_album_id: primaryAlbumId,
-      member_ids: memberIds,
-      scope,
-    }).then((result) => {
+    return api.post<{ status: string }>('/version-merge/album-projects/rebuild').then((result) => {
       invalidateMergeDependents()
       return result
     })
   }, [invalidateMergeDependents])
 
-  const confirmAlbumRelation = useCallback((
-    canonicalName: string,
-    primaryAlbumId: number,
-    memberAlbumIds: number[],
-    scope: VersionMergeScope = 'composition',
-    relationType = 'rerecord',
-    confirmTrackPairs = true,
-  ) => {
-    return api.post<AlbumRelationConfirmResult>('/version-merge/album-relations/confirm', {
-      canonical_name: canonicalName,
-      primary_album_id: primaryAlbumId,
-      member_album_ids: memberAlbumIds,
-      scope,
-      relation_type: relationType,
-      confirm_track_pairs: confirmTrackPairs,
-    }).then((result) => {
-      invalidateMergeDependents()
-      return result
+  const fetchCanonicalTrackEvents = useCallback(() => {
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.versionMerge.canonicalTrackEvents(),
+      queryFn: () => api.get<CanonicalTrackEvent[]>('/version-merge/canonical-tracks/events'),
     })
-  }, [invalidateMergeDependents])
+  }, [queryClient])
 
-  const updateMembers = useCallback((groupId: number, addIds?: number[], removeIds?: number[]) => {
-    return api.put<{ status: string }>(`/version-merge/groups/${groupId}/members`, {
-      add_ids: addIds ?? null,
-      remove_ids: removeIds ?? null,
-    }).then((result) => {
-      invalidateMergeDependents()
-      void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.members(groupId) })
-      return result
-    })
-  }, [invalidateMergeDependents, queryClient])
-
-  const setPrimary = useCallback((groupId: number, albumId: number) => {
-    return api.put<{ status: string }>(`/version-merge/groups/${groupId}/primary`, { album_id: albumId })
-      .then((result) => {
+  const mergeCanonicalTracks = useCallback(
+    (survivorId: number, absorbedIds: number[], reason: string) =>
+      api.post<CanonicalTrackMutationResult>('/version-merge/canonical-tracks/merge', {
+        survivor_canonical_track_id: survivorId,
+        absorbed_canonical_track_ids: absorbedIds,
+        reason,
+      }).then((result) => {
         invalidateMergeDependents()
-        void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.members(groupId) })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.canonicalTrackEvents() })
+        return result
+      }),
+    [invalidateMergeDependents, queryClient],
+  )
+
+  const splitCanonicalTrack = useCallback(
+    (canonicalTrackId: number, spotifyTrackId: string, reason: string) =>
+      api.post<CanonicalTrackMutationResult>(`/version-merge/canonical-tracks/${canonicalTrackId}/split`, {
+        provider: 'spotify',
+        external_track_id: spotifyTrackId,
+        reason,
+      }).then((result) => {
+        invalidateMergeDependents()
+        void queryClient.invalidateQueries({ queryKey: queryKeys.versionMerge.canonicalTrackEvents() })
+        return result
+      }),
+    [invalidateMergeDependents, queryClient],
+  )
+
+  const getGroupMembers = useCallback(
+    (groupId: number) => {
+      return queryClient.fetchQuery({
+        queryKey: queryKeys.versionMerge.members(groupId),
+        queryFn: () => api.get<GroupMember[]>(`/version-merge/groups/${groupId}/members`),
+      })
+    },
+    [queryClient],
+  )
+
+  const getTrackGroupMembers = useCallback(
+    (groupId: number) => {
+      return queryClient.fetchQuery({
+        queryKey: queryKeys.versionMerge.trackMembers(groupId),
+        queryFn: () => api.get<TrackGroupMember[]>(`/version-merge/track-groups/${groupId}/members`),
+      })
+    },
+    [queryClient],
+  )
+
+  const getUngroupedAlbums = useCallback(
+    (artistName?: string) => {
+      const params = artistName ? { artist_name: artistName } : undefined
+      return queryClient.fetchQuery({
+        queryKey: queryKeys.versionMerge.ungrouped(artistName),
+        queryFn: () => api.get<UngroupedAlbum[]>('/version-merge/ungrouped', params as Record<string, string | number | boolean>),
+      })
+    },
+    [queryClient],
+  )
+
+  const compareAlbums = useCallback(
+    (aId: number, bId: number) => {
+      return queryClient.fetchQuery({
+        queryKey: queryKeys.versionMerge.comparison(aId, bId),
+        queryFn: () => api.get<TrackComparison>(`/version-merge/compare?album_id_a=${aId}&album_id_b=${bId}`),
+      })
+    },
+    [queryClient],
+  )
+
+  const getAlbumTypes = useCallback(
+    (ids: number[]) => {
+      return queryClient.fetchQuery({
+        queryKey: queryKeys.versionMerge.albumTypes(ids),
+        queryFn: () => api.get<Record<string, string>>(`/version-merge/album-types?album_ids=${ids.join(',')}`),
+      })
+    },
+    [queryClient],
+  )
+
+  const createGroup = useCallback(
+    (canonicalName: string, artistId: number, primaryAlbumId: number, memberIds: number[], scope: VersionMergeScope = 'release') => {
+      return api
+        .post<{ group_id: number }>('/version-merge/groups', {
+          canonical_name: canonicalName,
+          artist_id: artistId,
+          primary_album_id: primaryAlbumId,
+          member_ids: memberIds,
+          scope,
+        })
+        .then((result) => {
+          invalidateMergeDependents()
+          return result
+        })
+    },
+    [invalidateMergeDependents],
+  )
+
+  const confirmAlbumRelation = useCallback(
+    (canonicalName: string, primaryAlbumId: number, memberAlbumIds: number[], scope: VersionMergeScope = 'composition', relationType = 'rerecord', confirmTrackPairs = true) => {
+      return api
+        .post<AlbumRelationConfirmResult>('/version-merge/album-relations/confirm', {
+          canonical_name: canonicalName,
+          primary_album_id: primaryAlbumId,
+          member_album_ids: memberAlbumIds,
+          scope,
+          relation_type: relationType,
+          confirm_track_pairs: confirmTrackPairs,
+        })
+        .then((result) => {
+          invalidateMergeDependents()
+          return result
+        })
+    },
+    [invalidateMergeDependents],
+  )
+
+  const updateMembers = useCallback(
+    (groupId: number, addIds?: number[], removeIds?: number[]) => {
+      return api
+        .put<{ status: string }>(`/version-merge/groups/${groupId}/members`, {
+          add_ids: addIds ?? null,
+          remove_ids: removeIds ?? null,
+        })
+        .then((result) => {
+          invalidateMergeDependents()
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.versionMerge.members(groupId),
+          })
+          return result
+        })
+    },
+    [invalidateMergeDependents, queryClient],
+  )
+
+  const setPrimary = useCallback(
+    (groupId: number, albumId: number) => {
+      return api
+        .put<{ status: string }>(`/version-merge/groups/${groupId}/primary`, {
+          album_id: albumId,
+        })
+        .then((result) => {
+          invalidateMergeDependents()
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.versionMerge.members(groupId),
+          })
+          return result
+        })
+    },
+    [invalidateMergeDependents, queryClient],
+  )
+
+  const deleteGroup = useCallback(
+    (groupId: number) => {
+      return api.del<{ status: string }>(`/version-merge/groups/${groupId}`).then((result) => {
+        invalidateMergeDependents()
+        void queryClient.removeQueries({
+          queryKey: queryKeys.versionMerge.members(groupId),
+        })
         return result
       })
-  }, [invalidateMergeDependents, queryClient])
+    },
+    [invalidateMergeDependents, queryClient],
+  )
 
-  const deleteGroup = useCallback((groupId: number) => {
-    return api.del<{ status: string }>(`/version-merge/groups/${groupId}`)
-      .then((result) => {
+  const updateTrackMembers = useCallback(
+    (groupId: number, addIds?: number[], removeIds?: number[]) => {
+      return api
+        .put<{ status: string }>(`/version-merge/track-groups/${groupId}/members`, {
+          add_ids: addIds ?? null,
+          remove_ids: removeIds ?? null,
+        })
+        .then((result) => {
+          invalidateMergeDependents()
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.versionMerge.trackMembers(groupId),
+          })
+          return result
+        })
+    },
+    [invalidateMergeDependents, queryClient],
+  )
+
+  const setPrimaryTrack = useCallback(
+    (groupId: number, l1Id: number) => {
+      return api.put<{ status: string }>(`/version-merge/track-groups/${groupId}/primary`, { l1_id: l1Id }).then((result) => {
         invalidateMergeDependents()
-        void queryClient.removeQueries({ queryKey: queryKeys.versionMerge.members(groupId) })
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.versionMerge.trackMembers(groupId),
+        })
         return result
       })
-  }, [invalidateMergeDependents, queryClient])
+    },
+    [invalidateMergeDependents, queryClient],
+  )
+
+  const deleteTrackGroup = useCallback(
+    (groupId: number) => {
+      return api.del<{ status: string }>(`/version-merge/track-groups/${groupId}`).then((result) => {
+        invalidateMergeDependents()
+        void queryClient.removeQueries({
+          queryKey: queryKeys.versionMerge.trackMembers(groupId),
+        })
+        return result
+      })
+    },
+    [invalidateMergeDependents, queryClient],
+  )
 
   return {
     groups: groupsQuery.data ?? [],
     groupsLoading: groupsQuery.isFetching,
     fetchGroups,
-    detectGroups, applyDetected, fetchCollaborationCandidates, confirmTrackCandidate, rebuildAlbumProjects,
-    getGroupMembers, getUngroupedAlbums,
-    compareAlbums, getAlbumTypes, createGroup, confirmAlbumRelation, updateMembers, setPrimary, deleteGroup,
+    trackGroups: trackGroupsQuery.data ?? [],
+    trackGroupsLoading: trackGroupsQuery.isFetching,
+    fetchTrackGroups,
+    detectGroups,
+    applyDetected,
+    fetchCollaborationCandidates,
+    searchTracks,
+    confirmTrackCandidate,
+    rebuildAlbumProjects,
+    getGroupMembers,
+    getTrackGroupMembers,
+    getUngroupedAlbums,
+    compareAlbums,
+    getAlbumTypes,
+    createGroup,
+    confirmAlbumRelation,
+    updateMembers,
+    setPrimary,
+    deleteGroup,
+    updateTrackMembers,
+    setPrimaryTrack,
+    deleteTrackGroup,
+    fetchCanonicalTrackEvents,
+    mergeCanonicalTracks,
+    splitCanonicalTrack,
   }
 }

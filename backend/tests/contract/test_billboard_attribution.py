@@ -57,7 +57,7 @@ class TestBillboardSourceAlbum:
         """Detail KPI peak must not ignore pre-album/source-single chart weeks."""
         response = client.get(
             "/api/billboard/track/904",
-            params={"bb_top_n": 100, "merge_level": 1},
+            params={"bb_top_n": 100, "merge_level": 2},
         )
 
         assert response.status_code == 200, response.text

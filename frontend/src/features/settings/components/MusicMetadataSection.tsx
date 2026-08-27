@@ -213,12 +213,33 @@ export function MusicMetadataSection() {
         <Suspense fallback={<LoadingPanel />}>
           {active === "merge" && (
             <div className="space-y-5">
-              <MergeLevelControl />
               <VersionMergeSection
                 initialArtistFilter={initialArtist}
                 initialCanonicalName={initialAlbum}
                 initialObjectType={mergeObjectType}
+                initialTrackId={initialTrackId}
               />
+              <details className="group rounded-2xl border border-border bg-muted/10">
+                <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 marker:hidden">
+                  <span>
+                    <span className="block text-[12px] font-semibold text-foreground">
+                      统计展示默认值
+                    </span>
+                    <span className="block text-[10.5px] leading-relaxed text-muted-foreground">
+                      只影响全站默认统计口径，不改变当前正在创建的分组层级
+                    </span>
+                  </span>
+                  <span className="text-[11px] text-muted-foreground group-open:hidden">
+                    展开设置
+                  </span>
+                  <span className="hidden text-[11px] text-muted-foreground group-open:inline">
+                    收起
+                  </span>
+                </summary>
+                <div className="border-t border-border p-3 sm:p-4">
+                  <MergeLevelControl />
+                </div>
+              </details>
             </div>
           )}
           {active === "track-credits" && (

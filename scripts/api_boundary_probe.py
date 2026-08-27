@@ -10,6 +10,7 @@ special-character searches. The probe must never mutate local app state.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -234,6 +235,10 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     BoundaryCase("chat_session_path_nonint", "/api/chat/sessions/not-an-int"),
     BoundaryCase("version_group_path_nonint", "/api/version-merge/groups/not-an-int/members"),
     BoundaryCase("music_track_path_nonint", "/api/music/tracks/not-an-int/stats"),
+    BoundaryCase(
+        "music_track_canonical_identity_path_nonint",
+        "/api/music/tracks/canonical/not-an-int",
+    ),
     BoundaryCase("music_search_q_too_long", "/api/music/search", {"q": LONG_STRING}),
     BoundaryCase(
         "music_search_kind_invalid", "/api/music/search", {"q": "Fixture", "kind": "playlist"}
@@ -529,7 +534,29 @@ def assert_results(results: list[BoundaryResult]) -> None:
         raise AssertionError("API boundary probe failures:\n" + "\n".join(lines))
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--db-path",
+        help="Explicit database copy used by the in-process TestClient",
+    )
+    return parser.parse_args()
+
+
+def _configure_database_path(value: str | None) -> None:
+    if not value:
+        return
+    resolved = Path(value).expanduser().resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"API boundary database does not exist: {resolved}")
+    from backend.core import db as db_mod
+
+    db_mod.DB_PATH = str(resolved)
+
+
 def main() -> int:
+    args = _parse_args()
+    _configure_database_path(args.db_path)
     from fastapi.testclient import TestClient
 
     from backend.main import app

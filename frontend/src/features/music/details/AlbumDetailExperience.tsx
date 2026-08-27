@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { displayName } from '@/lib/chinese'
 import { getBillboardName } from '@/lib/billboard-name'
 import { AlertCircle } from 'lucide-react'
-import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import { AlbumDetailHero, DetailTabs } from './MusicDetailHeader'
 import { AlbumDetailSkeleton } from './MusicDetailSkeletons'
 import { MusicChartOverviewSection } from './MusicChartOverviewSection'
@@ -34,7 +34,7 @@ export function AlbumDetailExperience() {
   const [searchParams, setSearchParams] = useSearchParams()
   const artistName = searchParams.get('artist') || ''
   const navigate = useNavigate()
-  const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
+  const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
 

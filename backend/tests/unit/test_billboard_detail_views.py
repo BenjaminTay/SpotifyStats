@@ -11,6 +11,8 @@ def test_track_summary_view_keeps_every_scalar_fact_unchanged():
         "chart_status": "charted",
         "effective_play_count": 12,
         "track_id": 7,
+        "l1_id": 7,
+        "representative_track_id": 70,
         "track_name": "Song",
         "artist_name": "Artist",
         "artist_names": ["Artist", "Guest"],

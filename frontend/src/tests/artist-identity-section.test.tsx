@@ -43,6 +43,7 @@ describe('ArtistIdentitySection', () => {
 
   it('presents raw ids, evidence context and keeps canonical separate from display name', () => {
     render(<ArtistIdentitySection />)
+    expect(screen.queryByRole('heading', { name: '艺人身份' })).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('搜索本地艺人'), { target: { value: 'JOLIN' } })
     fireEvent.click(screen.getByRole('button', { name: /Jolin Tsai/ }))
     fireEvent.click(screen.getAllByText('JOLIN')[0].closest('button')!)

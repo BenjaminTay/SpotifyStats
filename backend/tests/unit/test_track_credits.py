@@ -14,6 +14,7 @@ from backend.domains.metadata.track_credits import (
     list_active_track_credit_overrides,
     preview_track_credit_override,
     search_track_credit_artist_candidates,
+    search_track_credit_tracks,
     undo_track_credit_event,
 )
 
@@ -221,3 +222,10 @@ def test_candidate_surfaces_unique_provider_metadata_as_unverified_evidence(conn
             "verified": 0,
         }
     ]
+
+
+def test_track_search_accepts_exact_local_track_id(conn):
+    results = search_track_credit_tracks(conn, "175", 20)
+
+    assert [item["track_id"] for item in results] == [175]
+    assert results[0]["track_name"] == "Hold Me Closer"

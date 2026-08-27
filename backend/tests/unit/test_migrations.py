@@ -116,6 +116,33 @@ def test_track_credit_management_tables_exist_after_migrations(empty_db):
     assert {"track_credit_overrides", "track_credit_events", "track_credit_state"} <= tables
 
 
+def test_spotify_owner_and_compatibility_tables_exist_after_migrations(empty_db):
+    _ensure_migrations_table(empty_db)
+    for _, _, fn in sorted(MIGRATIONS, key=lambda item: item[0]):
+        try:
+            fn(empty_db)
+        except sqlite3.OperationalError:
+            pass
+    tables = {
+        row[0]
+        for row in empty_db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    assert {
+        "track_l1_identities",
+        "track_l1_external_ids",
+        "track_l1_source_links",
+        "track_identity_state",
+        "spotify_track_owners",
+    } <= tables
+
+    state = empty_db.execute(
+        """SELECT current_revision, policy_version
+             FROM track_identity_state WHERE state_id=1"""
+    ).fetchone()
+    assert state[0] >= 1
+    assert state[1] == "spotify_owner_track_v1"
+
+
 def test_background_jobs_table_exists(empty_db):
     """background_jobs table is created by migrate_010."""
     _ensure_migrations_table(empty_db)

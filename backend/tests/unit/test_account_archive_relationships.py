@@ -305,13 +305,13 @@ def test_journey_and_cohorts_routes_return_strict_json() -> None:
     app.dependency_overrides[get_conn] = lambda: conn
     client = TestClient(app)
 
-    journey = client.get("/api/account/collection-journey?merge_level=1")
-    cohorts = client.get("/api/account/collection-cohorts?merge_level=1")
+    journey = client.get("/api/account/collection-journey?merge_level=2")
+    cohorts = client.get("/api/account/collection-cohorts?merge_level=2")
     conn.close()
 
     assert journey.status_code == 200
     assert journey.json()["schema_version"] == "account_archive_journey_v2"
-    assert journey.json()["filter_context"]["merge_level"] == 1
+    assert journey.json()["filter_context"]["merge_level"] == 2
     assert cohorts.status_code == 200
     assert cohorts.json()["schema_version"] == "account_archive_cohorts_v2"
     assert cohorts.json()["vitality_metrics"][0]["key"] == "within_7d"
@@ -385,7 +385,7 @@ def test_archive_returns_route_uses_event_start_and_strict_private_contract() ->
     app = FastAPI()
     app.include_router(account_router, prefix="/api")
     app.dependency_overrides[get_conn] = lambda: conn
-    route_response = TestClient(app).get("/api/account/returns?merge_level=1")
+    route_response = TestClient(app).get("/api/account/returns?merge_level=2")
     conn.close()
 
     assert response.summary.returned_entities == 1
@@ -401,4 +401,4 @@ def test_archive_returns_route_uses_event_start_and_strict_private_contract() ->
     assert "profile" not in serialized
     assert route_response.status_code == 200
     assert route_response.json()["schema_version"] == "account_archive_returns_v1"
-    assert route_response.json()["filter_context"]["merge_level"] == 1
+    assert route_response.json()["filter_context"]["merge_level"] == 2

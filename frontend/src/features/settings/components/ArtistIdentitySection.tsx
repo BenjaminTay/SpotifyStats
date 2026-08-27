@@ -102,11 +102,7 @@ export function ArtistIdentitySection({ initialSearch = '' }: { initialSearch?: 
   }
 
   return (
-    <section className="space-y-5" aria-labelledby="artist-identity-heading">
-      <div>
-        <h3 id="artist-identity-heading" className="font-serif text-2xl font-bold">艺人身份</h3>
-        <p className="mt-1 text-sm text-muted-foreground">合并同一艺人的本地条目，直接选择 canonical 与显示名；原始播放不会改写。</p>
-      </div>
+    <section className="space-y-5" aria-label="艺人身份工作区">
         <div className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           <ShieldCheck className="size-4 text-accent-foreground" />
           <span>身份 revision {state?.current_revision ?? '—'}</span>

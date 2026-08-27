@@ -311,7 +311,7 @@ def test_search_chart_lookup_respects_compilation_semantics(client):
     assert included["album"][album_key].weeks_on_chart == detail_chart["weeks_on_chart"]
 
 
-@pytest.mark.parametrize("merge_level", [1, 2, 3])
+@pytest.mark.parametrize("merge_level", [2, 3])
 def test_music_search_album_chart_matches_billboard_detail(client, merge_level):
     params = {
         "q": "Fixture Future LP",
@@ -343,7 +343,7 @@ def test_music_search_album_chart_matches_billboard_detail(client, merge_level):
     assert chart["first_peak_week"] == detail["chart_summary"]["first_peak_week"]
 
 
-@pytest.mark.parametrize("merge_level", [1, 2, 3])
+@pytest.mark.parametrize("merge_level", [2, 3])
 def test_music_search_artist_chart_matches_billboard_detail(client, merge_level):
     params = {
         "q": "Fixture Artist Alpha",

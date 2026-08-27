@@ -734,7 +734,7 @@ def test_chat_agent_replans_scoped_ranking_after_global_chart_miss(
             "merge_enabled": True,
             "dynamic_threshold": True,
             "max_merge_gap_minutes": 5,
-            "merge_level": 1,
+            "merge_level": 2,
         },
     )
     assert status_payload["result"]["evidence_sufficiency"]["sufficient"] is True

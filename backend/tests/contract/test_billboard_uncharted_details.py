@@ -49,6 +49,10 @@ def _seed_six_low_volume_entities(monkeypatch) -> tuple[int, str, str]:
                     (f"2026-07-06T12:{minute:02d}:00Z", track_id, album_id),
                 )
         conn.commit()
+        from backend.domains.metadata.track_identity import synchronize_track_identity_projection
+
+        synchronize_track_identity_projection(conn)
+        conn.commit()
     finally:
         conn.close()
 

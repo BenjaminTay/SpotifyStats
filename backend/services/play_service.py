@@ -62,15 +62,39 @@ def _track_cover_urls(conn: sqlite3.Connection, track_ids) -> dict[int, str | No
     if not ids:
         return {}
     placeholders = ",".join("?" for _ in ids)
-    rows = conn.execute(
-        f"""SELECT t.track_id, al.album_id, al.image_path, al.image_url
-            FROM tracks t
-            LEFT JOIN albums al ON t.album_id = al.album_id
-            WHERE t.track_id IN ({placeholders})""",
-        ids,
-    ).fetchall()
+    has_l1 = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+    ).fetchone()
+    if has_l1:
+        rows = conn.execute(
+            f"""SELECT requested.lookup_id, al.album_id, al.image_path, al.image_url
+                  FROM (
+                        SELECT li.l1_id AS lookup_id, li.representative_track_id AS track_id
+                          FROM track_l1_identities li
+                         WHERE li.l1_id IN ({placeholders})
+                        UNION ALL
+                        SELECT t.track_id AS lookup_id, t.track_id
+                          FROM tracks t
+                         WHERE t.track_id IN ({placeholders})
+                           AND NOT EXISTS (
+                               SELECT 1 FROM track_l1_identities li
+                                WHERE li.l1_id=t.track_id
+                           )
+                  ) requested
+                  JOIN tracks t ON t.track_id=requested.track_id
+                  LEFT JOIN albums al ON t.album_id=al.album_id""",
+            [*ids, *ids],
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            f"""SELECT t.track_id AS lookup_id, al.album_id, al.image_path, al.image_url
+                FROM tracks t
+                LEFT JOIN albums al ON t.album_id = al.album_id
+                WHERE t.track_id IN ({placeholders})""",
+            ids,
+        ).fetchall()
     return {
-        int(r["track_id"]): _cover_url(r["image_path"], r["image_url"], "albums", r["album_id"])
+        int(r["lookup_id"]): _cover_url(r["image_path"], r["image_url"], "albums", r["album_id"])
         for r in rows
     }
 
@@ -691,7 +715,7 @@ def get_wrapped_data(
     year: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
-    merge_level: int = 1,
+    merge_level: int = 2,
 ) -> dict:
     """Generate a custom yearly wrapped report for a given year."""
     df = _load_filtered_plays(
@@ -1240,7 +1264,7 @@ def get_artist_deep_dive(
     artist_name: str,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
-    merge_level: int = 1,
+    merge_level: int = 2,
 ) -> dict:
     """In-depth analysis for a single artist."""
     from backend.domains.metadata.artist_identity import resolve_artist_name

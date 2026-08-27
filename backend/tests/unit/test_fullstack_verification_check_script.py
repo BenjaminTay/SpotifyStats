@@ -221,6 +221,8 @@ def test_fullstack_verification_check_script_covers_delivery_matrix():
     assert "scripts/openapi_parameter_boundary_audit.py" in source
     assert "scripts/api_smoke_probe.py" in source
     assert "scripts/api_boundary_probe.py" in source
+    assert 'scripts/api_smoke_probe.py --db-path "$SPOTIFY_STATS_TEST_SOURCE_DB"' in source
+    assert 'scripts/api_boundary_probe.py --db-path "$SPOTIFY_STATS_TEST_SOURCE_DB"' in source
     assert "scripts/benchmark_api.py" in source
     assert "scripts/quickstart_smoke.py" in source
     assert "--fail-on-slow" in source

@@ -119,6 +119,7 @@ describe('TrackCreditManager', () => {
   it('shows raw, manual and effective credits without rewriting the track fact', () => {
     render(<TrackCreditManager initialTrackId={175} />)
 
+    expect(screen.queryByRole('heading', { name: '曲目署名' })).not.toBeInTheDocument()
     expect(screen.getByText('自动署名')).toBeInTheDocument()
     expect(screen.getByText('人工修改')).toBeInTheDocument()
     expect(screen.getByText('最终有效署名')).toBeInTheDocument()

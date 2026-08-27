@@ -732,8 +732,28 @@ def load_album_project_membership(
 ) -> pd.DataFrame:
     """Return one default album project owner per canonical song."""
     ensure_album_projects(conn)
+    has_l1 = (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_source_links'"
+        ).fetchone()
+        is not None
+        and conn.execute("SELECT 1 FROM track_l1_source_links LIMIT 1").fetchone() is not None
+    )
+    track_id_expr = "links.l1_id" if has_l1 else "apt.track_id"
+    source_link_join = (
+        "JOIN (SELECT DISTINCT track_id, l1_id FROM track_l1_source_links) links "
+        "ON links.track_id=apt.track_id"
+        if has_l1
+        else ""
+    )
+    identity_track_join = (
+        "JOIN track_l1_identities li ON li.l1_id=links.l1_id "
+        "JOIN tracks t ON t.track_id=li.representative_track_id"
+        if has_l1
+        else "JOIN tracks t ON t.track_id = apt.track_id"
+    )
     raw = pd.read_sql_query(
-        """SELECT ap.project_id,
+        f"""SELECT DISTINCT ap.project_id,
                   ap.canonical_name AS album_project_name,
                   ap.artist_id,
                   ar.artist_name,
@@ -742,7 +762,7 @@ def load_album_project_membership(
                   ap.scope,
                   ap.project_type,
                   ap.include_in_charts,
-                  apt.track_id,
+                  {track_id_expr} AS track_id,
                   t.track_name,
                   apt.membership_role,
                   apt.min_merge_level,
@@ -751,9 +771,10 @@ def load_album_project_membership(
                   apt.is_exclusive,
                   apt.inferred
            FROM album_project_tracks apt
+           {source_link_join}
            JOIN album_projects ap ON ap.project_id = apt.project_id
            LEFT JOIN artists ar ON ar.artist_id = ap.artist_id
-           JOIN tracks t ON t.track_id = apt.track_id
+           {identity_track_join}
            LEFT JOIN album_project_albums apa
              ON apa.project_id = apt.project_id
             AND apa.album_id = COALESCE(apt.source_album_id, ap.primary_album_id)

@@ -495,11 +495,19 @@ def recent_plays(conn: sqlite3.Connection, df: pd.DataFrame, limit: int = 50) ->
     result = []
     for r in rows.itertuples(index=False):
         track_id = int(r.track_id) if pd.notna(r.track_id) else None
+        representative_value = getattr(r, "representative_track_id", track_id)
+        representative_track_id = (
+            int(representative_value)
+            if representative_value is not None and pd.notna(representative_value)
+            else track_id
+        )
         entry = {
             "play_id": int(r.play_id),
             "ts": str(r.ts),
             "date": str(r.ts_date),
             "track_id": track_id,
+            "l1_id": track_id,
+            "representative_track_id": representative_track_id,
             "track_name": r.track_name,
             "artist_name": r.artist_name,
             "album_name": getattr(r, "album_name", None),
@@ -1105,7 +1113,9 @@ def get_global_plays(
 
     track_ids = [int(r["track_id"]) for r in rows if r["track_id"] is not None]
     cover_map = _track_cover_urls(conn, track_ids) if track_ids else {}
-    names_map = get_track_artist_names_map()
+    from backend.core.db import get_raw_track_artist_names_map
+
+    names_map = get_raw_track_artist_names_map()
 
     result = []
     for r in rows:

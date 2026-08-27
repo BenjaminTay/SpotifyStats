@@ -274,7 +274,11 @@ def build_primary_artist_ms(
     if missing_columns:
         raise ValueError(f"plays_df missing columns: {sorted(missing_columns)}")
 
-    plays = plays_df.loc[:, ["track_id", "ms_played"]].copy()
+    metadata_track_column = (
+        "representative_track_id" if "representative_track_id" in plays_df.columns else "track_id"
+    )
+    plays = plays_df.loc[:, [metadata_track_column, "ms_played"]].copy()
+    plays = plays.rename(columns={metadata_track_column: "track_id"})
     plays["ms_played"] = (
         pd.to_numeric(plays["ms_played"], errors="coerce").fillna(0).astype("int64")
     )

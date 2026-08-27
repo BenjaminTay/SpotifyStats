@@ -445,10 +445,26 @@ class TestBillboardService:
         assert len(result_2024["weekly"]) < len(billboard_data["weekly"])
 
     def test_track_history(self):
-        from backend.services.billboard_service import get_track_history
+        from backend.services.billboard_service import (
+            get_billboard_entity_lists,
+            get_track_history,
+        )
+
+        entities = get_billboard_entity_lists(
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
+        )
+        track_id = int(entities["tracks"][0]["track_id"])
 
         data = get_track_history(
-            track_id=157,
+            track_id=track_id,
             min_ms=30000,
             music_only=True,
             bb_top_n=30,
@@ -460,7 +476,7 @@ class TestBillboardService:
             year_end=None,
         )
         assert data["found"] is True
-        assert data["track_id"] == 157
+        assert data["track_id"] == track_id
         assert len(data["history"]) >= 1
         assert data["summary"]["weeks_on_chart"] >= 1
         for h in data["history"]:
@@ -586,11 +602,27 @@ class TestBillboardService:
         assert "track_id" in data["tracks"][0]
 
     def test_versus_track(self):
-        from backend.services.billboard_service import get_versus_track
+        from backend.services.billboard_service import (
+            get_billboard_entity_lists,
+            get_versus_track,
+        )
+
+        entities = get_billboard_entity_lists(
+            min_ms=30000,
+            music_only=True,
+            bb_top_n=30,
+            bb_album_top_n=20,
+            bb_artist_top_n=20,
+            bb_week_start_dow=4,
+            bb_week_start_hour=0,
+            year_start=None,
+            year_end=None,
+        )
+        track_ids = [int(row["track_id"]) for row in entities["tracks"][:2]]
 
         data = get_versus_track(
-            tid_a=157,
-            tid_b=149,
+            tid_a=track_ids[0],
+            tid_b=track_ids[1],
             min_ms=30000,
             music_only=True,
             bb_top_n=30,

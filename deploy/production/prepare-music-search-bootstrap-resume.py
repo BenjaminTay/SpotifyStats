@@ -56,13 +56,13 @@ def _has_compatible_partial_statistics(path: Path) -> bool:
     conn.row_factory = sqlite3.Row
     try:
         contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
-        if len(contexts) != 6:
+        if len(contexts) != 4:
             return False
         expected = {
             context.filter_fingerprint: (context.merge_level, context.dynamic_threshold)
             for context in contexts
         }
-        if len(expected) != 6:
+        if len(expected) != 4:
             return False
         semantic_base_keys = {context.semantic_base_key for context in contexts}
         if len(semantic_base_keys) != 1:

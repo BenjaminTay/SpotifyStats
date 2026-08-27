@@ -14,11 +14,9 @@ from typing import Any
 # This validator is also shipped as a standalone host-side file, so it cannot
 # import the backend package in production.  Keep this release contract in
 # lockstep with MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION.
-EXPECTED_BUILDER_VERSION = "music_search_snapshot_v3"
-REQUIRED_MIGRATION_VERSION = 42
+EXPECTED_BUILDER_VERSION = "music_search_snapshot_v8_canonical_track"
+REQUIRED_MIGRATION_VERSION = 58
 EXPECTED_VARIANTS = {
-    (1, False),
-    (1, True),
     (2, False),
     (2, True),
     (3, False),
@@ -75,11 +73,11 @@ def validate_rebuild_report(
     gate = payload.get("gate")
     require(isinstance(gate, dict), "missing rebuild gate report")
     require(gate.get("require_all_ready") is True, "require-all-ready gate was not enabled")
-    require(gate.get("expected_variant_count") == 6, "expected variant count is not 6")
-    require(gate.get("reported_variant_count") == 6, "reported variant count is not 6")
-    require(gate.get("ready_variant_count") == 6, "ready variant count is not 6")
+    require(gate.get("expected_variant_count") == 4, "expected variant count is not 4")
+    require(gate.get("reported_variant_count") == 4, "reported variant count is not 4")
+    require(gate.get("ready_variant_count") == 4, "ready variant count is not 4")
     require(gate.get("exact_variant_set") is True, "variant set gate did not pass")
-    require(gate.get("all_six_ready") is True, "all-six-ready gate did not pass")
+    require(gate.get("all_four_ready") is True, "all-four-ready gate did not pass")
     require(gate.get("passed") is True, "rebuild gate did not pass")
     idempotency = payload.get("idempotency")
     require(isinstance(idempotency, dict), "missing idempotency report")
@@ -87,7 +85,7 @@ def validate_rebuild_report(
 
     variants = payload.get("variants")
     require(isinstance(variants, list), "missing snapshot variants")
-    require(len(variants) == 6, "snapshot report does not contain exactly six variants")
+    require(len(variants) == 4, "snapshot report does not contain exactly four variants")
 
     reported_variants: dict[tuple[int, bool], str] = {}
     for variant in variants:
@@ -114,7 +112,7 @@ def validate_rebuild_report(
         "snapshot report variant matrix is invalid",
     )
     require(
-        len(set(reported_variants.values())) == 6,
+        len(set(reported_variants.values())) == 4,
         "snapshot report fingerprints are not unique",
     )
     return semantic_base_key, reported_variants
@@ -178,7 +176,7 @@ def validate_database(
         required_migration is not None,
         f"migration {REQUIRED_MIGRATION_VERSION} is not applied",
     )
-    require(len(rows) == 6, "database does not contain exactly six current variants")
+    require(len(rows) == 4, "database does not contain exactly four current variants")
     db_variants = {(int(row[0]), bool(row[1])): str(row[2]) for row in rows}
     require(set(db_variants) == EXPECTED_VARIANTS, "database variant matrix is invalid")
     require(
@@ -196,7 +194,7 @@ def validate_database(
         "required_migration_version": REQUIRED_MIGRATION_VERSION,
         "required_migration_applied": True,
         "ready_variants": len(rows),
-        "required_variants": 6,
+        "required_variants": 4,
         "builder_version": EXPECTED_BUILDER_VERSION,
         "context_orphan_count": orphan_count,
     }
@@ -237,7 +235,7 @@ def main() -> int:
     )
     print(
         "Music-search production preflight passed: "
-        f"migration={REQUIRED_MIGRATION_VERSION} variants=6/6 "
+        f"migration={REQUIRED_MIGRATION_VERSION} variants=4/4 "
         f"builder={EXPECTED_BUILDER_VERSION} orphans=0"
     )
     return 0

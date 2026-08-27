@@ -632,8 +632,8 @@ def _run_derived(path: Path, change_set: Any) -> tuple[dict[str, Any], dict[str,
             shared_full_snapshot_plan=shared_plan,
         )
         search_ms = (time.perf_counter() - search_started) * 1000
-        if search["snapshot_set"]["ready_count"] != 6 or search["snapshot_set"]["failed_count"]:
-            raise AcceptanceError("music-search did not publish exactly six ready snapshots")
+        if search["snapshot_set"]["ready_count"] != 4 or search["snapshot_set"]["failed_count"]:
+            raise AcceptanceError("music-search did not publish exactly four ready snapshots")
         return (
             {
                 "track_group": {
@@ -1002,7 +1002,7 @@ def _equivalence(incremental: dict[str, Any], replacement: dict[str, Any]) -> di
         "year_end_input_and_payload": incremental["year_end"]["payload"]
         == replacement["year_end"]["payload"],
         "search_candidates": incremental["candidates"]["rows"] == replacement["candidates"]["rows"],
-        "six_search_snapshots": incremental["search"]["rows"] == replacement["search"]["rows"],
+        "four_search_snapshots": incremental["search"]["rows"] == replacement["search"]["rows"],
         "year_partition_facts": incremental["year_partition"]["fact_rows"]
         == replacement["year_partition"]["fact_rows"],
         "home_archive": incremental["home"]["archive_digest"]
@@ -1122,7 +1122,7 @@ def _run_real_source_baseline(
         and before_identical.st_size == after_identical.st_size
         and before_identical.st_mtime_ns == after_identical.st_mtime_ns
         and manifest_unchanged
-        and derived["search"]["ready_count"] == 6
+        and derived["search"]["ready_count"] == 4
         and derived["search"]["failed_count"] == 0
         and bool(billboard["meta"]["all_weeks_asc"])
         and home["state"] in {"ready", "empty"}

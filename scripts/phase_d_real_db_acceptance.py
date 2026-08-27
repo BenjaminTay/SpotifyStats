@@ -59,7 +59,7 @@ SEARCH_PAYLOAD_COLUMNS = (
 )
 EXPECTED_VARIANTS = frozenset(
     (merge_level, dynamic_threshold)
-    for merge_level in (1, 2, 3)
+    for merge_level in (2, 3)
     for dynamic_threshold in (False, True)
 )
 PRIVACY_REPORT = {
@@ -594,8 +594,8 @@ def _prepare_search_canonical(path: Path, change_set: Any) -> dict[str, Any]:
         index_report = rebuild_music_search_index(conn)
         contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
         fingerprints = tuple(context.filter_fingerprint for context in contexts)
-        if len(contexts) != 6 or len(set(fingerprints)) != 6:
-            raise AcceptanceError("current music-search context is not an exact six-variant set")
+        if len(contexts) != 4 or len(set(fingerprints)) != 4:
+            raise AcceptanceError("current music-search context is not an exact four-variant set")
         placeholders = ",".join("?" for _ in fingerprints)
         conn.execute(
             f"DELETE FROM music_search_entity_context WHERE snapshot_key IN ({placeholders})",
@@ -716,7 +716,7 @@ def _worker_main(args: argparse.Namespace) -> int:
         }
         report["passed"] = bool(
             report["status"] == "ready"
-            and report["ready_count"] == 6
+            and report["ready_count"] == 4
             and report["failed_count"] == 0
             and report["exact_variant_set"]
             and (
@@ -730,7 +730,7 @@ def _worker_main(args: argparse.Namespace) -> int:
             and (args._worker_strategy != "shared" or report["shared_logical_frame_sets"] == 2)
             and (args._worker_strategy != "shared" or report["weekly_ledger_ready"])
             and (args._worker_strategy != "shared" or report["weekly_ledger_rows"] > 0)
-            and (args._worker_strategy != "shared" or report["lineage_ready_count"] == 6)
+            and (args._worker_strategy != "shared" or report["lineage_ready_count"] == 4)
         )
     except Exception as exc:
         report = {

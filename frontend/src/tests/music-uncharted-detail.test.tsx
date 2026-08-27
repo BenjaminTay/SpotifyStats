@@ -63,7 +63,7 @@ afterEach(() => vi.restoreAllMocks())
 describe('未入榜实体详情', () => {
   it('单曲标题区提供精准管理深链并保留返回路径', async () => {
     vi.spyOn(api, 'get').mockImplementation((path: string) => {
-      if (path === '/billboard/track/175') {
+      if (path === '/billboard/track/canonical/175') {
         return Promise.resolve({
           found: true,
           chart_status: 'not_charted',
@@ -87,10 +87,14 @@ describe('未入榜实体详情', () => {
     render(<TrackDetailExperience />, {
       wrapper: detailWrapper('/music/tracks/175'),
     })
-    const link = await screen.findByRole('link', { name: '编辑 Hold Me Closer 的曲目信息' })
-    expect(link).toHaveAttribute('href', expect.stringContaining('metadata=track-credits'))
-    expect(link).toHaveAttribute('href', expect.stringContaining('track_id=175'))
-    expect(link).toHaveAttribute('href', expect.stringContaining('#music-metadata-management'))
+    const trigger = await screen.findByRole('button', { name: '编辑 Hold Me Closer 的曲目信息' })
+    fireEvent.click(trigger)
+    const mergeLink = await screen.findByRole('link', { name: /归并歌曲版本/ })
+    expect(mergeLink).toHaveAttribute('href', expect.stringContaining('metadata=merge'))
+    expect(mergeLink).toHaveAttribute('href', expect.stringContaining('track_id=175'))
+    const creditLink = screen.getByRole('link', { name: /调整曲目署名/ })
+    expect(creditLink).toHaveAttribute('href', expect.stringContaining('metadata=track-credits'))
+    expect(creditLink).toHaveAttribute('href', expect.stringContaining('#music-metadata-management'))
   })
 
   it('单曲显示有效播放空态且不伪造排名', () => {

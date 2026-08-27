@@ -179,17 +179,8 @@ export function TrackCreditManager({
   };
 
   return (
-    <section className="space-y-5" aria-labelledby="track-credit-heading">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 id="track-credit-heading" className="font-serif text-2xl font-bold">
-            曲目署名
-          </h3>
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            选择本地曲目和稳定艺人实体后直接应用；原始自动署名始终保留。
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+    <section className="space-y-5" aria-label="曲目署名工作区">
+      <div className="flex flex-wrap items-center justify-end gap-2 text-[11px]">
           <span className="rounded-full border border-border bg-background px-2.5 py-1">
             人工修改 {credits.manualChanges.length} 项
           </span>
@@ -214,7 +205,6 @@ export function TrackCreditManager({
               <RefreshCw className="size-3.5" />重试
             </Button>
           )}
-        </div>
       </div>
 
       <div className="flex gap-6 border-b border-border" role="tablist" aria-label="曲目署名管理">

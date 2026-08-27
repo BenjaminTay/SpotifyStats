@@ -108,11 +108,11 @@ class BillboardFilters:
 
 
 class MergeConfig:
-    """版本合并严格度 — L1=不合并, L2=录音版本合并(默认), L3=作曲版本合并."""
+    """用户可选版本口径：L2 同录音（默认），L3 同作品。"""
 
     def __init__(
         self,
-        merge_level: int = Query(default=2, ge=1, le=3, description="版本合并严格度"),
+        merge_level: int = Query(default=2, ge=2, le=3, description="版本归并级别（L2/L3）"),
     ):
         self.merge_level = merge_level
 
@@ -136,7 +136,7 @@ class YearlyReviewFilters:
             le=240,
             description="连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟）",
         ),
-        merge_level: int = Query(default=2, ge=1, le=3, description="版本合并严格度"),
+        merge_level: int = Query(default=2, ge=2, le=3, description="版本归并级别（L2/L3）"),
         include_compilations: bool | None = Query(default=None, description="专辑榜包含精选集"),
         bb_top_n: int | None = Query(default=None, ge=5, le=100),
         bb_album_top_n: int | None = Query(default=None, ge=5, le=100),

@@ -7,7 +7,10 @@ import pandas as pd
 
 from backend.core.migrations import migrate_042, migrate_046
 from backend.domains.billboard.year_end import build_year_end_response
-from backend.domains.music_search.context import MusicSearchFilterContext
+from backend.domains.music_search.context import (
+    MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+    MusicSearchFilterContext,
+)
 from backend.domains.music_search.year_end_projection import (
     build_year_end_projection_rows,
     clear_year_end_projection,
@@ -117,6 +120,8 @@ def _context() -> MusicSearchFilterContext:
         settings_revision=1,
         artist_identity_revision=0,
         track_credit_revision=0,
+        track_identity_revision=0,
+        track_identity_policy="spotify_l1_v1",
         semantic_base_key="base",
         filter_fingerprint="fingerprint",
         source_revision="source",
@@ -443,8 +448,9 @@ def test_projection_set_status_and_pending_marker_accept_empty_ready_projection(
     try:
         conn.execute(
             """UPDATE music_search_snapshot_meta
-               SET builder_version='music_search_snapshot_v3'
-               WHERE snapshot_key='snapshot'"""
+               SET builder_version=?
+               WHERE snapshot_key='snapshot'""",
+            (MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,),
         )
 
         contexts = (_context(),)

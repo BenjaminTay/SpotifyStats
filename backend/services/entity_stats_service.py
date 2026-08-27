@@ -65,7 +65,13 @@ def _entity_base(
     }
 
 
-def _scoped_play_loader(track_ids: list[int], *, music_only: bool):
+def _scoped_play_loader(
+    conn: sqlite3.Connection,
+    track_ids: list[int],
+    *,
+    music_only: bool,
+    ids_are_l1: bool = False,
+):
     """Load target rows plus the preceding eligible row for exact merging.
 
     Logical-event reconstruction happens after SQL selection. Selecting only
@@ -77,7 +83,23 @@ def _scoped_play_loader(track_ids: list[int], *, music_only: bool):
 
     if not track_ids:
         return partial(load_plays, extra_where="0")
-    placeholders = ",".join("?" for _ in track_ids)
+    has_l1 = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_source_links'"
+    ).fetchone()
+    source_track_ids = track_ids
+    if has_l1 and ids_are_l1:
+        placeholders = ",".join("?" for _ in track_ids)
+        source_track_ids = [
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT DISTINCT track_id FROM track_l1_source_links
+                     WHERE l1_id IN ({placeholders}) ORDER BY track_id""",
+                track_ids,
+            ).fetchall()
+        ]
+    if not source_track_ids:
+        return partial(load_plays, extra_where="0")
+    placeholders = ",".join("?" for _ in source_track_ids)
     eligible_where = "WHERE track_id IS NOT NULL" if music_only else ""
     selector = f"""p.play_id IN (
         WITH ordered AS (
@@ -92,7 +114,7 @@ def _scoped_play_loader(track_ids: list[int], *, music_only: bool):
         UNION
         SELECT previous_play_id FROM target WHERE previous_play_id IS NOT NULL
     )"""
-    return partial(load_plays, extra_where=selector, extra_params=track_ids)
+    return partial(load_plays, extra_where=selector, extra_params=source_track_ids)
 
 
 def _global_period_bounds(
@@ -280,7 +302,11 @@ def _build_track_stats(
     include_rank_context: bool = True,
 ) -> dict:
     scoped = not include_rank_context and period in {"lifetime", "custom"}
-    loader = _scoped_play_loader([track_id], music_only=music_only) if scoped else None
+    loader = (
+        _scoped_play_loader(conn, [track_id], music_only=music_only, ids_are_l1=True)
+        if scoped
+        else None
+    )
     all_df, current_df, resolved = load_period_plays(
         conn,
         min_ms,
@@ -308,6 +334,11 @@ def _build_track_stats(
     if entity_all.empty:
         return {"found": False}
     info = entity_all.iloc[0]
+    representative_track_id = int(
+        info.get("representative_track_id", track_id)
+        if pd.notna(info.get("representative_track_id", track_id))
+        else track_id
+    )
     primary_artist = info["artist_name"]
     all_artists = get_track_artist_names_map()
     artist_names = all_artists.get(int(track_id), [primary_artist])
@@ -320,6 +351,8 @@ def _build_track_stats(
             "period": resolved,
             "entity": {
                 "track_id": int(track_id),
+                "l1_id": int(track_id),
+                "representative_track_id": representative_track_id,
                 "track_name": info["track_name"],
                 "artist_name": display_artist,
                 "artist_names": artist_names,
@@ -383,9 +416,13 @@ def _resolve_album_project_song_keys(
         return set()
 
     rows = conn.execute(
-        """SELECT apt.track_id, t.track_name
+        """SELECT DISTINCT COALESCE(links.l1_id, apt.track_id) AS track_id,
+                  COALESCE(rep.track_name, t.track_name) AS track_name
            FROM album_project_tracks apt
            JOIN tracks t ON t.track_id = apt.track_id
+           LEFT JOIN track_l1_source_links links ON links.track_id=apt.track_id
+           LEFT JOIN track_l1_identities li ON li.l1_id=links.l1_id
+           LEFT JOIN tracks rep ON rep.track_id=li.representative_track_id
            WHERE apt.project_id = ? AND apt.min_merge_level <= ?""",
         (project_id, merge_level),
     ).fetchall()
@@ -489,7 +526,7 @@ def _build_album_stats(
         if scoped and artist_name
         else []
     )
-    loader = _scoped_play_loader(track_ids, music_only=music_only) if scoped else None
+    loader = _scoped_play_loader(conn, track_ids, music_only=music_only) if scoped else None
 
     all_df, current_df, resolved = load_period_plays(
         conn,
@@ -760,7 +797,7 @@ def _build_artist_stats(
                 if str(row["artist_name"]) == artist_name
             }
         )
-        loader = _scoped_play_loader(track_ids, music_only=music_only)
+        loader = _scoped_play_loader(conn, track_ids, music_only=music_only)
     else:
         loader = load_plays_for_artists
     all_df, current_df, resolved = load_period_plays(
@@ -785,7 +822,21 @@ def _build_artist_stats(
             music_only=music_only,
         )
         current_df = filter_period_events(all_df, resolved)
-        target_ids = set(track_ids)
+        placeholders = ",".join("?" for _ in track_ids)
+        target_ids = (
+            {
+                int(row[0])
+                for row in conn.execute(
+                    f"""SELECT DISTINCT l1_id FROM track_l1_source_links
+                         WHERE track_id IN ({placeholders})""",
+                    track_ids,
+                ).fetchall()
+            }
+            if track_ids
+            else set()
+        )
+        if not target_ids:
+            target_ids = set(track_ids)
         all_df = all_df[all_df["track_id"].isin(target_ids)].copy()
         current_df = current_df[current_df["track_id"].isin(target_ids)].copy()
         all_df["artist_name"] = artist_name
@@ -1020,11 +1071,19 @@ def get_entity_plays(
     result = []
     for r in page.itertuples(index=False):
         tid = int(r.track_id) if pd.notna(r.track_id) else None
+        representative_value = getattr(r, "representative_track_id", tid)
+        representative_track_id = (
+            int(representative_value)
+            if representative_value is not None and pd.notna(representative_value)
+            else tid
+        )
         entry = {
             "play_id": int(r.play_id),
             "ts": str(r.ts),
             "date": str(r.ts_date),
             "track_id": tid,
+            "l1_id": tid,
+            "representative_track_id": representative_track_id,
             "track_name": "" if pd.isna(r.track_name) else r.track_name,
             "artist_name": "" if pd.isna(r.artist_name) else r.artist_name,
             "album_name": None if pd.isna(r.album_name) else r.album_name,
@@ -1127,13 +1186,16 @@ def _is_primary_connection(conn: sqlite3.Connection) -> bool:
     return bool(path) and os.path.realpath(path) == os.path.realpath(DB_PATH)
 
 
-def _entity_stats_revision_state(conn: sqlite3.Connection) -> tuple[int, int, int, int]:
+def _entity_stats_revision_state(conn: sqlite3.Connection) -> tuple[int, int, int, int, int]:
+    from backend.domains.metadata.track_identity import get_track_identity_revision
+
     state = get_music_search_revision_state(conn)
     return (
         state.playback_revision,
         state.metadata_revision,
         state.settings_revision,
         state.candidate_revision,
+        get_track_identity_revision(conn),
     )
 
 

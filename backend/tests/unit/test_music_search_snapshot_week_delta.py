@@ -39,6 +39,8 @@ def _context(level: int, dynamic: bool) -> MusicSearchFilterContext:
         settings_revision=2,
         artist_identity_revision=2,
         track_credit_revision=2,
+        track_identity_revision=2,
+        track_identity_policy="canonical_track_v2",
         semantic_base_key="base",
         filter_fingerprint=f"snapshot-{level}-{int(dynamic)}",
         source_revision="source",
@@ -46,7 +48,7 @@ def _context(level: int, dynamic: bool) -> MusicSearchFilterContext:
 
 
 def _contexts() -> tuple[MusicSearchFilterContext, ...]:
-    return tuple(_context(level, dynamic) for dynamic in (False, True) for level in (1, 2, 3))
+    return tuple(_context(level, dynamic) for dynamic in (False, True) for level in (2, 3))
 
 
 def test_complete_week_keys_excludes_open_week_and_rejects_future() -> None:
@@ -114,7 +116,7 @@ def test_encode_ledger_fails_closed_when_ranked_identity_is_not_a_candidate() ->
         _encode_ledger_rows(conn, context, ranked, candidate_generation="candidate")
 
 
-def test_builder_passes_only_completed_weeks_to_all_six_variants(
+def test_builder_passes_only_completed_weeks_to_all_four_variants(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conn = sqlite3.connect(":memory:")
@@ -156,11 +158,11 @@ def test_builder_passes_only_completed_weeks_to_all_six_variants(
         current_open_week="2026-08-21",
     )
     assert set(result) == {context.filter_fingerprint for context in contexts}
-    assert len(seen) == 6
+    assert len(seen) == 4
     assert all(weeks == {"2026-08-14"} for _fingerprint, weeks in seen)
 
 
-def test_builder_rejects_divergent_six_variant_policy() -> None:
+def test_builder_rejects_divergent_four_variant_policy() -> None:
     contexts = list(_contexts())
     contexts[-1] = replace(contexts[-1], bb_top_n=99)
     with pytest.raises(MusicSearchWeekDeltaIncompatibleError, match="divergent"):

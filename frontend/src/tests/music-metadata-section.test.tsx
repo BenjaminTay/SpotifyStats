@@ -14,14 +14,16 @@ vi.mock("@/features/settings/components/VersionMergeSection", () => ({
     initialObjectType,
     initialArtistFilter,
     initialCanonicalName,
+    initialTrackId,
   }: {
     initialObjectType: string;
     initialArtistFilter?: string;
     initialCanonicalName?: string;
+    initialTrackId?: number | null;
   }) => (
     <div data-testid="version-merge-workspace">
       {initialObjectType} ·
-      {initialArtistFilter} · {initialCanonicalName}
+      {initialArtistFilter} · {initialCanonicalName} · {initialTrackId ?? "none"}
     </div>
   ),
 }));
@@ -65,8 +67,12 @@ describe("MusicMetadataSection", () => {
 
   it("shows one shared merge-level control and one merge workspace", async () => {
     renderRoute("/settings?metadata=merge");
+    expect(screen.getByRole("radiogroup", { name: "默认归并级别" })).not.toBeVisible();
+    fireEvent.click(screen.getByText("统计展示默认值"));
+    expect(screen.getByRole("radiogroup", { name: "默认归并级别" })).toBeVisible();
     expect(screen.getAllByRole("radiogroup", { name: "默认归并级别" })).toHaveLength(1);
-    expect(screen.getAllByRole("radio")).toHaveLength(3);
+    expect(screen.getAllByRole("radio")).toHaveLength(2);
+    expect(screen.queryByRole("radio", { name: /L1/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "L3 同一作品" }));
     expect(localStorage.getItem("spotify_stats_merge_level")).toBe("3");
     expect(await screen.findByTestId("version-merge-workspace")).toHaveTextContent("track");
@@ -119,6 +125,16 @@ describe("MusicMetadataSection", () => {
       "album ·Olivia Rodrigo · GUTS",
     );
     album.unmount();
+  });
+
+  it("prefills the manual track merge workspace from a detail deep link", async () => {
+    renderRoute(
+      "/settings?metadata=merge&merge_type=track&track_id=175&artist=Elton%20John&return_to=%2Fmusic%2Ftracks%2F175#music-metadata-management",
+    );
+    expect(await screen.findByTestId("version-merge-workspace")).toHaveTextContent(
+      "track ·Elton John · · 175",
+    );
+    expect(screen.getByRole("link", { name: "返回详情" })).toHaveAttribute("href", "/music/tracks/175");
   });
 
   it("moves legacy genre and language links into the embedded metadata module", async () => {

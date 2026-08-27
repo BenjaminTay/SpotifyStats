@@ -20,8 +20,8 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[3]
 PRODUCTION = ROOT / "deploy" / "production"
 BUILDER_VERSION = MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
-REQUIRED_MUSIC_SEARCH_MIGRATION = 42
-VARIANTS = ((2, True), (1, True), (3, True), (2, False), (1, False), (3, False))
+REQUIRED_MUSIC_SEARCH_MIGRATION = 58
+VARIANTS = ((2, True), (3, True), (2, False), (3, False))
 
 
 def _build_preflight_fixture(
@@ -96,7 +96,7 @@ def _build_preflight_fixture(
         "snapshot_set": {
             "status": "ready",
             "semantic_base_key": "semantic-base",
-            "ready_count": 6,
+            "ready_count": 4,
             "failed_count": 0,
             "duration_ms": 1.0,
             "variants": [
@@ -118,8 +118,8 @@ def _build_preflight_fixture(
         require_all_ready=True,
         prior_inventory={},
         base_counts={
-            "row_count": 6,
-            "unique_fingerprint_count": 6,
+            "row_count": 4,
+            "unique_fingerprint_count": 4,
             "duplicate_fingerprint_count": 0,
         },
         migration={
@@ -193,7 +193,7 @@ def test_preflight_validator_requires_migration_variants_builder_and_zero_orphan
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["status"] == "ready"
     assert "snapshot_set" not in payload
-    assert payload["gate"]["all_six_ready"] is True
+    assert payload["gate"]["all_four_ready"] is True
     assert payload["host_capacity"]["passed"] is True
     assert payload["production_validation"] == {
         "builder_version": BUILDER_VERSION,
@@ -201,8 +201,8 @@ def test_preflight_validator_requires_migration_variants_builder_and_zero_orphan
         "integrity_check": "ok",
         "required_migration_version": REQUIRED_MUSIC_SEARCH_MIGRATION,
         "required_migration_applied": True,
-        "ready_variants": 6,
-        "required_variants": 6,
+        "ready_variants": 4,
+        "required_variants": 4,
     }
 
 

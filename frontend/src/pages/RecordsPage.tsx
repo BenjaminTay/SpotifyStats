@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 
-import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBillboard } from '@/hooks/useBillboard'
@@ -105,7 +105,7 @@ function SectionFallback() {
 export function RecordsPage() {
   const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
-  const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
+  const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { data, loading, error } = useBillboard(undefined, mergeLevel)
   const requestedFamily = searchParams.get('family')
   const activeTab: TabKey = RECORD_TABS.some((tab) => tab.key === requestedFamily)

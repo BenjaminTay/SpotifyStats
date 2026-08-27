@@ -20,6 +20,10 @@ from backend.domains.metadata.track_credits import (
     get_effective_track_credits,
     get_track_credit_revision,
 )
+from backend.domains.metadata.track_identity import (
+    TRACK_IDENTITY_POLICY_VERSION,
+    get_track_identity_revision,
+)
 from backend.domains.music_search.contracts import make_music_search_entity_key
 from backend.domains.music_search.normalization import (
     SEARCH_NORMALIZATION_VERSION,
@@ -28,7 +32,7 @@ from backend.domains.music_search.normalization import (
 )
 from backend.domains.music_search.revisions import get_music_search_revision_state
 
-INDEX_SCHEMA_VERSION = "music_search_candidate_index_v3"
+INDEX_SCHEMA_VERSION = "music_search_candidate_index_v4_l1"
 
 
 @dataclass(frozen=True)
@@ -80,6 +84,8 @@ def music_search_source_revision(conn: sqlite3.Connection) -> str:
         "candidate_revision": revisions.candidate_revision,
         "identity_revision": get_identity_revision(conn),
         "track_credit_revision": get_track_credit_revision(conn),
+        "track_identity_revision": get_track_identity_revision(conn),
+        "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -233,6 +239,14 @@ def _track_group_map(
     from backend.domains.playback.track_groups import load_track_group_keys
 
     frame = load_track_group_keys(conn, merge_level)
+    if "l1_id" in frame.columns and "track_agg_l1_id" in frame.columns:
+        return {
+            int(cast(Any, row.l1_id)): (
+                int(cast(Any, row.track_agg_l1_id)),
+                str(row.track_agg_name),
+            )
+            for row in frame.itertuples(index=False)
+        }
     return {
         int(cast(Any, row.track_id)): (
             int(cast(Any, row.track_agg_id)),
@@ -252,12 +266,35 @@ def _active_music_entity_ids(
     playback dataset and must not resurrect dimensions that are only retained
     for audit/history after their final play was removed.
     """
-    track_ids = {
-        int(row[0])
-        for row in conn.execute(
-            "SELECT DISTINCT track_id FROM plays WHERE track_id IS NOT NULL"
-        ).fetchall()
-    }
+    if _table_exists(conn, "track_l1_external_ids"):
+        track_ids = {
+            int(row[0])
+            for row in conn.execute(
+                """SELECT DISTINCT COALESCE(spotify_li.l1_id, local_li.l1_id)
+                     FROM plays p
+                     LEFT JOIN tracks t ON t.track_id=p.track_id
+                     LEFT JOIN track_l1_external_ids spotify_external
+                       ON spotify_external.provider='spotify'
+                      AND spotify_external.external_track_id=COALESCE(
+                            NULLIF(p.spotify_track_id_at_play, ''),
+                            NULLIF(t.spotify_track_id, '')
+                          )
+                     LEFT JOIN track_l1_identities spotify_li
+                       ON spotify_li.l1_id=spotify_external.l1_id
+                      AND spotify_li.identity_status!='superseded'
+                     LEFT JOIN track_l1_identities local_li
+                       ON local_li.fallback_track_id=p.track_id
+                      AND local_li.identity_status!='superseded'
+                    WHERE COALESCE(spotify_li.l1_id, local_li.l1_id) IS NOT NULL"""
+            ).fetchall()
+        }
+    else:
+        track_ids = {
+            int(row[0])
+            for row in conn.execute(
+                "SELECT DISTINCT track_id FROM plays WHERE track_id IS NOT NULL"
+            ).fetchall()
+        }
     album_ids = {
         int(row[0])
         for row in conn.execute(
@@ -350,14 +387,27 @@ def _active_album_project_ids(
 ) -> set[int]:
     project_ids: set[int] = set()
     if track_ids and _table_exists(conn, "album_project_tracks"):
-        project_ids.update(
-            int(row[0])
-            for row in conn.execute(
-                """SELECT DISTINCT apt.project_id
-                   FROM album_project_tracks apt
-                   JOIN plays p ON p.track_id=apt.track_id"""
-            ).fetchall()
-        )
+        if _table_exists(conn, "track_l1_source_links"):
+            placeholders = ",".join("?" for _ in track_ids)
+            project_ids.update(
+                int(row[0])
+                for row in conn.execute(
+                    f"""SELECT DISTINCT apt.project_id
+                           FROM album_project_tracks apt
+                           JOIN track_l1_source_links links ON links.track_id=apt.track_id
+                          WHERE links.l1_id IN ({placeholders})""",
+                    tuple(sorted(track_ids)),
+                ).fetchall()
+            )
+        else:
+            project_ids.update(
+                int(row[0])
+                for row in conn.execute(
+                    """SELECT DISTINCT apt.project_id
+                       FROM album_project_tracks apt
+                       JOIN plays p ON p.track_id=apt.track_id"""
+                ).fetchall()
+            )
     if album_ids and _table_exists(conn, "album_project_albums"):
         project_ids.update(
             int(row[0])
@@ -450,8 +500,32 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 credits_by_track[track_id].append(item)
 
     documents: list[dict[str, Any]] = []
-    track_rows = conn.execute(
-        """WITH active_tracks AS (
+    if _table_exists(conn, "track_l1_external_ids"):
+        track_rows = conn.execute(
+            """SELECT li.l1_id AS track_id,
+                      li.representative_track_id,
+                      t.track_name, t.album_id, t.artist_id, al.album_name
+                 FROM track_l1_identities li
+                 JOIN tracks t ON t.track_id=li.representative_track_id
+                 LEFT JOIN albums al ON al.album_id=t.album_id
+                WHERE li.identity_status!='superseded' AND (
+                    EXISTS (
+                        SELECT 1 FROM track_l1_source_links links
+                        WHERE links.l1_id=li.l1_id
+                          AND links.evidence_type='play_at_time'
+                    )
+                ) OR (
+                    li.identity_status!='superseded' AND li.fallback_track_id IS NOT NULL
+                    AND EXISTS (
+                        SELECT 1 FROM plays p
+                        WHERE p.track_id=li.fallback_track_id
+                    )
+                )
+                ORDER BY li.l1_id"""
+        ).fetchall()
+    else:
+        track_rows = conn.execute(
+            """WITH active_tracks AS (
                SELECT t.track_id, t.track_name, t.artist_id,
                       CASE
                         WHEN EXISTS (
@@ -477,9 +551,9 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
            FROM active_tracks t
            LEFT JOIN albums al ON al.album_id=t.album_id
            ORDER BY t.track_id"""
-    ).fetchall()
+        ).fetchall()
     track_rows_by_id = {int(row["track_id"]): row for row in track_rows}
-    for merge_level in (1, 2, 3):
+    for merge_level in (2, 3):
         group_map = _track_group_map(conn, merge_level)
         members_by_entity: dict[int, list[sqlite3.Row]] = defaultdict(list)
         group_names: dict[int, str] = {}
@@ -494,7 +568,12 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
         for entity_id, member_rows in sorted(members_by_entity.items()):
             row = track_rows_by_id.get(entity_id, member_rows[0])
             track_id = int(row["track_id"])
-            credits = credits_by_track.get(track_id)
+            credit_track_id = (
+                int(row["representative_track_id"] or track_id)
+                if "representative_track_id" in row.keys()
+                else track_id
+            )
+            credits = credits_by_track.get(credit_track_id)
             if credits:
                 credit_names = [name for _, name in credits]
                 primary_artist_id = credits[0][0]

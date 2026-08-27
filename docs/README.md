@@ -50,6 +50,7 @@
 
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
+- [`reports/2026-08-27-spotify-track-l1-identity-migration.md`](reports/2026-08-27-spotify-track-l1-identity-migration.md)：canonical track 唯一归属、公共 L2/L3、真实库迁移和响应式验收证据（文件名为历史兼容）
 - [`reports/2026-08-25-music-detail-year-end-history.md`](reports/2026-08-25-music-detail-year-end-history.md)：详情年榜投影、榜单 KPI、真实数据库副本、性能与响应式浏览器验收证据
 - [`reports/2026-08-24-home-detail-loading-performance-repair.md`](reports/2026-08-24-home-detail-loading-performance-repair.md)：首页/详情冷加载、实体统计分层、按键并发与子榜错误空态的完整修复证据
 - [`reports/2026-08-24-yearly-review-semantic-correction.md`](reports/2026-08-24-yearly-review-semantic-correction.md)：年度里程碑、日极值、首次发现、部分月窗口与跨章节 identity/分母修复证据
@@ -68,6 +69,7 @@
 - [`archive/README.md`](archive/README.md)：归档阅读规则与阶段目录
 - [`archive/06-productization-closeout/`](archive/06-productization-closeout/)：最近一次产品化收口阶段
 - [`archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md`](archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md)：已完成的串流增量导入 Phase A–E 规划与实施记录
+- [`archive/06-productization-closeout/2026-08-27-spotify-track-identity-l1-migration-plan.md`](archive/06-productization-closeout/2026-08-27-spotify-track-identity-l1-migration-plan.md)：已被最终 canonical track / L2 / L3 方案取代的早期 Spotify-L1 规划
 - [`archive/01-streamlit-mvp/`](archive/01-streamlit-mvp/) 至 [`archive/05-yearly-report-genre/`](archive/05-yearly-report-genre/)：早期开发阶段
 
 ## 文档维护规则

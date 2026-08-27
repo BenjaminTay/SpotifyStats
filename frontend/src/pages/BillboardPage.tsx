@@ -15,7 +15,7 @@ import { MobileBillboardWeekly } from '@/features/mobile/billboard/MobileBillboa
 import { useBillboardWeekly } from '@/hooks/useBillboard'
 import { useSettings } from '@/hooks/useSettings'
 import { useViewportMode } from '@/hooks/useViewportMode'
-import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import type { BillboardWeeklyResponse } from '@/types/billboard'
 
 const PAGE_SIZE = 50
@@ -53,7 +53,7 @@ export function BillboardPage() {
   const initialWeek = searchParams.get('week')
   const tabParam = searchParams.get('tab')
   const activeTab: BillboardWeeklyTab = isBillboardWeeklyTab(tabParam) ? tabParam : 'tracks'
-  const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
+  const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { settings, loading: settingsLoading } = useSettings()
   const includeCompilations = settings?.include_compilations ?? false
 

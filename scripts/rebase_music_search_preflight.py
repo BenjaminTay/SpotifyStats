@@ -46,7 +46,7 @@ DERIVED_TABLES = (
     "music_search_snapshot_meta",
     "music_search_entity_context",
 )
-EXPECTED_VARIANTS = {(level, dynamic) for level in (1, 2, 3) for dynamic in (False, True)}
+EXPECTED_VARIANTS = {(level, dynamic) for level in (2, 3) for dynamic in (False, True)}
 
 
 def parse_args() -> argparse.Namespace:
@@ -198,8 +198,8 @@ def validate_rebased_database(path: Path) -> dict[str, Any]:
             if get_ready_music_search_snapshot_key(conn, context.filter_fingerprint) is not None
         }
         if set(ready) != EXPECTED_VARIANTS:
-            raise ValueError("rebased database does not have six exact-ready variants")
-        if len(set(ready.values())) != 6:
+            raise ValueError("rebased database does not have four exact-ready variants")
+        if len(set(ready.values())) != 4:
             raise ValueError("rebased search fingerprints are not unique")
         orphan_count = int(
             conn.execute(
@@ -281,7 +281,7 @@ def main() -> int:
     except (OSError, sqlite3.Error, ValueError) as exc:
         print(f"music-search preflight rebase failed: {exc}", file=sys.stderr)
         return 1
-    print("Music-search preflight rebase passed: source_equivalent=true variants=6/6 orphans=0")
+    print("Music-search preflight rebase passed: source_equivalent=true variants=4/4 orphans=0")
     return 0
 
 

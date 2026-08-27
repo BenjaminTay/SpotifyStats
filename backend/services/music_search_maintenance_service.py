@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 
 
 class MusicSearchStatisticsReuseRequiredError(RuntimeError):
-    """Raised when a reuse-only maintenance pass cannot reuse all six variants."""
+    """Raised when a reuse-only maintenance pass cannot reuse all four variants."""
 
 
 def _search_metadata_dependencies_ready(conn: sqlite3.Connection) -> bool:
@@ -179,6 +179,8 @@ def build_shared_full_music_search_plan(
         or semantic.get("settings") != settings_digest
         or int(semantic.get("artist_identity", -1)) != current.artist_identity_revision
         or int(semantic.get("track_credit", -1)) != current.track_credit_revision
+        or int(semantic.get("track_identity", -1)) != current.track_identity_revision
+        or semantic.get("track_identity_policy") != current.track_identity_policy
     ):
         return None
     return {
@@ -293,7 +295,7 @@ def _source_equivalent_legacy_v2_rows(
 
     The old opaque base included a random candidate generation id.  A changed
     generation must not force statistical recalculation when the persistent
-    revisions, candidate source, builders, and full six-variant matrix remain
+    revisions, candidate source, builders, and full four-variant matrix remain
     identical.
     """
     if not contexts:
@@ -317,7 +319,7 @@ def _source_equivalent_legacy_v2_rows(
            WHERE source_revision=? AND status='ready' AND builder_version=?
              AND semantic_base_key IS NOT NULL AND semantic_base_key!=?
            GROUP BY semantic_base_key
-           HAVING COUNT(*)=6
+           HAVING COUNT(*)=4
            ORDER BY latest_at DESC""",
         (expected_source, MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION, current_base),
     ).fetchall()
@@ -333,7 +335,7 @@ def _source_equivalent_legacy_v2_rows(
             (base,),
         ).fetchall()
         by_variant: dict[tuple[int, bool], sqlite3.Row | tuple[Any, ...]] = {}
-        valid = len(rows) == 6
+        valid = len(rows) == 4
         for row in rows:
             variant = (int(row[4]), bool(row[5]))
             fingerprint = str(row[1])
@@ -399,7 +401,7 @@ def schedule_current_music_search_derived_data_rebuild(
     prewarm_yearly_review: bool = False,
     shared_full_snapshot_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Publish candidates now and defer the six expensive exact snapshots."""
+    """Publish candidates now and defer the four exact L2/L3 snapshots."""
     if not _search_metadata_dependencies_ready(conn):
         raise RuntimeError("music-search metadata aggregate dependency is not ready")
     contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
@@ -465,7 +467,7 @@ def rebuild_current_music_search_derived_data(
         snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
     if snapshot_set_report is None and statistics_reuse_only:
         raise MusicSearchStatisticsReuseRequiredError(
-            "all six exact music-search statistics variants must be maintained separately"
+            "all four exact music-search statistics variants must be maintained separately"
         )
 
     index_report, candidate_report = _ensure_current_music_search_candidate_index(
@@ -473,7 +475,7 @@ def rebuild_current_music_search_derived_data(
         rebuild_documents=rebuild_documents,
     )
     # Index generation changes do not invalidate statistics.  Only the exact
-    # statistics fingerprint controls whether the six variants are reused.
+    # statistics fingerprint controls whether the four variants are reused.
     snapshot_set_report = snapshot_set_report or _revalidated_snapshot_set_report(conn, contexts)
     shared_frame_fallback_reason: str | None = None
     delta_fallback_reason: str | None = None
@@ -554,7 +556,7 @@ def handle_music_search_snapshot_rebuild(job: Job) -> None:
                     else None
                 ),
             )
-            # A setting/import mutation may land while a long six-variant build is
+            # A setting/import mutation may land while a long four-variant build is
             # running.  Its exact base key differs, so enqueue one follow-up set;
             # the all-ready check makes this a no-op for an unchanged base.
             enqueue_music_search_snapshot_rebuild(conn=conn)

@@ -191,7 +191,7 @@ class TestMusicStats:
         track = charts["rows"][0]
 
         track_stats = client.get(
-            f"/api/music/tracks/{track['track_id']}/stats",
+            f"/api/music/tracks/l1/{track['track_id']}/stats",
             params=default_params,
         )
         assert track_stats.status_code == 200

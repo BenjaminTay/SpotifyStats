@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Settings2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Fingerprint, GitMerge, ListMusic, Settings2 } from 'lucide-react'
 import type { AlbumDetailResponse, ArtistDetailResponse, TrackDetailResponse } from '@/types/billboard'
 import { displayName } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import { formatAlbumKind, formatArtistFollowers } from './MusicDetailFormatters'
 import { CapabilityGate } from '@/components/capabilities/CapabilityGate'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 function formatAlbumReleaseDate(iso: string): string {
   const [y, m, d] = iso.split('-')
@@ -42,6 +43,9 @@ export function TrackDetailHero({
   onBack: () => void
 }) {
   const artists = data.artist_names?.length ? data.artist_names : [data.artist_name]
+  const returnTo = `/music/tracks/${trackId}`
+  const representativeTrackId = data.representative_track_id ?? data.track_id
+  const artistName = data.primary_artist_name ?? artists[0] ?? data.artist_name
   return (
     <section className="mb-6">
       <button
@@ -61,15 +65,47 @@ export function TrackDetailHero({
               {displayName(data.track_name)}
             </h1>
             <CapabilityGate require={['editing', 'metadata_governance']}>
-              <Link
-                aria-label={`编辑 ${data.track_name} 的曲目信息`}
-                title="编辑曲目信息"
-                to={`/settings?metadata=track-credits&track_id=${encodeURIComponent(trackId)}&return_to=${encodeURIComponent(`/music/tracks/${trackId}`)}#music-metadata-management`}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
-              >
-                <Settings2 className="size-3.5" />
-                <span className="hidden md:inline">编辑</span>
-              </Link>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`编辑 ${data.track_name} 的曲目信息`}
+                    title="选择要编辑的内容"
+                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
+                  >
+                    <Settings2 className="size-3.5" />
+                    <span className="hidden md:inline">编辑</span>
+                    <ChevronDown className="size-3" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="end" sideOffset={8} className="w-[min(330px,calc(100vw-24px))] rounded-2xl p-2 shadow-xl">
+                  <div className="px-2.5 pb-2 pt-1.5">
+                    <p className="text-[12px] font-semibold">管理这首歌</p>
+                    <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">选择本次要修改的元数据关系。</p>
+                  </div>
+                  <Link
+                    to={`/settings?metadata=merge&merge_type=track&track_id=${encodeURIComponent(trackId)}&artist=${encodeURIComponent(artistName)}&return_to=${encodeURIComponent(returnTo)}#music-metadata-management`}
+                    className="flex min-h-14 items-center gap-3 rounded-xl px-2.5 py-2 transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-foreground/30"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-foreground/10 text-accent-foreground"><GitMerge className="size-4" /></span>
+                    <span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold">归并歌曲版本</span><span className="block text-[10px] text-muted-foreground">选择另一首歌，并指定 L2 录音或 L3 作品层级</span></span>
+                  </Link>
+                  <Link
+                    to={`/settings?metadata=track-credits&track_id=${encodeURIComponent(representativeTrackId)}&return_to=${encodeURIComponent(returnTo)}#music-metadata-management`}
+                    className="flex min-h-14 items-center gap-3 rounded-xl px-2.5 py-2 transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-foreground/30"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><ListMusic className="size-4" /></span>
+                    <span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold">调整曲目署名</span><span className="block text-[10px] text-muted-foreground">编辑当前代表来源的主艺人与合作艺人</span></span>
+                  </Link>
+                  <Link
+                    to={`/settings?metadata=artist-identities&artist=${encodeURIComponent(artistName)}&return_to=${encodeURIComponent(returnTo)}#music-metadata-management`}
+                    className="flex min-h-14 items-center gap-3 rounded-xl px-2.5 py-2 transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-foreground/30"
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Fingerprint className="size-4" /></span>
+                    <span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold">管理艺人身份</span><span className="block text-[10px] text-muted-foreground">处理别名、canonical 身份和 provider 关联</span></span>
+                  </Link>
+                </PopoverContent>
+              </Popover>
             </CapabilityGate>
           </div>
           <p className="mt-2 font-sans text-[17px] text-muted-foreground">

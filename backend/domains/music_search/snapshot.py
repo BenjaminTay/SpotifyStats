@@ -293,7 +293,7 @@ def _shared_metric_maps(
     *,
     shared_frames: dict[bool, tuple[pd.DataFrame, pd.DataFrame]] | None = None,
 ) -> dict[tuple[int, bool], tuple[dict[int, tuple[int, int]], ...]]:
-    """Build six metric variants from one logical-frame set per threshold."""
+    """Build the four L2/L3 metric variants from one frame per threshold."""
     if shared_frames is None:
         result: dict[tuple[int, bool], tuple[dict[int, tuple[int, int]], ...]] = {}
         for dynamic_threshold in dict.fromkeys(context.dynamic_threshold for context in contexts):
@@ -1132,7 +1132,7 @@ def _validate_shared_full_contexts(
     }
     actual_variants = {(context.merge_level, context.dynamic_threshold) for context in contexts}
     if len(contexts) != len(expected_variants) or actual_variants != expected_variants:
-        raise ValueError("shared-full snapshot requires the exact six supported variants")
+        raise ValueError("shared-full snapshot requires the exact four supported variants")
     semantic_base_keys = {context.semantic_base_key for context in contexts}
     if len(semantic_base_keys) != 1:
         raise ValueError("shared-full snapshot variants must share one semantic base")
@@ -1194,7 +1194,7 @@ def _publish_shared_full_snapshot_set(
     source_dataset_digest: str | None,
     dependency_digest: str | None,
 ) -> None:
-    """Fence and activate the exact six variants in one write transaction."""
+    """Fence and activate the exact four variants in one write transaction."""
     conn.execute("BEGIN IMMEDIATE")
     try:
         _assert_shared_full_publish_fence(
@@ -1288,7 +1288,7 @@ def build_shared_full_music_search_snapshot_set(
     *,
     source_generation_id: str,
 ) -> dict[str, Any] | None:
-    """Fully rebuild six variants from two shared logical-frame sets.
+    """Fully rebuild four L2/L3 variants from two shared logical-frame sets.
 
     No prior snapshot rows are cloned. This path is safe without structured
     source metadata on legacy snapshot rows, while eliminating the repeated
@@ -1534,11 +1534,9 @@ def list_music_search_snapshot_variants(
            WHERE semantic_base_key=?
            ORDER BY CASE
                WHEN merge_level=2 AND dynamic_threshold=1 THEN 0
-               WHEN merge_level=1 AND dynamic_threshold=1 THEN 1
-               WHEN merge_level=3 AND dynamic_threshold=1 THEN 2
-               WHEN merge_level=2 AND dynamic_threshold=0 THEN 3
-               WHEN merge_level=1 AND dynamic_threshold=0 THEN 4
-               ELSE 5 END""",
+               WHEN merge_level=3 AND dynamic_threshold=1 THEN 1
+               WHEN merge_level=2 AND dynamic_threshold=0 THEN 2
+               ELSE 3 END""",
         (semantic_base_key,),
     ).fetchall()
     return [dict(row) for row in rows]

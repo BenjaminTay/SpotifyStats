@@ -43,9 +43,9 @@ SpotifyStats 的统计口径要回答三个不同问题：
 | album project | 统计意义上的专辑项目，例如 `GUTS` 项目包含标准版、豪华版和归属到该项目的先行单曲 |
 | 专辑播放量 | album project 内 canonical song 播放量的去重求和 |
 | 来源拆分 | 对专辑播放量按原版专辑、豪华版、单曲版、精选集等 source album 来源做解释 |
-| L1 | 不合并，物理 Spotify entity 口径 |
-| L2 | 标准合并，同录音/同发行项目口径 |
-| L3 | 宽松合并，同作品/同专辑项目口径 |
+| canonical track | 本地稳定基础身份；一个基础身份可持有多个完全等价的 provider ID，一个 provider ID 只能有一个 owner |
+| L2 | 默认统计模式，同录音/同发行项目口径 |
+| L3 | 可选统计模式，同作品/同专辑项目口径 |
 
 ---
 
@@ -222,9 +222,9 @@ L3 是宽松口径。
 
 | 级别 | 曲目聚合键 | 行为 |
 |------|------------|------|
-| L1 | `track_id` | 每个 Spotify 曲目实体独立 |
-| L2 | `recording_group_id`，未入组则回退 `track_id` | 同录音聚合 |
-| L3 | `composition_group_id`，未入组则回退 L2/L1 key | 同作品聚合 |
+| 基础身份 | `canonical_track_id` | 系统治理层，不作为用户可选统计模式 |
+| L2 | `recording_group_id`，未入组则回退 `canonical_track_id` | 同录音聚合；公开默认 |
+| L3 | `composition_group_id`，未入组则回退 L2/canonical key | 同作品聚合 |
 
 ### R10. L2 同录音判断
 
@@ -331,11 +331,11 @@ album_project_plays = sum(play_count(canonical_song) for canonical_song in album
 - 单曲包和录音室专辑都包含的同一 canonical song，只算一次。
 - 精选集再次收录的既有 canonical song，不为精选集额外重复计数。
 
-### R17. L1/L2/L3 专辑聚合键
+### R17. 基础发行与 L2/L3 专辑聚合键
 
 | 级别 | 专辑聚合键 | 行为 |
 |------|------------|------|
-| L1 | `album_id` | 每个 album container 独立 |
+| 基础发行 | `album_id` | 系统内部的具体 album container，不作为用户可选统计模式 |
 | L2 | `album_project_id` / `release_group_id(scope=release)` | 标准版、豪华版、区域版等合并 |
 | L3 | `album_project_id` / `release_group_id(scope=composition)` | 重录、live、remix、acoustic 等项目级合并 |
 
@@ -592,7 +592,7 @@ weekly_album_project_plays =
 
 `merge_level` 不应进入基础有效播放事件或 base-grain 预聚合 hash。
 
-L1/L2/L3 的差异在排名层通过 canonical key resolver 应用。
+基础身份、L2/L3 的差异在排名层通过 canonical key resolver 应用；公开消费只允许 L2/L3。
 
 ### R36. Billboard Year-End 年榜
 
@@ -620,13 +620,13 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 
 歌曲、专辑和艺人详情页复用同一套年榜计分与覆盖口径。详情 `summary` 不读取年榜投影并返回稳定空值，`overview/full` 读取持久化摘要和按年份降序的年榜历史；请求不得同步构建完整 Billboard 或 Year-End。详情页展示时按年份从旧到新排列，只展示 `chart_plays` 并标为“年度上榜播放”，不把 `annual_plays` 混入榜单成绩。
 
-详情页年榜成绩采用独立投影状态：`ready` 表示当前精确统计 fingerprint 已完成投影，`warming` 表示投影已排队或正在后台构建，`unavailable` 表示缺少精确 snapshot、投影失败或版本不兼容。应用启动必须同时检查六套精确 snapshot 与六套当前版本投影；旧库已有 ready snapshot 但缺少账本/投影时，由一个幂等后台维护任务补齐，详情 GET 始终只读且不得触发计算。`ready` 且历史为空表示实体从未进入年榜，不得显示 `#0`。年榜最佳先按最低 `year_end_rank` 选择；最低排名多年并列时，以最早达到该排名的年度作为首次 peak，不以完整年度或最近年度覆盖。年榜最佳与入榜年度数只作为“榜单成绩”页内的同级 KPI，不进入详情 Hero；阶段年度必须在 KPI 和历史中显示覆盖标签，不得省略完整性边界。所有名次数值沿用 Billboard 衬线数字样式。
+详情页年榜成绩采用独立投影状态：`ready` 表示当前精确统计 fingerprint 已完成投影，`warming` 表示投影已排队或正在后台构建，`unavailable` 表示缺少精确 snapshot、投影失败或版本不兼容。应用启动必须同时检查四套公开精确 snapshot（L2/L3 × 动态阈值开/关）与四套当前版本投影；旧库已有 ready snapshot 但缺少账本/投影时，由一个幂等后台维护任务补齐，详情 GET 始终只读且不得触发计算。`ready` 且历史为空表示实体从未进入年榜，不得显示 `#0`。年榜最佳先按最低 `year_end_rank` 选择；最低排名多年并列时，以最早达到该排名的年度作为首次 peak，不以完整年度或最近年度覆盖。年榜最佳与入榜年度数只作为“榜单成绩”页内的同级 KPI，不进入详情 Hero；阶段年度必须在 KPI 和历史中显示覆盖标签，不得省略完整性边界。所有名次数值沿用 Billboard 衬线数字样式。
 
 只读一致性检查：
 
 ```bash
 .venv/bin/python scripts/billboard_year_end_consistency_probe.py \
-  --merge-levels 1,2,3 \
+  --merge-levels 2,3 \
   --json-output /tmp/billboard_year_end_consistency.json
 ```
 
@@ -792,7 +792,7 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 以下不变量必须长期成立：
 
 1. `valid_play_events` 不随 `merge_level` 改变。
-2. 曲目榜在 L1/L2/L3 下只是聚合键变化，总播放事件不丢失。
+2. 曲目榜在 L2/L3 下只是聚合键变化，总播放事件不丢失；基础身份只负责确定事件归属。
 3. 同一 canonical song 在同一 album project 中只能贡献一次。
 4. album project 的来源拆分桶之和等于 album project plays。
 5. 艺人播放次数之和可以大于有效播放事件数。

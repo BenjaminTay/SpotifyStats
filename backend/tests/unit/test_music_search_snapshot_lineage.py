@@ -39,6 +39,7 @@ def _conn() -> sqlite3.Connection:
             ('duration_revision', 'duration-v1'),
             ('credit_membership_revision', 'credits-v1'),
             ('identity_revision', '0'),
+            ('track_identity_revision', '0'),
             ('track_credit_revision', '0'),
             ('album_project_revision', 'albums-v1');
         """

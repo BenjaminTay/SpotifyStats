@@ -162,8 +162,20 @@ def _interaction_type(uri: str) -> str:
 def _track_uri_map(conn: sqlite3.Connection) -> dict[str, int]:
     if not _table_exists(conn, "tracks"):
         return {}
+    has_l1 = _table_exists(conn, "track_l1_external_ids")
     rows = conn.execute(
         """
+        SELECT t.spotify_track_uri, MIN(COALESCE(li.l1_id, t.track_id))
+        FROM tracks t
+        LEFT JOIN track_l1_external_ids external
+          ON external.provider='spotify'
+         AND external.external_track_id=NULLIF(t.spotify_track_id, '')
+        LEFT JOIN track_l1_identities li ON li.l1_id=external.l1_id
+        WHERE t.spotify_track_uri IS NOT NULL AND TRIM(t.spotify_track_uri) != ''
+        GROUP BY t.spotify_track_uri
+        """
+        if has_l1
+        else """
         SELECT spotify_track_uri, MIN(track_id)
         FROM tracks
         WHERE spotify_track_uri IS NOT NULL AND TRIM(spotify_track_uri) != ''

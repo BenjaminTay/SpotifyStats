@@ -68,6 +68,64 @@ def _normalized_track_query(conn: sqlite3.Connection, query: str, limit: int) ->
     ):
         return []
 
+    has_l1 = (
+        _has_columns(
+            conn,
+            "track_l1_identities",
+            {"l1_id", "representative_track_id"},
+        )
+        and _has_columns(conn, "track_l1_external_ids", {"l1_id", "provider", "external_track_id"})
+        and _has_columns(conn, "track_l1_source_links", {"l1_id", "track_id"})
+    )
+    if has_l1:
+        like_term, exact_term, prefix_term = _search_terms(query)
+        return conn.execute(
+            """WITH resolved_plays AS (
+                   SELECT p.play_id, p.ms_played,
+                          COALESCE(li_spotify.l1_id, li_local.l1_id) AS l1_id
+                     FROM plays p
+                     JOIN tracks source ON source.track_id=p.track_id
+                     LEFT JOIN track_l1_external_ids external_spotify
+                       ON external_spotify.provider='spotify'
+                      AND external_spotify.external_track_id=COALESCE(
+                            NULLIF(p.spotify_track_id_at_play, ''),
+                            NULLIF(source.spotify_track_id, '')
+                          )
+                     LEFT JOIN track_l1_identities li_spotify
+                       ON li_spotify.l1_id=external_spotify.l1_id
+                      AND li_spotify.identity_status!='superseded'
+                     LEFT JOIN track_l1_identities li_local
+                       ON li_local.fallback_track_id=p.track_id
+                      AND li_local.identity_status!='superseded'
+                      AND COALESCE(NULLIF(p.spotify_track_id_at_play, ''),
+                                   NULLIF(source.spotify_track_id, '')) IS NULL
+               )
+               SELECT t.track_name AS name, li.l1_id AS track_id,
+                      t.album_id, ar.artist_name, al.album_name,
+                      COUNT(rp.play_id) AS play_events,
+                      COALESCE(SUM(rp.ms_played), 0) AS total_ms
+                 FROM track_l1_identities li
+                 JOIN tracks t ON t.track_id=li.representative_track_id
+                 LEFT JOIN artists ar ON ar.artist_id=t.artist_id
+                 LEFT JOIN albums al ON al.album_id=t.album_id
+                 LEFT JOIN resolved_plays rp ON rp.l1_id=li.l1_id
+                WHERE EXISTS (
+                    SELECT 1
+                      FROM track_l1_source_links links
+                      JOIN tracks alias ON alias.track_id=links.track_id
+                     WHERE links.l1_id=li.l1_id
+                       AND lower(alias.track_name) LIKE ?
+                )
+                GROUP BY li.l1_id
+                ORDER BY CASE
+                    WHEN lower(t.track_name)=? THEN 0
+                    WHEN lower(t.track_name) LIKE ? THEN 1
+                    ELSE 2 END,
+                    play_events DESC, total_ms DESC, name COLLATE NOCASE ASC
+                LIMIT ?""",
+            (like_term, exact_term, prefix_term, _bounded_limit(limit)),
+        ).fetchall()
+
     track_columns = _table_columns(conn, "tracks")
     artist_join = ""
     artist_select = "NULL AS artist_name"

@@ -1,7 +1,7 @@
 """Bounded complete-week replacement ledgers for incremental search snapshots.
 
 This module deliberately stops at ranked weekly facts.  Lifetime metric deltas,
-global chart-summary/Power recomputation, and the six-snapshot publication
+global chart-summary/Power recomputation, and the four-snapshot publication
 transaction remain the responsibility of :mod:`snapshot_delta`.
 """
 
@@ -36,7 +36,7 @@ from backend.domains.playback.track_groups import load_track_group_keys
 
 WeeklyLedgerRow = tuple[str, str, str, int, int, int, str]
 
-_EXPECTED_VARIANTS = {(level, dynamic) for level in (1, 2, 3) for dynamic in (False, True)}
+_EXPECTED_VARIANTS = {(level, dynamic) for level in (2, 3) for dynamic in (False, True)}
 _CLOSURE_PAGE_SIZE = 256
 _DEFAULT_MAX_SOURCE_ROWS = 100_000
 
@@ -129,8 +129,8 @@ def _validate_context_set(
     if not contexts or {(c.merge_level, c.dynamic_threshold) for c in contexts} != (
         _EXPECTED_VARIANTS
     ):
-        raise MusicSearchWeekDeltaIncompatibleError("complete six-variant context set is required")
-    if len(contexts) != 6 or len({c.filter_fingerprint for c in contexts}) != 6:
+        raise MusicSearchWeekDeltaIncompatibleError("complete four-variant context set is required")
+    if len(contexts) != 4 or len({c.filter_fingerprint for c in contexts}) != 4:
         raise MusicSearchWeekDeltaIncompatibleError("snapshot contexts are not unique")
     if len({c.semantic_base_key for c in contexts}) != 1:
         raise MusicSearchWeekDeltaIncompatibleError(

@@ -216,6 +216,7 @@ def reconstruct_logical_plays(
     frame: pd.DataFrame,
     min_ms: int,
     *,
+    identity_column: str = "track_id",
     dynamic_threshold: bool = False,
     max_gap_minutes: int | None = DEFAULT_MAX_MERGE_GAP_MINUTES,
     boundary_column: str | Sequence[str] | None = None,
@@ -238,7 +239,7 @@ def reconstruct_logical_plays(
             result[LISTENING_INTERVALS_COLUMN] = pd.Series(dtype=object)
         return result
 
-    required = {"track_id", "ms_played", "duration_ms", "ts"}
+    required = {identity_column, "ms_played", "duration_ms", "ts"}
     missing = required - set(frame.columns)
     if missing:
         raise ValueError(f"logical playback reconstruction missing columns: {sorted(missing)}")
@@ -252,7 +253,7 @@ def reconstruct_logical_plays(
     valid_timestamp = end_ns != nat_ns
     start_ns[valid_timestamp] = end_ns[valid_timestamp] - played_ms_np[valid_timestamp] * 1_000_000
 
-    track_changed = _changed_rows(df["track_id"])
+    track_changed = _changed_rows(df[identity_column])
     boundary_changed = np.zeros(len(df), dtype=bool)
     for column in _normalise_boundary_columns(boundary_column):
         if column not in df.columns:

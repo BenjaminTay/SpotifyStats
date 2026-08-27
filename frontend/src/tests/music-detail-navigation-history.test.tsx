@@ -115,7 +115,7 @@ describe('音乐详情页历史记录', () => {
       path: '/music/tracks/101',
       routePath: '/music/tracks/:trackId',
       element: <TrackDetailExperience />,
-      apiPath: '/billboard/track/101',
+      apiPath: '/billboard/track/canonical/101',
       data: TRACK_DETAIL,
       backName: /单曲详情/,
     },

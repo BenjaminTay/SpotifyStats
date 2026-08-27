@@ -126,6 +126,18 @@ def load_saved_track_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     local_release_expr = "al.release_date" if "release_date" in album_columns else "NULL"
     image_path_expr = "al.image_path" if "image_path" in album_columns else "NULL"
     image_url_expr = "al.image_url" if "image_url" in album_columns else "NULL"
+    has_l1 = _table_exists(conn, "track_l1_external_ids")
+    l1_expr = "li.l1_id" if has_l1 else "t.track_id"
+    identity_join = (
+        "LEFT JOIN track_l1_external_ids external ON external.provider='spotify' "
+        "AND external.external_track_id=COALESCE("
+        "NULLIF(st.spotify_track_id, ''), NULLIF(t.spotify_track_id, '')) "
+        "LEFT JOIN track_l1_identities li ON (li.l1_id=external.l1_id) "
+        "OR (li.fallback_track_id=t.track_id AND "
+        "COALESCE(NULLIF(st.spotify_track_id, ''), NULLIF(t.spotify_track_id, '')) IS NULL)"
+        if has_l1
+        else ""
+    )
 
     rows = conn.execute(
         f"""
@@ -137,6 +149,7 @@ def load_saved_track_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             st.added_date,
             {source_expr} AS added_date_source,
             t.track_id AS local_track_id,
+            {l1_expr} AS local_l1_id,
             al.album_id AS local_album_id,
             {image_path_expr} AS image_path,
             {image_url_expr} AS image_url,
@@ -152,6 +165,7 @@ def load_saved_track_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
              WHERE tx.spotify_track_uri = st.track_uri
              ORDER BY tx.track_id LIMIT 1)
         )
+        {identity_join}
         LEFT JOIN albums al ON al.album_id = t.album_id
         LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id = st.spotify_track_id
         LEFT JOIN spotify_album_meta sam ON sam.spotify_album_id = stm.spotify_album_id
@@ -181,7 +195,7 @@ def _feature_payload(role: str, row: dict[str, Any]) -> dict[str, Any]:
     cover_url = None
     if row.get("local_album_id") is not None and (row.get("image_path") or row.get("image_url")):
         cover_url = f"/covers/albums/{int(row['local_album_id'])}.jpg"
-    local_track_id = row.get("local_track_id")
+    local_track_id = row.get("local_l1_id")
     return {
         "role": role,
         "track_name": row.get("track_name") or "",

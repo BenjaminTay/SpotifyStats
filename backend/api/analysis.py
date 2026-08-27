@@ -30,7 +30,7 @@ router = APIRouter(prefix="/analysis", tags=["Analysis"])
 @router.get("/overview", response_model=AnalysisOverviewResponse)
 def analysis_overview(
     filters: PlayFilters = Depends(),
-    merge_level: int = Query(default=1, ge=1, le=3),
+    merge_level: int = Query(default=2, ge=2, le=3),
     conn: Connection = Depends(get_conn),
 ):
     return get_analysis_overview(

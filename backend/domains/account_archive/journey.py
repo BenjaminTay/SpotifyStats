@@ -122,7 +122,7 @@ def _collection_milestones(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for ordinal in targets:
         row = dated[ordinal - 1]
         local_album_id = row.get("local_album_id")
-        local_track_id = row.get("local_track_id")
+        local_track_id = row.get("local_l1_id")
         cover_url = None
         if local_album_id is not None and (row.get("image_path") or row.get("image_url")):
             cover_url = f"/covers/albums/{int(local_album_id)}.jpg"

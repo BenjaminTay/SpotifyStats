@@ -63,6 +63,17 @@ class OperationAudit:
 
 TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
     **{
+        (method, path): OperationEvidence(
+            "targeted_contract",
+            "backend/tests/contract/test_track_identity_api.py",
+            "Canonical-track merge/split, audit events, conflict rollback, and raw identity ownership are covered.",
+        )
+        for method, path in (
+            ("POST", "/api/version-merge/canonical-tracks/merge"),
+            ("POST", "/api/version-merge/canonical-tracks/{canonical_track_id}/split"),
+        )
+    },
+    **{
         ("GET", path): OperationEvidence(
             "targeted_contract",
             "backend/tests/contract/test_yearly_review_v2_contract.py + scripts/yearly_review_v2_probe.py",
@@ -315,6 +326,18 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_version_merge_confirm_workflow.py",
         "Track group confirmation is exercised against an isolated seed database.",
     ),
+    **{
+        (method, path): OperationEvidence(
+            "targeted_contract",
+            "backend/tests/contract/test_version_merge_confirm_workflow.py",
+            "Saved track-group member, representative, and deletion mutations are exercised against an isolated seed database.",
+        )
+        for method, path in (
+            ("PUT", "/api/version-merge/track-groups/{group_id}/members"),
+            ("PUT", "/api/version-merge/track-groups/{group_id}/primary"),
+            ("DELETE", "/api/version-merge/track-groups/{group_id}"),
+        )
+    },
     ("POST", "/api/version-merge/album-relations/confirm"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_version_merge_confirm_workflow.py",

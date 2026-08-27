@@ -906,6 +906,8 @@ export interface TrackDetailResponse extends DetailYearEndFields {
   chart_status?: 'charted' | 'not_charted'
   effective_play_count?: number
   track_id: number
+  l1_id?: number
+  representative_track_id?: number
   track_name: string
   artist_name: string
   artist_names?: string[]

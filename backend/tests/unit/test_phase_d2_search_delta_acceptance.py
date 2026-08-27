@@ -158,7 +158,7 @@ def test_snapshot_comparison_checks_payload_ledger_and_delta_lineage(tmp_path: P
         appended_digest="after",
     )
     assert report["contexts_equal"] is True
-    assert report["delta_lineage_ready"] is False  # the production gate requires all six
+    assert report["delta_lineage_ready"] is False  # the production gate requires all four
     assert report["variants"][0]["lineage_ready"] is True
     assert report["variants"][0]["passed"] is True
 
@@ -232,7 +232,7 @@ def test_cross_week_transition_proves_publication_exclusion_and_privacy(
     baseline_path = tmp_path / "baseline.db"
     delta_path = tmp_path / "delta.db"
     full_path = tmp_path / "full.db"
-    matrix = ((2, True), (1, True), (3, True), (2, False), (1, False), (3, False))
+    matrix = ((2, True), (3, True), (2, False), (3, False))
     baseline_variants = tuple(
         acceptance.SnapshotVariant(f"base-{index}", merge_level, dynamic)
         for index, (merge_level, dynamic) in enumerate(matrix)

@@ -11,11 +11,15 @@ from typing import Any
 from backend.domains.metadata.artist_identity import get_identity_revision
 from backend.domains.metadata.genre_display_taxonomy import GENRE_DISPLAY_TAXONOMY_VERSION
 from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.metadata.track_identity import (
+    TRACK_IDENTITY_POLICY_VERSION,
+    get_track_identity_revision,
+)
 from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
 from backend.models.yearly_review import YearlyReviewFilterContext
 from backend.services.wrapped_service import _artist_metadata_revision
 
-FILTER_FINGERPRINT_VERSION = "yearly_review_filter_v3"
+FILTER_FINGERPRINT_VERSION = "yearly_review_filter_v4_l1"
 
 FILTER_FIELDS = (
     "min_ms",
@@ -37,11 +41,13 @@ REVISION_FIELDS = (
     "artist_metadata_revision",
     "artist_identity_revision",
     "track_credit_revision",
+    "track_identity_revision",
+    "track_identity_policy",
     "track_group_revision",
     "album_project_revision",
 )
 
-_TRACK_GROUP_TABLES = ("track_groups", "track_group_members")
+_TRACK_GROUP_TABLES = ("track_groups", "track_group_l1_members")
 
 
 def _album_project_semantic_revision(conn: sqlite3.Connection) -> str:
@@ -146,6 +152,8 @@ def collect_yearly_review_revisions(conn: sqlite3.Connection) -> dict[str, str |
         "artist_metadata_revision": artist_revision,
         "artist_identity_revision": identity_revision,
         "track_credit_revision": credit_revision,
+        "track_identity_revision": get_track_identity_revision(conn),
+        "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
         "track_group_revision": _table_set_revision(conn, _TRACK_GROUP_TABLES),
         "album_project_revision": _album_project_semantic_revision(conn),
     }

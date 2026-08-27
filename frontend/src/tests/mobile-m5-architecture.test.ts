@@ -51,7 +51,7 @@ describe('M5 mobile music architecture', () => {
 
   it('moves share and metadata governance into the detail More menu', () => {
     expect(mobileTopBarSource).toContain('music-detail-actions')
-    expect(mobileTopBarSource).toContain('metadata=track-credits')
+    expect(mobileTopBarSource).toContain('metadata=merge&merge_type=track')
     expect(mobileTopBarSource).toContain('metadata=album-projects')
     expect(mobileTopBarSource).toContain('metadata=artist-identities')
     expect(mobileTopBarSource).toContain('return_to=')

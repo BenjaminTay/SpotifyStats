@@ -22,12 +22,40 @@ def _track_primary_artist_name(track_id: int, fallback: str) -> str:
     """Return the canonical primary credit used to resolve album ownership."""
     conn = get_db()
     try:
-        row = conn.execute("SELECT artist_id FROM tracks WHERE track_id=?", (track_id,)).fetchone()
+        representative_track_id = _representative_track_id(conn, track_id)
+        row = conn.execute(
+            "SELECT artist_id FROM tracks WHERE track_id=?", (representative_track_id,)
+        ).fetchone()
         if row is None:
             return fallback
         from backend.domains.metadata.artist_identity import resolve_artist_id
 
         return resolve_artist_id(conn, int(row[0])).display_name
+    finally:
+        conn.close()
+
+
+def _representative_track_id(conn: sqlite3.Connection, l1_id: int) -> int:
+    has_l1 = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+    ).fetchone()
+    if has_l1:
+        row = conn.execute(
+            "SELECT representative_track_id FROM track_l1_identities WHERE l1_id=?",
+            (int(l1_id),),
+        ).fetchone()
+        if row is not None and row[0] is not None:
+            return int(row[0])
+    return int(l1_id)
+
+
+def _track_identity_fields(l1_id: int) -> dict[str, int]:
+    conn = get_db()
+    try:
+        return {
+            "l1_id": int(l1_id),
+            "representative_track_id": _representative_track_id(conn, int(l1_id)),
+        }
     finally:
         conn.close()
 
@@ -168,20 +196,46 @@ def _build_gapped_chart_data(hist_df):
 
 
 def _get_track_spotify_meta(track_id, merge_level=2, weighted_frame=None):
-    """Fetch Spotify metadata for a track by local track_id."""
+    """Fetch Spotify metadata for a canonical L1 identity."""
     conn = get_db()
-    row = conn.execute(
-        """SELECT stm.duration_ms, stm.popularity, stm.explicit,
+    has_l1 = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+    ).fetchone()
+    row = (
+        conn.execute(
+            """SELECT stm.duration_ms, stm.popularity, stm.explicit,
                   stm.track_number, stm.disc_number,
                   sam.album_name AS spotify_album_name
-           FROM tracks t
-           JOIN spotify_track_meta stm
-             ON t.spotify_track_id = stm.spotify_track_id
+           FROM track_l1_identities li
+           JOIN tracks t ON t.track_id=li.representative_track_id
+           LEFT JOIN track_l1_external_ids external
+             ON external.l1_id=li.l1_id
+            AND external.provider='spotify' AND external.is_primary=1
+           JOIN spotify_track_meta stm ON stm.spotify_track_id=COALESCE(
+                external.external_track_id, t.spotify_track_id
+           )
            LEFT JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
-           WHERE t.track_id = ?
+           WHERE li.l1_id = ?
            LIMIT 1""",
-        (track_id,),
-    ).fetchone()
+            (track_id,),
+        ).fetchone()
+        if has_l1
+        else None
+    )
+
+    if not row:
+        representative_track_id = _representative_track_id(conn, int(track_id))
+        row = conn.execute(
+            """SELECT stm.duration_ms, stm.popularity, stm.explicit,
+                      stm.track_number, stm.disc_number,
+                      sam.album_name AS spotify_album_name
+                 FROM tracks t
+                 JOIN spotify_track_meta stm ON t.spotify_track_id=stm.spotify_track_id
+                 LEFT JOIN spotify_album_meta sam
+                   ON stm.spotify_album_id=sam.spotify_album_id
+                WHERE t.track_id=? LIMIT 1""",
+            (representative_track_id,),
+        ).fetchone()
 
     if not row:
         conn.close()
@@ -248,6 +302,13 @@ def _attach_track_version_group(
     merge_level=3: composition scope with parent-child expansion (R31 L3, R6)
     """
     if merge_level <= 1:
+        return
+
+    has_l1_members = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
+    ).fetchone()
+    if has_l1_members:
+        _attach_l1_track_version_group(conn, track_id, meta, merge_level, weighted_frame)
         return
 
     if merge_level >= 3:
@@ -365,6 +426,106 @@ def _attach_track_version_group(
                 "release_date": v["release_date"],
             }
             for v in versions
+        ],
+    }
+
+
+def _attach_l1_track_version_group(
+    conn: sqlite3.Connection,
+    l1_id: int,
+    meta: dict,
+    merge_level: int,
+    weighted_frame: pd.DataFrame | None,
+) -> None:
+    scope_filter = "('composition', 'recording')" if merge_level >= 3 else "('recording')"
+    group_row = conn.execute(
+        f"""SELECT COALESCE(parent.group_id, groups.group_id) AS effective_group_id,
+                   COALESCE(parent.canonical_name, groups.canonical_name) AS canonical_name,
+                   CASE WHEN parent.group_id IS NOT NULL THEN 'composition'
+                        ELSE groups.scope END AS scope,
+                   COALESCE(parent.primary_l1_id, groups.primary_l1_id) AS primary_l1_id
+              FROM track_group_l1_members members
+              JOIN track_groups groups ON groups.group_id=members.group_id
+              LEFT JOIN track_groups parent
+                ON groups.parent_group_id=parent.group_id
+               AND parent.scope='composition'
+               AND parent.group_status='active'
+             WHERE members.l1_id=?
+               AND groups.group_status='active'
+               AND groups.scope IN {scope_filter}
+             ORDER BY CASE WHEN parent.group_id IS NOT NULL THEN 0 ELSE 1 END,
+                      groups.group_id
+             LIMIT 1""",
+        (int(l1_id),),
+    ).fetchone()
+    if group_row is None:
+        return
+    effective_group_id = int(group_row["effective_group_id"])
+    versions = conn.execute(
+        """SELECT li.l1_id AS track_id, t.track_name, al.album_name, al.album_id,
+                  COUNT(DISTINCT p.play_id) AS plays,
+                  COALESCE(SUM(p.ms_played), 0) AS total_ms,
+                  sam.album_type, sam.release_date,
+                  sam.image_url AS album_cover_url
+             FROM track_groups groups
+             JOIN track_group_l1_members members ON members.group_id=groups.group_id
+             JOIN track_l1_identities li ON li.l1_id=members.l1_id
+             JOIN tracks t ON t.track_id=li.representative_track_id
+             LEFT JOIN albums al ON al.album_id=t.album_id
+             LEFT JOIN spotify_album_meta sam ON sam.album_name=al.album_name
+             LEFT JOIN plays p
+               ON EXISTS (
+                    SELECT 1 FROM track_l1_external_ids external
+                     WHERE external.l1_id=li.l1_id
+                       AND external.provider='spotify'
+                       AND external.external_track_id=COALESCE(
+                           NULLIF(p.spotify_track_id_at_play, ''),
+                           (SELECT NULLIF(source.spotify_track_id, '')
+                              FROM tracks source WHERE source.track_id=p.track_id)
+                       )
+                  )
+               OR (li.fallback_track_id=p.track_id)
+            WHERE (groups.group_id=? OR groups.parent_group_id=?)
+              AND groups.group_status='active'
+              AND groups.scope IN ('composition', 'recording')
+            GROUP BY li.l1_id
+            ORDER BY plays DESC, li.l1_id""",
+        (effective_group_id, effective_group_id),
+    ).fetchall()
+    if len(versions) < 2:
+        return
+    versions = [dict(version) for version in versions]
+    if weighted_frame is not None and "track_id" in weighted_frame.columns:
+        counts = (
+            weighted_frame[weighted_frame["track_id"].isin([v["track_id"] for v in versions])]
+            .groupby("track_id", dropna=False)[["play_count", "total_ms"]]
+            .sum()
+            .to_dict("index")
+        )
+        for version in versions:
+            values = counts.get(int(version["track_id"]), {})
+            version["plays"] = int(values.get("play_count", 0))
+            version["total_ms"] = int(values.get("total_ms", 0))
+    meta["version_group"] = {
+        "group_id": effective_group_id,
+        "canonical_name": group_row["canonical_name"],
+        "scope": group_row["scope"],
+        "total_plays": sum(int(version["plays"]) for version in versions),
+        "versions": [
+            {
+                "track_id": int(version["track_id"]),
+                "l1_id": int(version["track_id"]),
+                "track_name": version["track_name"],
+                "album_name": version["album_name"],
+                "plays": int(version["plays"]),
+                "total_ms": int(version["total_ms"]),
+                "is_primary": int(version["track_id"]) == int(group_row["primary_l1_id"]),
+                "recording_kind": _classify_recording_kind(version["track_name"]),
+                "album_cover_url": version["album_cover_url"]
+                or (f"/covers/albums/{version['album_id']}.jpg" if version["album_id"] else None),
+                "release_date": version["release_date"],
+            }
+            for version in versions
         ],
     }
 
@@ -922,6 +1083,7 @@ def get_track_history(
             "chart_status": "not_charted",
             "effective_play_count": _effective_play_count(stats),
             "track_id": int(entity["track_id"]),
+            **_track_identity_fields(int(entity["track_id"])),
             "track_name": str(entity["track_name"]),
             "artist_name": str(entity["artist_name"]),
             "artist_names": list(entity.get("artist_names") or [entity["artist_name"]]),
@@ -967,6 +1129,7 @@ def get_track_history(
         "found": True,
         "chart_status": "charted",
         "track_id": track_id,
+        **_track_identity_fields(int(track_id)),
         "track_name": str(track_hist.iloc[0]["track_name"]),
         "artist_name": display_artist,
         "artist_names": artist_names,

@@ -364,7 +364,7 @@ def _build_chart_lookup(
         )
         # Search context consumes weekly ranks, summaries, and power scores.
         # Building the full Billboard payload also computes records and other
-        # unused slices, multiplying post-import work across six variants.
+        # unused slices, multiplying post-import work across four variants.
         data = {
             **compute_weekly_data(**common),
             **compute_summaries_staged(**common),

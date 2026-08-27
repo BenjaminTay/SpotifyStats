@@ -233,8 +233,8 @@ def _build_contexts(conn: sqlite3.Connection) -> tuple[Any, ...]:
 
     contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
     variants = {(int(context.merge_level), bool(context.dynamic_threshold)) for context in contexts}
-    if len(contexts) != 6 or len({context.filter_fingerprint for context in contexts}) != 6:
-        raise AcceptanceError("music-search contexts are not an exact six-variant set")
+    if len(contexts) != 4 or len({context.filter_fingerprint for context in contexts}) != 4:
+        raise AcceptanceError("music-search contexts are not an exact four-variant set")
     if variants != phase_d.EXPECTED_VARIANTS:
         raise AcceptanceError("music-search contexts do not cover the expected variants")
     return contexts
@@ -304,7 +304,7 @@ def _prepare_baseline_search(path: Path, *, generation_id: str) -> dict[str, Any
                 fingerprints,
             ).fetchone()[0]
         )
-        if lineage_count != 6 or ledger_rows <= 0:
+        if lineage_count != 4 or ledger_rows <= 0:
             raise AcceptanceError("baseline snapshots lack complete lineage or weekly ledger")
         return {
             "dataset_digest": baseline_digest,
@@ -608,11 +608,11 @@ def _compare_snapshot_outputs(
             )
         return {
             "passed": (
-                all_contexts_equal and all_ledgers_equal and lineage_ready and len(reports) == 6
+                all_contexts_equal and all_ledgers_equal and lineage_ready and len(reports) == 4
             ),
             "contexts_equal": all_contexts_equal,
             "weekly_ledgers_equal": all_ledgers_equal,
-            "delta_lineage_ready": lineage_ready and len(reports) == 6,
+            "delta_lineage_ready": lineage_ready and len(reports) == 4,
             "variants": reports,
         }
     finally:
@@ -684,7 +684,7 @@ def _compare_cross_week_transition(
             for variant in baseline_variants
         }
         reports: list[dict[str, Any]] = []
-        passed = len(target_variants) == 6 and len(baseline_by_variant) == 6
+        passed = len(target_variants) == 4 and len(baseline_by_variant) == 4
         for target in target_variants:
             baseline = baseline_by_variant.get((target.merge_level, target.dynamic_threshold))
             if baseline is None:
@@ -769,7 +769,7 @@ def _compare_cross_week_transition(
                 }
             )
         return {
-            "status": "passed" if passed and len(reports) == 6 else "failed",
+            "status": "passed" if passed and len(reports) == 4 else "failed",
             "newly_completed_week_count": 1,
             "open_week_advanced_by_one": True,
             "baseline_open_week_excluded": bool(
@@ -784,7 +784,7 @@ def _compare_cross_week_transition(
             "historical_weeks_unchanged": bool(
                 reports and all(item["historical_weeks_unchanged"] for item in reports)
             ),
-            "passed": passed and len(reports) == 6,
+            "passed": passed and len(reports) == 4,
             "variants": reports,
         }
     finally:
@@ -929,10 +929,10 @@ def _run_acceptance(args: argparse.Namespace, workdir: Path) -> dict[str, Any]:
     strategy_gate = bool(
         delta_report.get("strategy") == "incremental_snapshot_delta"
         and delta_report.get("lifetime_scan") is False
-        and delta_report.get("base_snapshot_count") == 6
-        and delta_report.get("ready_count") == 6
+        and delta_report.get("base_snapshot_count") == 4
+        and delta_report.get("ready_count") == 4
         and full_report.get("strategy") == "shared_full_snapshot_rebuild"
-        and full_report.get("ready_count") == 6
+        and full_report.get("ready_count") == 4
         and chart_strategy_gate
     )
 
@@ -991,7 +991,7 @@ def _run_acceptance(args: argparse.Namespace, workdir: Path) -> dict[str, Any]:
             "same_open_week": args.scenario == "within-open-week",
             "open_week_advanced_by_one": args.scenario == "cross-week",
             "strategy_valid": strategy_gate,
-            "six_contexts_equivalent": bool(equivalence["contexts_equal"]),
+            "four_contexts_equivalent": bool(equivalence["contexts_equal"]),
             "weekly_ledgers_equivalent": bool(equivalence["weekly_ledgers_equal"]),
             "week_transition_valid": bool(week_transition["passed"]),
             "delta_lineage_ready": bool(equivalence["delta_lineage_ready"]),
@@ -1014,7 +1014,7 @@ def _emit_report(report: dict[str, Any], args: argparse.Namespace) -> None:
             "Phase D2 search delta acceptance: "
             f"status={report.get('status')} "
             f"scenario={report.get('scenario')} "
-            f"contexts={gate.get('six_contexts_equivalent')} "
+            f"contexts={gate.get('four_contexts_equivalent')} "
             f"ledgers={gate.get('weekly_ledgers_equivalent')} "
             f"lineage={gate.get('delta_lineage_ready')}"
         )
@@ -1047,7 +1047,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "same_open_week": False,
                 "open_week_advanced_by_one": False,
                 "strategy_valid": False,
-                "six_contexts_equivalent": False,
+                "four_contexts_equivalent": False,
                 "weekly_ledgers_equivalent": False,
                 "week_transition_valid": False,
                 "delta_lineage_ready": False,

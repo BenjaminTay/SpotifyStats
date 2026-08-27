@@ -4,12 +4,13 @@
 
 from __future__ import annotations
 
+import json
 from sqlite3 import Connection
 from typing import Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.core.auth import require_auth
@@ -20,18 +21,29 @@ from backend.core.version_merge import (
     confirm_track_group_candidate,
     create_group,
     delete_group,
+    delete_track_group,
     detect_collaboration_track_group_candidates,
     detect_release_groups,
     get_album_track_comparison,
     get_album_types,
     get_all_groups,
+    get_all_track_groups,
     get_group_members,
     get_groups_for_artist,
+    get_track_group_members,
     get_ungrouped_albums,
+    search_track_l1_candidates,
     set_primary,
+    set_primary_track,
     update_group_members,
+    update_track_group_members,
 )
 from backend.dependencies import get_conn
+from backend.domains.metadata.track_identity import (
+    TrackIdentityConflictError,
+    merge_l1_identities,
+    split_external_identity,
+)
 
 router = APIRouter(prefix="/version-merge", tags=["Version Merge"])
 
@@ -79,6 +91,23 @@ class SetPrimaryRequest(BaseModel):
     album_id: int
 
 
+class SetPrimaryTrackRequest(BaseModel):
+    l1_id: Optional[int] = None
+    track_id: Optional[int] = None
+
+
+class CanonicalTrackMergeRequest(BaseModel):
+    survivor_canonical_track_id: int = Field(ge=1)
+    absorbed_canonical_track_ids: list[int] = Field(min_length=1)
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class CanonicalTrackSplitRequest(BaseModel):
+    provider: str = Field(default="spotify", min_length=1, max_length=40)
+    external_track_id: str = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=3, max_length=500)
+
+
 # ── Response models ──────────────────────────────────────────────────────────
 
 
@@ -99,6 +128,53 @@ class GroupMemberResponse(BaseModel):
     is_primary: Optional[int] = None
 
 
+class TrackGroupResponse(BaseModel):
+    group_id: int
+    canonical_name: str
+    primary_track_id: Optional[int] = None
+    primary_l1_id: Optional[int] = None
+    spotify_track_id: Optional[str] = None
+    primary_track_name: Optional[str] = None
+    primary_album_id: Optional[int] = None
+    artist_name: Optional[str] = None
+    scope: str
+    is_manual: int
+    created_at: str
+    member_count: int
+    group_status: str = "active"
+
+
+class TrackGroupMemberResponse(BaseModel):
+    l1_id: Optional[int] = None
+    spotify_track_id: Optional[str] = None
+    track_id: int
+    track_name: str
+    album_id: Optional[int] = None
+    artist_name: Optional[str] = None
+    identity_kind: Optional[str] = None
+    source_record_count: int = 1
+    metadata_conflict: bool = False
+    is_primary: int = 0
+
+
+class TrackL1CandidateResponse(BaseModel):
+    l1_id: int
+    spotify_track_id: Optional[str] = None
+    track_id: int
+    track_name: str
+    artist_name: Optional[str] = None
+    identity_kind: str = "spotify"
+    source_record_count: int = 1
+    metadata_conflict: bool = False
+    album_id: Optional[int] = None
+    album_name: Optional[str] = None
+    play_count: int = 0
+    first_play_date: Optional[str] = None
+    last_play_date: Optional[str] = None
+    effective_artist_names: list[str] = Field(default_factory=list)
+    cover_url: Optional[str] = None
+
+
 class UngroupedAlbumResponse(BaseModel):
     album_id: int
     album_name: str
@@ -113,6 +189,21 @@ class TrackComparisonResponse(BaseModel):
 
 class StatusResponse(BaseModel):
     status: str
+
+
+class CanonicalTrackMutationResponse(BaseModel):
+    status: str
+    canonical_track_id: int
+    affected_canonical_track_ids: list[int] = Field(default_factory=list)
+
+
+class CanonicalTrackEventResponse(BaseModel):
+    event_id: int
+    action: str
+    survivor_canonical_track_id: Optional[int] = None
+    affected_canonical_track_ids: list[int] = Field(default_factory=list)
+    reason: str
+    created_at: str
 
 
 class CreateGroupResponse(BaseModel):
@@ -154,16 +245,22 @@ class DetectionResultResponse(BaseModel):
 
 
 class TrackGroupCandidateResponse(BaseModel):
+    original_l1_id: Optional[int] = None
+    original_spotify_track_id: Optional[str] = None
     original_track_id: int
     original_track_name: str
+    candidate_l1_id: Optional[int] = None
+    candidate_spotify_track_id: Optional[str] = None
     candidate_track_id: int
     candidate_track_name: str
     primary_artist_id: int
 
 
 class TrackGroupConfirmRequest(BaseModel):
-    original_track_id: int
-    candidate_track_id: int
+    original_l1_id: Optional[int] = None
+    candidate_l1_id: Optional[int] = None
+    original_track_id: Optional[int] = None
+    candidate_track_id: Optional[int] = None
     scope: str = "composition"
 
 
@@ -174,6 +271,9 @@ class TrackGroupConfirmResponse(BaseModel):
     member_count: Optional[int] = None
     album_projects_rebuilt: bool = False
     message: Optional[str] = None
+    error_code: Optional[str] = None
+    original_l1_id: Optional[int] = None
+    candidate_l1_id: Optional[int] = None
 
 
 class AlbumRelationConfirmRequest(BaseModel):
@@ -220,6 +320,33 @@ class AlbumRelationConfirmResponse(BaseModel):
 def list_groups(conn: Connection = Depends(get_conn)):
     """Get all saved release groups with member details."""
     df = get_all_groups()
+    return df.where(pd.notna(df), None).to_dict(orient="records")
+
+
+@router.get("/track-groups", response_model=list[TrackGroupResponse])
+def list_track_groups(conn: Connection = Depends(get_conn)):
+    """Get saved L2/L3 track groups with representative metadata."""
+    df = get_all_track_groups()
+    return df.where(pd.notna(df), None).to_dict(orient="records")
+
+
+@router.get("/track-candidates", response_model=list[TrackL1CandidateResponse])
+def track_l1_candidates(
+    q: str = Query(min_length=1, max_length=200),
+    limit: int = Query(default=40, ge=1, le=100),
+    conn: Connection = Depends(get_conn),
+):
+    """Search canonical-track candidates for manual L2/L3 grouping."""
+    return search_track_l1_candidates(q, limit)
+
+
+@router.get(
+    "/track-groups/{group_id}/members",
+    response_model=list[TrackGroupMemberResponse],
+)
+def list_track_group_members(group_id: int, conn: Connection = Depends(get_conn)):
+    """Get stable track members of one saved track group."""
+    df = get_track_group_members(group_id)
     return df.where(pd.notna(df), None).to_dict(orient="records")
 
 
@@ -275,7 +402,134 @@ def collaboration_candidates(auth: None = Depends(require_auth)):
     return df.where(pd.notna(df), None).to_dict(orient="records")
 
 
+@router.get(
+    "/canonical-tracks/events",
+    response_model=list[CanonicalTrackEventResponse],
+    include_in_schema=False,
+)
+def canonical_track_events(
+    limit: int = Query(default=50, ge=1, le=200),
+    conn: Connection = Depends(get_conn),
+):
+    """Return the advanced-governance audit trail for canonical tracks."""
+    rows = conn.execute(
+        """SELECT event_id, action, survivor_l1_id, affected_l1_ids,
+                  reason, created_at
+             FROM track_identity_events
+            ORDER BY event_id DESC LIMIT ?""",
+        (int(limit),),
+    ).fetchall()
+    return [
+        {
+            "event_id": int(row[0]),
+            "action": str(row[1]),
+            "survivor_canonical_track_id": int(row[2]) if row[2] is not None else None,
+            "affected_canonical_track_ids": [int(value) for value in json.loads(row[3] or "[]")],
+            "reason": str(row[4]),
+            "created_at": str(row[5]),
+        }
+        for row in rows
+    ]
+
+
 # ── Mutation endpoints ────────────────────────────────────────────────────
+
+
+def _finalize_canonical_track_mutation(reason: str) -> None:
+    from backend.core.cache_manager import invalidate_playback_caches
+
+    invalidate_playback_caches()
+    _refresh_music_search_derived_data(reason)
+
+
+@router.post(
+    "/canonical-tracks/merge",
+    response_model=CanonicalTrackMutationResponse,
+    include_in_schema=False,
+)
+def merge_canonical_tracks(
+    body: CanonicalTrackMergeRequest,
+    auth: None = Depends(require_auth),
+):
+    """Retired: base identity is the existing track_id and is not user-mergeable."""
+    raise HTTPException(
+        status_code=410,
+        detail="基础 track_id 由 Spotify ID 单一归属规则自动治理；请使用 L2/L3 版本归并。",
+    )
+    from backend.core.db import get_db
+    from backend.domains.playback.album_projects import rebuild_album_projects
+
+    conn = get_db(readonly=False)
+    try:
+        survivor = merge_l1_identities(
+            conn,
+            survivor_l1_id=body.survivor_canonical_track_id,
+            absorbed_l1_ids=body.absorbed_canonical_track_ids,
+            reason=body.reason,
+        )
+        rebuild_album_projects(conn)
+        conn.commit()
+    except (TrackIdentityConflictError, ValueError) as exc:
+        conn.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    _finalize_canonical_track_mutation("canonical track identities merged")
+    return {
+        "status": "ok",
+        "canonical_track_id": survivor,
+        "affected_canonical_track_ids": sorted(
+            {int(value) for value in body.absorbed_canonical_track_ids}
+        ),
+    }
+
+
+@router.post(
+    "/canonical-tracks/{canonical_track_id}/split",
+    response_model=CanonicalTrackMutationResponse,
+    include_in_schema=False,
+)
+def split_canonical_track(
+    canonical_track_id: int,
+    body: CanonicalTrackSplitRequest,
+    auth: None = Depends(require_auth),
+):
+    """Retired: provider ownership corrections are not a public L1 operation."""
+    raise HTTPException(
+        status_code=410,
+        detail="基础 track_id 不提供拆分开关；Spotify ID 归属纠错需走受审计的数据治理流程。",
+    )
+    from backend.core.db import get_db
+    from backend.domains.playback.album_projects import rebuild_album_projects
+
+    conn = get_db(readonly=False)
+    try:
+        new_id = split_external_identity(
+            conn,
+            source_l1_id=canonical_track_id,
+            provider=body.provider,
+            external_track_id=body.external_track_id,
+            reason=body.reason,
+        )
+        rebuild_album_projects(conn)
+        conn.commit()
+    except (TrackIdentityConflictError, ValueError) as exc:
+        conn.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    _finalize_canonical_track_mutation("canonical track identity split")
+    return {
+        "status": "ok",
+        "canonical_track_id": new_id,
+        "affected_canonical_track_ids": [int(canonical_track_id)],
+    }
 
 
 @router.post("/groups", response_model=CreateGroupResponse)
@@ -297,13 +551,59 @@ def create_new_group(body: CreateGroupRequest, auth: None = Depends(require_auth
 @router.post("/track-groups/confirm", response_model=TrackGroupConfirmResponse)
 def confirm_track_group(body: TrackGroupConfirmRequest, auth: None = Depends(require_auth)):
     """Confirm a track candidate and rebuild album project rows."""
+    references_are_l1 = body.original_l1_id is not None and body.candidate_l1_id is not None
+    original_reference = body.original_l1_id if references_are_l1 else body.original_track_id
+    candidate_reference = body.candidate_l1_id if references_are_l1 else body.candidate_track_id
+    if original_reference is None or candidate_reference is None:
+        return {
+            "status": "error",
+            "error_code": "missing_l1_selection",
+            "message": "请选择两首要归并的歌曲",
+        }
     result = confirm_track_group_candidate(
-        original_track_id=body.original_track_id,
-        candidate_track_id=body.candidate_track_id,
+        original_track_id=original_reference,
+        candidate_track_id=candidate_reference,
         scope=body.scope,
+        references_are_l1=references_are_l1,
     )
     _refresh_music_search_derived_data("track group confirmed")
     return result
+
+
+@router.put("/track-groups/{group_id}/members", response_model=StatusResponse)
+def update_track_members(
+    group_id: int,
+    body: UpdateMembersRequest,
+    auth: None = Depends(require_auth),
+):
+    """Add or remove stable IDs from a saved track group."""
+    ok = update_track_group_members(group_id, body.add_ids, body.remove_ids)
+    if ok:
+        _refresh_music_search_derived_data("track group members changed")
+    return {"status": "ok" if ok else "error"}
+
+
+@router.put("/track-groups/{group_id}/primary", response_model=StatusResponse)
+def update_primary_track(
+    group_id: int,
+    body: SetPrimaryTrackRequest,
+    auth: None = Depends(require_auth),
+):
+    """Change the representative track of a saved group."""
+    reference = body.l1_id if body.l1_id is not None else body.track_id
+    ok = reference is not None and set_primary_track(group_id, reference)
+    if ok:
+        _refresh_music_search_derived_data("track group primary changed")
+    return {"status": "ok" if ok else "error"}
+
+
+@router.delete("/track-groups/{group_id}", response_model=StatusResponse)
+def remove_track_group(group_id: int, auth: None = Depends(require_auth)):
+    """Delete a saved track group while preserving raw metadata facts."""
+    ok = delete_track_group(group_id)
+    if ok:
+        _refresh_music_search_derived_data("track group deleted")
+    return {"status": "ok" if ok else "error"}
 
 
 @router.post("/album-relations/confirm", response_model=AlbumRelationConfirmResponse)

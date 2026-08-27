@@ -170,7 +170,7 @@ def _select_base_snapshot_keys(
             return None
         selected[context.filter_fingerprint] = str(row[0])
         source_generations.add(str(row[1]))
-    if len(selected) != 6 or len(set(selected.values())) != 6 or len(source_generations) != 1:
+    if len(selected) != 4 or len(set(selected.values())) != 4 or len(source_generations) != 1:
         return None
     return selected
 
@@ -254,7 +254,6 @@ def _track_delta_maps(
         max_gap_minutes=max_gap_minutes,
     )
     return {
-        1: project_track_logical_delta(physical, merge_level=1),
         2: project_track_logical_delta(
             physical,
             merge_level=2,
@@ -440,7 +439,7 @@ def build_incremental_music_search_snapshot_set(
     contexts: tuple[MusicSearchFilterContext, ...],
     plan: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """Clone six compatible snapshots and apply a bounded lifetime delta."""
+    """Clone four compatible L2/L3 snapshots and apply a bounded lifetime delta."""
     validated_plan = _validated_incremental_plan(plan)
     if validated_plan is None:
         return None
@@ -686,12 +685,12 @@ def build_incremental_music_search_snapshot_set(
     return {
         "status": "ready",
         "semantic_base_key": semantic_base_key,
-        "ready_count": 6,
+        "ready_count": len(reports),
         "failed_count": 0,
         "duration_ms": round((time.perf_counter() - started) * 1000, 3),
         "variants": reports,
         "strategy": "incremental_snapshot_delta",
-        "base_snapshot_count": 6,
+        "base_snapshot_count": len(contexts),
         "lifetime_scan": False,
         "chart_strategy": (
             "replace_affected_completed_weeks"

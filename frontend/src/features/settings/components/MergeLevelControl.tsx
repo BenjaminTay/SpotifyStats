@@ -7,11 +7,6 @@ import { cn } from '@/lib/utils'
 
 const MERGE_LEVELS = [
   {
-    value: 1,
-    shortLabel: 'L1 不归并',
-    desc: '歌曲与专辑版本各自独立统计，不应用人工录音组或专辑项目归并。',
-  },
-  {
     value: 2,
     shortLabel: 'L2 同一录音',
     desc: '合并同一录音的不同发行记录；专辑统计同时使用已管理的发行项目与版本关系。',
@@ -27,7 +22,7 @@ export function MergeLevelControl() {
   const [mergeLevel, setMergeLevel] = useState(getDefaultMergeLevel)
   const current = MERGE_LEVELS.find((level) => level.value === mergeLevel)!
 
-  const selectLevel = (level: number) => {
+  const selectLevel = (level: 2 | 3) => {
     setMergeLevel(level)
     setDefaultMergeLevel(level)
   }
@@ -36,9 +31,9 @@ export function MergeLevelControl() {
     <div className="rounded-xl border border-border bg-muted/25 p-4">
       <FieldLabel label="默认归并级别" badge={current.shortLabel} />
       <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-        这是歌曲归并与专辑发行版本共用的唯一全局默认值，影响相关播放统计与个人 {getBillboardName()}；页面 URL 中的 merge_level 仍可临时覆盖。
+        基础曲目身份由系统治理，不作为统计开关。这里统一选择歌曲与专辑采用“同录音”还是“同作品”口径，影响相关播放统计与个人 {getBillboardName()}。
       </p>
-      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="默认归并级别">
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="默认归并级别">
         {MERGE_LEVELS.map((level) => (
           <button
             key={level.value}

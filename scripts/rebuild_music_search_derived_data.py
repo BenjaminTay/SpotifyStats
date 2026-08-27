@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild and audit the active six-variant music-search snapshot set."""
+"""Rebuild and audit the active four-variant L2/L3 music-search snapshot set."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from backend.services.music_search_maintenance_service import (  # noqa: E402
 
 EXPECTED_VARIANTS = frozenset(
     (merge_level, dynamic_threshold)
-    for merge_level in (1, 2, 3)
+    for merge_level in (2, 3)
     for dynamic_threshold in (False, True)
 )
 PRIVACY_REPORT = {
@@ -42,7 +42,7 @@ PRIVACY_REPORT = {
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Rebuild music-search documents and the six-variant snapshot set"
+        description="Rebuild music-search documents and the four-variant L2/L3 snapshot set"
     )
     parser.add_argument("--db-path", type=Path, default=Path(db_mod.DB_PATH))
     parser.add_argument(
@@ -63,13 +63,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--require-all-ready",
         action="store_true",
-        help="Exit non-zero unless exactly all six supported variants are ready",
+        help="Exit non-zero unless exactly all four supported variants are ready",
     )
     parser.add_argument(
         "--statistics-reuse-only",
         action="store_true",
         help=(
-            "Fail before rebuilding candidates or statistics unless all six exact "
+            "Fail before rebuilding candidates or statistics unless all four exact "
             "statistics variants can be reused"
         ),
     )
@@ -211,8 +211,8 @@ def _gate_report(
         and len(fingerprints) == len(set(fingerprints))
         and all(fingerprints)
     )
-    all_six_ready = all_reported_ready and exact_variant_set
-    passed = all_reported_ready and (all_six_ready or not require_all_ready)
+    all_four_ready = all_reported_ready and exact_variant_set
+    passed = all_reported_ready and (all_four_ready or not require_all_ready)
     return {
         "require_all_ready": require_all_ready,
         "expected_variant_count": len(EXPECTED_VARIANTS),
@@ -220,7 +220,7 @@ def _gate_report(
         "ready_variant_count": ready_count,
         "all_reported_ready": all_reported_ready,
         "exact_variant_set": exact_variant_set,
-        "all_six_ready": all_six_ready,
+        "all_four_ready": all_four_ready,
         "passed": passed,
     }
 
@@ -280,7 +280,7 @@ def _success_report(
     variants = [_safe_variant(raw) for raw in snapshot_set.get("variants") or []]
     gate = _gate_report(variants, require_all_ready=require_all_ready)
     semantic_base_key = str(snapshot_set.get("semantic_base_key") or "")
-    status = "ready" if gate["all_six_ready"] else ("partial" if variants else "failed")
+    status = "ready" if gate["all_four_ready"] else ("partial" if variants else "failed")
     idempotency = _idempotency_report(
         variants,
         prior_inventory=prior_inventory,

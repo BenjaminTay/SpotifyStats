@@ -160,7 +160,7 @@ describe('deployment profile capability contract', () => {
     const get = vi.spyOn(api, 'get').mockImplementation(async (path: string) => {
       if (path === '/runtime/capabilities') return publicResponse()
       if (path === '/settings') return settingsResponse()
-      if (path.startsWith('/billboard/track/')) {
+      if (path.startsWith('/billboard/track/canonical/')) {
         return { found: false, track_id: 'track-1', track_name: 'Track', artist_name: 'Artist' }
       }
       throw new Error(`unexpected GET ${path}`)

@@ -92,7 +92,7 @@ class ArchiveFilterContext(StrictArchiveModel):
     merge_enabled: bool
     dynamic_threshold: bool
     max_merge_gap_minutes: int = Field(default=5, ge=1, le=240)
-    merge_level: int = Field(ge=1, le=3)
+    merge_level: int = Field(ge=2, le=3)
     timezone: Literal["Asia/Shanghai"] = "Asia/Shanghai"
     first_play_at: str | None = None
     latest_play_at: str | None = None

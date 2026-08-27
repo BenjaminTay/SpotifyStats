@@ -549,11 +549,17 @@ def _report_cache_key(
     try:
         from backend.domains.metadata.artist_identity import get_identity_revision
         from backend.domains.metadata.track_credits import get_track_credit_revision
+        from backend.domains.metadata.track_identity import (
+            TRACK_IDENTITY_POLICY_VERSION,
+            get_track_identity_revision,
+        )
         from backend.services.wrapped_service import _artist_metadata_revision
 
         filter_part = (
             f"{filter_part}|identity:{get_identity_revision(identity_conn)}"
             f"|track_credit:{get_track_credit_revision(identity_conn)}"
+            f"|track_identity:{get_track_identity_revision(identity_conn)}"
+            f"|track_identity_policy:{TRACK_IDENTITY_POLICY_VERSION}"
             f"|genre_display:{GENRE_DISPLAY_TAXONOMY_VERSION}"
             f"|artist_metadata:{_artist_metadata_revision(identity_conn)}"
         )
@@ -635,7 +641,7 @@ def _hours(ms_series) -> float:
     return float(ms_series.sum() / 3_600_000)
 
 
-def _top_entities(df, entity: str, n: int = 5, conn=None, merge_level: int = 1) -> list[dict]:
+def _top_entities(df, entity: str, n: int = 5, conn=None, merge_level: int = 2) -> list[dict]:
     """Return top-n entities from a plays DataFrame."""
     if df.empty:
         return []
@@ -1700,7 +1706,7 @@ def _fetch_data_for_intent(
     intent_result: dict,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: Optional[int] = 5,
-    merge_level: int = 1,
+    merge_level: int = 2,
 ) -> dict:
     """Fetch relevant data based on parsed intent. Returns a dict to feed the LLM."""
     from backend.services.analysis_stats_service import (
@@ -1815,7 +1821,7 @@ def answer_question(
     conversation_history: Optional[list[dict[str, str]]] = None,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: Optional[int] = 5,
-    merge_level: int = 1,
+    merge_level: int = 2,
 ) -> dict:
     """Answer a natural-language question about the user's listening history.
 

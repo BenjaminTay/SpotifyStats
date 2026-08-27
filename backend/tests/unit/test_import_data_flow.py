@@ -125,6 +125,85 @@ def test_import_data_handles_audio_and_video_records_without_metadata(tmp_path, 
         _clear_db_caches()
 
 
+def test_import_reuses_track_and_registers_multiple_spotify_owners(tmp_path, monkeypatch):
+    from backend.core import db as db_mod
+    from backend.core import import_data as import_mod
+
+    db_path = tmp_path / "spotify_l1.db"
+    data_dir = tmp_path / "streaming"
+    data_dir.mkdir()
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+    spotify_a = "A" * 22
+    spotify_b = "B" * 22
+    records = [
+        {
+            "ts": "2026-01-01T00:00:00Z",
+            "conn_country": "CN",
+            "platform": "ios",
+            "ms_played": 210_000,
+            "master_metadata_track_name": "同名歌曲",
+            "master_metadata_album_artist_name": "同一艺人",
+            "master_metadata_album_album_name": "专辑 A",
+            "spotify_track_uri": f"spotify:track:{spotify_a}",
+        },
+        {
+            "ts": "2026-01-02T00:00:00Z",
+            "conn_country": "CN",
+            "platform": "ios",
+            "ms_played": 210_000,
+            "master_metadata_track_name": "同名歌曲",
+            "master_metadata_album_artist_name": "同一艺人",
+            "master_metadata_album_album_name": "专辑 B",
+            "spotify_track_uri": f"spotify:track:{spotify_b}",
+        },
+        {
+            "ts": "2026-01-03T00:00:00Z",
+            "conn_country": "CN",
+            "platform": "ios",
+            "ms_played": 210_000,
+            "master_metadata_track_name": "同名歌曲（繁体投影）",
+            "master_metadata_album_artist_name": "历史艺人投影",
+            "master_metadata_album_album_name": "专辑 C",
+            "spotify_track_uri": f"spotify:track:{spotify_a}",
+        },
+    ]
+    (data_dir / "Streaming_History_Audio_2026_0.json").write_text(
+        json.dumps(records), encoding="utf-8"
+    )
+
+    try:
+        result = import_mod.import_data(str(data_dir), build_preaggregations=False)
+        assert result["unique_tracks"] == 2
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            tracks = conn.execute(
+                "SELECT track_id, spotify_track_id FROM tracks ORDER BY track_id"
+            ).fetchall()
+            assert len(tracks) == 1
+            assert tracks[0]["spotify_track_id"] == spotify_a
+            owners = conn.execute(
+                """SELECT spotify_track_id, track_id
+                     FROM spotify_track_owners ORDER BY spotify_track_id"""
+            ).fetchall()
+            assert [row["spotify_track_id"] for row in owners] == [spotify_a, spotify_b]
+            assert len({row["track_id"] for row in owners}) == 1
+            assert conn.execute("SELECT COUNT(*) FROM track_l1_identities").fetchone()[0] == 1
+            assert (
+                conn.execute(
+                    """SELECT COUNT(DISTINCT track_id)
+                         FROM plays WHERE spotify_track_id_at_play=?""",
+                    (spotify_a,),
+                ).fetchone()[0]
+                == 1
+            )
+        finally:
+            conn.close()
+    finally:
+        _clear_db_caches()
+
+
 def test_get_db_wal_reader_snapshot_survives_writer_commit(tmp_path, monkeypatch):
     from backend.core import db as db_mod
 
@@ -312,10 +391,16 @@ def test_duplicate_append_is_noop_and_preserves_derived_rows(tmp_path, monkeypat
         )
         conn = sqlite3.connect(db_path)
         try:
+            track_id = conn.execute("SELECT track_id FROM plays LIMIT 1").fetchone()[0]
+            l1_id = conn.execute(
+                "SELECT l1_id FROM track_l1_source_links WHERE track_id=? ORDER BY l1_id LIMIT 1",
+                (track_id,),
+            ).fetchone()[0]
             conn.execute(
                 """INSERT INTO agg_weekly_tracks(
-                       billboard_week, track_id, play_count, total_ms
-                   ) VALUES ('2025-12-26', 1, 1, 210000)"""
+                       billboard_week, l1_id, track_id, play_count, total_ms
+                   ) VALUES ('2025-12-26', ?, ?, 1, 210000)""",
+                (l1_id, track_id),
             )
             track_album_count = conn.execute("SELECT COUNT(*) FROM track_albums").fetchone()[0]
             conn.commit()
@@ -1027,11 +1112,15 @@ def test_replace_rolls_back_clears_and_first_batch_when_second_record_fails(
         conn = sqlite3.connect(db_path)
         try:
             baseline_track_id = conn.execute("SELECT track_id FROM plays").fetchone()[0]
+            baseline_l1_id = conn.execute(
+                "SELECT l1_id FROM track_l1_source_links WHERE track_id=? ORDER BY l1_id LIMIT 1",
+                (baseline_track_id,),
+            ).fetchone()[0]
             conn.execute(
                 """INSERT INTO agg_weekly_tracks(
-                       billboard_week, track_id, play_count, total_ms
-                   ) VALUES ('2025-12-26', ?, 1, 210000)""",
-                (baseline_track_id,),
+                       billboard_week, l1_id, track_id, play_count, total_ms
+                   ) VALUES ('2025-12-26', ?, ?, 1, 210000)""",
+                (baseline_l1_id, baseline_track_id),
             )
             conn.execute(
                 """UPDATE playback_import_state

@@ -11,13 +11,17 @@ from typing import Any
 
 from backend.domains.metadata.artist_identity import get_identity_revision
 from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.metadata.track_identity import (
+    TRACK_IDENTITY_POLICY_VERSION,
+    get_track_identity_revision,
+)
 from backend.domains.music_search.revisions import get_music_search_revision_state
 
-MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v3"
+MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v8_canonical_track"
 # Compatibility name used by existing reports and API terminology.
 MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION
-MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v3"
-MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v4"
+MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v8_canonical_track"
+MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v8_canonical_track"
 MUSIC_SEARCH_SNAPSHOT_POLICY_VERSION = "music_search_snapshot_policy_v1"
 LEGACY_MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = "music_search_filter_v2"
 
@@ -44,6 +48,8 @@ class MusicSearchFilterContext:
     settings_revision: int
     artist_identity_revision: int
     track_credit_revision: int
+    track_identity_revision: int
+    track_identity_policy: str
     semantic_base_key: str
     filter_fingerprint: str
     source_revision: str
@@ -164,6 +170,8 @@ def build_music_search_filter_context(
     conn: sqlite3.Connection,
     filters: Mapping[str, Any] | object,
 ) -> MusicSearchFilterContext:
+    from backend.domains.playback.merge_levels import normalize_merge_level
+
     revisions = get_music_search_revision_state(conn)
     values: dict[str, Any] = {
         "min_ms": int(_value(filters, "min_ms", 30000)),
@@ -171,7 +179,7 @@ def build_music_search_filter_context(
         "merge_enabled": bool(_value(filters, "merge_enabled", True)),
         "dynamic_threshold": bool(_value(filters, "dynamic_threshold", True)),
         "max_merge_gap_minutes": int(_value(filters, "max_merge_gap_minutes", 5) or 5),
-        "merge_level": int(_value(filters, "merge_level", 2)),
+        "merge_level": normalize_merge_level(_value(filters, "merge_level", 2)),
         "include_compilations": bool(_value(filters, "include_compilations", False)),
         "bb_top_n": int(_value(filters, "bb_top_n", 30)),
         "bb_album_top_n": int(_value(filters, "bb_album_top_n", 20)),
@@ -186,6 +194,8 @@ def build_music_search_filter_context(
         "settings_revision": revisions.settings_revision,
         "artist_identity_revision": get_identity_revision(conn),
         "track_credit_revision": get_track_credit_revision(conn),
+        "track_identity_revision": get_track_identity_revision(conn),
+        "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
     }
     semantic_values = {
         key: value
@@ -213,6 +223,8 @@ def build_music_search_filter_context(
             "settings": revisions.settings_revision,
             "identity": values["artist_identity_revision"],
             "credits": values["track_credit_revision"],
+            "track_identity": values["track_identity_revision"],
+            "track_identity_policy": values["track_identity_policy"],
         },
         20,
     )

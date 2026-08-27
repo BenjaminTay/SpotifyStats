@@ -1,5 +1,7 @@
 """发行版本合并 — 自动检测专辑版本家族并合并到主版本统计."""
 
+from __future__ import annotations
+
 import json
 import re
 
@@ -15,6 +17,80 @@ def detect_collaboration_track_group_candidates() -> pd.DataFrame:
         from backend.domains.metadata.track_credits import get_effective_track_credit_frame
 
         credits = get_effective_track_credit_frame(conn)
+        has_l1 = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+        ).fetchone()
+        if has_l1:
+            identities = pd.read_sql_query(
+                """SELECT li.l1_id, external.external_track_id AS spotify_track_id,
+                          li.representative_track_id, t.track_name
+                     FROM track_l1_identities li
+                     JOIN tracks t ON t.track_id=li.representative_track_id
+                     LEFT JOIN track_l1_external_ids external
+                       ON external.l1_id=li.l1_id
+                      AND external.provider='spotify' AND external.is_primary=1
+                    WHERE li.identity_status='active'
+                      AND EXISTS (
+                          SELECT 1 FROM track_l1_source_links links
+                          WHERE links.l1_id=li.l1_id
+                            AND links.evidence_type='play_at_time'
+                      )""",
+                conn,
+            )
+            credited = identities.merge(
+                credits,
+                left_on="representative_track_id",
+                right_on="track_id",
+                how="inner",
+            )
+            primary = credited[credited["role"] == "primary"].rename(
+                columns={
+                    "l1_id": "original_l1_id",
+                    "spotify_track_id": "original_spotify_track_id",
+                    "track_name": "original_track_name",
+                    "artist_id": "primary_artist_id",
+                }
+            )
+            candidates = credited.rename(
+                columns={
+                    "l1_id": "candidate_l1_id",
+                    "spotify_track_id": "candidate_spotify_track_id",
+                    "track_name": "candidate_track_name",
+                    "artist_id": "primary_artist_id",
+                }
+            )
+            merged = primary.merge(candidates, on="primary_artist_id", how="inner")
+            merged = merged[
+                (merged["original_l1_id"] != merged["candidate_l1_id"])
+                & (merged["original_spotify_track_id"] != merged["candidate_spotify_track_id"])
+            ]
+            original = merged["original_track_name"].str.casefold()
+            simplified = original.str.replace(" - ", " ", regex=False)
+            candidate = merged["candidate_track_name"].str.casefold()
+            mask = [
+                source in target or simple in target
+                for source, simple, target in zip(original, simplified, candidate)
+            ]
+            result = (
+                merged.loc[
+                    mask,
+                    [
+                        "original_l1_id",
+                        "original_spotify_track_id",
+                        "original_track_name",
+                        "candidate_l1_id",
+                        "candidate_spotify_track_id",
+                        "candidate_track_name",
+                        "primary_artist_id",
+                    ],
+                ]
+                .drop_duplicates()
+                .sort_values(["original_track_name", "candidate_track_name"])
+                .reset_index(drop=True)
+            )
+            result["original_track_id"] = result["original_l1_id"]
+            result["candidate_track_id"] = result["candidate_l1_id"]
+            return result
         tracks = pd.read_sql_query("SELECT track_id, track_name FROM tracks", conn)
         credited_tracks = credits.merge(tracks, on="track_id", how="inner")
         primary = credited_tracks[credited_tracks["role"] == "primary"].rename(
@@ -300,6 +376,304 @@ def get_group_members(group_id: int) -> pd.DataFrame:
     return df
 
 
+def get_all_track_groups() -> pd.DataFrame:
+    """Return saved recording/composition groups for the management workspace."""
+    conn = get_db()
+    try:
+        has_l1 = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
+        ).fetchone()
+        if has_l1:
+            df = pd.read_sql_query(
+                """SELECT tg.group_id, tg.canonical_name, tg.primary_l1_id,
+                          tg.primary_track_id,
+                          pt.track_name AS primary_track_name,
+                          pt.album_id AS primary_album_id,
+                          external.external_track_id AS spotify_track_id,
+                          COALESCE(NULLIF(a.artist_name, ''),
+                                   NULLIF(album_artist.artist_name, ''),
+                                   NULLIF(sam.album_artists, '')) AS artist_name,
+                          tg.scope, tg.is_manual, tg.group_status, tg.created_at,
+                          COUNT(members.l1_id) AS member_count
+                   FROM track_groups tg
+                   LEFT JOIN track_l1_identities li ON li.l1_id=tg.primary_l1_id
+                   LEFT JOIN track_l1_external_ids external
+                          ON external.l1_id=li.l1_id
+                         AND external.provider='spotify' AND external.is_primary=1
+                   LEFT JOIN tracks pt ON pt.track_id=li.representative_track_id
+                   LEFT JOIN artists a ON a.artist_id=pt.artist_id
+                   LEFT JOIN albums al ON al.album_id=pt.album_id
+                   LEFT JOIN artists album_artist ON album_artist.artist_id=al.artist_id
+                   LEFT JOIN spotify_track_meta stm
+                          ON stm.spotify_track_id=external.external_track_id
+                   LEFT JOIN spotify_album_meta sam
+                          ON sam.spotify_album_id=stm.spotify_album_id
+                   LEFT JOIN track_group_l1_members members ON members.group_id=tg.group_id
+                   WHERE tg.group_status='active'
+                   GROUP BY tg.group_id
+                   ORDER BY COALESCE(NULLIF(a.artist_name, ''),
+                                     NULLIF(album_artist.artist_name, ''),
+                                     NULLIF(sam.album_artists, ''), ''),
+                            tg.canonical_name, tg.scope""",
+                conn,
+            )
+            return _attach_effective_track_artist_names(conn, df, "primary_track_id")
+        df = pd.read_sql_query(
+            """SELECT tg.group_id, tg.canonical_name, tg.primary_track_id,
+                      pt.track_name AS primary_track_name,
+                      pt.album_id AS primary_album_id,
+                      COALESCE(NULLIF(a.artist_name, ''),
+                               NULLIF(album_artist.artist_name, ''),
+                               NULLIF(sam.album_artists, '')) AS artist_name,
+                      tg.scope, tg.is_manual, tg.created_at,
+                      COUNT(tgm.track_id) AS member_count
+               FROM track_groups tg
+               LEFT JOIN tracks pt ON pt.track_id = tg.primary_track_id
+               LEFT JOIN artists a ON a.artist_id = pt.artist_id
+               LEFT JOIN albums al ON al.album_id = pt.album_id
+               LEFT JOIN artists album_artist ON album_artist.artist_id = al.artist_id
+               LEFT JOIN spotify_track_meta stm
+                      ON stm.spotify_track_id = pt.spotify_track_id
+               LEFT JOIN spotify_album_meta sam
+                      ON sam.spotify_album_id = stm.spotify_album_id
+               LEFT JOIN track_group_members tgm ON tgm.group_id = tg.group_id
+               GROUP BY tg.group_id
+               ORDER BY COALESCE(NULLIF(a.artist_name, ''),
+                                 NULLIF(album_artist.artist_name, ''),
+                                 NULLIF(sam.album_artists, ''), ''),
+                        tg.canonical_name, tg.scope""",
+            conn,
+        )
+        return _attach_effective_track_artist_names(conn, df, "primary_track_id")
+    finally:
+        conn.close()
+
+
+def get_track_group_members(group_id: int) -> pd.DataFrame:
+    """Return stable track members of one saved track group."""
+    conn = get_db()
+    try:
+        has_l1 = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
+        ).fetchone()
+        if has_l1:
+            df = pd.read_sql_query(
+                """SELECT li.l1_id, external.external_track_id AS spotify_track_id,
+                          li.representative_track_id AS track_id,
+                          t.track_name, t.album_id,
+                          CASE WHEN (SELECT COUNT(*) FROM track_l1_external_ids counts
+                                      WHERE counts.l1_id=li.l1_id)>1
+                               THEN 'multi_provider_id' ELSE 'canonical' END AS identity_kind,
+                          COUNT(DISTINCT links.track_id) AS source_record_count,
+                          (COUNT(DISTINCT source.track_name) > 1
+                           OR COUNT(DISTINCT source.artist_id) > 1
+                           OR COUNT(DISTINCT source.album_id) > 1) AS metadata_conflict,
+                          COALESCE(NULLIF(a.artist_name, ''),
+                                   NULLIF(album_artist.artist_name, ''),
+                                   NULLIF(sam.album_artists, '')) AS artist_name,
+                          CASE WHEN li.l1_id=tg.primary_l1_id THEN 1 ELSE 0 END AS is_primary
+                   FROM track_group_l1_members members
+                   JOIN track_groups tg ON tg.group_id=members.group_id
+                   JOIN track_l1_identities li ON li.l1_id=members.l1_id
+                   LEFT JOIN track_l1_external_ids external
+                          ON external.l1_id=li.l1_id
+                         AND external.provider='spotify' AND external.is_primary=1
+                   JOIN tracks t ON t.track_id=li.representative_track_id
+                   LEFT JOIN artists a ON a.artist_id=t.artist_id
+                   LEFT JOIN albums al ON al.album_id=t.album_id
+                   LEFT JOIN artists album_artist ON album_artist.artist_id=al.artist_id
+                   LEFT JOIN spotify_track_meta stm
+                          ON stm.spotify_track_id=external.external_track_id
+                   LEFT JOIN spotify_album_meta sam
+                          ON sam.spotify_album_id=stm.spotify_album_id
+                   LEFT JOIN track_l1_source_links links ON links.l1_id=li.l1_id
+                   LEFT JOIN tracks source ON source.track_id=links.track_id
+                   WHERE members.group_id=? AND tg.group_status='active'
+                   GROUP BY li.l1_id
+                   ORDER BY is_primary DESC, t.track_name, li.l1_id""",
+                conn,
+                params=[group_id],
+            )
+            return _attach_effective_track_artist_names(conn, df, "track_id")
+        df = pd.read_sql_query(
+            """SELECT t.track_id, t.track_name, t.album_id,
+                      COALESCE(NULLIF(a.artist_name, ''),
+                               NULLIF(album_artist.artist_name, ''),
+                               NULLIF(sam.album_artists, '')) AS artist_name,
+                      CASE WHEN t.track_id = tg.primary_track_id THEN 1 ELSE 0 END AS is_primary
+               FROM track_group_members tgm
+               JOIN track_groups tg ON tg.group_id = tgm.group_id
+               JOIN tracks t ON t.track_id = tgm.track_id
+               LEFT JOIN artists a ON a.artist_id = t.artist_id
+               LEFT JOIN albums al ON al.album_id = t.album_id
+               LEFT JOIN artists album_artist ON album_artist.artist_id = al.artist_id
+               LEFT JOIN spotify_track_meta stm
+                      ON stm.spotify_track_id = t.spotify_track_id
+               LEFT JOIN spotify_album_meta sam
+                      ON sam.spotify_album_id = stm.spotify_album_id
+               WHERE tgm.group_id = ?
+               ORDER BY is_primary DESC, t.track_name, t.track_id""",
+            conn,
+            params=[group_id],
+        )
+        return _attach_effective_track_artist_names(conn, df, "track_id")
+    finally:
+        conn.close()
+
+
+def search_track_l1_candidates(query: str, limit: int = 40) -> list[dict]:
+    """Search one row per canonical owner track for manual L2/L3 selection."""
+    conn = get_db()
+    try:
+        pattern = f"%{query.strip()}%"
+        exact_l1_id = int(query.strip()) if query.strip().isdigit() else -1
+        rows = conn.execute(
+            """SELECT li.l1_id, external.external_track_id AS spotify_track_id,
+                      CASE WHEN (SELECT COUNT(*) FROM track_l1_external_ids counts
+                                  WHERE counts.l1_id=li.l1_id)>1
+                           THEN 'multi_provider_id' ELSE 'canonical' END AS identity_kind,
+                      li.representative_track_id AS track_id,
+                      t.track_name, t.album_id, a.artist_name, al.album_name,
+                      COUNT(DISTINCT links.track_id) AS source_record_count,
+                      (COUNT(DISTINCT source.track_name) > 1
+                       OR COUNT(DISTINCT source.artist_id) > 1
+                       OR COUNT(DISTINCT source.album_id) > 1) AS metadata_conflict,
+                      COALESCE(SUM(CASE WHEN links.evidence_type='play_at_time'
+                                        THEN links.observed_plays ELSE 0 END), 0) AS play_count,
+                      MIN(CASE WHEN links.evidence_type='play_at_time'
+                               THEN links.first_seen_at END) AS first_play_date,
+                      MAX(CASE WHEN links.evidence_type='play_at_time'
+                               THEN links.last_seen_at END) AS last_play_date
+                 FROM track_l1_identities li
+                 JOIN tracks t ON t.track_id=li.representative_track_id
+                 LEFT JOIN track_l1_external_ids external
+                        ON external.l1_id=li.l1_id
+                       AND external.provider='spotify' AND external.is_primary=1
+                 LEFT JOIN artists a ON a.artist_id=t.artist_id
+                 LEFT JOIN albums al ON al.album_id=t.album_id
+                 LEFT JOIN track_l1_source_links links ON links.l1_id=li.l1_id
+                 LEFT JOIN tracks source ON source.track_id=links.track_id
+                WHERE li.identity_status!='superseded'
+                  AND (
+                      EXISTS (
+                          SELECT 1 FROM spotify_track_owners owner_identity
+                           WHERE owner_identity.track_id=li.l1_id
+                      )
+                      OR (
+                          NOT EXISTS (
+                              SELECT 1
+                                FROM spotify_track_owners raw_owner
+                               WHERE raw_owner.spotify_track_id=t.spotify_track_id
+                                 AND raw_owner.track_id!=li.l1_id
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM track_l1_source_links alias_link
+                               WHERE alias_link.track_id=li.l1_id
+                                 AND alias_link.l1_id!=li.l1_id
+                          )
+                      )
+                  )
+                  AND (
+                      t.track_name LIKE ? COLLATE NOCASE
+                   OR COALESCE(a.artist_name, '') LIKE ? COLLATE NOCASE
+                   OR COALESCE(al.album_name, '') LIKE ? COLLATE NOCASE
+                   OR EXISTS (
+                        SELECT 1
+                          FROM track_l1_source_links search_link
+                          JOIN tracks search_track
+                            ON search_track.track_id=search_link.track_id
+                          LEFT JOIN artists search_artist
+                            ON search_artist.artist_id=search_track.artist_id
+                          LEFT JOIN albums search_album
+                            ON search_album.album_id=search_track.album_id
+                         WHERE search_link.l1_id=li.l1_id
+                           AND (
+                               search_track.track_name LIKE ? COLLATE NOCASE
+                            OR COALESCE(search_artist.artist_name, '') LIKE ? COLLATE NOCASE
+                            OR COALESCE(search_album.album_name, '') LIKE ? COLLATE NOCASE
+                           )
+                   )
+                   OR EXISTS (
+                        SELECT 1 FROM track_l1_external_ids external
+                         WHERE external.l1_id=li.l1_id
+                           AND external.external_track_id=?
+                   )
+                   OR li.l1_id=?
+                   OR EXISTS (
+                        SELECT 1 FROM track_l1_source_links exact_source
+                         WHERE exact_source.l1_id=li.l1_id
+                           AND exact_source.track_id=?
+                   )
+                )
+                GROUP BY li.l1_id
+                ORDER BY (li.l1_id=?) DESC, (play_count>0) DESC,
+                         play_count DESC, t.track_name, li.l1_id
+                LIMIT ?""",
+            (
+                pattern,
+                pattern,
+                pattern,
+                pattern,
+                pattern,
+                pattern,
+                query.strip(),
+                exact_l1_id,
+                exact_l1_id,
+                exact_l1_id,
+                int(limit),
+            ),
+        ).fetchall()
+        from backend.domains.metadata.track_credits import (
+            canonical_artist_names_for_effective_tracks,
+        )
+
+        names = canonical_artist_names_for_effective_tracks(
+            conn, [int(row["track_id"]) for row in rows]
+        )
+        return [
+            {
+                **dict(row),
+                "effective_artist_names": names.get(int(row["track_id"]), []),
+                "cover_url": (
+                    f"/covers/albums/{int(row['album_id'])}.jpg" if row["album_id"] else None
+                ),
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+def _attach_effective_track_artist_names(
+    conn, frame: pd.DataFrame, track_id_column: str
+) -> pd.DataFrame:
+    """Prefer audited effective credits while retaining metadata fallbacks.
+
+    Older imports can leave a track pointing at a removed raw artist row.  The
+    saved-group management surface still needs a useful, non-destructive label,
+    so empty effective credits fall back to the album/Spotify metadata selected
+    in the listing query above.
+    """
+    if frame.empty:
+        return frame
+
+    from backend.domains.metadata.track_credits import (
+        canonical_artist_names_for_effective_tracks,
+    )
+
+    track_ids = [int(value) for value in frame[track_id_column].dropna().unique().tolist()]
+    effective_names = canonical_artist_names_for_effective_tracks(conn, track_ids)
+    for index, track_id in frame[track_id_column].items():
+        if pd.isna(track_id):
+            continue
+        names = [
+            name.strip() for name in effective_names.get(int(track_id), []) if str(name).strip()
+        ]
+        if names:
+            frame.at[index, "artist_name"] = "、".join(dict.fromkeys(names))
+    return frame
+
+
 def get_album_group_mapping() -> dict:
     """返回 {album_id: canonical_name} 映射，供 Billboard 排名使用。"""
     conn = get_db()
@@ -397,10 +771,153 @@ def create_group(
         conn.close()
 
 
+def _resolve_track_reference_to_l1(conn, value: int, *, reference_is_l1: bool) -> int | None:
+    """Resolve every compatibility reference through Spotify ownership."""
+    from backend.domains.metadata.track_identity import resolve_canonical_track_id
+
+    return resolve_canonical_track_id(conn, int(value))
+
+
+def _confirm_l1_track_group(
+    conn,
+    *,
+    original_reference: int,
+    candidate_reference: int,
+    scope: str,
+    references_are_l1: bool,
+) -> dict:
+    original_l1_id = _resolve_track_reference_to_l1(
+        conn, original_reference, reference_is_l1=references_are_l1
+    )
+    candidate_l1_id = _resolve_track_reference_to_l1(
+        conn, candidate_reference, reference_is_l1=references_are_l1
+    )
+    if original_l1_id is None or candidate_l1_id is None:
+        return {"status": "error", "error_code": "l1_not_found", "message": "歌曲身份不存在"}
+    if original_l1_id == candidate_l1_id:
+        return {
+            "status": "error",
+            "error_code": "same_spotify_identity",
+            "message": "它们已经是同一个 Spotify 曲目，不需要归并",
+        }
+
+    identities = conn.execute(
+        """SELECT li.l1_id, external.external_track_id, li.representative_track_id,
+                  t.track_name
+             FROM track_l1_identities li
+             JOIN tracks t ON t.track_id=li.representative_track_id
+             LEFT JOIN track_l1_external_ids external
+               ON external.l1_id=li.l1_id
+              AND external.provider='spotify' AND external.is_primary=1
+            WHERE li.l1_id IN (?, ?)""",
+        (original_l1_id, candidate_l1_id),
+    ).fetchall()
+    by_id = {int(row["l1_id"]): row for row in identities}
+    if len(by_id) != 2:
+        return {
+            "status": "error",
+            "error_code": "representative_missing",
+            "message": "歌曲展示元数据不完整，暂不能归并",
+        }
+
+    group_rows = conn.execute(
+        """SELECT groups.group_id, members.l1_id
+             FROM track_groups groups
+             JOIN track_group_l1_members members ON members.group_id=groups.group_id
+            WHERE members.l1_id IN (?, ?)
+              AND groups.scope=? AND groups.group_status='active'
+            ORDER BY CASE WHEN members.l1_id=? THEN 0 ELSE 1 END,
+                     groups.is_manual DESC, groups.group_id""",
+        (original_l1_id, candidate_l1_id, scope, original_l1_id),
+    ).fetchall()
+    existing_group_ids: list[int] = []
+    for row in group_rows:
+        group_id = int(row["group_id"])
+        if group_id not in existing_group_ids:
+            existing_group_ids.append(group_id)
+    group_id = existing_group_ids[0] if existing_group_ids else None
+    original = by_id[original_l1_id]
+    if group_id is None:
+        cursor = conn.execute(
+            """INSERT INTO track_groups(
+                   canonical_name, primary_track_id, primary_l1_id,
+                   scope, is_manual, group_status
+               ) VALUES (?, ?, ?, ?, 1, 'active')""",
+            (
+                str(original["track_name"]),
+                int(original["representative_track_id"]),
+                original_l1_id,
+                scope,
+            ),
+        )
+        group_id = int(cursor.lastrowid)
+
+    for source_group_id in existing_group_ids[1:]:
+        conn.execute(
+            """INSERT OR IGNORE INTO track_group_l1_members(group_id, l1_id)
+               SELECT ?, l1_id FROM track_group_l1_members WHERE group_id=?""",
+            (group_id, source_group_id),
+        )
+        conn.execute(
+            "UPDATE track_groups SET parent_group_id=? WHERE parent_group_id=?",
+            (group_id, source_group_id),
+        )
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id=?", (source_group_id,))
+        conn.execute(
+            "UPDATE track_groups SET group_status='archived' WHERE group_id=?",
+            (source_group_id,),
+        )
+
+    conn.execute(
+        """UPDATE track_groups
+              SET canonical_name=?, primary_track_id=?, primary_l1_id=?,
+                  is_manual=1, group_status='active'
+            WHERE group_id=?""",
+        (
+            str(original["track_name"]),
+            int(original["representative_track_id"]),
+            original_l1_id,
+            group_id,
+        ),
+    )
+    conn.executemany(
+        "INSERT OR IGNORE INTO track_group_l1_members(group_id, l1_id) VALUES (?, ?)",
+        ((group_id, original_l1_id), (group_id, candidate_l1_id)),
+    )
+    conn.execute(
+        """UPDATE track_group_candidates SET status='accepted'
+            WHERE scope=? AND (
+                (original_l1_id=? AND candidate_l1_id=?)
+                OR (original_l1_id=? AND candidate_l1_id=?)
+            )""",
+        (scope, original_l1_id, candidate_l1_id, candidate_l1_id, original_l1_id),
+    )
+    from backend.domains.metadata.track_identity import bump_track_identity_revision
+
+    bump_track_identity_revision(conn)
+    conn.commit()
+    _refresh_version_merge_dependents(conn)
+    member_count = conn.execute(
+        "SELECT COUNT(*) FROM track_group_l1_members WHERE group_id=?",
+        (group_id,),
+    ).fetchone()[0]
+    return {
+        "status": "ok",
+        "group_id": group_id,
+        "scope": scope,
+        "member_count": int(member_count),
+        "album_projects_rebuilt": True,
+        "original_l1_id": original_l1_id,
+        "candidate_l1_id": candidate_l1_id,
+    }
+
+
 def confirm_track_group_candidate(
     original_track_id: int,
     candidate_track_id: int,
     scope: str = "composition",
+    *,
+    references_are_l1: bool = False,
 ) -> dict:
     """Confirm a track candidate by writing it into a track group.
 
@@ -409,11 +926,21 @@ def confirm_track_group_candidate(
     """
     if scope not in {"recording", "composition"}:
         return {"status": "error", "message": "Invalid scope"}
-    if original_track_id == candidate_track_id:
-        return {"status": "error", "message": "Tracks must differ"}
-
     conn = get_db(readonly=False)
     try:
+        has_l1 = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
+        ).fetchone()
+        if has_l1:
+            return _confirm_l1_track_group(
+                conn,
+                original_reference=original_track_id,
+                candidate_reference=candidate_track_id,
+                scope=scope,
+                references_are_l1=references_are_l1,
+            )
+        if original_track_id == candidate_track_id:
+            return {"status": "error", "message": "Tracks must differ"}
         original = conn.execute(
             "SELECT track_id, track_name FROM tracks WHERE track_id = ?",
             (original_track_id,),
@@ -425,16 +952,26 @@ def confirm_track_group_candidate(
         if original is None or candidate is None:
             return {"status": "error", "message": "Track not found"}
 
-        group = conn.execute(
-            """SELECT tg.group_id
+        # A track may legitimately belong to one recording group and one
+        # composition group, but never to multiple groups in the same scope.
+        # When either selected track already belongs to a group, confirming the
+        # pair unifies those existing groups instead of introducing an
+        # ambiguous second mapping.
+        group_rows = conn.execute(
+            """SELECT tg.group_id, tgm.track_id
                FROM track_groups tg
                JOIN track_group_members tgm ON tgm.group_id = tg.group_id
-               WHERE tgm.track_id = ? AND tg.scope = ?
-               ORDER BY tg.is_manual DESC, tg.group_id
-               LIMIT 1""",
-            (original_track_id, scope),
-        ).fetchone()
-        group_id = int(group["group_id"]) if group is not None else None
+               WHERE tgm.track_id IN (?, ?) AND tg.scope = ?
+               ORDER BY CASE WHEN tgm.track_id = ? THEN 0 ELSE 1 END,
+                        tg.is_manual DESC, tg.group_id""",
+            (original_track_id, candidate_track_id, scope, original_track_id),
+        ).fetchall()
+        existing_group_ids: list[int] = []
+        for row in group_rows:
+            group_value = int(row["group_id"])
+            if group_value not in existing_group_ids:
+                existing_group_ids.append(group_value)
+        group_id = existing_group_ids[0] if existing_group_ids else None
 
         if group_id is None:
             cur = conn.execute(
@@ -454,6 +991,29 @@ def confirm_track_group_candidate(
 
         if group_id is None:
             return {"status": "error", "message": "Failed to create track group"}
+
+        for source_group_id in existing_group_ids[1:]:
+            conn.execute(
+                """INSERT OR IGNORE INTO track_group_members(group_id, track_id)
+                   SELECT ?, track_id FROM track_group_members WHERE group_id = ?""",
+                (group_id, source_group_id),
+            )
+            conn.execute(
+                "UPDATE track_groups SET parent_group_id = ? WHERE parent_group_id = ?",
+                (group_id, source_group_id),
+            )
+            conn.execute(
+                "DELETE FROM track_group_members WHERE group_id = ?",
+                (source_group_id,),
+            )
+            conn.execute("DELETE FROM track_groups WHERE group_id = ?", (source_group_id,))
+
+        conn.execute(
+            """UPDATE track_groups
+               SET canonical_name = ?, primary_track_id = ?, is_manual = 1
+               WHERE group_id = ?""",
+            (original["track_name"], original_track_id, group_id),
+        )
 
         for track_id in (original_track_id, candidate_track_id):
             conn.execute(
@@ -758,6 +1318,224 @@ def delete_group(group_id: int) -> bool:
     try:
         conn.execute("DELETE FROM release_group_members WHERE group_id = ?", (group_id,))
         conn.execute("DELETE FROM release_groups WHERE group_id = ?", (group_id,))
+        conn.commit()
+        _refresh_version_merge_dependents(conn)
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def update_track_group_members(
+    group_id: int,
+    add_ids=None,
+    remove_ids=None,
+) -> bool:
+    """Add or remove stable track IDs from a saved track group."""
+    conn = get_db(readonly=False)
+    try:
+        has_l1 = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
+        ).fetchone()
+        if has_l1:
+            group = conn.execute(
+                "SELECT scope, primary_l1_id, primary_track_id FROM track_groups WHERE group_id=?",
+                (group_id,),
+            ).fetchone()
+            if group is None:
+                return False
+            scope = str(group["scope"])
+            from backend.domains.metadata.track_identity import resolve_canonical_track_id
+
+            primary_l1_id = (
+                resolve_canonical_track_id(conn, int(group["primary_l1_id"]))
+                if group["primary_l1_id"]
+                else None
+            )
+            normalized_add_ids: list[int] = []
+            for reference_id in add_ids or []:
+                l1_id = resolve_canonical_track_id(conn, int(reference_id))
+                if l1_id is None:
+                    return False
+                if l1_id not in normalized_add_ids:
+                    normalized_add_ids.append(l1_id)
+                if (
+                    conn.execute(
+                        "SELECT 1 FROM track_l1_identities WHERE l1_id=?", (l1_id,)
+                    ).fetchone()
+                    is None
+                ):
+                    return False
+                overlap = conn.execute(
+                    """SELECT groups.group_id
+                         FROM track_groups groups
+                         JOIN track_group_l1_members members
+                           ON members.group_id=groups.group_id
+                        WHERE members.l1_id=? AND groups.scope=?
+                          AND groups.group_status='active' AND groups.group_id!=?
+                        LIMIT 1""",
+                    (l1_id, scope, group_id),
+                ).fetchone()
+                if overlap is not None:
+                    return False
+                conn.execute(
+                    "INSERT OR IGNORE INTO track_group_l1_members(group_id,l1_id) VALUES (?,?)",
+                    (group_id, l1_id),
+                )
+            normalized_remove_ids: list[int] = []
+            for reference_id in remove_ids or []:
+                l1_id = resolve_canonical_track_id(conn, int(reference_id))
+                if l1_id is None:
+                    return False
+                if l1_id not in normalized_remove_ids:
+                    normalized_remove_ids.append(l1_id)
+            for l1_id in normalized_remove_ids:
+                if l1_id == primary_l1_id:
+                    return False
+                conn.execute(
+                    "DELETE FROM track_group_l1_members WHERE group_id=? AND l1_id=?",
+                    (group_id, l1_id),
+                )
+            member_count = conn.execute(
+                "SELECT COUNT(*) FROM track_group_l1_members WHERE group_id=?", (group_id,)
+            ).fetchone()[0]
+            if int(member_count) < 2:
+                conn.rollback()
+                return False
+            conn.execute(
+                "UPDATE track_groups SET is_manual=1, group_status='active' WHERE group_id=?",
+                (group_id,),
+            )
+            from backend.domains.metadata.track_identity import bump_track_identity_revision
+
+            bump_track_identity_revision(conn)
+            conn.commit()
+            _refresh_version_merge_dependents(conn)
+            return True
+        if (
+            conn.execute("SELECT 1 FROM track_groups WHERE group_id=?", (group_id,)).fetchone()
+            is None
+        ):
+            return False
+        for track_id in add_ids or []:
+            if (
+                conn.execute("SELECT 1 FROM tracks WHERE track_id = ?", (track_id,)).fetchone()
+                is None
+            ):
+                return False
+            conn.execute(
+                "INSERT OR IGNORE INTO track_group_members(group_id, track_id) VALUES (?, ?)",
+                (group_id, track_id),
+            )
+        primary_row = conn.execute(
+            "SELECT primary_track_id FROM track_groups WHERE group_id = ?", (group_id,)
+        ).fetchone()
+        primary_track_id = int(primary_row[0]) if primary_row and primary_row[0] else None
+        for track_id in remove_ids or []:
+            if track_id == primary_track_id:
+                return False
+            conn.execute(
+                "DELETE FROM track_group_members WHERE group_id = ? AND track_id = ?",
+                (group_id, track_id),
+            )
+        conn.execute("UPDATE track_groups SET is_manual = 1 WHERE group_id = ?", (group_id,))
+        conn.commit()
+        _refresh_version_merge_dependents(conn)
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def set_primary_track(group_id: int, track_id: int) -> bool:
+    """Set the representative track, limited to an existing group member."""
+    conn = get_db(readonly=False)
+    try:
+        has_l1 = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
+        ).fetchone()
+        if has_l1:
+            from backend.domains.metadata.track_identity import resolve_canonical_track_id
+
+            canonical_track_id = resolve_canonical_track_id(conn, int(track_id))
+            if canonical_track_id is None:
+                return False
+            member = conn.execute(
+                "SELECT 1 FROM track_group_l1_members WHERE group_id=? AND l1_id=?",
+                (group_id, canonical_track_id),
+            ).fetchone()
+            if member is None:
+                return False
+            identity = conn.execute(
+                """SELECT li.representative_track_id, t.track_name
+                     FROM track_l1_identities li
+                     JOIN tracks t ON t.track_id=li.representative_track_id
+                    WHERE li.l1_id=?""",
+                (canonical_track_id,),
+            ).fetchone()
+            if identity is None:
+                return False
+            conn.execute(
+                """UPDATE track_groups
+                      SET primary_l1_id=?, primary_track_id=?, canonical_name=?,
+                          is_manual=1, group_status='active'
+                    WHERE group_id=?""",
+                (canonical_track_id, int(identity[0]), str(identity[1]), group_id),
+            )
+            from backend.domains.metadata.track_identity import bump_track_identity_revision
+
+            bump_track_identity_revision(conn)
+            conn.commit()
+            _refresh_version_merge_dependents(conn)
+            return True
+        member = conn.execute(
+            "SELECT 1 FROM track_group_members WHERE group_id = ? AND track_id = ?",
+            (group_id, track_id),
+        ).fetchone()
+        if member is None:
+            return False
+        track = conn.execute(
+            "SELECT track_name FROM tracks WHERE track_id = ?", (track_id,)
+        ).fetchone()
+        conn.execute(
+            "UPDATE track_groups SET primary_track_id = ?, canonical_name = ?, is_manual = 1 WHERE group_id = ?",
+            (track_id, track[0], group_id),
+        )
+        conn.commit()
+        _refresh_version_merge_dependents(conn)
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def delete_track_group(group_id: int) -> bool:
+    """Delete a track group without rewriting imported track or play facts."""
+    conn = get_db(readonly=False)
+    try:
+        if (
+            conn.execute("SELECT 1 FROM track_groups WHERE group_id = ?", (group_id,)).fetchone()
+            is None
+        ):
+            return False
+        conn.execute(
+            "UPDATE track_groups SET parent_group_id = NULL WHERE parent_group_id = ?",
+            (group_id,),
+        )
+        has_l1 = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
+        ).fetchone()
+        if has_l1:
+            conn.execute("DELETE FROM track_group_l1_members WHERE group_id=?", (group_id,))
+        conn.execute("DELETE FROM track_group_members WHERE group_id = ?", (group_id,))
+        conn.execute("DELETE FROM track_groups WHERE group_id = ?", (group_id,))
+        if has_l1:
+            from backend.domains.metadata.track_identity import bump_track_identity_revision
+
+            bump_track_identity_revision(conn)
         conn.commit()
         _refresh_version_merge_dependents(conn)
         return True

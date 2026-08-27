@@ -154,7 +154,7 @@ def _top_artists(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
     ]
 
 
-def _top_albums(conn: sqlite3.Connection, df: pd.DataFrame, merge_level: int = 1) -> list[dict]:
+def _top_albums(conn: sqlite3.Connection, df: pd.DataFrame, merge_level: int = 2) -> list[dict]:
     cover_map = _album_cover_lookup(conn)
 
     if merge_level > 1:
@@ -294,7 +294,7 @@ def get_analysis_overview(
     merge_enabled: bool,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
-    merge_level: int = 1,
+    merge_level: int = 2,
 ) -> dict:
     """Build the playback analysis landing-page aggregate."""
     df = load_plays(

@@ -231,10 +231,10 @@ def test_discovery_route_returns_strict_contract_and_filter_context() -> None:
     app.include_router(account_router, prefix="/api")
     app.dependency_overrides[get_conn] = lambda: conn
 
-    response = TestClient(app).get("/api/account/discovery?merge_level=1")
+    response = TestClient(app).get("/api/account/discovery?merge_level=2")
     conn.close()
 
     assert response.status_code == 200
     assert response.json()["schema_version"] == "account_archive_discovery_v1"
-    assert response.json()["filter_context"]["merge_level"] == 1
+    assert response.json()["filter_context"]["merge_level"] == 2
     assert response.json()["funnel"]["display_status"] == "count_only"

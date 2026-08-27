@@ -223,6 +223,8 @@ def _context(
         settings_revision=1,
         artist_identity_revision=0,
         track_credit_revision=0,
+        track_identity_revision=0,
+        track_identity_policy="spotify_l1_v1",
         semantic_base_key="base-r1",
         filter_fingerprint=filter_fingerprint,
         source_revision="source-r1",
@@ -343,7 +345,7 @@ def test_weekly_ledger_deduplicates_identical_facts_and_rejects_conflicts() -> N
     assert rows[0][3] == 1
 
 
-def test_shared_publish_persists_six_variant_lineage_and_weekly_ledger(monkeypatch) -> None:
+def test_shared_publish_persists_four_variant_lineage_and_weekly_ledger(monkeypatch) -> None:
     conn = _conn()
     from backend.domains.music_search import snapshot as snapshot_module
 
@@ -395,7 +397,7 @@ def test_shared_publish_persists_six_variant_lineage_and_weekly_ledger(monkeypat
                   COUNT(DISTINCT build_strategy)
            FROM music_search_snapshot_meta WHERE status='ready'"""
     ).fetchone()
-    assert tuple(lineage) == (6, 6, 1, 1, 1, 1)
+    assert tuple(lineage) == (4, 4, 1, 1, 1, 1)
     assert conn.execute("SELECT COUNT(*) FROM music_search_weekly_chart_context").fetchone()[0] == 1
 
 
@@ -570,7 +572,7 @@ def test_incremental_snapshot_delta_clones_base_and_applies_lifetime_metrics(
     assert report is not None
     assert report["strategy"] == "incremental_snapshot_delta"
     assert report["lifetime_scan"] is False
-    assert report["ready_count"] == 6
+    assert report["ready_count"] == 4
     assert report["chart_strategy"] == chart_strategy
     for context in target_contexts:
         metrics = {
@@ -925,8 +927,8 @@ def test_snapshot_set_keeps_ready_variants_when_one_variant_fails(monkeypatch) -
 
     original_context_rows = snapshot_module._context_rows
 
-    def fail_l1_dynamic(target, context):
-        if context.merge_level == 1 and context.dynamic_threshold:
+    def fail_l3_dynamic(target, context):
+        if context.merge_level == 3 and context.dynamic_threshold:
             assert (
                 target.execute(
                     "SELECT status FROM music_search_snapshot_meta WHERE snapshot_key=?",
@@ -943,14 +945,14 @@ def test_snapshot_set_keeps_ready_variants_when_one_variant_fails(monkeypatch) -
             raise RuntimeError("fixture failure")
         return original_context_rows(target, context)
 
-    monkeypatch.setattr(snapshot_module, "_context_rows", fail_l1_dynamic)
+    monkeypatch.setattr(snapshot_module, "_context_rows", fail_l3_dynamic)
     contexts = tuple(
         _context(
             merge_level=merge_level,
             dynamic_threshold=dynamic,
             filter_fingerprint=f"fp-{merge_level}-{int(dynamic)}",
         )
-        for merge_level, dynamic in ((2, True), (1, True), (3, True), (2, False))
+        for merge_level, dynamic in ((2, True), (3, True), (2, False), (3, False))
     )
 
     report = build_music_search_snapshot_set(conn, contexts)
@@ -964,11 +966,11 @@ def test_snapshot_set_keeps_ready_variants_when_one_variant_fails(monkeypatch) -
             "SELECT merge_level, dynamic_threshold, status FROM music_search_snapshot_meta"
         )
     }
-    assert statuses[(1, True)] == "failed"
+    assert statuses[(3, True)] == "failed"
     assert statuses[(2, True)] == "ready"
-    assert statuses[(3, True)] == "ready"
     assert statuses[(2, False)] == "ready"
-    assert get_music_search_snapshot_status(conn, "fp-1-1") == "failed"
+    assert statuses[(3, False)] == "ready"
+    assert get_music_search_snapshot_status(conn, "fp-3-1") == "failed"
 
 
 def test_snapshot_set_releases_heavy_caches_after_every_variant(monkeypatch) -> None:
@@ -1025,10 +1027,8 @@ def test_snapshot_set_resumes_by_skipping_each_exact_ready_variant(monkeypatch) 
         )
         for merge_level, dynamic in (
             (2, True),
-            (1, True),
             (3, True),
             (2, False),
-            (1, False),
             (3, False),
         )
     )
@@ -1218,10 +1218,8 @@ def test_shared_metric_maps_loads_primary_and_artist_sequentially_per_threshold(
         )
         for merge_level, dynamic in (
             (2, True),
-            (1, True),
             (3, True),
             (2, False),
-            (1, False),
             (3, False),
         )
     )
@@ -1256,10 +1254,10 @@ def test_shared_metric_maps_loads_primary_and_artist_sequentially_per_threshold(
         (False, ("artist",)),
         (False, ("track", "album")),
     ]
-    assert len(maps) == 6
+    assert len(maps) == 4
 
 
-def test_shared_metric_maps_match_exact_builder_for_all_six_variants(monkeypatch) -> None:
+def test_shared_metric_maps_match_exact_builder_for_all_four_variants(monkeypatch) -> None:
     conn = _conn()
     contexts = _shared_contexts(conn)
 
@@ -1517,14 +1515,14 @@ def test_shared_chart_skips_unloaded_primary_or_artist_family(monkeypatch) -> No
     assert calls == ["artist"]
 
 
-def test_shared_full_requires_exact_unique_six_variant_matrix() -> None:
+def test_shared_full_requires_exact_unique_four_variant_matrix() -> None:
     conn = _conn()
     duplicate = _shared_contexts(conn)[0]
 
-    with pytest.raises(ValueError, match="exact six supported variants"):
+    with pytest.raises(ValueError, match="exact four supported variants"):
         build_shared_full_music_search_snapshot_set(
             conn,
-            (duplicate,) * 6,
+            (duplicate,) * 4,
             source_generation_id="import-g2",
         )
 
@@ -1575,7 +1573,7 @@ def test_shared_full_releases_each_threshold_before_loading_next(monkeypatch) ->
     )
 
     assert report is not None
-    assert report["ready_count"] == 6
+    assert report["ready_count"] == 4
     assert load_order == [
         (True, ("artist",)),
         (True, ("track", "album")),
@@ -1649,7 +1647,7 @@ def test_shared_full_failure_never_partially_activates_variants(monkeypatch) -> 
         "SELECT status FROM music_search_snapshot_meta WHERE semantic_base_key=?",
         (contexts[0].semantic_base_key,),
     ).fetchall()
-    assert len(statuses) == 6
+    assert len(statuses) == 4
     assert {row[0] for row in statuses} == {"failed"}
     assert (
         conn.execute(
@@ -1700,7 +1698,7 @@ def test_shared_full_publish_fence_rejects_mid_build_drift(monkeypatch, drift: s
     def drift_on_last_context(*_args, **_kwargs):
         nonlocal calls
         calls += 1
-        if calls == 6:
+        if calls == 4:
             if drift == "playback":
                 conn.execute(
                     "UPDATE playback_import_state SET active_generation_id='import-g3' WHERE state_id=1"

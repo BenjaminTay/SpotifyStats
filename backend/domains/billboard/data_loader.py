@@ -42,6 +42,43 @@ def _attach_unmerged_listening_intervals(frame: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _track_identity_sql(conn):
+    """Return the L1 projection fragments used by both raw Billboard loaders."""
+    has_l1 = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_external_ids'"
+    ).fetchone()
+    if not has_l1:
+        return (
+            "p.track_id AS source_track_id, p.track_id AS track_id, "
+            "p.track_id AS representative_track_id",
+            "LEFT JOIN tracks t_source ON t_source.track_id=p.track_id "
+            "LEFT JOIN tracks t ON t.track_id=p.track_id",
+            "t_source.spotify_track_id",
+        )
+    return (
+        "p.track_id AS source_track_id, "
+        "COALESCE(li_spotify.l1_id, li_local.l1_id, p.track_id) AS track_id, "
+        "COALESCE(li_spotify.representative_track_id, "
+        "li_local.representative_track_id, p.track_id) AS representative_track_id",
+        "LEFT JOIN tracks t_source ON t_source.track_id=p.track_id "
+        "LEFT JOIN track_l1_external_ids external_spotify "
+        "ON external_spotify.provider='spotify' "
+        "AND external_spotify.external_track_id=COALESCE("
+        "NULLIF(p.spotify_track_id_at_play, ''), NULLIF(t_source.spotify_track_id, '')) "
+        "LEFT JOIN track_l1_identities li_spotify "
+        "ON li_spotify.l1_id=external_spotify.l1_id "
+        "AND li_spotify.identity_status!='superseded' "
+        "LEFT JOIN track_l1_identities li_local "
+        "ON li_local.fallback_track_id=p.track_id "
+        "AND li_local.identity_status!='superseded' "
+        "AND COALESCE(NULLIF(p.spotify_track_id_at_play, ''), "
+        "NULLIF(t_source.spotify_track_id, '')) IS NULL "
+        "LEFT JOIN tracks t ON t.track_id=COALESCE("
+        "li_spotify.representative_track_id, li_local.representative_track_id, p.track_id)",
+        "COALESCE(NULLIF(p.spotify_track_id_at_play, ''), NULLIF(t_source.spotify_track_id, ''))",
+    )
+
+
 def _try_load_from_agg(
     min_ms,
     music_only,
@@ -75,6 +112,7 @@ def _try_load_from_agg(
         get_track_credit_revision,
         get_track_credit_state,
     )
+    from backend.domains.metadata.track_identity import get_track_identity_revision
 
     conn = get_db()
 
@@ -92,6 +130,7 @@ def _try_load_from_agg(
         max_merge_gap_minutes=max_merge_gap_minutes,
         identity_revision=get_identity_revision(conn),
         track_credit_revision=get_track_credit_revision(conn),
+        track_identity_revision=get_track_identity_revision(conn),
     )
     if not check_agg_valid(conn, param_hash):
         conn.close()
@@ -129,19 +168,21 @@ def load_billboard_raw(
     source_min_ms = 0 if merge_enabled else min_ms
     _f, _fp = base_filters(min_ms=source_min_ms, music_only=music_only)
     _w = f"WHERE {_f}" if _f else ""
+    identity_columns, identity_joins, spotify_id_expr = _track_identity_sql(conn)
     df = pd.read_sql_query(
-        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
+        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played,
+                   {identity_columns},
                    p.source_album_id,
                    t.track_name, t.artist_id, a.artist_name,
                    COALESCE(al_src.album_name, al.album_name) AS album_name,
                    stm.duration_ms
             FROM plays p
-            LEFT JOIN tracks t ON p.track_id = t.track_id
+            {identity_joins}
             LEFT JOIN artists a ON t.artist_id = a.artist_id
             LEFT JOIN albums al ON t.album_id = al.album_id
             LEFT JOIN albums al_src ON p.source_album_id = al_src.album_id
             LEFT JOIN spotify_track_meta stm
-              ON t.spotify_track_id = stm.spotify_track_id
+              ON {spotify_id_expr} = stm.spotify_track_id
             {_w}
             ORDER BY p.ts""",
         conn,
@@ -208,21 +249,23 @@ def load_billboard_raw_for_artists(
     source_min_ms = 0 if merge_enabled else min_ms
     _f, _fp = base_filters(min_ms=source_min_ms, music_only=music_only)
     _w = f"WHERE {_f}" if _f else ""
+    identity_columns, identity_joins, spotify_id_expr = _track_identity_sql(conn)
 
     # Step 1: Load single-artist data (same as load_billboard_raw)
     df = pd.read_sql_query(
-        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played, p.track_id,
+        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played,
+                   {identity_columns},
                    p.source_album_id,
                    t.track_name, a.artist_name,
                    COALESCE(al_src.album_name, al.album_name) AS album_name,
                    stm.duration_ms
             FROM plays p
-            LEFT JOIN tracks t ON p.track_id = t.track_id
+            {identity_joins}
             LEFT JOIN artists a ON t.artist_id = a.artist_id
             LEFT JOIN albums al ON t.album_id = al.album_id
             LEFT JOIN albums al_src ON p.source_album_id = al_src.album_id
             LEFT JOIN spotify_track_meta stm
-              ON t.spotify_track_id = stm.spotify_track_id
+              ON {spotify_id_expr} = stm.spotify_track_id
             {_w}
             ORDER BY p.ts""",
         conn,
@@ -252,11 +295,13 @@ def load_billboard_raw_for_artists(
     df = assign_logical_event_id(df)
     from backend.domains.metadata.track_credits import get_effective_track_credit_frame
 
-    track_artists_df = get_effective_track_credit_frame(conn)
+    track_artists_df = get_effective_track_credit_frame(conn).rename(
+        columns={"track_id": "representative_track_id"}
+    )
     df = df.drop(columns=["artist_name"], errors="ignore")
     df = df.merge(
-        track_artists_df[["track_id", "artist_id", "raw_artist_id", "artist_name"]],
-        on="track_id",
+        track_artists_df[["representative_track_id", "artist_id", "raw_artist_id", "artist_name"]],
+        on="representative_track_id",
         how="inner",
     )
     df["artist_id"] = df["raw_artist_id"]
@@ -289,17 +334,46 @@ def load_billboard_raw_for_artists(
 
 @lru_cache(maxsize=8)
 def load_track_album_map():
-    """Get all album names for each track_id (including track_albums junction)."""
+    """Get all album names for each effective track identity.
+
+    L1 and historical ``track_id`` values are separate integer namespaces.
+    Once L1 source links exist, project every source album through ``l1_id``
+    instead of allowing coincident numeric ids to borrow another song's
+    albums.  Legacy/test schemas without populated identity links retain the
+    original raw-track behavior.
+    """
     conn = get_db()
-    rows = conn.execute(
-        """SELECT t.track_id, al.album_name
-           FROM tracks t
-           JOIN albums al ON t.album_id = al.album_id
-           UNION
-           SELECT ta.track_id, al.album_name
-           FROM track_albums ta
-           JOIN albums al ON ta.album_id = al.album_id"""
-    ).fetchall()
+    has_l1_links = (
+        conn.execute(
+            """SELECT 1
+                 FROM sqlite_master
+                WHERE type='table' AND name='track_l1_source_links'"""
+        ).fetchone()
+        is not None
+        and conn.execute("SELECT 1 FROM track_l1_source_links LIMIT 1").fetchone() is not None
+    )
+    if has_l1_links:
+        rows = conn.execute(
+            """SELECT links.l1_id, al.album_name
+                 FROM track_l1_source_links links
+                 JOIN tracks t ON t.track_id=links.track_id
+                 JOIN albums al ON al.album_id=t.album_id
+                UNION
+               SELECT links.l1_id, al.album_name
+                 FROM track_l1_source_links links
+                 JOIN track_albums ta ON ta.track_id=links.track_id
+                 JOIN albums al ON al.album_id=ta.album_id"""
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT t.track_id, al.album_name
+               FROM tracks t
+               JOIN albums al ON t.album_id = al.album_id
+               UNION
+               SELECT ta.track_id, al.album_name
+               FROM track_albums ta
+               JOIN albums al ON ta.album_id = al.album_id"""
+        ).fetchall()
     conn.close()
 
     data = {}

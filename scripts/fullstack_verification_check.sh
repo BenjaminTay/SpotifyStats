@@ -582,8 +582,13 @@ stage_api() {
   check_backend_health || return $?
   run python scripts/openapi_operation_audit.py --json-output "$OPENAPI_OPERATION_AUDIT_JSON" || return $?
   run python scripts/openapi_parameter_boundary_audit.py --json-output "$OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON" || return $?
-  run python scripts/api_smoke_probe.py || return $?
-  run python scripts/api_boundary_probe.py || return $?
+  if [ -n "${SPOTIFY_STATS_TEST_SOURCE_DB:-}" ]; then
+    run python scripts/api_smoke_probe.py --db-path "$SPOTIFY_STATS_TEST_SOURCE_DB" || return $?
+    run python scripts/api_boundary_probe.py --db-path "$SPOTIFY_STATS_TEST_SOURCE_DB" || return $?
+  else
+    run python scripts/api_smoke_probe.py || return $?
+    run python scripts/api_boundary_probe.py || return $?
+  fi
   run_without_proxy python scripts/benchmark_api.py --base-url "$BACKEND_URL" --runs "$BENCHMARK_RUNS" --slow-ms "$SLOW_MS" --fail-on-slow --json-output "$BENCHMARK_JSON" || return $?
 }
 

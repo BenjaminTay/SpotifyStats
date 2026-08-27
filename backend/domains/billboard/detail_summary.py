@@ -103,10 +103,16 @@ def _track_meta(conn: sqlite3.Connection, track_id: int) -> dict | None:
         """SELECT stm.duration_ms, stm.popularity, stm.explicit,
                   stm.track_number, stm.disc_number,
                   sam.album_name AS spotify_album_name
-           FROM tracks t
-           LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id=t.spotify_track_id
+           FROM track_l1_identities li
+           JOIN tracks t ON t.track_id=li.representative_track_id
+           LEFT JOIN track_l1_external_ids external
+             ON external.l1_id=li.l1_id
+            AND external.provider='spotify' AND external.is_primary=1
+           LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id=COALESCE(
+                external.external_track_id, t.spotify_track_id
+           )
            LEFT JOIN spotify_album_meta sam ON sam.spotify_album_id=stm.spotify_album_id
-           WHERE t.track_id=? LIMIT 1""",
+           WHERE li.l1_id=? LIMIT 1""",
         (track_id,),
     ).fetchone()
     if row is None:
@@ -288,15 +294,21 @@ def build_track_detail_summary(args: tuple) -> dict | None:
         context = _context_row(conn, snapshot_key, str(document["entity_key"]))
         if context is None:
             return None
-        credits = canonical_artist_names_for_effective_tracks(conn, [track_id]).get(track_id, [])
         raw = conn.execute(
-            """SELECT t.track_name, t.artist_id, ar.artist_name
-               FROM tracks t JOIN artists ar ON ar.artist_id=t.artist_id
-               WHERE t.track_id=?""",
+            """SELECT li.representative_track_id, t.track_name,
+                      t.artist_id, ar.artist_name
+               FROM track_l1_identities li
+               JOIN tracks t ON t.track_id=li.representative_track_id
+               JOIN artists ar ON ar.artist_id=t.artist_id
+               WHERE li.l1_id=?""",
             (track_id,),
         ).fetchone()
         if raw is None:
             return None
+        representative_track_id = int(raw["representative_track_id"])
+        credits = canonical_artist_names_for_effective_tracks(conn, [representative_track_id]).get(
+            representative_track_id, []
+        )
         primary = resolve_artist_id(conn, int(raw["artist_id"])).display_name
         artist_names = credits or [primary]
         chart = _chart_summary(context)
@@ -304,15 +316,15 @@ def build_track_detail_summary(args: tuple) -> dict | None:
         if chart is not None:
             total_chart_plays = conn.execute(
                 """WITH ranked AS (
-                       SELECT track_id, play_count,
+                       SELECT l1_id, play_count,
                               ROW_NUMBER() OVER (
                                   PARTITION BY billboard_week
-                                  ORDER BY play_count DESC, total_ms DESC, track_id ASC
+                                  ORDER BY play_count DESC, total_ms DESC, l1_id ASC
                               ) AS chart_rank
                        FROM agg_weekly_tracks
                    )
                    SELECT COALESCE(SUM(play_count), 0) FROM ranked
-                   WHERE track_id=? AND chart_rank<=?""",
+                   WHERE l1_id=? AND chart_rank<=?""",
                 (track_id, int(values["bb_top_n"])),
             ).fetchone()[0]
             summary = {
@@ -332,6 +344,8 @@ def build_track_detail_summary(args: tuple) -> dict | None:
             "found": True,
             "chart_status": "charted" if chart else "not_charted",
             "track_id": track_id,
+            "l1_id": track_id,
+            "representative_track_id": representative_track_id,
             "track_name": str(raw["track_name"]),
             "artist_name": ", ".join(artist_names),
             "artist_names": artist_names,

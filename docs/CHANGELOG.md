@@ -2,6 +2,15 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-27 — 基础曲目身份与 L2/L3 版本治理重构
+
+- 将稳定的本地 canonical track 确立为歌曲基础身份：一个 canonical track 可以拥有多个 provider ID，但同一 `(provider, external_track_id)` 只能归属一个 canonical track；不同 Spotify ID 默认新建不同身份，只有受审计的底层纠错可以收敛。
+- L1 从公共统计开关和普通版本归并中移除，公共统计、搜索快照和 URL 只保留 L2 同录音 / L3 同作品；历史 `merge_level=1` 自动归一到 L2，旧 `/music/tracks/l1/{id}` 页面链接重定向到 canonical 路由。
+- 搜索、详情、Billboard、年度总结、音乐档案、首页与 AI 消费链统一以 canonical track 为歌曲主键，再应用 L2/L3；相同 Spotify ID 不再生成版本组。原始 `plays`、`tracks` 和 `track_artists` 保持逐行不变。
+- 设置中的歌曲/专辑归并统一为“自动检测 / 已保存分组 / 手动创建”和同一三步流程；详情编辑拆分为归并版本、曲目署名、艺人身份三个入口；基础身份误拆/误合只在高级治理区处理并记录依据与审计事件。
+- schema 55 使旧 L1 和旧 builder 搜索快照失效；schema 56 修复 canonical 粒度迁移后四张 Billboard 聚合已清空、派生状态却可能继续显示 ready 的一致性缺口；schema 57 恢复“现有 Track ID 即公开身份”的 owner 模型；schema 58 将手动候选、已保存分组和待确认候选统一归一到 Spotify owner。当前仅保留四套 v8 L2/L3 精确快照；真实库 7,843 个 Spotify ID 均唯一归属、未解析和治理阻断项均为 0。完整证据见 [`reports/2026-08-27-spotify-track-l1-identity-migration.md`](reports/2026-08-27-spotify-track-l1-identity-migration.md)。
+- 精确拆解真实库既有 7,831 条外键债务：其中 6,196 条是同一批 3,098 个未播放重复曲目在主艺人列和署名表被重复计数；所有孤儿曲目都有 Spotify ID 相同且承载播放的有效 owner。当前库与 schema 45/54/57 备份逐行一致，本轮身份迁移没有新增外键债务；历史成因与受控清理边界写入 [`reference/data-import-and-health.md`](reference/data-import-and-health.md)。
+
 ## 2026-08-25 — 音乐详情页年榜历史
 
 - 歌曲、专辑和艺人“榜单成绩”在周榜趋势/历史下增加独立年榜历史；Desktop 使用年度表格，Phone 使用年度卡片，并将“年榜最佳 / 年榜入榜”作为榜单成绩页内的同级 KPI。阶段年度明确标注，名次沿用 Billboard 衬线数字，年榜内容不进入 Hero。

@@ -1,1030 +1,1968 @@
-import { useState, useEffect } from 'react'
-import { displayName } from '@/lib/chinese'
-import { Slider } from '@/components/ui/slider'
+import { useEffect, useState } from "react";
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
-import { Star, Trash2, Plus, X, Search, ChevronDown, CheckCircle2, RefreshCw, GitMerge } from 'lucide-react'
-import { useVersionMerge } from '@/hooks/useSettings'
-import type { DetectionResult, DetectionMember, ReleaseGroup, GroupMember, UngroupedAlbum, TrackComparison, TrackGroupCandidate } from '@/types/settings'
-import { CoverCell } from '@/components/shared/CoverCell'
-import { FieldLabel, TrackComparePanel } from '@/features/settings/components/SettingsHelpers'
+  CheckCircle2,
+  ChevronDown,
+  Disc3,
+  Music2,
+  Plus,
+  RefreshCw,
+  Search,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 
-type MergeTabKey = 'detect' | 'saved' | 'create'
-const MERGE_TABS: { key: MergeTabKey; label: string }[] = [
-  { key: 'detect', label: '自动检测' },
-  { key: 'saved', label: '已保存分组' },
-  { key: 'create', label: '手动创建' },
-]
+import { CoverCell } from "@/components/shared/CoverCell";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Slider } from "@/components/ui/slider";
+import {
+  FieldLabel,
+  TrackComparePanel,
+} from "@/features/settings/components/SettingsHelpers";
+import { useVersionMerge } from "@/hooks/useSettings";
+import { api } from "@/lib/api";
+import { displayName } from "@/lib/chinese";
+import { cn } from "@/lib/utils";
+import type {
+  DetectionResult,
+  GroupMember,
+  ReleaseGroup,
+  TrackComparison,
+  TrackCreditTrackCandidate,
+  TrackGroup,
+  TrackGroupCandidate,
+  TrackGroupMember,
+  TrackIdentitySource,
+  UngroupedAlbum,
+} from "@/types/settings";
 
-export function VersionMergeSection({ initialArtistFilter = '', initialCanonicalName = '', initialObjectType = 'track' }: { initialArtistFilter?: string; initialCanonicalName?: string; initialObjectType?: 'track' | 'album' }) {
-  const [activeTab, setActiveTab] = useState<MergeTabKey>(initialArtistFilter || initialCanonicalName ? 'create' : 'detect')
-  const vm = useVersionMerge()
-  const fetchGroups = vm.fetchGroups
+type ObjectType = "track" | "album";
+type MergeTabKey = "detect" | "saved" | "create";
+type MergeScope = "recording" | "release" | "composition";
 
-  useEffect(() => {
-    if (activeTab === 'saved') fetchGroups()
-  }, [activeTab, fetchGroups])
+const MERGE_TABS: Array<{ key: MergeTabKey; label: string; helper: string }> = [
+  { key: "detect", label: "自动检测", helper: "扫描候选并逐项确认" },
+  { key: "saved", label: "已保存分组", helper: "查看和维护现有关系" },
+  { key: "create", label: "手动创建", helper: "明确选择成员与层级" },
+];
+
+const OBJECT_COPY = {
+  track: {
+    label: "歌曲归并",
+    helper: "管理具体曲目、同一录音与同一作品",
+    icon: Music2,
+  },
+  album: {
+    label: "专辑归并",
+    helper: "管理具体发行、发行版本与作品版本",
+    icon: Disc3,
+  },
+} satisfies Record<
+  ObjectType,
+  { label: string; helper: string; icon: typeof Music2 }
+>;
+
+export function VersionMergeSection({
+  initialArtistFilter = "",
+  initialCanonicalName = "",
+  initialObjectType = "track",
+  initialTrackId = null,
+}: {
+  initialArtistFilter?: string;
+  initialCanonicalName?: string;
+  initialObjectType?: ObjectType;
+  initialTrackId?: number | null;
+}) {
+  const [objectType, setObjectType] = useState<ObjectType>(initialObjectType);
+  const [activeTab, setActiveTab] = useState<MergeTabKey>(
+    initialArtistFilter || initialCanonicalName || initialTrackId
+      ? "create"
+      : "detect",
+  );
+  const vm = useVersionMerge();
 
   return (
-    <section className="space-y-5" aria-labelledby="version-merge-heading">
-      <div>
-        <h3 id="version-merge-heading" className="font-serif text-2xl font-bold">归并与版本</h3>
-        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-          在同一工作区处理歌曲录音关系与专辑发行版本；系统按对象类型保留各自的数据规则。
-        </p>
-      </div>
-
-      {/* Sub-tabs */}
-      <div className="mb-5 grid grid-cols-3 gap-2 border-b border-border">
+    <section className="space-y-5" aria-label="归并与版本工作区">
+      <ObjectTypeSwitch value={objectType} onChange={setObjectType} />
+      <div
+        className="grid grid-cols-3 gap-1 rounded-2xl border border-border bg-muted/20 p-1"
+        aria-label="归并工作方式"
+      >
         {MERGE_TABS.map((tab) => (
           <button
             key={tab.key}
+            type="button"
+            aria-label={tab.label}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              '-mb-px cursor-pointer whitespace-nowrap border-none bg-transparent px-0 pb-2.5 text-center font-sans text-[12.5px] font-medium transition-[color,border] duration-200 sm:text-[13px]',
-              'border-b-2',
+              "min-h-12 rounded-xl px-2 py-2 text-center transition sm:min-h-14 sm:px-3",
               activeTab === tab.key
-                ? 'border-accent-foreground font-semibold text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
+                ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
             )}
           >
-            {tab.label}
+            <span className="block text-[12px] font-semibold sm:text-[13px]">
+              {tab.label}
+            </span>
+            <span className="mt-0.5 hidden text-[10px] font-normal text-muted-foreground sm:block">
+              {tab.helper}
+            </span>
           </button>
         ))}
       </div>
-
-      {activeTab === 'detect' && <AutoDetectionTab vm={vm} />}
-      {activeTab === 'saved' && <SavedGroupsTab vm={vm} />}
-      {activeTab === 'create' && <ManualCreateTab vm={vm} initialArtistFilter={initialArtistFilter} initialCanonicalName={initialCanonicalName} initialObjectType={initialObjectType} onOpenDetection={() => setActiveTab('detect')} />}
+      <div className="rounded-2xl border border-border bg-background p-4 sm:p-5">
+        {activeTab === "detect" && (
+          <AutoDetectionTab vm={vm} objectType={objectType} />
+        )}
+        {activeTab === "saved" && (
+          <SavedGroupsTab vm={vm} objectType={objectType} />
+        )}
+        {activeTab === "create" && (
+          <ManualCreateTab
+            key={objectType}
+            vm={vm}
+            objectType={objectType}
+            initialArtistFilter={initialArtistFilter}
+            initialCanonicalName={initialCanonicalName}
+            initialTrackId={initialTrackId}
+          />
+        )}
+      </div>
     </section>
-  )
+  );
 }
 
-function AutoDetectionTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
-  const [threshold, setThreshold] = useState(0.4)
-  const [results, setResults] = useState<DetectionResult[] | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [applying, setApplying] = useState(false)
-  const [applyMsg, setApplyMsg] = useState('')
-  const [filteredCount, setFilteredCount] = useState(0)
-  const [candidates, setCandidates] = useState<TrackGroupCandidate[] | null>(null)
-  const [candidateLoading, setCandidateLoading] = useState(false)
-  const [candidateMsg, setCandidateMsg] = useState('')
-  const [candidateMsgTone, setCandidateMsgTone] = useState<'success' | 'error'>('success')
-  const [confirmingCandidateKey, setConfirmingCandidateKey] = useState<string | null>(null)
-  const [ignoredCandidateKeys, setIgnoredCandidateKeys] = useState<Set<string>>(new Set())
-  const [rebuildLoading, setRebuildLoading] = useState(false)
-  const [maintenanceMsg, setMaintenanceMsg] = useState('')
-
-  const candidateKey = (item: TrackGroupCandidate) => `${item.original_track_id}-${item.candidate_track_id}`
-  const visibleCandidates = candidates?.filter((item) => !ignoredCandidateKeys.has(candidateKey(item))) ?? []
-
-  const handleDetect = () => {
-    setLoading(true)
-    setResults(null)
-    setSelected(new Set())
-    setFilteredCount(0)
-    Promise.all([
-      vm.detectGroups(threshold),
-      vm.fetchGroups(),
-    ]).then(([detected, saved]) => {
-      const savedPrimaryIds = new Set(saved.map((g) => g.primary_album_id).filter(Boolean) as number[])
-      const filtered = detected.filter((r) => !savedPrimaryIds.has(r.primary_album_id))
-      setFilteredCount(detected.length - filtered.length)
-      setResults(filtered)
-    }).finally(() => setLoading(false))
-  }
-
-  const toggleGroup = (key: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) { next.delete(key) } else { next.add(key) }
-      return next
-    })
-  }
-
-  const selectAll = () => {
-    if (!results) return
-    const all = new Set(results.map((r, i) => `${r.artist_id}-${r.canonical_name}-${i}`))
-    setSelected(all)
-  }
-
-  const deselectAll = () => setSelected(new Set())
-
-  const handleApply = () => {
-    if (!results) return
-    const confirmed = results.filter((r, i) => selected.has(`${r.artist_id}-${r.canonical_name}-${i}`))
-    if (confirmed.length === 0) return
-    setApplying(true)
-    vm.applyDetected(confirmed).then((res) => {
-      setApplyMsg(`成功创建 ${res.created_count} 个分组，跳过 ${res.skipped_count} 个`)
-      setApplying(false)
-    })
-  }
-
-  const handleFetchCandidates = () => {
-    setCandidateLoading(true)
-    setCandidateMsg('')
-    setCandidateMsgTone('success')
-    setIgnoredCandidateKeys(new Set())
-    vm.fetchCollaborationCandidates()
-      .then(setCandidates)
-      .finally(() => setCandidateLoading(false))
-  }
-
-  const handleConfirmCandidate = (item: TrackGroupCandidate) => {
-    const key = candidateKey(item)
-    setConfirmingCandidateKey(key)
-    setCandidateMsg('')
-    setCandidateMsgTone('success')
-    vm.confirmTrackCandidate(item.original_track_id, item.candidate_track_id, 'composition')
-      .then((res) => {
-        if (res.status === 'ok') {
-          setCandidateMsg(`已确认 L3 合并：${displayName(item.candidate_track_name)}`)
-          setCandidates((prev) => prev?.filter((candidate) => candidateKey(candidate) !== key) ?? null)
-          return
-        }
-        setCandidateMsgTone('error')
-        setCandidateMsg(res.message ?? '确认失败')
-      })
-      .catch(() => {
-        setCandidateMsgTone('error')
-        setCandidateMsg('确认失败')
-      })
-      .finally(() => setConfirmingCandidateKey(null))
-  }
-
-  const handleIgnoreCandidate = (item: TrackGroupCandidate) => {
-    const key = candidateKey(item)
-    setIgnoredCandidateKeys((prev) => {
-      const next = new Set(prev)
-      next.add(key)
-      return next
-    })
-  }
-
-  const handleRebuildProjects = () => {
-    setRebuildLoading(true)
-    setMaintenanceMsg('')
-    vm.rebuildAlbumProjects()
-      .then((res) => setMaintenanceMsg(res.status === 'ok' ? '专辑项目已重建' : '重建失败'))
-      .finally(() => setRebuildLoading(false))
-  }
-
+function ObjectTypeSwitch({
+  value,
+  onChange,
+}: {
+  value: ObjectType;
+  onChange: (value: ObjectType) => void;
+}) {
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-border p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <FieldLabel label="合作版候选" />
-              <Badge variant="outline" className="text-[10px]">歌曲归并</Badge>
-            </div>
-            <p className="mt-1 text-[12px] text-muted-foreground">查找包含原主艺人的 remix / feat. 候选，并按稳定曲目记录确认。</p>
-          </div>
-          <Button size="sm" variant="outline" onClick={handleFetchCandidates} disabled={candidateLoading} className="shrink-0 gap-1.5">
-            {candidateLoading ? <RefreshCw className="size-3.5 animate-spin" /> : <GitMerge className="size-3.5" />}
-            查询歌曲候选
-          </Button>
-        </div>
-      </div>
-
-      {candidates !== null && (
-        <div className="max-h-[220px] space-y-2 overflow-y-auto rounded-xl border border-border p-3">
-          {visibleCandidates.length === 0 ? (
-            <p className="py-4 text-center text-[13px] text-muted-foreground">暂无合作版候选。</p>
-          ) : (
-            visibleCandidates.map((item) => {
-              const key = candidateKey(item)
-              const confirming = confirmingCandidateKey === key
-              return (
-                <div key={key} className="flex flex-wrap items-center gap-3 rounded-lg bg-muted/30 px-3 py-2 sm:flex-nowrap">
-                  <GitMerge className="size-3.5 shrink-0 text-accent-foreground" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium">{displayName(item.original_track_name)}</p>
-                    <p className="truncate text-[12px] text-muted-foreground">{displayName(item.candidate_track_name)}</p>
-                  </div>
-                  <Badge variant="secondary" className="shrink-0 text-[10px]">歌曲归并</Badge>
-                  <Badge variant="outline" className="shrink-0 text-[10px]">#{item.primary_artist_id}</Badge>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleConfirmCandidate(item)}
-                    disabled={confirmingCandidateKey !== null}
-                    className="h-7 shrink-0 gap-1 text-[12px]"
-                  >
-                    {confirming ? <RefreshCw className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
-                    确认 L3
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleIgnoreCandidate(item)}
-                    disabled={confirmingCandidateKey !== null}
-                    className="h-7 shrink-0 text-[12px]"
-                  >
-                    <X className="size-3" />
-                  </Button>
-                </div>
-              )
-            })
-          )}
-          {candidateMsg && (
-            <div
+    <div
+      className="grid gap-2 sm:grid-cols-2"
+      role="radiogroup"
+      aria-label="归并对象类型"
+    >
+      {(Object.keys(OBJECT_COPY) as ObjectType[]).map((type) => {
+        const item = OBJECT_COPY[type];
+        const Icon = item.icon;
+        const active = value === type;
+        return (
+          <button
+            key={type}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(type)}
+            className={cn(
+              "flex min-h-16 items-center gap-3 rounded-2xl border px-4 py-3 text-left transition",
+              active
+                ? "border-accent-foreground bg-accent-foreground/5 shadow-sm"
+                : "border-border bg-background hover:border-accent-foreground/35",
+            )}
+          >
+            <span
               className={cn(
-                'flex items-center gap-2 pt-1 text-[13px]',
-                candidateMsgTone === 'success'
-                  ? 'text-green-600 dark:text-green-400'
-                  : 'text-destructive',
+                "flex size-10 shrink-0 items-center justify-center rounded-xl",
+                active
+                  ? "bg-accent-foreground text-primary-foreground"
+                  : "bg-muted text-muted-foreground",
               )}
             >
-              {candidateMsgTone === 'success' ? <CheckCircle2 className="size-3.5" /> : <X className="size-3.5" />}
-              {candidateMsg}
-            </div>
-          )}
-        </div>
-      )}
-
-      <details className="group rounded-xl border border-border bg-muted/15">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[13px] font-semibold marker:hidden">
-          <span className="flex items-center gap-2">
-            专辑版本高级选项
-            <Badge variant="outline" className="text-[10px]">专辑版本</Badge>
-          </span>
-          <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="space-y-4 border-t border-border px-4 py-4">
-          <p className="text-[12px] leading-relaxed text-muted-foreground">
-            仅在处理原版、豪华版、加曲版等专辑发行关系时使用；不会改变歌曲归并的独立语义。
-          </p>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="space-y-1.5">
-              <FieldLabel label="重叠率阈值" badge={threshold} />
-              <p className="text-[12px] text-muted-foreground">曲目重叠率高于此值时视为同一专辑的不同版本</p>
-              <div className="w-full sm:w-[200px]">
-                <Slider
-                  aria-label="重叠率阈值"
-                  value={[threshold]}
-                  onValueChange={(v) => setThreshold((v as number[])[0])}
-                  min={0.1}
-                  max={1.0}
-                  step={0.05}
-                />
-              </div>
-            </div>
-            <Button size="sm" onClick={handleDetect} disabled={loading} className="gap-1.5">
-              {loading ? <RefreshCw className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
-              {loading ? '检测中...' : '检测专辑版本'}
-            </Button>
-          </div>
-          <div className="rounded-xl border border-border bg-background/70 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <FieldLabel label="发行项目重建" />
-                <p className="mt-1 text-[12px] text-muted-foreground">按当前已保存的专辑版本关系重新生成 Album Projects 归属。</p>
-              </div>
-              <Button size="sm" variant="outline" onClick={handleRebuildProjects} disabled={rebuildLoading} className="shrink-0 gap-1.5">
-                {rebuildLoading ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                重建
-              </Button>
-            </div>
-            {maintenanceMsg && (
-              <div className="mt-3 flex items-center gap-2 text-[13px] text-green-600 dark:text-green-400">
-                <CheckCircle2 className="size-3.5" />
-                {maintenanceMsg}
-              </div>
-            )}
-          </div>
-        </div>
-      </details>
-
-      {/* Results */}
-      {results !== null && results.length === 0 && filteredCount > 0 && !loading && (
-        <div className="flex flex-col items-center gap-2 py-8 text-center">
-          <CheckCircle2 className="size-8 text-green-600 dark:text-green-400" />
-          <p className="text-[14px] text-muted-foreground">
-            检测到 {filteredCount} 个分组，但均已保存，当前无需处理。
-          </p>
-          <p className="text-[12px] text-muted-foreground/70">
-            如需重新检测，可先在「已保存分组」中删除对应分组后重试。
-          </p>
-        </div>
-      )}
-      {results !== null && results.length === 0 && filteredCount === 0 && !loading && (
-        <div className="py-8 text-center text-[14px] text-muted-foreground">
-          未检测到可合并的分组，建议降低重叠率阈值后重试。
-        </div>
-      )}
-
-      {results && results.length > 0 && (
-        <>
-          {filteredCount > 0 && (
-            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-              <CheckCircle2 className="size-3.5 text-green-600 dark:text-green-400" />
-              已过滤 {filteredCount} 个已保存的分组，无需重复处理
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={selectAll} className="h-7 text-[12px]">全选</Button>
-            <Button variant="ghost" size="sm" onClick={deselectAll} className="h-7 text-[12px]">取消全选</Button>
-            <span className="ml-auto text-[12px] text-muted-foreground">
-              已选 {selected.size} / {results.length}
+              <Icon className="size-4" />
             </span>
-          </div>
-
-          <div className="max-h-[500px] space-y-3 overflow-y-auto pr-1">
-            {results.map((r, i) => {
-              const key = `${r.artist_id}-${r.canonical_name}-${i}`
-              const isSelected = selected.has(key)
-              return (
-                <DetectionCard
-                  key={key}
-                  result={r}
-                  isSelected={isSelected}
-                  onToggle={() => toggleGroup(key)}
-                  compareAlbums={vm.compareAlbums}
-                />
-              )
-            })}
-          </div>
-
-          {applyMsg && (
-            <div className="flex items-center gap-2 text-[13px] text-green-600 dark:text-green-400">
-              <CheckCircle2 className="size-3.5" />
-              {applyMsg}
-            </div>
-          )}
-
-          <Button size="sm" onClick={handleApply} disabled={applying || selected.size === 0} className="gap-1.5">
-            {applying ? <RefreshCw className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-            {applying ? '应用中...' : `应用选中分组 (${selected.size})`}
-          </Button>
-        </>
-      )}
+            <span className="min-w-0">
+              <span className="block text-[13px] font-semibold">
+                {item.label}
+              </span>
+              <span className="mt-0.5 block text-[10.5px] leading-relaxed text-muted-foreground">
+                {item.helper}
+              </span>
+            </span>
+            {active && (
+              <CheckCircle2 className="ml-auto size-4 shrink-0 text-accent-foreground" />
+            )}
+          </button>
+        );
+      })}
     </div>
-  )
+  );
 }
 
-function DetectionCard({
-  result: r,
-  isSelected,
+function WorkflowBlock({
+  number,
+  title,
+  helper,
+  children,
+}: {
+  number: number;
+  title: string;
+  helper: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-muted/10 p-4 sm:p-5">
+      <div className="mb-4 flex items-start gap-3">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground text-[11px] font-bold text-background">
+          {number}
+        </span>
+        <div>
+          <p className="text-[13px] font-semibold">{title}</p>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+            {helper}
+          </p>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function AutoDetectionTab({
+  vm,
+  objectType,
+}: {
+  vm: ReturnType<typeof useVersionMerge>;
+  objectType: ObjectType;
+}) {
+  return objectType === "track" ? (
+    <TrackAutoDetection vm={vm} />
+  ) : (
+    <AlbumAutoDetection vm={vm} />
+  );
+}
+
+function TrackAutoDetection({
+  vm,
+}: {
+  vm: ReturnType<typeof useVersionMerge>;
+}) {
+  const [scope, setScope] = useState<"recording" | "composition">(
+    "recording",
+  );
+  const [candidates, setCandidates] = useState<TrackGroupCandidate[] | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [ignored, setIgnored] = useState<Set<string>>(new Set());
+  const [message, setMessage] = useState("");
+  const keyFor = (item: TrackGroupCandidate) =>
+    `${item.original_l1_id ?? item.original_track_id}-${item.candidate_l1_id ?? item.candidate_track_id}`;
+  const visible =
+    candidates?.filter((item) => !ignored.has(keyFor(item))) ?? [];
+  const detect = () => {
+    setLoading(true);
+    setMessage("");
+    setIgnored(new Set());
+    vm.fetchCollaborationCandidates()
+      .then(setCandidates)
+      .finally(() => setLoading(false));
+  };
+  const confirm = (item: TrackGroupCandidate) => {
+    const key = keyFor(item);
+    setConfirming(key);
+    setMessage("");
+    vm.confirmTrackCandidate(
+      item.original_l1_id ?? item.original_track_id,
+      item.candidate_l1_id ?? item.candidate_track_id,
+      scope,
+    )
+      .then((result) => {
+        if (result.status !== "ok")
+          throw new Error(result.message ?? "确认失败");
+        setCandidates(
+          (current) =>
+            current?.filter((candidate) => keyFor(candidate) !== key) ?? null,
+        );
+        setMessage(
+          `已保存为 ${scope === "recording" ? "L2 同一录音" : "L3 同一作品"}分组`,
+        );
+      })
+      .catch((error: unknown) =>
+        setMessage(error instanceof Error ? error.message : "确认失败"),
+      )
+      .finally(() => setConfirming(null));
+  };
+  return (
+    <div className="space-y-4">
+      <WorkflowBlock
+        number={1}
+        title="设置检测规则"
+        helper="先确定候选通过后写入哪个统计层级，再开始扫描。"
+      >
+        <ScopeSelector
+          objectType="track"
+          value={scope}
+          onChange={(value) => setScope(value as "recording" | "composition")}
+        />
+        <Button
+          type="button"
+          onClick={detect}
+          disabled={loading}
+          className="mt-4 min-h-11 gap-2"
+        >
+          {loading ? (
+            <RefreshCw className="size-4 animate-spin" />
+          ) : (
+            <Search className="size-4" />
+          )}
+          {loading ? "正在检测…" : "检测歌曲候选"}
+        </Button>
+      </WorkflowBlock>
+      <WorkflowBlock
+        number={2}
+        title="审核候选结果"
+        helper="自动检测只提供候选；每一组仍需明确确认或忽略。"
+      >
+        {candidates === null ? (
+          <EmptyState text="尚未开始检测。" />
+        ) : visible.length === 0 ? (
+          <EmptyState text="当前没有待处理的歌曲候选。" success />
+        ) : (
+          <div className="space-y-2">
+            {visible.map((item) => {
+              const key = keyFor(item);
+              return (
+                <div
+                  key={key}
+                  className="rounded-xl border border-border bg-background p-3"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Music2 className="size-4 shrink-0 text-accent-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold">
+                        {displayName(item.original_track_name)}
+                      </p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        候选：{displayName(item.candidate_track_name)}
+                      </p>
+                    </div>
+                    <Badge variant="secondary">
+                      {scope === "recording" ? "L2" : "L3"}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() =>
+                        setIgnored((current) => new Set(current).add(key))
+                      }
+                      className="min-h-11"
+                    >
+                      忽略
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => confirm(item)}
+                      disabled={confirming !== null}
+                      className="min-h-11 gap-1.5"
+                    >
+                      {confirming === key ? (
+                        <RefreshCw className="size-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="size-3.5" />
+                      )}
+                      确认归并
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {message && <StatusMessage message={message} />}
+      </WorkflowBlock>
+    </div>
+  );
+}
+
+function AlbumAutoDetection({
+  vm,
+}: {
+  vm: ReturnType<typeof useVersionMerge>;
+}) {
+  const [threshold, setThreshold] = useState(0.4);
+  const [results, setResults] = useState<DetectionResult[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [message, setMessage] = useState("");
+  const [rebuilding, setRebuilding] = useState(false);
+  const keyFor = (item: DetectionResult, index: number) =>
+    `${item.artist_id}-${item.canonical_name}-${index}`;
+  const detect = () => {
+    setLoading(true);
+    setResults(null);
+    setSelected(new Set());
+    setMessage("");
+    Promise.all([vm.detectGroups(threshold), vm.fetchGroups()])
+      .then(([detected, saved]) => {
+        const savedPrimaryIds = new Set(
+          saved.map((group) => group.primary_album_id),
+        );
+        setResults(
+          detected.filter(
+            (item) => !savedPrimaryIds.has(item.primary_album_id),
+          ),
+        );
+      })
+      .finally(() => setLoading(false));
+  };
+  const apply = () => {
+    if (!results) return;
+    const confirmed = results.filter((item, index) =>
+      selected.has(keyFor(item, index)),
+    );
+    setApplying(true);
+    vm.applyDetected(confirmed)
+      .then((result) =>
+        setMessage(
+          `已创建 ${result.created_count} 个分组，跳过 ${result.skipped_count} 个`,
+        ),
+      )
+      .finally(() => setApplying(false));
+  };
+  return (
+    <div className="space-y-4">
+      <WorkflowBlock
+        number={1}
+        title="设置检测规则"
+        helper="专辑自动检测按曲目重叠率寻找同一发行的版本；作品级关系需在手动创建中确认。"
+      >
+        <ScopeSelector
+          objectType="album"
+          value="release"
+          onChange={() => undefined}
+          autoMode
+        />
+        <div className="mt-4 max-w-sm space-y-2">
+          <FieldLabel
+            label="曲目重叠率"
+            badge={`${Math.round(threshold * 100)}%`}
+          />
+          <Slider
+            aria-label="曲目重叠率"
+            value={[threshold]}
+            onValueChange={(value) => setThreshold((value as number[])[0])}
+            min={0.1}
+            max={1}
+            step={0.05}
+          />
+        </div>
+        <Button
+          type="button"
+          onClick={detect}
+          disabled={loading}
+          className="mt-4 min-h-11 gap-2"
+        >
+          {loading ? (
+            <RefreshCw className="size-4 animate-spin" />
+          ) : (
+            <Search className="size-4" />
+          )}
+          {loading ? "正在检测…" : "检测专辑候选"}
+        </Button>
+      </WorkflowBlock>
+      <WorkflowBlock
+        number={2}
+        title="审核候选结果"
+        helper="勾选确认无误的版本家族，再统一保存。"
+      >
+        {results === null ? (
+          <EmptyState text="尚未开始检测。" />
+        ) : results.length === 0 ? (
+          <EmptyState text="当前没有待处理的专辑候选。" success />
+        ) : (
+          <div className="space-y-3">
+            {results.map((item, index) => {
+              const key = keyFor(item, index);
+              return (
+                <AlbumDetectionCard
+                  key={key}
+                  result={item}
+                  selected={selected.has(key)}
+                  onToggle={() =>
+                    setSelected((current) => {
+                      const next = new Set(current);
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                    })
+                  }
+                  compareAlbums={vm.compareAlbums}
+                />
+              );
+            })}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+              <span className="text-[12px] text-muted-foreground">
+                已选 {selected.size} / {results.length}
+              </span>
+              <Button
+                type="button"
+                onClick={apply}
+                disabled={selected.size === 0 || applying}
+                className="min-h-11 gap-2"
+              >
+                {applying ? (
+                  <RefreshCw className="size-4 animate-spin" />
+                ) : (
+                  <Plus className="size-4" />
+                )}
+                保存选中分组
+              </Button>
+            </div>
+          </div>
+        )}
+        {message && <StatusMessage message={message} />}
+      </WorkflowBlock>
+      <details className="group rounded-2xl border border-border bg-muted/10">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 text-[12px] font-semibold marker:hidden">
+          维护工具
+          <ChevronDown className="size-4 text-muted-foreground transition group-open:rotate-180" />
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            按当前已保存关系重新生成 Album Projects 归属。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setRebuilding(true);
+              vm.rebuildAlbumProjects()
+                .then(() => setMessage("专辑项目已重建"))
+                .finally(() => setRebuilding(false));
+            }}
+            disabled={rebuilding}
+            className="min-h-11 gap-2"
+          >
+            <RefreshCw
+              className={cn("size-3.5", rebuilding && "animate-spin")}
+            />
+            重建专辑项目
+          </Button>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function AlbumDetectionCard({
+  result,
+  selected,
   onToggle,
   compareAlbums,
 }: {
-  result: DetectionResult
-  isSelected: boolean
-  onToggle: () => void
-  compareAlbums: (aId: number, bId: number) => Promise<TrackComparison>
+  result: DetectionResult;
+  selected: boolean;
+  onToggle: () => void;
+  compareAlbums: (a: number, b: number) => Promise<TrackComparison>;
 }) {
-  const [compareData, setCompareData] = useState<TrackComparison | null>(null)
-  const [compareOpen, setCompareOpen] = useState(false)
-  const [compareLoading, setCompareLoading] = useState(false)
-
-  const handleToggleCompare = () => {
-    if (!compareOpen && !compareData) {
-      setCompareLoading(true)
-      compareAlbums(r.primary_album_id, r.members[0]?.album_id ?? r.primary_album_id)
-        .then(setCompareData)
-        .finally(() => setCompareLoading(false))
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [comparison, setComparison] = useState<TrackComparison | null>(null);
+  const [loading, setLoading] = useState(false);
+  const openComparison = () => {
+    if (!compareOpen && !comparison) {
+      setLoading(true);
+      compareAlbums(
+        result.primary_album_id,
+        result.members.find((item) => item.album_id !== result.primary_album_id)
+          ?.album_id ?? result.primary_album_id,
+      )
+        .then(setComparison)
+        .finally(() => setLoading(false));
     }
-    setCompareOpen(!compareOpen)
-  }
-
+    setCompareOpen((current) => !current);
+  };
   return (
     <div
       className={cn(
-        'rounded-xl border p-4 transition-colors duration-200',
-        isSelected ? 'border-accent-foreground/50 bg-accent-foreground/5' : 'border-border',
+        "rounded-xl border p-3 transition",
+        selected
+          ? "border-accent-foreground bg-accent-foreground/5"
+          : "border-border bg-background",
       )}
     >
       <div className="flex items-start gap-3">
         <button
+          type="button"
+          aria-label={`选择 ${result.canonical_name}`}
+          aria-pressed={selected}
           onClick={onToggle}
           className={cn(
-            'mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border-2 transition-colors',
-            isSelected ? 'border-accent-foreground bg-accent-foreground text-white' : 'border-muted-foreground/30',
+            "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border",
+            selected
+              ? "border-accent-foreground bg-accent-foreground text-primary-foreground"
+              : "border-border",
           )}
         >
-          {isSelected && <CheckCircle2 className="size-3.5" />}
+          {selected && <CheckCircle2 className="size-4" />}
         </button>
-
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate font-sans text-[14px] font-semibold text-foreground">
-              {displayName(r.canonical_name)}
-            </span>
-            <Badge variant="outline" className="shrink-0 text-[10px]">专辑版本</Badge>
-            <Badge variant={r.confidence === 'high' ? 'default' : 'secondary'} className="text-[11px]">
-              {r.confidence === 'high' ? '高置信' : '低置信'}
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-[13px] font-semibold">
+              {displayName(result.canonical_name)}
+            </p>
+            <Badge variant="secondary">L2</Badge>
+            <Badge variant="outline">
+              {result.confidence === "high" ? "高置信" : "需复核"}
             </Badge>
           </div>
-          <p className="text-[12.5px] text-muted-foreground">
-            {displayName(r.artist_name)} · {r.member_count} 个版本 · {r.reason}
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {displayName(result.artist_name)} · {result.member_count} 个版本 ·{" "}
+            {result.reason}
           </p>
-
-          {/* Members */}
-          <div className="mt-2 flex flex-wrap gap-2">
-            {r.members.map((m: DetectionMember, index) => {
-              const isPrimary = m.album_id === r.primary_album_id
-              return (
-                <span
-                  key={m.album_id}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-lg border bg-muted/30 pl-1 pr-2.5 py-1 text-[12px]',
-                    isPrimary
-                      ? 'border-accent-foreground/30 text-foreground'
-                      : 'border-border text-muted-foreground',
-                  )}
-                >
-                  <CoverCell
-                    index={index}
-                    coverUrl={`/covers/albums/${m.album_id}.jpg`}
-                    label={m.album_name}
-                    className="size-7 rounded"
-                  />
-                  {isPrimary && <Star className="size-3 text-accent-foreground shrink-0" />}
-                  <span className="truncate max-w-[200px]">{displayName(m.album_name)}</span>
-                </span>
-              )
-            })}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {result.members.map((member) => (
+              <span
+                key={member.album_id}
+                className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground"
+              >
+                {displayName(member.album_name)}
+              </span>
+            ))}
           </div>
-
-          {/* Compare toggle */}
           <button
-            onClick={handleToggleCompare}
-            className="mt-2 flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+            type="button"
+            onClick={openComparison}
+            className="mt-2 flex min-h-9 items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
           >
-            <ChevronDown className={cn('size-3.5 transition-transform', compareOpen && 'rotate-180')} />
+            <ChevronDown
+              className={cn("size-3.5 transition", compareOpen && "rotate-180")}
+            />
             对比曲目
           </button>
           {compareOpen && (
-            <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3">
-              {compareLoading ? <Skeleton className="h-16 w-full" /> : <TrackComparePanel data={compareData} />}
+            <div className="rounded-lg border border-border bg-background p-3">
+              {loading ? (
+                <Skeleton className="h-16 w-full" />
+              ) : (
+                <TrackComparePanel data={comparison} />
+              )}
             </div>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-function SavedGroupsTab({ vm }: { vm: ReturnType<typeof useVersionMerge> }) {
-  const { groups, groupsLoading, fetchGroups } = vm
-
+function SavedGroupsTab({
+  vm,
+  objectType,
+}: {
+  vm: ReturnType<typeof useVersionMerge>;
+  objectType: ObjectType;
+}) {
+  const { fetchGroups, fetchTrackGroups } = vm;
   useEffect(() => {
-    fetchGroups()
-  }, [fetchGroups])
-
-  if (groupsLoading) {
+    if (objectType === "track") void fetchTrackGroups();
+    else void fetchGroups();
+  }, [fetchGroups, fetchTrackGroups, objectType]);
+  const loading =
+    objectType === "track" ? vm.trackGroupsLoading : vm.groupsLoading;
+  const groups = objectType === "track" ? vm.trackGroups : vm.groups;
+  if (loading)
     return (
       <div className="space-y-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 w-full rounded-xl" />
+        {[1, 2, 3].map((item) => (
+          <Skeleton key={item} className="h-24 rounded-xl" />
         ))}
       </div>
-    )
-  }
-
-  if (groups.length === 0) {
+    );
+  if (groups.length === 0)
     return (
-      <div className="py-8 text-center text-[14px] text-muted-foreground">
-        暂无已保存的分组，请使用「自动检测」或「手动创建」功能。
-      </div>
-    )
-  }
-
+      <EmptyState text={`暂无已保存的${OBJECT_COPY[objectType].label}分组。`} />
+    );
   return (
     <div className="space-y-3">
-      {groups.map((g) => (
-        <SavedGroupCard key={g.group_id} group={g} vm={vm} />
-      ))}
+      <div className="flex items-center justify-between">
+        <p className="text-[12px] text-muted-foreground">
+          共 {groups.length} 个分组
+        </p>
+        <Badge variant="outline">按代表名称排序</Badge>
+      </div>
+      {objectType === "track"
+        ? (groups as TrackGroup[]).map((group) => (
+            <TrackSavedGroupCard key={group.group_id} group={group} vm={vm} />
+          ))
+        : (groups as ReleaseGroup[]).map((group) => (
+            <AlbumSavedGroupCard key={group.group_id} group={group} vm={vm} />
+          ))}
     </div>
-  )
+  );
 }
 
-function SavedGroupCard({ group: g, vm }: { group: ReleaseGroup; vm: ReturnType<typeof useVersionMerge> }) {
-  const [members, setMembers] = useState<GroupMember[]>([])
-  const [membersOpen, setMembersOpen] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-
-  const loadMembers = () => {
-    if (!membersOpen) {
-      vm.getGroupMembers(g.group_id).then(setMembers)
-    }
-    setMembersOpen(!membersOpen)
-  }
-
-  const handleRemoveMember = (albumId: number) => {
-    vm.updateMembers(g.group_id, undefined, [albumId]).then(() => {
-      setMembers((prev) => prev.filter((m) => m.album_id !== albumId))
-      vm.fetchGroups()
-    })
-  }
-
-  const handleDelete = () => {
-    vm.deleteGroup(g.group_id).then(() => vm.fetchGroups())
-    setConfirmDelete(false)
-  }
-
+function TrackSavedGroupCard({
+  group,
+  vm,
+}: {
+  group: TrackGroup;
+  vm: ReturnType<typeof useVersionMerge>;
+}) {
+  const [members, setMembers] = useState<TrackGroupMember[]>([]);
+  const [open, setOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const load = () => {
+    if (!open) vm.getTrackGroupMembers(group.group_id).then(setMembers);
+    setOpen((current) => !current);
+  };
   return (
-    <div className="rounded-xl border border-border p-4">
-      <div className="flex items-start justify-between">
-        <div className="flex min-w-0 gap-3">
-          {g.primary_album_id != null && (
-            <CoverCell
-              index={0}
-              coverUrl={`/covers/albums/${g.primary_album_id}.jpg`}
-              label={g.primary_album_name || g.canonical_name}
-              className="size-12 rounded-lg shrink-0"
-            />
-          )}
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="truncate font-sans text-[14px] font-semibold text-foreground">{displayName(g.canonical_name)}</span>
-              <Badge variant="outline" className="shrink-0 text-[10px]">专辑版本</Badge>
-              {g.is_manual ? (
-                <Badge variant="outline" className="text-[10px] shrink-0">手动</Badge>
-              ) : (
-                <Badge variant="outline" className="text-[10px] shrink-0">自动</Badge>
-              )}
-              <Badge variant="secondary" className="text-[10px] shrink-0">
-                {g.scope === 'composition' ? 'L3 作品' : 'L2 发行'}
-              </Badge>
-            </div>
-            <p className="text-[12.5px] text-muted-foreground">{displayName(g.artist_name)}</p>
-            {g.primary_album_name && (
-              <p className="mt-1 flex items-center gap-1 text-[12.5px] text-muted-foreground">
-                <Star className="size-3 text-accent-foreground shrink-0" />
-                <span className="truncate">主版本：{displayName(g.primary_album_name)}</span>
-              </p>
-            )}
-          </div>
-        </div>
+    <SavedGroupShell
+      icon={
+        group.primary_album_id ? (
+          <CoverCell
+            index={0}
+            coverUrl={`/covers/albums/${group.primary_album_id}.jpg`}
+            label={group.primary_track_name ?? group.canonical_name}
+            className="size-10 rounded-lg"
+          />
+        ) : (
+          <Music2 className="size-4" />
+        )
+      }
+      title={group.canonical_name}
+      subtitle={`${group.artist_name ? `${displayName(group.artist_name)} · ` : ""}${group.member_count} 个成员`}
+      scope={group.scope === "recording" ? "L2 同一录音" : "L3 同一作品"}
+      manual={Boolean(group.is_manual)}
+      open={open}
+      onToggle={load}
+      confirmDelete={confirmDelete}
+      onAskDelete={() => setConfirmDelete(true)}
+      onCancelDelete={() => setConfirmDelete(false)}
+      onDelete={() =>
+        vm.deleteTrackGroup(group.group_id).then(() => vm.fetchTrackGroups())
+      }
+    >
+      {members.map((member) => (
+        <MemberRow
+          key={member.l1_id ?? member.track_id}
+          primary={Boolean(member.is_primary)}
+          title={member.track_name}
+          subtitle={`${member.artist_name ? displayName(member.artist_name) : "艺人信息待修复"} · ${member.spotify_track_id ? `Spotify ${member.spotify_track_id}` : `#${member.l1_id ?? member.track_id}`}${(member.source_record_count ?? 1) > 1 ? ` · ${member.source_record_count} 条历史来源` : ""}${member.metadata_conflict ? " · 元数据待审核" : ""}`}
+          coverUrl={
+            member.album_id
+              ? `/covers/albums/${member.album_id}.jpg`
+              : undefined
+          }
+          onPrimary={() =>
+            vm
+              .setPrimaryTrack(group.group_id, member.l1_id ?? member.track_id)
+              .then(() =>
+                vm.getTrackGroupMembers(group.group_id).then(setMembers),
+              )
+          }
+          onRemove={() =>
+            vm
+              .updateTrackMembers(group.group_id, undefined, [member.l1_id ?? member.track_id])
+              .then(() =>
+                setMembers((current) =>
+                  current.filter(
+                    (item) =>
+                      (item.l1_id ?? item.track_id) !==
+                      (member.l1_id ?? member.track_id),
+                  ),
+                ),
+              )
+          }
+          details={
+            (member.source_record_count ?? 1) > 1 ? (
+              <TrackSourceDisclosure l1Id={member.l1_id ?? member.track_id} />
+            ) : undefined
+          }
+        />
+      ))}
+    </SavedGroupShell>
+  );
+}
 
-        <div className="flex gap-1">
-          <Button variant="ghost" size="sm" onClick={loadMembers} className="h-7 text-[12px]">
-            {membersOpen ? '收起成员' : '查看成员'}
+function AlbumSavedGroupCard({
+  group,
+  vm,
+}: {
+  group: ReleaseGroup;
+  vm: ReturnType<typeof useVersionMerge>;
+}) {
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [open, setOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const load = () => {
+    if (!open) vm.getGroupMembers(group.group_id).then(setMembers);
+    setOpen((current) => !current);
+  };
+  return (
+    <SavedGroupShell
+      icon={
+        group.primary_album_id ? (
+          <CoverCell
+            index={0}
+            coverUrl={`/covers/albums/${group.primary_album_id}.jpg`}
+            label={group.primary_album_name ?? group.canonical_name}
+            className="size-10 rounded-lg"
+          />
+        ) : (
+          <Disc3 className="size-4" />
+        )
+      }
+      title={group.canonical_name}
+      subtitle={displayName(group.artist_name)}
+      scope={group.scope === "release" ? "L2 发行版本" : "L3 作品版本"}
+      manual={Boolean(group.is_manual)}
+      open={open}
+      onToggle={load}
+      confirmDelete={confirmDelete}
+      onAskDelete={() => setConfirmDelete(true)}
+      onCancelDelete={() => setConfirmDelete(false)}
+      onDelete={() =>
+        vm.deleteGroup(group.group_id).then(() => vm.fetchGroups())
+      }
+    >
+      {members.map((member) => (
+        <MemberRow
+          key={member.album_id}
+          primary={Boolean(
+            member.is_primary || member.album_id === group.primary_album_id,
+          )}
+          title={member.album_name}
+          subtitle={`专辑 #${member.album_id}`}
+          coverUrl={`/covers/albums/${member.album_id}.jpg`}
+          onPrimary={() =>
+            vm
+              .setPrimary(group.group_id, member.album_id)
+              .then(() => vm.getGroupMembers(group.group_id).then(setMembers))
+          }
+          onRemove={() =>
+            vm
+              .updateMembers(group.group_id, undefined, [member.album_id])
+              .then(() =>
+                setMembers((current) =>
+                  current.filter((item) => item.album_id !== member.album_id),
+                ),
+              )
+          }
+        />
+      ))}
+    </SavedGroupShell>
+  );
+}
+
+function SavedGroupShell({
+  icon,
+  title,
+  subtitle,
+  scope,
+  manual,
+  open,
+  onToggle,
+  confirmDelete,
+  onAskDelete,
+  onCancelDelete,
+  onDelete,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  scope: string;
+  manual: boolean;
+  open: boolean;
+  onToggle: () => void;
+  confirmDelete: boolean;
+  onAskDelete: () => void;
+  onCancelDelete: () => void;
+  onDelete: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-background p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+          {icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-[13px] font-semibold">
+              {displayName(title)}
+            </p>
+            <Badge variant="secondary">{scope}</Badge>
+            <Badge variant="outline">{manual ? "手动" : "自动"}</Badge>
+          </div>
+          <p className="mt-1 truncate text-[11px] text-muted-foreground">
+            {subtitle}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1 sm:justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onToggle}
+            className="min-h-11"
+          >
+            {open ? "收起成员" : "查看成员"}
           </Button>
-          {!confirmDelete ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setConfirmDelete(true)}
-              className="h-7 text-[12px] text-destructive hover:text-destructive"
-            >
-              <Trash2 className="size-3" />
-            </Button>
-          ) : (
-            <div className="flex gap-1">
-              <Button variant="destructive" size="sm" onClick={handleDelete} className="h-7 text-[12px]">
+          {confirmDelete ? (
+            <>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={onDelete}
+                className="min-h-11"
+              >
                 确认删除
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)} className="h-7 text-[12px]">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onCancelDelete}
+                className="min-h-11"
+              >
                 取消
               </Button>
-            </div>
+            </>
+          ) : (
+            <Button
+              type="button"
+              aria-label={`删除 ${title}`}
+              variant="ghost"
+              onClick={onAskDelete}
+              className="min-h-11 min-w-11 text-destructive hover:text-destructive"
+            >
+              <Trash2 className="size-4" />
+            </Button>
           )}
         </div>
       </div>
+      {open && (
+        <div className="mt-4 space-y-2 border-t border-border pt-4">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
-      {membersOpen && (
-        <div className="mt-3 space-y-1 border-t border-border pt-3">
-          {members.map((m, index) => (
-            <div key={m.album_id} className="flex items-center justify-between gap-2 text-[13px]">
-              <span className={cn('flex min-w-0 items-center gap-2', m.is_primary ? 'font-medium text-foreground' : 'text-muted-foreground')}>
+function MemberRow({
+  primary,
+  title,
+  subtitle,
+  coverUrl,
+  onPrimary,
+  onRemove,
+  details,
+}: {
+  primary: boolean;
+  title: string;
+  subtitle: string;
+  coverUrl?: string;
+  onPrimary: () => void;
+  onRemove: () => void;
+  details?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl bg-muted/25">
+      <div className="flex min-w-0 items-center gap-3 p-2.5">
+      {coverUrl ? (
+        <CoverCell
+          index={0}
+          coverUrl={coverUrl}
+          label={title}
+          className="size-9 rounded-lg"
+        />
+      ) : (
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background">
+          <Music2 className="size-3.5 text-muted-foreground" />
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12px] font-medium">{displayName(title)}</p>
+        <p className="truncate text-[10px] text-muted-foreground">{subtitle}</p>
+      </div>
+      {primary ? (
+        <Badge variant="outline">
+          <Star className="mr-1 size-3 fill-current" />
+          代表版本
+        </Badge>
+      ) : (
+        <div className="flex shrink-0 gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onPrimary}
+            className="min-h-11 text-[11px]"
+          >
+            设为代表
+          </Button>
+          <Button
+            type="button"
+            aria-label={`移除 ${title}`}
+            variant="ghost"
+            onClick={onRemove}
+            className="min-h-11 min-w-11 text-destructive hover:text-destructive"
+          >
+            <X className="size-3.5" />
+          </Button>
+        </div>
+      )}
+      </div>
+      {details}
+    </div>
+  );
+}
+
+function TrackSourceDisclosure({ l1Id }: { l1Id: number }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [sources, setSources] = useState<TrackIdentitySource[]>([]);
+  const [error, setError] = useState("");
+
+  const toggle = async () => {
+    if (!open && sources.length === 0) {
+      setLoading(true);
+      setError("");
+      try {
+        setSources(
+          await api.get<TrackIdentitySource[]>(`/music/tracks/${l1Id}/sources`),
+        );
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "来源记录加载失败");
+      } finally {
+        setLoading(false);
+      }
+    }
+    setOpen((current) => !current);
+  };
+
+  return (
+    <div className="border-t border-border/60 px-2.5 pb-2.5">
+      <button
+        type="button"
+        onClick={() => void toggle()}
+        aria-expanded={open}
+        className="flex min-h-11 w-full items-center gap-1 text-left text-[10px] font-medium text-muted-foreground hover:text-foreground"
+      >
+        <ChevronDown className={cn("size-3.5 transition", open && "rotate-180")} />
+        {open ? "收起来源记录" : "查看基础身份的来源记录"}
+      </button>
+      {open && (
+        <div className="space-y-1.5 pb-1">
+          {loading && <Skeleton className="h-12 w-full rounded-lg" />}
+          {error && <p className="text-[10px] text-destructive">{error}</p>}
+          {sources.map((source) => (
+            <div
+              key={source.track_id}
+              className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background px-2 py-1.5"
+            >
+              {source.cover_url ? (
                 <CoverCell
-                  index={index}
-                  coverUrl={`/covers/albums/${m.album_id}.jpg`}
-                  label={m.album_name}
-                  className="size-8 rounded shrink-0"
+                  index={0}
+                  coverUrl={source.cover_url}
+                  label={source.track_name}
+                  className="size-8 rounded-md"
                 />
-                {m.is_primary && <Star className="size-3 text-accent-foreground shrink-0" />}
-                <span className="truncate">{displayName(m.album_name)}</span>
+              ) : (
+                <span className="size-8 shrink-0 rounded-md bg-muted" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[10px] font-medium">
+                  {displayName(source.track_name)} · 原始记录 #{source.track_id}
+                </span>
+                <span className="block truncate text-[9px] text-muted-foreground">
+                  {displayName(source.artist_name ?? "艺人待确认")}
+                  {source.album_name ? ` · ${displayName(source.album_name)}` : ""}
+                  {source.observed_plays ? ` · ${source.observed_plays} 次播放证据` : ""}
+                </span>
               </span>
-              <div className="flex gap-1">
-                {!m.is_primary && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-[11px]"
-                      onClick={() => vm.setPrimary(g.group_id, m.album_id).then(() => loadMembers())}
-                    >
-                      设为主版本
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-[11px] text-destructive"
-                      onClick={() => handleRemoveMember(m.album_id)}
-                    >
-                      <X className="size-3" />
-                    </Button>
-                  </>
-                )}
-              </div>
+              {source.is_representative && <Badge variant="outline">展示来源</Badge>}
             </div>
           ))}
         </div>
       )}
     </div>
-  )
+  );
 }
 
-function ManualCreateTab({ vm, initialArtistFilter = '', initialCanonicalName = '', initialObjectType = 'album', onOpenDetection }: { vm: ReturnType<typeof useVersionMerge>; initialArtistFilter?: string; initialCanonicalName?: string; initialObjectType?: 'track' | 'album'; onOpenDetection: () => void }) {
-  const [objectType, setObjectType] = useState<'track' | 'album'>(initialObjectType)
-  const [step, setStep] = useState(1)
-  const [albums, setAlbums] = useState<UngroupedAlbum[]>([])
-  const [artistFilter, setArtistFilter] = useState(initialArtistFilter)
-  const [canonicalName, setCanonicalName] = useState(initialCanonicalName)
-  const [scope, setScope] = useState<'release' | 'composition'>('release')
-  const [selectedAlbums, setSelectedAlbums] = useState<Set<number>>(new Set())
-  const [primaryId, setPrimaryId] = useState<number | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [msg, setMsg] = useState('')
-  const getUngroupedAlbums = vm.getUngroupedAlbums
+function ManualCreateTab({
+  vm,
+  objectType,
+  initialArtistFilter,
+  initialCanonicalName,
+  initialTrackId,
+}: {
+  vm: ReturnType<typeof useVersionMerge>;
+  objectType: ObjectType;
+  initialArtistFilter: string;
+  initialCanonicalName: string;
+  initialTrackId: number | null;
+}) {
+  return objectType === "track" ? (
+    <TrackManualWizard vm={vm} initialTrackId={initialTrackId} />
+  ) : (
+    <AlbumManualWizard
+      vm={vm}
+      initialArtistFilter={initialArtistFilter}
+      initialCanonicalName={initialCanonicalName}
+    />
+  );
+}
 
-  const loadAlbums = () => {
-    vm.getUngroupedAlbums(artistFilter || undefined).then(setAlbums)
-  }
-
-  useEffect(() => {
-    if (!initialArtistFilter) return
-    getUngroupedAlbums(initialArtistFilter).then((items) => {
-      setAlbums(items)
-      if (!initialCanonicalName) return
-      const albumName = initialCanonicalName.trim().toLocaleLowerCase()
-      const artistName = initialArtistFilter.trim().toLocaleLowerCase()
-      const match = items.find(
-        (item) =>
-          item.album_name.trim().toLocaleLowerCase() === albumName &&
-          item.artist_name.trim().toLocaleLowerCase() === artistName,
-      )
-      if (match) {
-        setSelectedAlbums(new Set([match.album_id]))
-        setPrimaryId(match.album_id)
-      }
-    })
-  }, [getUngroupedAlbums, initialArtistFilter, initialCanonicalName])
-
-  const toggleAlbum = (id: number) => {
-    setSelectedAlbums((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-        if (primaryId === id) setPrimaryId(null)
-      } else {
-        next.add(id)
-        if (primaryId === null) setPrimaryId(id)
-      }
-      return next
-    })
-  }
-
-  const handleCreate = () => {
-    if (!primaryId) return
-    const firstAlbum = albums.find((a) => a.album_id === primaryId)
-    if (!firstAlbum) return
-
-    setCreating(true)
-    const name = canonicalName || firstAlbum.album_name
-    const selectedIds = Array.from(selectedAlbums)
-    const request = scope === 'composition'
-      ? vm.confirmAlbumRelation(
-        name,
-        primaryId,
-        selectedIds.filter((id) => id !== primaryId),
-        'composition',
-        'rerecord',
-        true,
-      ).then((res) => {
-        if (res.status !== 'ok') return { ok: false, message: res.message ?? '创建失败' }
-        return {
-          ok: true,
-          message: `分组创建成功 (ID: ${res.release_group_id}) · 歌曲 ${res.confirmed_track_pair_count} 组 · 独有 ${res.exclusive_track_count} 首`,
-        }
-      })
-      : vm.createGroup(
-        name,
-        0,
-        primaryId,
-        selectedIds,
-        scope,
-      ).then((res) => ({
-        ok: Boolean(res.group_id),
-        message: res.group_id ? `分组创建成功 (ID: ${res.group_id})` : '创建失败',
-      }))
-
-    request
-      .then((res) => {
-      if (res.ok) {
-        setMsg(res.message)
-        setStep(1)
-        setSelectedAlbums(new Set())
-        setPrimaryId(null)
-        setCanonicalName('')
-        setScope('release')
-        setAlbums([])
-      } else {
-        setMsg(res.message)
-      }
-      })
-      .catch(() => setMsg('创建失败'))
-      .finally(() => setCreating(false))
-  }
-
-  const selectedAlbumList = albums.filter((a) => selectedAlbums.has(a.album_id))
-  const primaryAlbum = albums.find((a) => a.album_id === primaryId)
-
+function StepIndicator({
+  step,
+  objectType,
+}: {
+  step: number;
+  objectType: ObjectType;
+}) {
+  const noun = objectType === "track" ? "歌曲" : "专辑";
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <FieldLabel label="对象类型" />
-        <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="归并对象类型">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={objectType === 'track'}
-            onClick={() => setObjectType('track')}
+    <ol className="grid grid-cols-3 gap-1" aria-label="手动归并步骤">
+      {[`选择${noun}`, "配置规则", "确认保存"].map((label, index) => {
+        const value = index + 1;
+        return (
+          <li
+            key={label}
             className={cn(
-              'rounded-xl border px-3 py-2.5 text-left transition-colors',
-              objectType === 'track' ? 'border-accent-foreground bg-accent-foreground/5' : 'border-border hover:border-accent-foreground/35',
+              "rounded-xl border px-2 py-2 text-center",
+              step === value
+                ? "border-accent-foreground bg-accent-foreground/5"
+                : "border-border bg-muted/10",
             )}
           >
-            <span className="block text-[13px] font-semibold">歌曲归并</span>
-            <span className="block text-[10px] text-muted-foreground">稳定曲目记录与录音/作品关系</span>
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={objectType === 'album'}
-            onClick={() => setObjectType('album')}
-            className={cn(
-              'rounded-xl border px-3 py-2.5 text-left transition-colors',
-              objectType === 'album' ? 'border-accent-foreground bg-accent-foreground/5' : 'border-border hover:border-accent-foreground/35',
-            )}
-          >
-            <span className="block text-[13px] font-semibold">专辑版本</span>
-            <span className="block text-[10px] text-muted-foreground">正式原版、成员与发行项目</span>
-          </button>
-        </div>
-      </div>
-
-      {objectType === 'track' && (
-        <div className="rounded-xl border border-border bg-muted/20 p-4">
-          <Badge variant="outline" className="mb-2 text-[10px]">歌曲归并</Badge>
-          <p className="text-[13px] font-semibold">按稳定候选确认歌曲关系</p>
-          <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
-            当前安全路径只允许从系统识别的本地 track id 候选中确认，避免按名称误合并；不会创建纯文本歌曲关系。
-          </p>
-          <Button type="button" size="sm" variant="outline" className="mt-3 gap-1.5" onClick={onOpenDetection}>
-            <Search className="size-3.5" />查看歌曲候选
-          </Button>
-        </div>
-      )}
-
-      {objectType === 'album' && (
-        <>
-      {/* Step indicator */}
-      <div className="flex items-center justify-center gap-2 pb-2">
-        {[1, 2, 3].map((s) => (
-          <div key={s} className="flex items-center gap-2">
-            <div
-              className={cn(
-                'flex size-7 items-center justify-center rounded-full text-[12px] font-semibold transition-colors',
-                step === s && 'bg-accent-foreground text-primary-foreground',
-                step > s && 'bg-green-500/20 text-green-700 dark:text-green-400',
-                step < s && 'bg-muted text-muted-foreground',
-              )}
-            >
-              {step > s ? <CheckCircle2 className="size-4" /> : s}
-            </div>
             <span
               className={cn(
-                'text-[12px] font-medium',
-                step >= s ? 'text-foreground' : 'text-muted-foreground',
+                "mx-auto mb-1 flex size-6 items-center justify-center rounded-full text-[10px] font-bold",
+                step > value
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                  : step === value
+                    ? "bg-accent-foreground text-primary-foreground"
+                    : "bg-muted text-muted-foreground",
               )}
             >
-              {s === 1 ? '选择专辑' : s === 2 ? '配置规则' : '确认创建'}
+              {step > value ? <CheckCircle2 className="size-3.5" /> : value}
             </span>
-            {s < 3 && <span className="mx-1 h-px w-6 bg-border" />}
+            <span className="block text-[10px] font-medium sm:text-[11px]">
+              {label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function TrackManualWizard({
+  vm,
+  initialTrackId,
+}: {
+  vm: ReturnType<typeof useVersionMerge>;
+  initialTrackId: number | null;
+}) {
+  const [step, setStep] = useState(1);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<TrackCreditTrackCandidate[]>([]);
+  const [selected, setSelected] = useState<TrackCreditTrackCandidate[]>([]);
+  const [primaryId, setPrimaryId] = useState<number | null>(null);
+  const [scope, setScope] = useState<"recording" | "composition">("recording");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const searchTracks = vm.searchTracks;
+  useEffect(() => {
+    if (!initialTrackId) return;
+    searchTracks(String(initialTrackId)).then((items) => {
+      const match = items.find(
+        (item) => (item.l1_id ?? item.track_id) === initialTrackId,
+      );
+      if (match) {
+        setSelected([match]);
+        setPrimaryId(match.l1_id ?? match.track_id);
+      }
+    });
+  }, [initialTrackId, searchTracks]);
+  const updateSearch = (nextQuery: string) => {
+    setQuery(nextQuery);
+    const normalized = nextQuery.trim();
+    if (!normalized || selected.length >= 2) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    searchTracks(normalized)
+      .then(setResults)
+      .finally(() => setLoading(false));
+  };
+  const save = () => {
+    const candidate = selected.find(
+      (item) => (item.l1_id ?? item.track_id) !== primaryId,
+    );
+    if (!primaryId || !candidate) return;
+    setSaving(true);
+    vm.confirmTrackCandidate(
+      primaryId,
+      candidate.l1_id ?? candidate.track_id,
+      scope,
+    )
+      .then((result) =>
+        setMessage(
+          result.status === "ok"
+            ? "歌曲版本分组已保存"
+            : (result.message ?? "保存失败"),
+        ),
+      )
+      .catch(() => setMessage("保存失败"))
+      .finally(() => setSaving(false));
+  };
+  return (
+    <div className="space-y-4">
+      <StepIndicator step={step} objectType="track" />
+      {step === 1 && (
+        <WorkflowBlock
+          number={1}
+          title="选择要归并的歌曲"
+          helper="选择两个不同的基础曲目身份；相同 Spotify ID 已在底层唯一归属，不需要再次归并。"
+        >
+          <EntitySearch
+            value={query}
+            onChange={updateSearch}
+            label="搜索要归并的歌曲"
+            placeholder="搜索歌名、艺人、专辑或稳定 ID"
+            loading={loading}
+            disabled={selected.length >= 2}
+          />
+          {query.trim() && !loading && (
+            <div className="mt-2 max-h-64 space-y-1 overflow-y-auto rounded-xl border border-border bg-background p-1.5">
+              {results.map((track) => {
+                const identityId = track.l1_id ?? track.track_id;
+                const chosen = selected.some(
+                  (item) => (item.l1_id ?? item.track_id) === identityId,
+                );
+                return (
+                  <button
+                    key={identityId}
+                    type="button"
+                    disabled={chosen || selected.length >= 2}
+                    onClick={() => {
+                      setSelected((current) => [...current, track].slice(0, 2));
+                      if (primaryId === null) setPrimaryId(identityId);
+                      setQuery("");
+                    }}
+                    className="flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-muted/60 disabled:opacity-50"
+                  >
+                    <Music2 className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-semibold">
+                        {displayName(track.track_name)}
+                      </span>
+                      <span className="block truncate text-[10px] text-muted-foreground">
+                        {displayName(
+                          track.effective_artist_names.join("、") ||
+                            track.artist_name,
+                        )}
+                        {track.album_name
+                          ? ` · ${displayName(track.album_name)}`
+                          : ""}{" "}
+                        · {track.spotify_track_id ? `Spotify ${track.spotify_track_id} · ` : ""}#{identityId}
+                        {(track.source_record_count ?? 1) > 1
+                          ? ` · ${track.source_record_count} 条历史来源`
+                          : ""}
+                      </span>
+                    </span>
+                    <Plus className="size-3.5 shrink-0" />
+                  </button>
+                );
+              })}
+              {results.length === 0 && (
+                <EmptyState text="没有找到匹配的本地曲目。" />
+              )}
+            </div>
+          )}
+          <SelectedTrackCards
+            tracks={selected}
+            primaryId={primaryId}
+            onPrimary={setPrimaryId}
+            onRemove={(id) => {
+              const remaining = selected.filter(
+                (item) => (item.l1_id ?? item.track_id) !== id,
+              );
+              setSelected(remaining);
+              if (primaryId === id)
+                setPrimaryId(
+                  remaining[0]?.l1_id ?? remaining[0]?.track_id ?? null,
+                );
+            }}
+          />
+          <WizardActions
+            nextLabel="下一步：配置规则"
+            onNext={() => setStep(2)}
+            nextDisabled={selected.length < 2}
+          />
+        </WorkflowBlock>
+      )}
+      {step === 2 && (
+        <WorkflowBlock
+          number={2}
+          title="配置代表版本与归并层级"
+          helper="基础身份由系统治理；这里只配置不同曲目从 L2 或 L3 开始共享统计关系。"
+        >
+          <SelectedTrackCards
+            tracks={selected}
+            primaryId={primaryId}
+            onPrimary={setPrimaryId}
+            compact
+          />
+          <div className="mt-4">
+            <ScopeSelector
+              objectType="track"
+              value={scope}
+              onChange={(value) =>
+                setScope(value as "recording" | "composition")
+              }
+            />
+          </div>
+          <WizardActions
+            onBack={() => setStep(1)}
+            nextLabel="下一步：确认保存"
+            onNext={() => setStep(3)}
+            nextDisabled={!primaryId}
+          />
+        </WorkflowBlock>
+      )}
+      {step === 3 && (
+        <WorkflowBlock
+          number={3}
+          title="确认保存"
+          helper="保存后可在“已保存分组”继续调整代表版本或成员。"
+        >
+          <MergeSummary
+            objectType="track"
+            scope={scope}
+            items={selected.map((item) => ({
+              id: item.l1_id ?? item.track_id,
+              name: item.track_name,
+              subtitle: displayName(
+                item.effective_artist_names.join("、") || item.artist_name,
+              ),
+            }))}
+            primaryId={primaryId}
+          />
+          {message && <StatusMessage message={message} />}
+          <WizardActions
+            onBack={() => setStep(2)}
+            nextLabel={saving ? "正在保存…" : "保存歌曲分组"}
+            onNext={save}
+            nextDisabled={saving}
+          />
+        </WorkflowBlock>
+      )}
+    </div>
+  );
+}
+
+function AlbumManualWizard({
+  vm,
+  initialArtistFilter,
+  initialCanonicalName,
+}: {
+  vm: ReturnType<typeof useVersionMerge>;
+  initialArtistFilter: string;
+  initialCanonicalName: string;
+}) {
+  const [step, setStep] = useState(1);
+  const [query, setQuery] = useState(initialArtistFilter);
+  const [albums, setAlbums] = useState<UngroupedAlbum[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [primaryId, setPrimaryId] = useState<number | null>(null);
+  const [canonicalName, setCanonicalName] = useState(initialCanonicalName);
+  const [scope, setScope] = useState<"release" | "composition">("release");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const getUngroupedAlbums = vm.getUngroupedAlbums;
+  const selectedAlbums = albums.filter((item) => selected.has(item.album_id));
+  const load = () => {
+    setLoading(true);
+    getUngroupedAlbums(query || undefined)
+      .then((items) => {
+        setAlbums(items);
+        if (!initialCanonicalName) return;
+        const match = items.find(
+          (item) =>
+            item.album_name.toLocaleLowerCase() ===
+            initialCanonicalName.toLocaleLowerCase(),
+        );
+        if (match) {
+          setSelected(new Set([match.album_id]));
+          setPrimaryId(match.album_id);
+        }
+      })
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => {
+    if (!initialArtistFilter) return;
+    getUngroupedAlbums(initialArtistFilter).then((items) => {
+      setAlbums(items);
+      if (!initialCanonicalName) return;
+      const match = items.find(
+        (item) =>
+          item.album_name.toLocaleLowerCase() ===
+          initialCanonicalName.toLocaleLowerCase(),
+      );
+      if (match) {
+        setSelected(new Set([match.album_id]));
+        setPrimaryId(match.album_id);
+      }
+    });
+  }, [getUngroupedAlbums, initialArtistFilter, initialCanonicalName]);
+  const save = () => {
+    const primary = albums.find((item) => item.album_id === primaryId);
+    if (!primaryId || !primary) return;
+    setSaving(true);
+    const name = canonicalName || primary.album_name;
+    const ids = Array.from(selected);
+    const request =
+      scope === "composition"
+        ? vm
+            .confirmAlbumRelation(
+              name,
+              primaryId,
+              ids.filter((id) => id !== primaryId),
+              "composition",
+              "rerecord",
+              true,
+            )
+            .then((result) => ({
+              message:
+                result.status === "ok"
+                  ? `专辑版本分组已保存 · 关联 ${result.confirmed_track_pair_count} 组歌曲`
+                  : (result.message ?? "保存失败"),
+            }))
+        : vm
+            .createGroup(name, 0, primaryId, ids, "release")
+            .then((result) => ({
+              message: result.group_id ? "专辑版本分组已保存" : "保存失败",
+            }));
+    request
+      .then((result) => setMessage(result.message))
+      .catch(() => setMessage("保存失败"))
+      .finally(() => setSaving(false));
+  };
+  return (
+    <div className="space-y-4">
+      <StepIndicator step={step} objectType="album" />
+      {step === 1 && (
+        <WorkflowBlock
+          number={1}
+          title="选择要归并的专辑"
+          helper="按艺人查找未分组发行，并明确勾选至少两个成员。"
+        >
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <EntitySearch
+              value={query}
+              onChange={setQuery}
+              label="搜索要归并的专辑"
+              placeholder="输入艺人名称"
+              loading={loading}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={load}
+              disabled={loading}
+              className="min-h-11 shrink-0"
+            >
+              查询专辑
+            </Button>
+          </div>
+          <div className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-xl border border-border bg-background p-1.5">
+            {albums.length ? (
+              albums.map((album) => (
+                <button
+                  key={album.album_id}
+                  type="button"
+                  aria-pressed={selected.has(album.album_id)}
+                  onClick={() =>
+                    setSelected((current) => {
+                      const next = new Set(current);
+                      if (next.has(album.album_id)) {
+                        next.delete(album.album_id);
+                        if (primaryId === album.album_id) setPrimaryId(null);
+                      } else {
+                        next.add(album.album_id);
+                        if (primaryId === null) setPrimaryId(album.album_id);
+                      }
+                      return next;
+                    })
+                  }
+                  className={cn(
+                    "flex min-h-14 w-full min-w-0 items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-muted/60",
+                    selected.has(album.album_id) && "bg-accent-foreground/5",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-5 shrink-0 items-center justify-center rounded border",
+                      selected.has(album.album_id)
+                        ? "border-accent-foreground bg-accent-foreground text-primary-foreground"
+                        : "border-border",
+                    )}
+                  >
+                    {selected.has(album.album_id) && (
+                      <CheckCircle2 className="size-3.5" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] font-semibold">
+                      {displayName(album.album_name)}
+                    </span>
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      {displayName(album.artist_name)} · #{album.album_id}
+                    </span>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <EmptyState text="输入艺人名称后查询可用专辑。" />
+            )}
+          </div>
+          <WizardActions
+            nextLabel="下一步：配置规则"
+            onNext={() => setStep(2)}
+            nextDisabled={selected.size < 2}
+          />
+        </WorkflowBlock>
+      )}
+      {step === 2 && (
+        <WorkflowBlock
+          number={2}
+          title="配置代表版本与归并层级"
+          helper="两种对象使用同一决策顺序：先选代表版本，再选开始共享统计身份的层级。"
+        >
+          <div className="grid gap-2 sm:grid-cols-2">
+            {selectedAlbums.map((album) => (
+              <button
+                key={album.album_id}
+                type="button"
+                onClick={() => setPrimaryId(album.album_id)}
+                className={cn(
+                  "min-w-0 rounded-xl border p-3 text-left",
+                  primaryId === album.album_id
+                    ? "border-accent-foreground bg-accent-foreground/5"
+                    : "border-border",
+                )}
+              >
+                <span className="flex items-center gap-2 text-[11px] font-semibold">
+                  <Star
+                    className={cn(
+                      "size-3.5",
+                      primaryId === album.album_id &&
+                        "fill-current text-accent-foreground",
+                    )}
+                  />
+                  {primaryId === album.album_id ? "代表版本" : "设为代表版本"}
+                </span>
+                <span className="mt-2 block truncate text-[12px] font-medium">
+                  {displayName(album.album_name)}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 space-y-1.5">
+            <FieldLabel label="分组显示名称" />
+            <input
+              value={canonicalName}
+              onChange={(event) => setCanonicalName(event.target.value)}
+              placeholder="留空则使用代表版本名称"
+              className="h-11 w-full rounded-xl border border-input bg-background px-3 text-[13px] outline-none focus:border-accent-foreground"
+            />
+          </div>
+          <div className="mt-4">
+            <ScopeSelector
+              objectType="album"
+              value={scope}
+              onChange={(value) => setScope(value as "release" | "composition")}
+            />
+          </div>
+          <WizardActions
+            onBack={() => setStep(1)}
+            nextLabel="下一步：确认保存"
+            onNext={() => setStep(3)}
+            nextDisabled={!primaryId}
+          />
+        </WorkflowBlock>
+      )}
+      {step === 3 && (
+        <WorkflowBlock
+          number={3}
+          title="确认保存"
+          helper="确认成员、代表版本与统计层级后再写入覆盖关系。"
+        >
+          <MergeSummary
+            objectType="album"
+            scope={scope}
+            canonicalName={canonicalName}
+            items={selectedAlbums.map((item) => ({
+              id: item.album_id,
+              name: item.album_name,
+              subtitle: displayName(item.artist_name),
+            }))}
+            primaryId={primaryId}
+          />
+          {message && <StatusMessage message={message} />}
+          <WizardActions
+            onBack={() => setStep(2)}
+            nextLabel={saving ? "正在保存…" : "保存专辑分组"}
+            onNext={save}
+            nextDisabled={saving}
+          />
+        </WorkflowBlock>
+      )}
+    </div>
+  );
+}
+
+function ScopeSelector({
+  objectType,
+  value,
+  onChange,
+  autoMode = false,
+}: {
+  objectType: ObjectType;
+  value: MergeScope;
+  onChange: (value: MergeScope) => void;
+  autoMode?: boolean;
+}) {
+  const levels =
+    objectType === "track"
+      ? [
+          {
+            value: "recording",
+            title: "L2 · 同一录音",
+            helper: "同一母带在单曲、专辑或豪华版中的记录。",
+            disabled: false,
+          },
+          {
+            value: "composition",
+            title: "L3 · 同一作品",
+            helper: "重录、现场、原声或 Remix 等作品级版本。",
+            disabled: false,
+          },
+        ]
+      : [
+          {
+            value: "release",
+            title: "L2 · 发行版本",
+            helper: "原版、豪华版、加曲版等同一发行项目。",
+            disabled: false,
+          },
+          {
+            value: "composition",
+            title: "L3 · 作品版本",
+            helper: "重录或作品级不同版本；自动检测不直接写入。",
+            disabled: autoMode,
+          },
+        ];
+  return (
+    <div className="space-y-2">
+      <FieldLabel
+        label="从哪个统计层级开始归并"
+        badge={value === "composition" ? "L3" : "L2"}
+      />
+      <div
+        className="grid gap-2 sm:grid-cols-2"
+        role="radiogroup"
+        aria-label={`${OBJECT_COPY[objectType].label}生效层级`}
+      >
+        {levels.map((level) => (
+          <button
+            key={level.value}
+            type="button"
+            role="radio"
+            aria-checked={value === level.value}
+            disabled={level.disabled}
+            onClick={() => onChange(level.value as MergeScope)}
+            className={cn(
+              "min-h-24 rounded-xl border p-3 text-left transition",
+              value === level.value
+                ? "border-accent-foreground bg-accent-foreground/5"
+                : "border-border bg-background hover:border-accent-foreground/35",
+              level.disabled &&
+                "cursor-not-allowed border-dashed bg-muted/15 opacity-60",
+            )}
+          >
+            <span className="block text-[11px] font-semibold">
+              {level.title}
+            </span>
+            <span className="mt-1 block text-[10px] leading-relaxed text-muted-foreground">
+              {level.helper}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EntitySearch({
+  value,
+  onChange,
+  label,
+  placeholder,
+  loading,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  placeholder: string;
+  loading: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="relative min-w-0 flex-1">
+      <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <input
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-10 text-[13px] outline-none focus:border-accent-foreground disabled:opacity-60"
+      />
+      {loading && (
+        <RefreshCw className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
+function SelectedTrackCards({
+  tracks,
+  primaryId,
+  onPrimary,
+  onRemove,
+  compact = false,
+}: {
+  tracks: TrackCreditTrackCandidate[];
+  primaryId: number | null;
+  onPrimary: (id: number) => void;
+  onRemove?: (id: number) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {[0, 1].map((slot) => {
+        const track = tracks[slot];
+        if (!track)
+          return (
+            <div
+              key={slot}
+              className="flex min-h-20 items-center justify-center rounded-xl border border-dashed border-border text-[11px] text-muted-foreground"
+            >
+              {slot === 0 ? "选择第一个版本" : "选择另一个版本"}
+            </div>
+          );
+        const identityId = track.l1_id ?? track.track_id;
+        const primary = identityId === primaryId;
+        return (
+          <div
+            key={identityId}
+            className={cn(
+              "relative min-w-0 rounded-xl border p-3",
+              primary
+                ? "border-accent-foreground bg-accent-foreground/5"
+                : "border-border",
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => onPrimary(identityId)}
+              className="flex min-h-8 items-center gap-1 text-[10px] font-semibold"
+            >
+              <Star
+                className={cn(
+                  "size-3",
+                  primary && "fill-current text-accent-foreground",
+                )}
+              />
+              {primary ? "代表版本" : "设为代表版本"}
+            </button>
+            <p className="mt-1 truncate text-[12px] font-semibold">
+              {displayName(track.track_name)}
+            </p>
+            <p className="truncate text-[10px] text-muted-foreground">
+              {displayName(
+                track.effective_artist_names.join("、") || track.artist_name,
+              )}{" "}
+              · {track.spotify_track_id ? `Spotify ${track.spotify_track_id} · ` : ""}#{identityId}
+              {(track.source_record_count ?? 1) > 1
+                ? ` · ${track.source_record_count} 条历史来源`
+                : ""}
+            </p>
+            {onRemove && !compact && (
+              <button
+                type="button"
+                aria-label={`移除 ${track.track_name}`}
+                onClick={() => onRemove(identityId)}
+                className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MergeSummary({
+  objectType,
+  scope,
+  items,
+  primaryId,
+  canonicalName,
+}: {
+  objectType: ObjectType;
+  scope: MergeScope;
+  items: Array<{ id: number; name: string; subtitle: string }>;
+  primaryId: number | null;
+  canonicalName?: string;
+}) {
+  const scopeName =
+    objectType === "track"
+      ? scope === "recording"
+        ? "L2 同一录音"
+        : "L3 同一作品"
+      : scope === "release"
+        ? "L2 发行版本"
+        : "L3 作品版本";
+  return (
+    <div className="space-y-3 rounded-xl border border-border bg-background p-4">
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="outline">{OBJECT_COPY[objectType].label}</Badge>
+        <Badge variant="secondary">{scopeName}</Badge>
+        <span className="text-[11px] text-muted-foreground">
+          {items.length} 个成员
+        </span>
+      </div>
+      {canonicalName && (
+        <p className="text-[12px]">
+          <span className="text-muted-foreground">显示名称：</span>
+          {displayName(canonicalName)}
+        </p>
+      )}
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className={cn(
+              "flex min-w-0 items-center gap-2 rounded-lg px-3 py-2",
+              item.id === primaryId ? "bg-accent-foreground/5" : "bg-muted/25",
+            )}
+          >
+            <Star
+              className={cn(
+                "size-3.5 shrink-0",
+                item.id === primaryId
+                  ? "fill-current text-accent-foreground"
+                  : "text-transparent",
+              )}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12px] font-medium">
+                {displayName(item.name)}
+              </span>
+              <span className="block truncate text-[10px] text-muted-foreground">
+                {item.subtitle} · #{item.id}
+              </span>
+            </span>
+            {item.id === primaryId && <Badge variant="outline">代表版本</Badge>}
           </div>
         ))}
       </div>
-
-      {/* Step 1: Select Albums */}
-      {step === 1 && (
-        <>
-          <div className="flex gap-3">
-            <div className="flex-1 space-y-1.5">
-              <FieldLabel label="艺人筛选" />
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={artistFilter}
-                  onChange={(e) => setArtistFilter(e.target.value)}
-                  placeholder="输入艺人名称筛选..."
-                  className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-[13px] outline-none focus-visible:border-ring"
-                  onKeyDown={(e) => { if (e.key === 'Enter') loadAlbums() }}
-                />
-                <Button size="sm" variant="outline" onClick={loadAlbums} className="shrink-0">
-                  查询专辑
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {albums.length > 0 && (
-            <div className="space-y-1.5">
-              <FieldLabel label="未分组专辑" badge={`${selectedAlbums.size} 已选`} />
-              <div className="max-h-[250px] space-y-0.5 overflow-y-auto rounded-lg border border-border p-2">
-                {albums.map((a) => (
-                  <label
-                    key={a.album_id}
-                    className={cn(
-                      'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors hover:bg-muted/50',
-                      selectedAlbums.has(a.album_id) && 'bg-accent-foreground/5',
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedAlbums.has(a.album_id)}
-                      onChange={() => toggleAlbum(a.album_id)}
-                      className="size-3.5 accent-accent-foreground"
-                    />
-                    <span className="flex-1 truncate">{displayName(a.album_name)}</span>
-                    <span className="text-[12px] text-muted-foreground">{displayName(a.artist_name)}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {albums.length === 0 && (
-            <div className="py-8 text-center text-[14px] text-muted-foreground">
-              请选择艺人后查询可用的未分组专辑。
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              onClick={() => setStep(2)}
-              disabled={selectedAlbums.size < 2}
-            >
-              下一步：配置规则
-            </Button>
-          </div>
-        </>
-      )}
-
-      {/* Step 2: Configure */}
-      {step === 2 && (
-        <>
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <FieldLabel label="统一名称 (canonical_name)" />
-              <p className="text-[12px] text-muted-foreground">所有版本在榜单中共享此名称</p>
-              <input
-                type="text"
-                value={canonicalName}
-                onChange={(e) => setCanonicalName(e.target.value)}
-                placeholder="留空则使用主版本名称"
-                className="flex h-8 w-full max-w-[360px] rounded-lg border border-input bg-transparent px-2.5 text-[13px] outline-none focus-visible:border-ring"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <FieldLabel label="主版本" />
-              <p className="text-[12px] text-muted-foreground">选择默认代表专辑，以 ⭐ 标识</p>
-              <Select
-                value={primaryId ? String(primaryId) : ''}
-                onValueChange={(v) => setPrimaryId(Number(v))}
-              >
-                <SelectTrigger className="w-[280px]">
-                  <SelectValue placeholder="选择主版本专辑" />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedAlbumList.map((a) => (
-                    <SelectItem key={a.album_id} value={String(a.album_id)}>
-                      {a.album_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <FieldLabel label="合并语义" badge={scope === 'composition' ? 'L3' : 'L2'} />
-              <p className="text-[12px] text-muted-foreground">
-                L2 录制：仅合并同一录音的发行版本 · L3 作品：合并所有版本含 Remix、Acoustic
-              </p>
-              <Select
-                value={scope}
-                onValueChange={(v) => setScope(v as 'release' | 'composition')}
-              >
-                <SelectTrigger className="w-[280px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="release">L2 发行版本</SelectItem>
-                  <SelectItem value="composition">L3 作品版本</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex justify-between">
-            <Button size="sm" variant="ghost" onClick={() => setStep(1)}>
-              上一步
-            </Button>
-            <Button size="sm" onClick={() => setStep(3)} disabled={!primaryId}>
-              下一步：确认创建
-            </Button>
-          </div>
-        </>
-      )}
-
-      {/* Step 3: Confirm */}
-      {step === 3 && (
-        <>
-          <div className="rounded-xl border border-border bg-muted/20 p-4">
-            <div className="mb-3 font-sans text-[12px] font-semibold uppercase tracking-[1.4px] text-muted-foreground">
-              创建摘要
-            </div>
-            <div className="space-y-1 text-[13px]">
-              <div>
-                <span className="text-muted-foreground">统一名称：</span>
-                <span className="font-medium text-foreground">
-                  {canonicalName || primaryAlbum?.album_name || '—'}
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">合并语义：</span>
-                <span className="font-medium text-foreground">
-                  {scope === 'composition' ? 'L3 作品版本' : 'L2 发行版本'}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-3 space-y-1">
-              <div className="text-[12px] text-muted-foreground">合并的专辑 ({selectedAlbumList.length})：</div>
-              {selectedAlbumList.map((a, index) => (
-                <div
-                  key={a.album_id}
-                  className={cn(
-                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
-                    a.album_id === primaryId
-                      ? 'bg-accent-foreground/5 font-medium text-foreground'
-                      : 'text-muted-foreground',
-                  )}
-                >
-                  <CoverCell
-                    index={index}
-                    coverUrl={`/covers/albums/${a.album_id}.jpg`}
-                    label={a.album_name}
-                    className="size-8 rounded shrink-0"
-                  />
-                  {a.album_id === primaryId && <Star className="size-3 text-accent-foreground shrink-0" />}
-                  <span className="truncate">{displayName(a.album_name)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {msg && (
-            <div className={cn(
-              'flex items-center gap-2 text-[13px]',
-              msg.includes('成功') ? 'text-green-600 dark:text-green-400' : 'text-destructive',
-            )}>
-              <CheckCircle2 className="size-3.5" />
-              {msg}
-            </div>
-          )}
-
-          <div className="flex justify-between">
-            <Button size="sm" variant="ghost" onClick={() => setStep(2)}>
-              上一步
-            </Button>
-            <Button size="sm" onClick={handleCreate} disabled={creating} className="gap-1.5">
-              {creating ? <RefreshCw className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-              {creating ? '创建中...' : '创建分组'}
-            </Button>
-          </div>
-        </>
-      )}
-        </>
-      )}
     </div>
-  )
+  );
+}
+
+function WizardActions({
+  onBack,
+  nextLabel,
+  onNext,
+  nextDisabled = false,
+}: {
+  onBack?: () => void;
+  nextLabel: string;
+  onNext: () => void;
+  nextDisabled?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "mt-4 flex flex-wrap gap-2",
+        onBack ? "justify-between" : "justify-end",
+      )}
+    >
+      {onBack && (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onBack}
+          className="min-h-11"
+        >
+          上一步
+        </Button>
+      )}
+      <Button
+        type="button"
+        onClick={onNext}
+        disabled={nextDisabled}
+        className="min-h-11 gap-2"
+      >
+        {nextLabel}
+        <ChevronDown className="size-3.5 -rotate-90" />
+      </Button>
+    </div>
+  );
+}
+
+function EmptyState({
+  text,
+  success = false,
+}: {
+  text: string;
+  success?: boolean;
+}) {
+  return (
+    <div className="flex min-h-24 flex-col items-center justify-center gap-2 text-center text-[12px] text-muted-foreground">
+      {success && <CheckCircle2 className="size-6 text-emerald-600" />}
+      <p>{text}</p>
+    </div>
+  );
+}
+
+function StatusMessage({ message }: { message: string }) {
+  const success =
+    message.includes("已") ||
+    message.includes("创建") ||
+    message.includes("保存");
+  return (
+    <p
+      role="status"
+      className={cn(
+        "mt-3 rounded-xl border px-3 py-2.5 text-[12px]",
+        success
+          ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+          : "border-destructive/25 bg-destructive/5 text-destructive",
+      )}
+    >
+      {message}
+    </p>
+  );
 }

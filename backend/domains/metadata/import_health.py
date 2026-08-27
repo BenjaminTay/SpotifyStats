@@ -277,6 +277,88 @@ def _build_derived_health(conn: sqlite3.Connection) -> dict[str, Any]:
     derived["rebuild_pending"] = _setting_bool(conn, "rebuild_pending")
     derived["artist_identity"] = _state_snapshot(conn, "artist_identity_state")
     derived["track_credits"] = _state_snapshot(conn, "track_credit_state")
+    identity_tables_ready = all(
+        _table_exists(conn, table)
+        for table in (
+            "track_l1_identities",
+            "track_l1_external_ids",
+            "track_l1_source_links",
+            "track_identity_state",
+        )
+    )
+    identity_required = any(
+        _table_exists(conn, table)
+        for table in (
+            "track_l1_identities",
+            "track_l1_external_ids",
+            "track_l1_source_links",
+            "track_identity_state",
+        )
+    )
+    if identity_tables_ready:
+        from backend.domains.metadata.track_identity import (
+            validate_track_identity_invariants,
+        )
+
+        identity_health = validate_track_identity_invariants(conn)
+        state = conn.execute(
+            """SELECT current_revision, policy_version
+                 FROM track_identity_state WHERE state_id=1"""
+        ).fetchone()
+        active_group_scope_overlap_count = (
+            _count(
+                conn,
+                """SELECT COUNT(*) FROM (
+                       SELECT members.l1_id, groups.scope
+                         FROM track_group_l1_members members
+                         JOIN track_groups groups ON groups.group_id=members.group_id
+                        WHERE groups.group_status='active'
+                        GROUP BY members.l1_id, groups.scope
+                       HAVING COUNT(DISTINCT groups.group_id)>1
+                   )""",
+            )
+            if _table_exists(conn, "track_group_l1_members") and _table_exists(conn, "track_groups")
+            else 0
+        )
+        derived["canonical_track_identity"] = {
+            "required": True,
+            "available": True,
+            "current_revision": int(state[0]) if state else 0,
+            "policy_version": str(state[1]) if state else None,
+            "duplicate_external_owner_count": identity_health.duplicate_spotify_identity_count,
+            "unresolved_play_identity_count": identity_health.unresolved_play_identity_count,
+            "source_link_orphan_count": identity_health.source_link_orphan_count,
+            "representative_missing_count": identity_health.representative_missing_count,
+            "external_owner_orphan_count": identity_health.external_owner_orphan_count,
+            "active_group_noncanonical_member_count": (
+                identity_health.active_group_noncanonical_member_count
+            ),
+            "active_group_too_small_count": identity_health.active_group_too_small_count,
+            "active_group_invalid_primary_count": (
+                identity_health.active_group_invalid_primary_count
+            ),
+            "pending_candidate_noncanonical_reference_count": (
+                identity_health.pending_candidate_noncanonical_reference_count
+            ),
+            "active_group_scope_overlap_count": active_group_scope_overlap_count,
+        }
+    else:
+        derived["canonical_track_identity"] = {
+            "required": identity_required,
+            "available": False,
+            "current_revision": 0,
+            "policy_version": None,
+            "duplicate_external_owner_count": 0,
+            "unresolved_play_identity_count": 0,
+            "source_link_orphan_count": 0,
+            "representative_missing_count": 0,
+            "external_owner_orphan_count": 0,
+            "active_group_noncanonical_member_count": 0,
+            "active_group_too_small_count": 0,
+            "active_group_invalid_primary_count": 0,
+            "pending_candidate_noncanonical_reference_count": 0,
+            "active_group_scope_overlap_count": 0,
+        }
     derived["album_projects_ready"] = derived["album_project_count"] > 0
     derived["billboard_aggregates_ready"] = bool(
         derived["weekly_track_rows"]
@@ -542,6 +624,29 @@ def _build_health_issues(
                 "stale_revision_count": derived["stale_revision_count"],
             },
         )
+    canonical = derived["canonical_track_identity"]
+    canonical_problem_count = sum(
+        int(canonical[key])
+        for key in (
+            "duplicate_external_owner_count",
+            "unresolved_play_identity_count",
+            "source_link_orphan_count",
+            "representative_missing_count",
+            "external_owner_orphan_count",
+            "active_group_scope_overlap_count",
+        )
+    )
+    if (canonical["required"] and not canonical["available"]) or canonical_problem_count:
+        add(
+            code="canonical_track_identity_invalid",
+            category="relationship",
+            severity="critical",
+            title="基础曲目身份唯一性未通过",
+            count=max(canonical_problem_count, 1),
+            impact="同一个 Spotify Track ID 可能被重复计入，或 L2/L3 分组可能产生多重归属。",
+            recommended_action="停止发布派生统计，先修复外部 ID 唯一归属、来源映射和同层级分组冲突。",
+            evidence=canonical,
+        )
     if database["play_count"] and not derived["billboard_aggregates_ready"]:
         add(
             code="billboard_aggregates_empty",
@@ -650,6 +755,22 @@ def build_import_health_report(
         blockers.append(f"SQLite 完整性检查结果为 {database['sqlite_integrity']}")
     if relationships["orphan_play_track_count"] or relationships["orphan_play_album_count"]:
         blockers.append("播放记录引用了不存在的曲目或专辑")
+    canonical = derived["canonical_track_identity"]
+    canonical_problem_count = sum(
+        int(canonical[key])
+        for key in (
+            "duplicate_external_owner_count",
+            "unresolved_play_identity_count",
+            "source_link_orphan_count",
+            "representative_missing_count",
+            "external_owner_orphan_count",
+            "active_group_scope_overlap_count",
+        )
+    )
+    if canonical["required"] and not canonical["available"]:
+        blockers.append("基础曲目身份表缺失")
+    elif canonical_problem_count:
+        blockers.append(f"基础曲目身份唯一性检查发现 {canonical_problem_count} 个问题")
     if database["foreign_key_issue_count"]:
         breakdown = database["foreign_key_issue_breakdown"]
         top_issues = "、".join(f"{key} {count} 条" for key, count in list(breakdown.items())[:3])

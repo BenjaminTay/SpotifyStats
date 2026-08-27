@@ -311,7 +311,7 @@ def test_enqueue_queues_missing_projection_for_ready_snapshot_set_and_marks_warm
         """SELECT snapshot_key, builder_version, status
            FROM music_search_year_end_projection_state ORDER BY snapshot_key"""
     ).fetchall()
-    assert len(states) == 6
+    assert len(states) == 4
     assert {str(row[1]) for row in states} == {"music_search_year_end_projection_v1"}
     assert {str(row[2]) for row in states} == {"pending"}
 
@@ -335,7 +335,7 @@ def test_enqueue_failure_exposes_pending_projection_as_failed(monkeypatch) -> No
         """SELECT builder_version, status, last_error
            FROM music_search_year_end_projection_state"""
     ).fetchall()
-    assert len(states) == 6
+    assert len(states) == 4
     assert {str(row[0]) for row in states} == {"music_search_year_end_projection_v1"}
     assert {str(row[1]) for row in states} == {"failed"}
     assert {str(row[2]) for row in states} == {"OSError"}
@@ -434,7 +434,7 @@ def test_forced_candidate_rebuild_reuses_exact_statistics_set(monkeypatch) -> No
     assert report["snapshot_set"]["revalidated"] is True
 
 
-def test_deferred_rebuild_publishes_candidates_and_queues_six_snapshots(monkeypatch) -> None:
+def test_deferred_rebuild_publishes_candidates_and_queues_four_snapshots(monkeypatch) -> None:
     conn = _conn()
     queued: list[dict[str, object]] = []
 
@@ -458,7 +458,7 @@ def test_deferred_rebuild_publishes_candidates_and_queues_six_snapshots(monkeypa
         conn.execute(
             "SELECT COUNT(*) FROM music_search_snapshot_meta WHERE status='pending'"
         ).fetchone()[0]
-        == 6
+        == 4
     )
 
 
@@ -544,7 +544,7 @@ def test_query_only_change_revalidates_candidate_and_statistics(monkeypatch) -> 
     assert report["snapshot_set"]["duration_ms"] == 0
 
 
-def test_ordinary_repeated_maintenance_reuses_all_six_statistics_at_zero_ms(
+def test_ordinary_repeated_maintenance_reuses_all_four_statistics_at_zero_ms(
     monkeypatch,
 ) -> None:
     conn = _conn()
@@ -573,7 +573,7 @@ def test_ordinary_repeated_maintenance_reuses_all_six_statistics_at_zero_ms(
     assert second["index"] is None
     for report in (first, second):
         snapshot_set = report["snapshot_set"]
-        assert snapshot_set["ready_count"] == len(contexts) == 6
+        assert snapshot_set["ready_count"] == len(contexts) == 4
         assert snapshot_set["revalidated"] is True
         assert snapshot_set["duration_ms"] == 0
         assert all(variant["revalidated"] for variant in snapshot_set["variants"])
@@ -650,7 +650,7 @@ def test_statistics_revision_drift_rebuilds_only_statistics(
 
     assert report["index"] is None
     assert maintenance.get_music_search_index_state(conn)["active_generation_id"] == old_generation
-    assert len(captured) == 6
+    assert len(captured) == 4
     assert captured[0].semantic_base_key != old_contexts[0].semantic_base_key
     assert report["snapshot_set"]["revalidated"] is False
 
@@ -828,7 +828,7 @@ def test_identity_or_credit_revision_rebuilds_both_required_layers(
 
     assert report["candidate_index"]["action"] == "rebuilt"
     assert report["index"]["generation_id"] != old_generation
-    assert len(captured) == 6
+    assert len(captured) == 4
     assert captured[0].semantic_base_key != old_contexts[0].semantic_base_key
     assert report["snapshot_set"]["revalidated"] is False
 
@@ -862,7 +862,7 @@ def test_statistics_builder_drift_rebuilds_only_statistics(
 
     assert report["index"] is None
     assert maintenance.get_music_search_index_state(conn)["active_generation_id"] == old_generation
-    assert len(captured) == 6
+    assert len(captured) == 4
     assert captured[0].semantic_base_key != old_contexts[0].semantic_base_key
     assert report["snapshot_set"]["revalidated"] is False
 
@@ -923,7 +923,7 @@ def test_current_legacy_v2_set_is_adopted_without_statistics_recalculation(
         ).fetchone()
         for _legacy_base, legacy_fingerprint in legacy
     )
-    assert report["snapshot_set"]["ready_count"] == 6
+    assert report["snapshot_set"]["ready_count"] == 4
     assert all(variant["revalidated"] for variant in report["snapshot_set"]["variants"])
     assert all(variant["duration_ms"] == 0 for variant in report["snapshot_set"]["variants"])
 

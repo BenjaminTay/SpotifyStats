@@ -89,13 +89,13 @@ def test_filter_context_reads_persistent_revision_without_scanning_source_tables
     assert len(context.filter_fingerprint) == 64
 
 
-def test_six_variants_share_base_and_have_unique_fingerprints() -> None:
+def test_four_variants_share_base_and_have_unique_fingerprints() -> None:
     conn = _conn()
     contexts = build_music_search_variant_contexts(conn, _filters())
 
-    assert len(contexts) == 6
+    assert len(contexts) == 4
     assert len({context.semantic_base_key for context in contexts}) == 1
-    assert len({context.filter_fingerprint for context in contexts}) == 6
+    assert len({context.filter_fingerprint for context in contexts}) == 4
     assert [(context.merge_level, context.dynamic_threshold) for context in contexts] == [
         (variant.merge_level, variant.dynamic_threshold)
         for variant in MUSIC_SEARCH_SNAPSHOT_VARIANTS

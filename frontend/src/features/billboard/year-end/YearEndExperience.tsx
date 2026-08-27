@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useBillboardYearEnd } from '@/hooks/useBillboard'
 import { useSettings } from '@/hooks/useSettings'
 import { getBillboardName } from '@/lib/billboard-name'
-import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import { cn } from '@/lib/utils'
 import type { BillboardYearEndMeta } from '@/types/billboard'
 import { YearEndHonors } from './YearEndHonors'
@@ -38,8 +38,7 @@ function parseYear(value: string | null): number | null {
 }
 
 function parseMergeLevel(value: string | null): number {
-  const level = Number(value ?? getDefaultMergeLevel())
-  return level === 1 || level === 2 || level === 3 ? level : 2
+  return normalizeMergeLevel(value ?? getDefaultMergeLevel())
 }
 
 function parseTab(value: string | null): YearEndTab | null {

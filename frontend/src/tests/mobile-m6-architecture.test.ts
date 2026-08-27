@@ -50,6 +50,7 @@ describe('M6 mobile community, AI, account and settings architecture', () => {
     expect(metadataRender).toBeGreaterThan(mobileReturn)
     expect(mobileSettingsSource).not.toContain('MusicMetadataSection')
     expect(mobileSettingsSource).not.toContain('DataImportSection')
+    expect(mobileSettingsSource).toContain('VersionMergeSection')
     expect(mobileSettingsSource).toContain('在电脑上管理')
     expect(mobileSettingsSource).toContain("searchParams.get('return_to')")
     expect(mobileSettingsSource).toContain('Preferences / Mobile')

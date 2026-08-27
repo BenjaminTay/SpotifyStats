@@ -8,6 +8,7 @@ seed database or a local development database.
 
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from dataclasses import dataclass
@@ -220,6 +221,7 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         DEFAULT_BILLBOARD,
     ),
     SmokeCase("billboard_track_detail", "/api/billboard/track/901", DEFAULT_BILLBOARD),
+    SmokeCase("billboard_track_canonical_detail", "/api/billboard/track/canonical/1", DEFAULT_BILLBOARD),
     SmokeCase(
         "billboard_artist_detail",
         "/api/billboard/artist/Fixture Artist Alpha",
@@ -267,6 +269,13 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     ),
     SmokeCase("version_groups", "/api/version-merge/groups"),
     SmokeCase("version_group_members", "/api/version-merge/groups/2/members"),
+    SmokeCase("version_track_groups", "/api/version-merge/track-groups"),
+    SmokeCase(
+        "version_track_candidates",
+        "/api/version-merge/track-candidates",
+        {"q": "Fixture", "limit": 5},
+    ),
+    SmokeCase("version_track_group_members", "/api/version-merge/track-groups/2/members"),
     SmokeCase("version_artist_groups", "/api/version-merge/groups/artist/Fixture Artist Alpha"),
     SmokeCase("version_ungrouped", "/api/version-merge/ungrouped"),
     SmokeCase(
@@ -276,12 +285,16 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase(
         "version_collab_candidates", "/api/version-merge/track-group-candidates/collaboration"
     ),
+    SmokeCase("version_canonical_events", "/api/version-merge/canonical-tracks/events"),
     SmokeCase("import_status_missing", "/api/import/status/nonexistent"),
     SmokeCase("import_preflight", "/api/import/preflight"),
     SmokeCase("import_health", "/api/import/health"),
     SmokeCase("music_search", "/api/music/search", {"q": "Fixture", "limit_per_type": 3}),
     SmokeCase("music_search_context", "/api/music/search/context", DEFAULT_BILLBOARD),
     SmokeCase("music_track_stats", "/api/music/tracks/901/stats", DEFAULT_FILTERS),
+    SmokeCase("music_track_identity", "/api/music/tracks/1"),
+    SmokeCase("music_track_sources", "/api/music/tracks/1/sources"),
+    SmokeCase("music_track_legacy_identity", "/api/music/tracks/legacy/901/identity"),
     SmokeCase("music_album_stats", "/api/music/albums/Fixture Future LP/stats", DEFAULT_FILTERS),
     SmokeCase(
         "music_album_rankings",
@@ -298,6 +311,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     ),
     SmokeCase("music_track_plays", "/api/music/tracks/901/plays", {**DEFAULT_FILTERS, "limit": 5}),
     SmokeCase(
+        "music_track_canonical_plays",
+        "/api/music/tracks/canonical/901/plays",
+        {**DEFAULT_FILTERS, "limit": 5},
+    ),
+    SmokeCase(
         "music_album_plays",
         "/api/music/albums/Fixture Future LP/plays",
         {**DEFAULT_FILTERS, "limit": 5},
@@ -308,6 +326,7 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         {**DEFAULT_FILTERS, "limit": 5},
     ),
     SmokeCase("music_track_dates", "/api/music/tracks/901/play-dates", DEFAULT_FILTERS),
+    SmokeCase("music_track_canonical_dates", "/api/music/tracks/canonical/901/play-dates", DEFAULT_FILTERS),
     SmokeCase(
         "music_album_dates", "/api/music/albums/Fixture Future LP/play-dates", DEFAULT_FILTERS
     ),
@@ -463,7 +482,29 @@ def assert_openapi_get_coverage(coverage: CoverageSummary) -> None:
         raise AssertionError("Unaccounted OpenAPI GET paths:\n" + "\n".join(lines))
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--db-path",
+        help="Explicit database copy used by the in-process TestClient",
+    )
+    return parser.parse_args()
+
+
+def _configure_database_path(value: str | None) -> None:
+    if not value:
+        return
+    resolved = Path(value).expanduser().resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"API smoke database does not exist: {resolved}")
+    from backend.core import db as db_mod
+
+    db_mod.DB_PATH = str(resolved)
+
+
 def main() -> int:
+    args = _parse_args()
+    _configure_database_path(args.db_path)
     from fastapi.testclient import TestClient
 
     from backend.main import app

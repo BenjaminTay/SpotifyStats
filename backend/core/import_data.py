@@ -45,9 +45,11 @@ def _replace_schema_is_transaction_ready(conn: sqlite3.Connection) -> bool:
 
     Historical replace upgraded duplicate dimensions only after deleting and
     committing playback facts.  That sequence cannot be made rollback-safe.
-    Current versioned databases already have the fingerprint columns and the
-    uniqueness constraints required by the importer; non-empty older schemas
-    must therefore fail before any destructive statement.
+    Current versioned databases already have the fingerprint columns, album
+    uniqueness constraint, and Spotify ownership tables required by the importer;
+    non-empty older schemas must therefore fail before any destructive
+    statement. Track title/artist uniqueness is intentionally *not* required:
+    Existing ``track_id`` is the application identity; Spotify ids are aliases.
     """
 
     play_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(plays)")}
@@ -63,12 +65,24 @@ def _replace_schema_is_transaction_ready(conn: sqlite3.Connection) -> bool:
                FROM sqlite_master WHERE type='index'"""
         ).fetchall()
     }
-    return required_columns.issubset(play_columns) and all(
-        indexes.get(name, False)
-        for name in (
-            "idx_tracks_artist_name",
-            "idx_albums_name_artist",
-            "uq_plays_source_fingerprint",
+    tables = {
+        str(row[0])
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    return (
+        required_columns.issubset(play_columns)
+        and {
+            "track_l1_identities",
+            "track_l1_source_links",
+            "track_identity_state",
+            "spotify_track_owners",
+        }.issubset(tables)
+        and all(
+            indexes.get(name, False)
+            for name in (
+                "idx_albums_name_artist",
+                "uq_plays_source_fingerprint",
+            )
         )
     )
 
@@ -188,45 +202,52 @@ def _cache_track(
     spotify_uri: str | None,
     cache: dict[tuple, int],
 ) -> int:
-    # Use (artist_id, track_name) as canonical key to merge duplicate versions
-    key = (artist_id, track_name)
+    # A known Spotify id always resolves to its existing owner. For a new
+    # provider id, preserve the historical title+artist track matching so one
+    # application track may own several album-edition Spotify ids.
+    spotify_tid = _spotify_track_id_from_uri(spotify_uri)
+    key = ("spotify", spotify_tid) if spotify_tid else ("local", artist_id, track_name)
     if key in cache:
         tid = cache[key]
     else:
-        row = conn.execute(
-            "SELECT track_id FROM tracks WHERE track_name = ? AND artist_id = ?",
-            (track_name, artist_id),
-        ).fetchone()
+        if spotify_tid:
+            from backend.domains.metadata.track_identity import spotify_track_owner
+
+            owner = spotify_track_owner(conn, spotify_tid)
+            row = (owner,) if owner is not None else None
+        else:
+            row = None
+        if row is None:
+            row = conn.execute(
+                """SELECT track_id FROM tracks
+                    WHERE track_name = ? AND artist_id = ?
+                    ORDER BY track_id LIMIT 1""",
+                (track_name, artist_id),
+            ).fetchone()
         if row:
             tid = row[0]
         else:
-            # Check by spotify_track_id before inserting — catches duplicates
-            # with different punctuation in the track name (e.g. half-width
-            # vs full-width comma).
-            spotify_tid = _spotify_track_id_from_uri(spotify_uri)
-            if spotify_tid:
-                existing = conn.execute(
-                    "SELECT track_id FROM tracks WHERE spotify_track_id = ? AND artist_id = ?",
-                    (spotify_tid, artist_id),
-                ).fetchone()
-                if existing:
-                    row = existing
-            if row:
-                tid = row[0]
-            else:
-                cur = conn.execute(
-                    """INSERT INTO tracks(track_name, artist_id, album_id, spotify_track_uri, spotify_track_id)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (
-                        track_name,
-                        artist_id,
-                        album_id,
-                        spotify_uri,
-                        spotify_tid,
-                    ),
-                )
-                tid = cur.lastrowid
+            cur = conn.execute(
+                """INSERT INTO tracks(track_name, artist_id, album_id, spotify_track_uri, spotify_track_id)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    track_name,
+                    artist_id,
+                    album_id,
+                    spotify_uri,
+                    spotify_tid,
+                ),
+            )
+            tid = cur.lastrowid
         cache[key] = tid
+
+    from backend.domains.metadata.track_identity import ensure_track_projection_identity
+
+    ensure_track_projection_identity(
+        conn,
+        track_id=int(tid),
+        spotify_track_id=spotify_tid,
+    )
 
     # If track already existed and current play has a different album, record the association
     if album_id is not None:
@@ -634,7 +655,7 @@ def _import_data_impl(
 
     artist_cache: dict[str, int] = {}
     album_cache: dict[tuple, int] = {}
-    track_cache: dict[str, int] = {}
+    track_cache: dict[tuple, int] = {}
 
     total_files = len(json_files)
     total_records = 0
@@ -873,6 +894,11 @@ def _import_data_impl(
             if track_id is not None
         }
         _synchronize_active_track_album_observations(conn, affected_track_ids)
+
+    if total_records or video_total or removed_impact_rows or mode == "replace":
+        from backend.domains.metadata.track_identity import refresh_play_source_links
+
+        refresh_play_source_links(conn)
 
     active_records, first_ts, latest_ts, active_digest = _active_dataset_summary(conn)
     inserted_records = total_records + video_total

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 
-import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import { getBillboardName } from '@/lib/billboard-name'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -78,7 +78,7 @@ function ErrorState({ error, refetch }: { error: string; refetch: () => void }) 
 export function AllTimeChartsPage() {
   const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
-  const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
+  const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const searchQuery = searchParams.get('q') ?? ''
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })

@@ -99,7 +99,12 @@ export const queryKeys = {
         trackId,
       ] as const,
     trackCreditManualChanges: () =>
-      ["settings", "music-metadata", "track-credits", "manual-changes"] as const,
+      [
+        "settings",
+        "music-metadata",
+        "track-credits",
+        "manual-changes",
+      ] as const,
   },
 
   dataImport: {
@@ -155,7 +160,13 @@ export const queryKeys = {
     v2Report: (year: number, filterKey: string) =>
       ["yearly-review", "v2", "report", year, filterKey] as const,
     v2GenerationStatus: (yearsKey: string, filterKey: string) =>
-      ["yearly-review", "v2", "generation-status", yearsKey, filterKey] as const,
+      [
+        "yearly-review",
+        "v2",
+        "generation-status",
+        yearsKey,
+        filterKey,
+      ] as const,
   },
 
   music: {
@@ -191,8 +202,10 @@ export const queryKeys = {
       ] as const,
     artistDetail: (artistName: string, params: Record<string, unknown> = {}) =>
       ["music", "artist-detail", artistName, params] as const,
-    artistRankings: (artistName: string, params: Record<string, unknown> = {}) =>
-      ["music", "artist-rankings", artistName, params] as const,
+    artistRankings: (
+      artistName: string,
+      params: Record<string, unknown> = {},
+    ) => ["music", "artist-rankings", artistName, params] as const,
     albumRankings: (
       albumName: string,
       artistName: string,
@@ -289,8 +302,11 @@ export const queryKeys = {
   versionMerge: {
     all: ["version-merge"] as const,
     groups: () => ["version-merge", "groups"] as const,
+    trackGroups: () => ["version-merge", "track-groups"] as const,
     members: (groupId: number) =>
       ["version-merge", "members", groupId] as const,
+    trackMembers: (groupId: number) =>
+      ["version-merge", "track-members", groupId] as const,
     ungrouped: (artistName?: string) =>
       ["version-merge", "ungrouped", artistName ?? ""] as const,
     comparison: (aId: number, bId: number) =>
@@ -299,5 +315,9 @@ export const queryKeys = {
       ["version-merge", "album-types", ids.join(",")] as const,
     collaborationCandidates: () =>
       ["version-merge", "collaboration-candidates"] as const,
+    trackSearch: (query: string) =>
+      ["version-merge", "track-search", query] as const,
+    canonicalTrackEvents: () =>
+      ["version-merge", "canonical-track-events"] as const,
   },
 } as const;

@@ -9,7 +9,7 @@ from backend.domains.billboard.data_loader import _load_album_metadata
 from backend.domains.billboard.version_merge import _apply_album_release_groups
 from backend.domains.playback.logical_timeline import get_billboard_weighted_frame
 
-BILLBOARD_RANKING_VERSION = "billboard_ranking_v2"
+BILLBOARD_RANKING_VERSION = "billboard_ranking_v3_l1"
 
 
 def _normalised_text_key(value: object) -> str:
@@ -60,7 +60,10 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
     if pre_agg is not None and not pre_agg.empty:
         weekly = pre_agg.copy()
         _apply_track_groups(weekly, merge_level=merge_level)
-        group_cols = ["billboard_week", "track_id", "track_name", "artist_name"]
+        group_cols = ["billboard_week"]
+        if "l1_id" in weekly.columns:
+            group_cols.append("l1_id")
+        group_cols.extend(["track_id", "track_name", "artist_name"])
         album_choice = choose_representative_album(weekly, group_cols)
         # After canonicalization, re-aggregate: sum play_count/total_ms per group.
         weekly = (
@@ -76,7 +79,10 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
         weighted = get_billboard_weighted_frame(_df)
         df = weighted.copy() if weighted is not None else _df.copy()
         _apply_track_groups(df, merge_level=merge_level)
-        group_cols = ["billboard_week", "track_id", "track_name", "artist_name"]
+        group_cols = ["billboard_week"]
+        if "l1_id" in df.columns:
+            group_cols.append("l1_id")
+        group_cols.extend(["track_id", "track_name", "artist_name"])
         album_choice = choose_representative_album(df, group_cols)
         if {"play_count", "total_ms"} <= set(df.columns):
             weekly = (
@@ -96,7 +102,7 @@ def compute_weekly_rankings(_df, top_n, pre_agg=None, merge_level: int = 2):
     # Tiebreaker: sort by play_count DESC, then total_ms DESC
     weekly = _stable_weekly_sort(
         weekly,
-        id_columns=("track_id",),
+        id_columns=("l1_id", "track_id"),
         text_columns=("artist_name", "track_name"),
     )
     weekly["rank"] = weekly.groupby("billboard_week").cumcount() + 1
@@ -124,6 +130,49 @@ def _apply_track_groups(df: pd.DataFrame, merge_level: int = 2) -> None:
         if keys.empty:
             return
         keys = keys.copy()
+        if "l1_id" in df.columns and "track_agg_l1_id" in keys.columns:
+            if "representative_track_id" not in df.columns:
+                # Pre-aggregates retain the representative source row in
+                # track_id for metadata joins. Preserve it before exposing the
+                # L1 identity as the public track_id below.
+                df["representative_track_id"] = df["track_id"]
+            for column in ("l1_id", "track_id", "representative_track_id"):
+                df[column] = pd.to_numeric(df[column], errors="raise").astype("int64")
+            keys["_scope_rank"] = keys["track_group_scope"].map(
+                {"composition": 0, "recording": 1} if merge_level >= 3 else {"recording": 0}
+            )
+            keys = keys.sort_values(["l1_id", "_scope_rank", "track_agg_l1_id"]).drop_duplicates(
+                "l1_id"
+            )
+            key_map = keys.set_index("l1_id")
+            df["_track_agg_l1_id"] = df["l1_id"].map(key_map["track_agg_l1_id"])
+            df["_track_agg_id"] = df["l1_id"].map(key_map["track_agg_id"])
+            df["_representative_track_agg_id"] = df["l1_id"].map(
+                key_map["representative_track_agg_id"]
+            )
+            df["_track_agg_name"] = df["l1_id"].map(key_map["track_agg_name"])
+            mask = df["_track_agg_l1_id"].notna()
+            df.loc[mask, "l1_id"] = df.loc[mask, "_track_agg_l1_id"].astype(int)
+            df.loc[mask, "representative_track_id"] = df.loc[
+                mask, "_representative_track_agg_id"
+            ].astype(int)
+            df.loc[mask, "track_name"] = df.loc[mask, "_track_agg_name"]
+            if "album_name" in df.columns:
+                _canonicalize_album_name(df, mask, conn)
+            df.drop(
+                columns=[
+                    "_track_agg_l1_id",
+                    "_track_agg_id",
+                    "_representative_track_agg_id",
+                    "_track_agg_name",
+                ],
+                inplace=True,
+            )
+            # From this boundary onward track_id is an entity identity, not a
+            # mutable source-row pointer. Consumers needing display metadata
+            # must use representative_track_id explicitly.
+            df["track_id"] = df["l1_id"].astype("int64")
+            return
         keys["_scope_rank"] = keys["track_group_scope"].map(
             {"composition": 0, "recording": 1} if merge_level >= 3 else {"recording": 0}
         )
@@ -152,7 +201,12 @@ def _canonicalize_album_name(df, mask, conn):
     """For rows mapped to a track group, set album_name to the
     primary track's album so all versions share the same album.
     """
-    primary_ids = df.loc[mask, "_track_agg_id"].dropna().astype(int).unique()
+    mapping_column = (
+        "_representative_track_agg_id"
+        if "_representative_track_agg_id" in df.columns
+        else "_track_agg_id"
+    )
+    primary_ids = df.loc[mask, mapping_column].dropna().astype(int).unique()
     if len(primary_ids) == 0:
         return
 
@@ -167,9 +221,9 @@ def _canonicalize_album_name(df, mask, conn):
     ).fetchall()
 
     album_map = {row[0]: row[1] for row in rows}
-    # _track_agg_id is the primary_track_id; map to canonical album_name
+    # Map the representative local track row to canonical album metadata.
     df.loc[mask, "album_name"] = (
-        df.loc[mask, "_track_agg_id"].map(album_map).fillna(df.loc[mask, "album_name"])
+        df.loc[mask, mapping_column].map(album_map).fillna(df.loc[mask, "album_name"])
     )
 
 

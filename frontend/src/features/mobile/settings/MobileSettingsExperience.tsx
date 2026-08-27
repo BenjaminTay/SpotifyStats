@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState, type ComponentType, type ReactNode, type SelectHTMLAttributes } from 'react'
 import {
   ArrowLeft,
   BarChart3,
@@ -27,6 +27,12 @@ import { cn } from '@/lib/utils'
 import { PwaInstallCard } from './PwaInstallCard'
 import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 import type { RuntimeCapabilities } from '@/hooks/runtimeCapabilities'
+
+const VersionMergeSection = lazy(() =>
+  import('@/features/settings/components/VersionMergeSection').then((module) => ({
+    default: module.VersionMergeSection,
+  })),
+)
 
 type Panel = 'appearance' | 'playback' | 'billboard' | 'spotify' | 'data' | 'ai' | 'advanced'
 
@@ -176,6 +182,10 @@ export function MobileSettingsExperience({
   }, [onFetchProfiles, panel])
 
   const metadataSummary = useMemo(() => {
+    if (metadataTarget === 'merge' || metadataTarget === 'version-merge' || metadataTarget === 'track-merge') {
+      const trackId = searchParams.get('track_id')
+      return trackId ? `歌曲版本归并 · Track ${trackId}` : '归并与版本'
+    }
     if (metadataTarget === 'track-credits') {
       const trackId = searchParams.get('track_id')
       return trackId ? `曲目署名 · Track ${trackId}` : '曲目署名'
@@ -272,9 +282,9 @@ export function MobileSettingsExperience({
           <SettingRow label="合并连续播放" description="连续播放同一曲目合并为一次">
             <Switch checked={settings.merge_enabled} label="合并连续播放" onChange={(next) => updateAndRebuild({ merge_enabled: next })} />
           </SettingRow>
-          <SettingRow label="统计合并级别" description="L1 原始版本，L3 合并到作品">
-            <SelectField value={mergeLevel} onChange={(event) => { const next = Number(event.target.value); setMergeLevel(next); setDefaultMergeLevel(next); onRequiresRebuild() }} aria-label="统计合并级别">
-              <option value={1}>L1 原始</option><option value={2}>L2 发行项目</option><option value={3}>L3 作品</option>
+          <SettingRow label="统计归并级别" description="基础身份由系统治理；可选同录音或同作品">
+            <SelectField value={mergeLevel} onChange={(event) => { const next = event.target.value === '3' ? 3 : 2; setMergeLevel(next); setDefaultMergeLevel(next); onRequiresRebuild() }} aria-label="统计归并级别">
+              <option value={2}>L2 同录音 / 同发行项目</option><option value={3}>L3 同作品 / 同专辑项目</option>
             </SelectField>
           </SettingRow>
           {settings.merge_enabled && (
@@ -402,6 +412,39 @@ export function MobileSettingsExperience({
           {profilesLoading && <p className="mobile-settings-notice">正在加载配置档案…</p>}
           {profileMessage && <p className="mobile-settings-notice">{profileMessage}</p>}
           <p className="mobile-settings-explanation"><Laptop className="h-4 w-4" />新增档案、修改模型地址或 API 密钥，请在电脑端设置中完成。</p>
+        </div>
+      )
+    }
+
+    const isMergeTarget = metadataTarget === 'merge'
+      || metadataTarget === 'version-merge'
+      || metadataTarget === 'track-merge'
+      || metadataTarget === 'album-projects'
+    if (isMergeTarget && capabilities.metadata_governance) {
+      const trackIdValue = Number(searchParams.get('track_id'))
+      const initialTrackId = Number.isInteger(trackIdValue) && trackIdValue > 0 ? trackIdValue : null
+      const initialObjectType = metadataTarget === 'album-projects' || searchParams.get('merge_type') === 'album'
+        ? 'album'
+        : 'track'
+      return (
+        <div className="space-y-4">
+          <div className="mobile-settings-deep-link">
+            <ShieldCheck className="h-5 w-5" />
+            <div><strong>已定位归并任务</strong><span>{metadataSummary}</span></div>
+          </div>
+          <Suspense fallback={<div className="mobile-settings-panel-card">正在加载归并工作台…</div>}>
+            <VersionMergeSection
+              initialArtistFilter={searchParams.get('artist') ?? ''}
+              initialCanonicalName={searchParams.get('album_name') ?? ''}
+              initialObjectType={initialObjectType}
+              initialTrackId={initialTrackId}
+            />
+          </Suspense>
+          {searchParams.get('return_to') && (
+            <Link className="mobile-secondary-button w-full" to={searchParams.get('return_to') || '/'}>
+              返回原页面 <ExternalLink className="h-4 w-4" />
+            </Link>
+          )}
         </div>
       )
     }

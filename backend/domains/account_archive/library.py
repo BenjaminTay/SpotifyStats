@@ -177,9 +177,22 @@ def _track_page(
             "al.image_path" if has_album_mapping and "image_path" in album_columns else "NULL"
         )
         image_url = "al.image_url" if has_album_mapping and "image_url" in album_columns else "NULL"
-        catalog_fields = f"t.track_id, {album_id}, {image_path}, {image_url}"
+        has_l1 = _table_exists(conn, "track_l1_external_ids")
+        l1_id = "COALESCE(li.l1_id, t.track_id)" if has_l1 else "t.track_id"
+        identity_join = (
+            "LEFT JOIN track_l1_external_ids external ON external.provider='spotify' "
+            "AND external.external_track_id=COALESCE("
+            "NULLIF(st.spotify_track_id, ''), NULLIF(t.spotify_track_id, '')) "
+            "LEFT JOIN track_l1_identities li ON (li.l1_id=external.l1_id) "
+            "OR (li.fallback_track_id=t.track_id AND "
+            "COALESCE(NULLIF(st.spotify_track_id, ''), NULLIF(t.spotify_track_id, '')) IS NULL)"
+            if has_l1
+            else ""
+        )
+        catalog_fields = f"{l1_id}, {album_id}, {image_path}, {image_url}"
         catalog_join = f"""
         LEFT JOIN tracks t ON t.track_id = {lookup}
+        {identity_join}
         {album_join}
         """
     else:

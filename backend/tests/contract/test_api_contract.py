@@ -340,8 +340,8 @@ class TestAnalysisRecordsEndpoint:
         assert rec["longevity"]["longest_streak_days"]["track"] == []
 
     def test_records_merge_level_shape_stable(self, client):
-        """Shape contract: merge_level=1 and merge_level=2 both return valid nested structure."""
-        for ml in [1, 2]:
+        """Shape contract: both public L2/L3 modes return the same nested structure."""
+        for ml in [2, 3]:
             r = client.get(
                 "/api/analysis/records",
                 params={

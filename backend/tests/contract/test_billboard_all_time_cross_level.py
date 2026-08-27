@@ -92,13 +92,13 @@ def test_records_endpoint_forwards_merge_and_compilation_context(client, monkeyp
     response = client.get(
         "/api/billboard/records",
         params={
-            "merge_level": 1,
+            "merge_level": 2,
             "merge_enabled": "false",
             "include_compilations": "true",
         },
     )
 
     assert response.status_code == 200, response.text
-    assert captured["merge_level"] == 1
+    assert captured["merge_level"] == 2
     assert captured["merge_enabled"] is False
     assert captured["include_compilations"] is True

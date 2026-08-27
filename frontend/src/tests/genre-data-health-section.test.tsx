@@ -350,6 +350,14 @@ describe('GenreDataHealthSection', () => {
     expect(screen.getByRole('tab', { name: '分类审计' })).toBeInTheDocument()
   })
 
+  it('does not repeat the parent tab title when embedded in music metadata management', async () => {
+    mockArtistGenreApi()
+    renderWithClient(<GenreDataHealthSection embedded />)
+
+    await screen.findByText('Spotify')
+    expect(screen.queryByRole('heading', { name: '流派与语言数据健康' })).not.toBeInTheDocument()
+  })
+
   it('shows canonical taxonomy audit without terminal commands', async () => {
     const user = userEvent.setup()
     mockArtistGenreApi()

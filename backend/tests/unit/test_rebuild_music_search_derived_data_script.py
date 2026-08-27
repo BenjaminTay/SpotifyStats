@@ -20,7 +20,7 @@ pytestmark = pytest.mark.unit
 
 def _raw_variants(*, failed_key: tuple[int, bool] | None = None) -> list[dict[str, Any]]:
     variants: list[dict[str, Any]] = []
-    for merge_level in (1, 2, 3):
+    for merge_level in (2, 3):
         for dynamic_threshold in (False, True):
             key = (merge_level, dynamic_threshold)
             variants.append(
@@ -51,7 +51,7 @@ def _raw_report(
         "snapshot_set": {
             "status": "ready",
             "semantic_base_key": "semantic-base-test",
-            "ready_count": 6,
+            "ready_count": 4,
             "failed_count": 0,
             "duration_ms": 42.75,
             "variants": variants if variants is not None else _raw_variants(),
@@ -70,8 +70,8 @@ def _success_report(
         require_all_ready=require_all_ready,
         prior_inventory=prior_inventory or {},
         base_counts={
-            "row_count": 6,
-            "unique_fingerprint_count": 6,
+            "row_count": 4,
+            "unique_fingerprint_count": 4,
             "duplicate_fingerprint_count": 0,
         },
         migration={
@@ -176,9 +176,9 @@ def test_success_report_is_complete_and_privacy_safe(monkeypatch) -> None:
     assert report["resources"]["peak_rss_bytes"] == 128 * 1024 * 1024
     assert report["resources"]["peak_rss_mib"] == 128.0
     assert report["storage"]["delta"]["combined_bytes"] == 50
-    assert report["gate"]["all_six_ready"] is True
+    assert report["gate"]["all_four_ready"] is True
     assert report["gate"]["passed"] is True
-    assert len(report["variants"]) == 6
+    assert len(report["variants"]) == 4
     assert set(report["variants"][0]) == {
         "merge_level",
         "dynamic_threshold",
@@ -201,11 +201,11 @@ def test_any_reported_non_ready_variant_fails_even_without_strict_flag() -> None
         require_all_ready=False,
     )
 
-    assert report["gate"]["reported_variant_count"] == 6
-    assert report["gate"]["ready_variant_count"] == 5
+    assert report["gate"]["reported_variant_count"] == 4
+    assert report["gate"]["ready_variant_count"] == 3
     assert report["gate"]["all_reported_ready"] is False
     assert report["gate"]["passed"] is False
-    assert report["variants"][4]["failure_type"] == "PrivateEntityMustNotLeak"
+    assert report["variants"][2]["failure_type"] == "PrivateEntityMustNotLeak"
 
 
 def test_require_all_ready_rejects_an_incomplete_variant_set() -> None:
@@ -267,10 +267,10 @@ def test_snapshot_only_second_run_is_reported_as_idempotent_revalidation(
         "classification": "revalidated_existing_snapshot_set",
         "documents_rebuilt": False,
         "documents_reused": True,
-        "preexisting_ready_variant_count": 6,
+        "preexisting_ready_variant_count": 4,
         "all_variants_preexisting_ready": True,
-        "snapshot_rows_for_semantic_base": 6,
-        "unique_fingerprint_count": 6,
+        "snapshot_rows_for_semantic_base": 4,
+        "unique_fingerprint_count": 4,
         "duplicate_fingerprint_count": 0,
         "repeat_safe": True,
     }
@@ -370,7 +370,7 @@ def test_main_returns_nonzero_for_any_non_ready_variant_without_strict_flag(
 
     assert exit_code == 1
     assert report["gate"]["require_all_ready"] is False
-    assert report["gate"]["ready_variant_count"] == 5
+    assert report["gate"]["ready_variant_count"] == 3
     assert report["gate"]["passed"] is False
 
 

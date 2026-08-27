@@ -1029,7 +1029,7 @@ def run_audit(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--years", type=parse_years, required=True)
-    parser.add_argument("--merge-level", type=int, choices=(1, 2, 3), default=2)
+    parser.add_argument("--merge-level", type=int, choices=(2, 3), default=2)
     parser.add_argument("--json-output", type=Path, required=True)
     parser.add_argument("--top-sample", type=int, default=DEFAULT_TOP_SAMPLE)
     parser.add_argument("--min-sample-plays", type=int, default=DEFAULT_MIN_SAMPLE_PLAYS)

@@ -39,7 +39,7 @@ def build_tail_track_logical_delta(
     preceding same-track/source merge run; it raises when the generation is
     not a provable tail append.
 
-    Rows are keyed by both ``track_id`` and ``source_album_id``.  Keeping the
+    Rows are keyed by both canonical track identity and ``source_album_id``. Keeping the
     source boundary is important even for lifetime metrics: adjacent plays of
     the same track from different source albums are separate logical runs.
     """
@@ -78,7 +78,7 @@ def project_track_logical_delta(
 ) -> pd.DataFrame:
     """Project one physical-track delta to an L1/L2/L3 track key space.
 
-    L1 preserves physical ``track_id`` values.  L2/L3 callers must supply the
+    The internal base projection preserves canonical local identities. L2/L3 callers supply the
     corresponding track-group mapping (normally ``load_track_group_keys``).
     Unmapped tracks correctly retain their physical ID.  Conflicting mappings
     fail closed rather than double-counting one contribution.
@@ -128,12 +128,13 @@ def _event_contributions(events: pd.DataFrame, *, sign: int) -> pd.DataFrame:
         raise ValueError("contribution sign must be -1 or 1")
     if events.empty:
         return _empty_track_logical_delta()
-    missing = {"track_id", "ms_played"} - set(events.columns)
+    identity_column = "l1_id" if "l1_id" in events.columns else "track_id"
+    missing = {identity_column, "ms_played"} - set(events.columns)
     if missing:
         raise ValueError(f"logical event frame missing columns: {sorted(missing)}")
 
     contribution = pd.DataFrame(index=events.index)
-    track_ids = pd.to_numeric(events["track_id"], errors="coerce")
+    track_ids = pd.to_numeric(events[identity_column], errors="coerce")
     if track_ids.isna().any():
         raise ValueError("logical event frame contains an invalid track_id")
     contribution["track_id"] = track_ids.astype("int64")

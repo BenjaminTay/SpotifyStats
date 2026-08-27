@@ -333,6 +333,7 @@ def search_track_credit_tracks(
     conn: sqlite3.Connection, query: str, limit: int = 20
 ) -> list[dict[str, Any]]:
     pattern = f"%{query.strip()}%"
+    exact_track_id = int(query.strip()) if query.strip().isdigit() else -1
     rows = conn.execute(
         """SELECT t.track_id, t.track_name, t.spotify_track_id,
                   a.artist_name, al.album_name, COUNT(p.play_id) AS play_count,
@@ -345,10 +346,20 @@ def search_track_credit_tracks(
               OR a.artist_name LIKE ? COLLATE NOCASE
               OR COALESCE(al.album_name, '') LIKE ? COLLATE NOCASE
               OR COALESCE(t.spotify_track_id, '')=?
+              OR t.track_id=?
            GROUP BY t.track_id
-           ORDER BY (COUNT(p.play_id) > 0) DESC, COUNT(p.play_id) DESC, t.track_name, t.track_id
+           ORDER BY (t.track_id = ?) DESC, (COUNT(p.play_id) > 0) DESC,
+                    COUNT(p.play_id) DESC, t.track_name, t.track_id
            LIMIT ?""",
-        (pattern, pattern, pattern, query.strip(), limit),
+        (
+            pattern,
+            pattern,
+            pattern,
+            query.strip(),
+            exact_track_id,
+            exact_track_id,
+            limit,
+        ),
     ).fetchall()
     names = canonical_artist_names_for_effective_tracks(
         conn, [int(row["track_id"]) for row in rows]

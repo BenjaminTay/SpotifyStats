@@ -93,17 +93,16 @@ def run_post_streaming_import_maintenance(
         )
         cover_seconds = time.perf_counter() - cover_started
 
-        _progress(progress_callback, "合并重复曲目（spotify_track_id）...", 0.80)
+        _progress(progress_callback, "同步基础曲目身份...", 0.80)
         grouping_started = time.perf_counter()
-        groups_created, members_added = _auto_group_tracks_by_spotify_id(
-            conn,
-            track_ids=(
-                change_set.track_ids if targeted_change and change_set is not None else None
-            ),
-            spotify_track_ids=(
-                metadata_report.spotify_track_ids_updated if targeted_change else None
-            ),
+        from backend.domains.metadata.track_identity import (
+            synchronize_track_identity_projection,
         )
+
+        synchronize_track_identity_projection(conn)
+        # Kept in the maintenance report for backward-compatible diagnostics.
+        # Same-provider ids are identities now, never automatic L2 groups.
+        groups_created, members_added = 0, 0
         grouping_seconds = time.perf_counter() - grouping_started
 
         _progress(progress_callback, "重建 album projects...", 0.84)
@@ -317,155 +316,11 @@ def _auto_group_tracks_by_spotify_id(
     track_ids: frozenset[int] | None = None,
     spotify_track_ids: frozenset[str] | None = None,
 ) -> tuple[int, int]:
-    """Create recording-scope track groups for tracks sharing a spotify_track_id
-    WITHIN THE SAME ARTIST.  Cross-artist spotify_track_id matches are metadata
-    errors and must not be merged.
+    """Retired compatibility shim.
 
-    Returns (groups_created, members_added).
+    A Spotify id has one canonical owner through ``track_l1_external_ids``.
+    Creating an L2 group for duplicate source rows would manufacture a version
+    relation, so import maintenance deliberately performs no grouping here.
     """
-    if track_ids is not None or spotify_track_ids is not None:
-        impacted_pairs: set[tuple[str, int]] = set()
-        for column, values in (
-            ("track_id", sorted(track_ids or ())),
-            ("spotify_track_id", sorted(spotify_track_ids or ())),
-        ):
-            for offset in range(0, len(values), 800):
-                chunk = values[offset : offset + 800]
-                placeholders = ",".join("?" for _ in chunk)
-                impacted_pairs.update(
-                    (str(row[0]), int(row[1]))
-                    for row in conn.execute(
-                        f"""SELECT DISTINCT spotify_track_id, artist_id
-                            FROM tracks
-                            WHERE {column} IN ({placeholders})
-                              AND spotify_track_id IS NOT NULL
-                              AND spotify_track_id != ''""",
-                        chunk,
-                    ).fetchall()
-                )
-        return _auto_group_impacted_spotify_pairs(conn, impacted_pairs)
-
-    impacted_pairs = {
-        (str(row[0]), int(row[1]))
-        for row in conn.execute(
-            """SELECT spotify_track_id, artist_id
-               FROM tracks
-               WHERE spotify_track_id IS NOT NULL AND spotify_track_id != ''
-               GROUP BY spotify_track_id, artist_id
-               HAVING COUNT(*) > 1"""
-        ).fetchall()
-    }
-    return _auto_group_impacted_spotify_pairs(conn, impacted_pairs)
-
-
-def _auto_group_impacted_spotify_pairs(
-    conn,
-    impacted_pairs: set[tuple[str, int]],
-) -> tuple[int, int]:
-    """Group only Spotify identities whose local evidence changed this run."""
-
-    groups_created = 0
-    members_added = 0
-    for spotify_track_id, artist_id in sorted(impacted_pairs):
-        tracks = conn.execute(
-            """SELECT t.track_id, t.track_name, COUNT(p.play_id) AS play_count
-               FROM tracks t
-               LEFT JOIN plays p ON p.track_id=t.track_id
-               WHERE t.spotify_track_id=? AND t.artist_id=?
-               GROUP BY t.track_id, t.track_name
-               ORDER BY play_count DESC, t.track_id
-               """,
-            (spotify_track_id, artist_id),
-        ).fetchall()
-        if len(tracks) <= 1:
-            continue
-        primary_track_id = int(tracks[0][0])
-        canonical_name = str(tracks[0][1])
-        pair_track_ids = [int(track[0]) for track in tracks]
-        placeholders = ",".join("?" for _ in pair_track_ids)
-        identity_owner = conn.execute(
-            """SELECT group_id FROM track_groups
-               WHERE scope='recording' AND is_manual=0
-                 AND automatic_spotify_track_id=? AND automatic_artist_id=?
-               ORDER BY group_id LIMIT 1""",
-            (spotify_track_id, artist_id),
-        ).fetchone()
-        existing_groups = [
-            int(row[0])
-            for row in conn.execute(
-                f"""SELECT DISTINCT tg.group_id
-                    FROM track_groups tg
-                    LEFT JOIN track_group_members tgm ON tgm.group_id=tg.group_id
-                    WHERE tg.scope='recording' AND tg.is_manual=0
-                      AND (
-                        (tg.automatic_spotify_track_id=? AND tg.automatic_artist_id=?)
-                        OR (
-                          tg.automatic_spotify_track_id IS NULL
-                          AND (tg.primary_track_id IN ({placeholders})
-                               OR tgm.track_id IN ({placeholders}))
-                        )
-                      )
-                    ORDER BY tg.group_id""",
-                (spotify_track_id, artist_id) + tuple(pair_track_ids) + tuple(pair_track_ids),
-            ).fetchall()
-        ]
-        manual_primary_owner = conn.execute(
-            """SELECT group_id FROM track_groups
-               WHERE primary_track_id=? AND scope='recording' AND is_manual=1
-               ORDER BY group_id LIMIT 1""",
-            (primary_track_id,),
-        ).fetchone()
-        if manual_primary_owner is not None:
-            # Manual governance owns this primary identity.  Remove only
-            # competing automatic groups; never mutate the manual group.
-            conn.executemany(
-                "DELETE FROM track_group_members WHERE group_id=?",
-                ((group_id,) for group_id in existing_groups),
-            )
-            conn.executemany(
-                "DELETE FROM track_groups WHERE group_id=? AND is_manual=0",
-                ((group_id,) for group_id in existing_groups),
-            )
-            continue
-
-        if existing_groups:
-            owner_id = int(identity_owner[0]) if identity_owner is not None else None
-            group_id = owner_id if owner_id in existing_groups else existing_groups[0]
-            duplicate_ids = [value for value in existing_groups if value != group_id]
-            for duplicate_id in duplicate_ids:
-                conn.execute(
-                    """INSERT OR IGNORE INTO track_group_members(group_id, track_id)
-                       SELECT ?, track_id FROM track_group_members WHERE group_id=?""",
-                    (group_id, duplicate_id),
-                )
-                conn.execute("DELETE FROM track_group_members WHERE group_id=?", (duplicate_id,))
-                conn.execute(
-                    "DELETE FROM track_groups WHERE group_id=? AND is_manual=0",
-                    (duplicate_id,),
-                )
-            conn.execute(
-                """UPDATE track_groups
-                   SET primary_track_id=?, canonical_name=?,
-                       automatic_spotify_track_id=?, automatic_artist_id=?
-                   WHERE group_id=? AND is_manual=0""",
-                (primary_track_id, canonical_name, spotify_track_id, artist_id, group_id),
-            )
-        else:
-            cursor = conn.execute(
-                """INSERT INTO track_groups
-                   (canonical_name, primary_track_id, scope, is_manual,
-                    automatic_spotify_track_id, automatic_artist_id)
-                   VALUES (?, ?, 'recording', 0, ?, ?)""",
-                (canonical_name, primary_track_id, spotify_track_id, artist_id),
-            )
-            groups_created += max(cursor.rowcount, 0)
-            group_id = int(cursor.lastrowid)
-
-        before = conn.total_changes
-        conn.executemany(
-            """INSERT OR IGNORE INTO track_group_members(group_id, track_id)
-               VALUES (?, ?)""",
-            ((group_id, track_id) for track_id in pair_track_ids),
-        )
-        members_added += conn.total_changes - before
-    return groups_created, members_added
+    del conn, track_ids, spotify_track_ids
+    return (0, 0)

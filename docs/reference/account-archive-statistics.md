@@ -143,7 +143,7 @@ track interaction burst
 → played_at <= added_date <= interaction_at + 30d，且该曲目仍在当前收藏快照
 ```
 
-每一级按 burst 去重；同一 burst 内多条曲目 interaction 只计一次。播放事件继续复用全局有效播放、连续同曲合并和 L1/L2/L3 归并口径。
+每一级按 burst 去重；同一 burst 内多条曲目 interaction 只计一次。播放事件继续复用全局有效播放、连续同曲合并、canonical track 基础归属和 L2/L3 归并口径。
 
 最后一级正式名称为“观察到播放后 30 天内进入当前收藏”，不是搜索转化率。原因包括：interaction URI 覆盖很低；只保留第一个 URI；当前收藏快照看不到已经取消收藏的曲目；缺少明确的收藏快照截止时间。接口因此只返回数量，`display_status=count_only`，不返回百分比或因果文案。
 

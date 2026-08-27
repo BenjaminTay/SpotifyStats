@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 47
+LATEST_SCHEMA_VERSION = 58
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -1185,7 +1185,7 @@ def migrate_034(conn: sqlite3.Connection):
     Existing snapshots were fingerprinted from table scans and did not encode
     their merge-level / dynamic-threshold variant explicitly.  They therefore
     cannot be proven compatible with the v2 reader and must fail closed until
-    the six-variant snapshot set has been rebuilt.
+    the four public L2/L3 snapshot variants have been rebuilt.
     """
     conn.executescript(
         """
@@ -1927,6 +1927,1226 @@ def migrate_047(conn: sqlite3.Connection):
         )
     finally:
         conn.execute("PRAGMA foreign_keys=ON")
+
+
+@migration(48, "canonical_track_identity")
+def migrate_048(conn: sqlite3.Connection):
+    """Create and backfill local canonical track identities.
+
+    Historical ``track_id`` values are import dimension rows and can be both
+    split across one Spotify id and shared by several play-time Spotify ids.
+    A provider id gets one deterministic local owner, while the schema allows
+    several verified provider ids to belong to the same local identity.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS track_l1_identities (
+            l1_id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider                TEXT NOT NULL DEFAULT 'local',
+            external_track_id       TEXT,
+            fallback_track_id       INTEGER REFERENCES tracks(track_id),
+            identity_status         TEXT NOT NULL DEFAULT 'active'
+                                    CHECK(identity_status IN ('active', 'unresolved', 'superseded')),
+            representative_track_id INTEGER REFERENCES tracks(track_id),
+            created_at              TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_track_l1_local_identity
+            ON track_l1_identities(fallback_track_id)
+            WHERE fallback_track_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_track_l1_representative
+            ON track_l1_identities(representative_track_id);
+
+        CREATE TABLE IF NOT EXISTS track_l1_external_ids (
+            provider          TEXT NOT NULL,
+            external_track_id TEXT NOT NULL,
+            l1_id             INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            evidence_type     TEXT NOT NULL DEFAULT 'provider_observed'
+                              CHECK(evidence_type IN (
+                                  'provider_observed', 'provider_relink',
+                                  'manual_confirmed', 'migration'
+                              )),
+            is_primary        INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0, 1)),
+            first_seen_at     TEXT,
+            last_seen_at      TEXT,
+            created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY(provider, external_track_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_l1_external_owner
+            ON track_l1_external_ids(l1_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_track_l1_primary_external
+            ON track_l1_external_ids(l1_id, provider)
+            WHERE is_primary=1;
+
+        CREATE TABLE IF NOT EXISTS track_l1_source_links (
+            l1_id          INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            track_id       INTEGER NOT NULL REFERENCES tracks(track_id),
+            evidence_type  TEXT NOT NULL
+                           CHECK(evidence_type IN ('play_at_time', 'track_projection', 'manual')),
+            observed_plays INTEGER NOT NULL DEFAULT 0 CHECK(observed_plays >= 0),
+            first_seen_at  TEXT,
+            last_seen_at   TEXT,
+            PRIMARY KEY(l1_id, track_id, evidence_type)
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_l1_source_track
+            ON track_l1_source_links(track_id);
+
+        CREATE TABLE IF NOT EXISTS track_identity_events (
+            event_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            action          TEXT NOT NULL
+                            CHECK(action IN ('merge', 'split', 'attach_external_id')),
+            survivor_l1_id  INTEGER REFERENCES track_l1_identities(l1_id),
+            affected_l1_ids TEXT NOT NULL DEFAULT '[]',
+            before_json     TEXT NOT NULL DEFAULT '{}',
+            after_json      TEXT NOT NULL DEFAULT '{}',
+            reason          TEXT,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_identity_events_survivor
+            ON track_identity_events(survivor_l1_id, event_id);
+
+        CREATE TABLE IF NOT EXISTS track_identity_state (
+            state_id         INTEGER PRIMARY KEY CHECK(state_id = 1),
+            current_revision INTEGER NOT NULL DEFAULT 0,
+            policy_version   TEXT NOT NULL DEFAULT 'canonical_track_v2',
+            updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO track_identity_state(
+            state_id, current_revision, policy_version
+        ) VALUES (1, 0, 'canonical_track_v2');
+
+        CREATE TEMP TABLE _spotify_identity_seed AS
+        SELECT spotify_track_id,
+               MIN(representative_track_id) AS representative_track_id,
+               (SELECT COALESCE(MAX(l1_id), 0) FROM track_l1_identities)
+                   + ROW_NUMBER() OVER (ORDER BY spotify_track_id) AS l1_id
+          FROM (
+                SELECT spotify_track_id_at_play AS spotify_track_id,
+                       MIN(track_id) AS representative_track_id
+                  FROM plays
+                 WHERE spotify_track_id_at_play IS NOT NULL
+                   AND spotify_track_id_at_play != ''
+                 GROUP BY spotify_track_id_at_play
+                UNION ALL
+                SELECT spotify_track_id, MIN(track_id)
+                  FROM tracks
+                 WHERE spotify_track_id IS NOT NULL AND spotify_track_id != ''
+                 GROUP BY spotify_track_id
+               )
+         GROUP BY spotify_track_id;
+
+        INSERT INTO track_l1_identities(
+            l1_id, provider, external_track_id,
+            identity_status, representative_track_id
+        )
+        SELECT l1_id, 'spotify', spotify_track_id,
+               'active', representative_track_id
+          FROM _spotify_identity_seed
+         ORDER BY spotify_track_id;
+
+        INSERT INTO track_l1_external_ids(
+            provider, external_track_id, l1_id, evidence_type, is_primary
+        )
+        SELECT 'spotify', seed.spotify_track_id, seed.l1_id,
+               'migration', 1
+          FROM _spotify_identity_seed seed
+         WHERE NOT EXISTS (
+               SELECT 1 FROM track_l1_external_ids existing
+                WHERE existing.provider='spotify'
+                  AND existing.external_track_id=seed.spotify_track_id
+         );
+        DROP TABLE _spotify_identity_seed;
+
+        INSERT OR IGNORE INTO track_l1_identities(
+            provider, fallback_track_id, identity_status,
+            representative_track_id
+        )
+        SELECT 'local', t.track_id, 'unresolved', t.track_id
+          FROM tracks t
+         WHERE (t.spotify_track_id IS NULL OR t.spotify_track_id = '')
+           AND (
+                EXISTS (SELECT 1 FROM plays p WHERE p.track_id=t.track_id)
+                OR EXISTS (
+                    SELECT 1 FROM track_group_members tgm
+                     WHERE tgm.track_id=t.track_id
+                )
+           );
+
+        INSERT OR REPLACE INTO track_l1_source_links(
+            l1_id, track_id, evidence_type, observed_plays,
+            first_seen_at, last_seen_at
+        )
+        SELECT li.l1_id, p.track_id, 'play_at_time', COUNT(*), MIN(p.ts), MAX(p.ts)
+          FROM plays p
+          JOIN track_l1_external_ids external
+            ON external.provider='spotify'
+           AND external.external_track_id=p.spotify_track_id_at_play
+          JOIN track_l1_identities li ON li.l1_id=external.l1_id
+         WHERE p.track_id IS NOT NULL
+           AND p.spotify_track_id_at_play IS NOT NULL
+           AND p.spotify_track_id_at_play != ''
+         GROUP BY li.l1_id, p.track_id;
+
+        INSERT OR IGNORE INTO track_l1_source_links(
+            l1_id, track_id, evidence_type, observed_plays
+        )
+        SELECT li.l1_id, t.track_id, 'track_projection', 0
+          FROM tracks t
+          JOIN track_l1_external_ids external
+            ON external.provider='spotify'
+           AND external.external_track_id=t.spotify_track_id
+          JOIN track_l1_identities li ON li.l1_id=external.l1_id
+         WHERE t.spotify_track_id IS NOT NULL AND t.spotify_track_id != '';
+
+        INSERT OR IGNORE INTO track_l1_source_links(
+            l1_id, track_id, evidence_type, observed_plays
+        )
+        SELECT li.l1_id, li.fallback_track_id, 'track_projection', 0
+          FROM track_l1_identities li
+         WHERE li.fallback_track_id IS NOT NULL;
+        """
+    )
+
+    spotify_rows = conn.execute(
+        """SELECT identities.l1_id, external.external_track_id
+             FROM track_l1_identities identities
+             JOIN track_l1_external_ids external ON external.l1_id=identities.l1_id
+            WHERE external.provider='spotify'
+              AND identities.representative_track_id IS NULL"""
+    ).fetchall()
+    for l1_id, spotify_track_id in spotify_rows:
+        representative = conn.execute(
+            """SELECT links.track_id
+                 FROM (
+                       SELECT track_id, observed_plays
+                         FROM track_l1_source_links
+                        WHERE l1_id=? AND evidence_type='play_at_time'
+                       UNION ALL
+                       SELECT track_id, 0
+                         FROM track_l1_source_links
+                        WHERE l1_id=? AND evidence_type='track_projection'
+                      ) links
+                 JOIN tracks t ON t.track_id=links.track_id
+                 LEFT JOIN artists a ON a.artist_id=t.artist_id
+                GROUP BY links.track_id
+                ORDER BY MAX(links.observed_plays) DESC,
+                         CASE WHEN a.artist_id IS NULL THEN 1 ELSE 0 END,
+                         links.track_id
+                LIMIT 1""",
+            (l1_id, l1_id),
+        ).fetchone()
+        if representative is not None:
+            conn.execute(
+                """UPDATE track_l1_identities
+                      SET representative_track_id=?, updated_at=datetime('now')
+                    WHERE l1_id=?""",
+                (int(representative[0]), int(l1_id)),
+            )
+
+    conn.execute(
+        """UPDATE track_identity_state
+              SET current_revision=CASE WHEN current_revision < 1 THEN 1
+                                        ELSE current_revision END,
+                  policy_version='canonical_track_v2',
+                  updated_at=datetime('now')
+            WHERE state_id=1"""
+    )
+
+
+@migration(49, "remove_track_name_artist_uniqueness")
+def migrate_049(conn: sqlite3.Connection):
+    """Allow distinct Spotify L1 rows to share the same title and artist.
+
+    The former index encoded mutable metadata as identity and forced different
+    Spotify ids into one local ``track_id``. Fresh databases no longer declare
+    the equivalent inline UNIQUE constraint in ``SCHEMA``.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_tracks_artist_name")
+
+
+@migration(50, "billboard_track_l1_grain")
+def migrate_050(conn: sqlite3.Connection):
+    """Invalidate legacy track aggregates and make L1 their unique grain."""
+    conn.executescript(
+        """
+        DROP TABLE IF EXISTS agg_weekly_tracks_l1_new;
+        CREATE TABLE agg_weekly_tracks_l1_new (
+            billboard_week TEXT NOT NULL,
+            l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            play_count INTEGER NOT NULL,
+            total_ms INTEGER NOT NULL,
+            PRIMARY KEY (billboard_week, l1_id)
+        );
+        DROP TABLE agg_weekly_tracks;
+        ALTER TABLE agg_weekly_tracks_l1_new RENAME TO agg_weekly_tracks;
+        CREATE INDEX idx_agg_wt_week ON agg_weekly_tracks(billboard_week);
+        CREATE INDEX idx_agg_wt_track ON agg_weekly_tracks(track_id);
+
+        DROP TABLE IF EXISTS agg_weekly_track_sources_l1_new;
+        CREATE TABLE agg_weekly_track_sources_l1_new (
+            billboard_week TEXT NOT NULL,
+            play_date TEXT NOT NULL,
+            l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            source_album_id INTEGER NOT NULL DEFAULT 0,
+            play_count INTEGER NOT NULL,
+            total_ms INTEGER NOT NULL,
+            PRIMARY KEY (billboard_week, play_date, l1_id, source_album_id)
+        );
+        DROP TABLE agg_weekly_track_sources;
+        ALTER TABLE agg_weekly_track_sources_l1_new RENAME TO agg_weekly_track_sources;
+        CREATE INDEX idx_agg_wts_week ON agg_weekly_track_sources(billboard_week);
+        CREATE INDEX idx_agg_wts_track ON agg_weekly_track_sources(track_id);
+        CREATE INDEX idx_agg_wts_l1 ON agg_weekly_track_sources(l1_id);
+
+        DELETE FROM agg_weekly_albums;
+        DELETE FROM agg_weekly_artists;
+        DELETE FROM agg_config;
+        """
+    )
+
+
+@migration(51, "track_groups_l1_membership")
+def migrate_051(conn: sqlite3.Connection):
+    """Move L2/L3 membership from historical track rows to L1 identities."""
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(track_groups)")}
+    if "primary_l1_id" not in columns:
+        conn.execute(
+            "ALTER TABLE track_groups ADD COLUMN primary_l1_id INTEGER REFERENCES track_l1_identities(l1_id)"
+        )
+    if "group_status" not in columns:
+        conn.execute(
+            "ALTER TABLE track_groups ADD COLUMN group_status TEXT NOT NULL DEFAULT 'active' "
+            "CHECK(group_status IN ('active', 'archived', 'conflict'))"
+        )
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS track_group_l1_members (
+            group_id INTEGER NOT NULL REFERENCES track_groups(group_id),
+            l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            PRIMARY KEY(group_id, l1_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_group_l1_member
+            ON track_group_l1_members(l1_id);
+
+        CREATE TABLE IF NOT EXISTS track_group_migration_audit (
+            audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            distinct_l1_count INTEGER NOT NULL,
+            details TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS track_group_candidates (
+            candidate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL CHECK(scope IN ('recording', 'composition')),
+            original_l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            candidate_l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            confidence REAL,
+            evidence_json TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending', 'accepted', 'rejected')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            CHECK(original_l1_id != candidate_l1_id),
+            UNIQUE(scope, original_l1_id, candidate_l1_id)
+        );
+
+        DELETE FROM track_group_l1_members;
+        INSERT OR IGNORE INTO track_group_l1_members(group_id, l1_id)
+        SELECT tgm.group_id, links.l1_id
+          FROM track_group_members tgm
+          JOIN track_l1_source_links links ON links.track_id=tgm.track_id;
+        """
+    )
+
+    groups = conn.execute(
+        "SELECT group_id, scope, is_manual, primary_track_id FROM track_groups ORDER BY group_id"
+    ).fetchall()
+    for group_id, scope, is_manual, primary_track_id in groups:
+        l1_rows = conn.execute(
+            "SELECT l1_id FROM track_group_l1_members WHERE group_id=? ORDER BY l1_id",
+            (int(group_id),),
+        ).fetchall()
+        l1_ids = [int(row[0]) for row in l1_rows]
+        if len(l1_ids) <= 1:
+            conn.execute(
+                "UPDATE track_groups SET group_status='archived', primary_l1_id=? WHERE group_id=?",
+                (l1_ids[0] if l1_ids else None, int(group_id)),
+            )
+            action = "collapsed_same_l1" if l1_ids else "no_resolved_l1"
+        else:
+            primary = None
+            if primary_track_id is not None:
+                row = conn.execute(
+                    """SELECT links.l1_id
+                         FROM track_l1_source_links links
+                         JOIN track_group_l1_members members
+                           ON members.group_id=? AND members.l1_id=links.l1_id
+                        WHERE links.track_id=?
+                        ORDER BY links.observed_plays DESC, links.l1_id
+                        LIMIT 1""",
+                    (int(group_id), int(primary_track_id)),
+                ).fetchone()
+                primary = int(row[0]) if row is not None else None
+            primary = primary or l1_ids[0]
+            if int(is_manual):
+                conn.execute(
+                    "UPDATE track_groups SET group_status='active', primary_l1_id=? WHERE group_id=?",
+                    (primary, int(group_id)),
+                )
+                action = "migrated_cross_l1_manual"
+            else:
+                # Legacy automatic groups were committed under the invalid
+                # track-row identity model. Preserve them as review candidates,
+                # never as accepted L2/L3 facts.
+                conn.execute(
+                    "UPDATE track_groups SET group_status='archived', primary_l1_id=? WHERE group_id=?",
+                    (primary, int(group_id)),
+                )
+                for candidate in l1_ids:
+                    if candidate == primary:
+                        continue
+                    original_l1_id, candidate_l1_id = sorted((primary, candidate))
+                    conn.execute(
+                        """INSERT OR IGNORE INTO track_group_candidates(
+                               scope, original_l1_id, candidate_l1_id,
+                               evidence_json, status
+                           ) VALUES (?, ?, ?, ?, 'pending')""",
+                        (
+                            str(scope),
+                            original_l1_id,
+                            candidate_l1_id,
+                            f'{{"source":"legacy_auto_group","group_id":{int(group_id)}}}',
+                        ),
+                    )
+                action = "archived_auto_candidate"
+        conn.execute(
+            """INSERT INTO track_group_migration_audit(
+                   group_id, action, distinct_l1_count, details
+               ) VALUES (?, ?, ?, ?)""",
+            (int(group_id), action, len(l1_ids), f"scope={scope}"),
+        )
+
+    # One L1 may not belong to multiple active groups at the same scope. Keep
+    # manual groups first, then the oldest deterministic group; quarantine the rest.
+    conflicts = conn.execute(
+        """SELECT members.l1_id, groups.scope
+             FROM track_group_l1_members members
+             JOIN track_groups groups ON groups.group_id=members.group_id
+            WHERE groups.group_status='active'
+            GROUP BY members.l1_id, groups.scope
+           HAVING COUNT(*) > 1"""
+    ).fetchall()
+    for l1_id, scope in conflicts:
+        memberships = conn.execute(
+            """SELECT groups.group_id
+                 FROM track_groups groups
+                 JOIN track_group_l1_members members ON members.group_id=groups.group_id
+                WHERE members.l1_id=? AND groups.scope=? AND groups.group_status='active'
+                ORDER BY groups.is_manual DESC, groups.group_id""",
+            (int(l1_id), str(scope)),
+        ).fetchall()
+        for (group_id,) in memberships[1:]:
+            conn.execute(
+                "UPDATE track_groups SET group_status='conflict' WHERE group_id=?",
+                (int(group_id),),
+            )
+            count = conn.execute(
+                "SELECT COUNT(*) FROM track_group_l1_members WHERE group_id=?",
+                (int(group_id),),
+            ).fetchone()[0]
+            conn.execute(
+                """INSERT INTO track_group_migration_audit(
+                       group_id, action, distinct_l1_count, details
+                   ) VALUES (?, 'quarantined_overlap', ?, ?)""",
+                (int(group_id), int(count), f"l1_id={int(l1_id)};scope={scope}"),
+            )
+
+
+@migration(52, "archive_post_v51_automatic_cross_l1_groups")
+def migrate_052(conn: sqlite3.Connection):
+    """Repair databases migrated by the short-lived permissive v51.
+
+    Automatic groups inferred from raw track rows are not accepted L2/L3
+    facts once L1 is provider identity.  Preserve their evidence as pending
+    candidates and archive the accepted relation.  Manual groups remain active.
+    """
+    groups = conn.execute(
+        """SELECT groups.group_id, groups.scope, groups.primary_l1_id
+             FROM track_groups groups
+             JOIN track_group_l1_members members ON members.group_id=groups.group_id
+            WHERE groups.group_status='active' AND groups.is_manual=0
+            GROUP BY groups.group_id
+           HAVING COUNT(DISTINCT members.l1_id)>1
+            ORDER BY groups.group_id"""
+    ).fetchall()
+    for group_id, scope, primary_l1_id in groups:
+        l1_ids = [
+            int(row[0])
+            for row in conn.execute(
+                "SELECT l1_id FROM track_group_l1_members WHERE group_id=? ORDER BY l1_id",
+                (int(group_id),),
+            ).fetchall()
+        ]
+        primary = int(primary_l1_id) if primary_l1_id in l1_ids else l1_ids[0]
+        conn.execute(
+            "UPDATE track_groups SET group_status='archived', primary_l1_id=? WHERE group_id=?",
+            (primary, int(group_id)),
+        )
+        for candidate in l1_ids:
+            if candidate == primary:
+                continue
+            original_l1_id, candidate_l1_id = sorted((primary, candidate))
+            conn.execute(
+                """INSERT OR IGNORE INTO track_group_candidates(
+                       scope, original_l1_id, candidate_l1_id,
+                       evidence_json, status
+                   ) VALUES (?, ?, ?, ?, 'pending')""",
+                (
+                    str(scope),
+                    original_l1_id,
+                    candidate_l1_id,
+                    f'{{"source":"post_v51_auto_group_repair","group_id":{int(group_id)}}}',
+                ),
+            )
+        conn.execute(
+            """INSERT INTO track_group_migration_audit(
+                   group_id, action, distinct_l1_count, details
+               ) VALUES (?, 'post_v51_archived_auto_candidate', ?, ?)""",
+            (int(group_id), len(l1_ids), f"scope={scope}"),
+        )
+    if (
+        groups
+        and conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='music_search_revision_state'"
+        ).fetchone()
+    ):
+        conn.execute(
+            """UPDATE music_search_revision_state
+                  SET metadata_revision=metadata_revision+1,
+                      candidate_revision=candidate_revision+1,
+                      updated_at=datetime('now')
+                WHERE state_id=1"""
+        )
+
+
+@migration(53, "canonical_track_external_ownership")
+def migrate_053(conn: sqlite3.Connection):
+    """Upgrade the short-lived provider-per-L1 model to local ownership.
+
+    Development databases may already contain migrations 48-52 from the
+    earlier implementation. Keep their stable ids, materialise the authoritative
+    provider ownership table, and stop reading the legacy scalar columns.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS track_l1_external_ids (
+            provider          TEXT NOT NULL,
+            external_track_id TEXT NOT NULL,
+            l1_id             INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            evidence_type     TEXT NOT NULL DEFAULT 'provider_observed'
+                              CHECK(evidence_type IN (
+                                  'provider_observed', 'provider_relink',
+                                  'manual_confirmed', 'migration'
+                              )),
+            is_primary        INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0, 1)),
+            first_seen_at     TEXT,
+            last_seen_at      TEXT,
+            created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY(provider, external_track_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_l1_external_owner
+            ON track_l1_external_ids(l1_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_track_l1_primary_external
+            ON track_l1_external_ids(l1_id, provider)
+            WHERE is_primary=1;
+
+        CREATE TABLE IF NOT EXISTS track_identity_events (
+            event_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            action          TEXT NOT NULL
+                            CHECK(action IN ('merge', 'split', 'attach_external_id')),
+            survivor_l1_id  INTEGER REFERENCES track_l1_identities(l1_id),
+            affected_l1_ids TEXT NOT NULL DEFAULT '[]',
+            before_json     TEXT NOT NULL DEFAULT '{}',
+            after_json      TEXT NOT NULL DEFAULT '{}',
+            reason          TEXT,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_identity_events_survivor
+            ON track_identity_events(survivor_l1_id, event_id);
+        """
+    )
+    identity_columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(track_l1_identities)")
+    }
+    if {"provider", "external_track_id"}.issubset(identity_columns):
+        conn.execute(
+            """INSERT OR IGNORE INTO track_l1_external_ids(
+                   provider, external_track_id, l1_id, evidence_type, is_primary
+               )
+               SELECT provider, external_track_id, l1_id, 'migration', 1
+                 FROM track_l1_identities
+                WHERE provider!='local'
+                  AND external_track_id IS NOT NULL
+                  AND external_track_id!=''"""
+        )
+    conn.execute(
+        """UPDATE track_identity_state
+              SET current_revision=current_revision+1,
+                  policy_version='canonical_track_v2',
+                  updated_at=datetime('now')
+            WHERE state_id=1"""
+    )
+
+
+@migration(54, "canonical_track_group_invariants")
+def migrate_054(conn: sqlite3.Connection):
+    """Enforce one active L2/L3 group per canonical member and scope."""
+    conn.execute(
+        """DELETE FROM track_group_candidates
+            WHERE candidate_id NOT IN (
+                SELECT MIN(candidate_id)
+                  FROM track_group_candidates
+                 GROUP BY scope,
+                          MIN(original_l1_id, candidate_l1_id),
+                          MAX(original_l1_id, candidate_l1_id)
+            )"""
+    )
+
+    overlaps = conn.execute(
+        """SELECT members.l1_id, groups.scope
+             FROM track_group_l1_members members
+             JOIN track_groups groups ON groups.group_id=members.group_id
+            WHERE groups.group_status='active'
+            GROUP BY members.l1_id, groups.scope
+           HAVING COUNT(DISTINCT groups.group_id)>1"""
+    ).fetchall()
+    for l1_id, scope in overlaps:
+        groups = conn.execute(
+            """SELECT groups.group_id
+                 FROM track_groups groups
+                 JOIN track_group_l1_members members ON members.group_id=groups.group_id
+                WHERE members.l1_id=? AND groups.scope=?
+                  AND groups.group_status='active'
+                ORDER BY groups.is_manual DESC, groups.group_id""",
+            (int(l1_id), str(scope)),
+        ).fetchall()
+        for (group_id,) in groups[1:]:
+            conn.execute(
+                "UPDATE track_groups SET group_status='conflict' WHERE group_id=?",
+                (int(group_id),),
+            )
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_migration_audit'"
+            ).fetchone():
+                member_count = int(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM track_group_l1_members WHERE group_id=?",
+                        (int(group_id),),
+                    ).fetchone()[0]
+                )
+                conn.execute(
+                    """INSERT INTO track_group_migration_audit(
+                           group_id, action, distinct_l1_count, details
+                       ) VALUES (?, 'v54_quarantined_overlap', ?, ?)""",
+                    (
+                        int(group_id),
+                        member_count,
+                        f"canonical_track_id={int(l1_id)};scope={scope}",
+                    ),
+                )
+    conn.executescript(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_track_group_candidate_unordered_pair
+            ON track_group_candidates(
+                scope,
+                MIN(original_l1_id, candidate_l1_id),
+                MAX(original_l1_id, candidate_l1_id)
+            );
+
+        CREATE TRIGGER IF NOT EXISTS trg_track_group_l1_single_active_scope_insert
+        BEFORE INSERT ON track_group_l1_members
+        WHEN EXISTS (
+            SELECT 1 FROM track_groups incoming
+             WHERE incoming.group_id=NEW.group_id AND incoming.group_status='active'
+        ) AND EXISTS (
+            SELECT 1
+              FROM track_group_l1_members existing
+              JOIN track_groups existing_group ON existing_group.group_id=existing.group_id
+              JOIN track_groups incoming ON incoming.group_id=NEW.group_id
+             WHERE existing.l1_id=NEW.l1_id
+               AND existing.group_id!=NEW.group_id
+               AND existing_group.group_status='active'
+               AND existing_group.scope=incoming.scope
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'canonical track already belongs to an active group at this scope');
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_track_group_single_active_scope_update
+        BEFORE UPDATE OF group_status, scope ON track_groups
+        WHEN NEW.group_status='active' AND EXISTS (
+            SELECT 1
+              FROM track_group_l1_members incoming_member
+              JOIN track_group_l1_members existing_member
+                ON existing_member.l1_id=incoming_member.l1_id
+               AND existing_member.group_id!=incoming_member.group_id
+              JOIN track_groups existing_group
+                ON existing_group.group_id=existing_member.group_id
+             WHERE incoming_member.group_id=NEW.group_id
+               AND existing_group.group_status='active'
+               AND existing_group.scope=NEW.scope
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'activating group would overlap another active group at this scope');
+        END;
+        """
+    )
+
+
+@migration(55, "retire_public_l1_search_snapshots")
+def migrate_055(conn: sqlite3.Connection):
+    """Keep legacy evidence but prevent retired L1 snapshots from appearing ready."""
+    conn.execute(
+        """UPDATE music_search_snapshot_meta
+              SET status='stale', last_error='retired public search snapshot'
+            WHERE status IN ('pending', 'running', 'ready')
+              AND (
+                  merge_level=1
+                  OR COALESCE(builder_version, '')!='music_search_snapshot_v8_canonical_track'
+              )"""
+    )
+
+
+@migration(56, "repair_canonical_aggregate_readiness")
+def migrate_056(conn: sqlite3.Connection):
+    """Invalidate derivatives when the canonical aggregate publish is incomplete.
+
+    Artist/credit revision state describes whether the current mapping is baked
+    into any published artist aggregate; it is not the general four-table
+    readiness flag. General readiness is represented by ``agg_config`` and
+    raw-path fallback, so this migration must not turn metadata dependencies
+    pending and deadlock the maintenance queue.
+    """
+    has_plays = int(conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]) > 0
+    aggregate_tables = (
+        "agg_weekly_tracks",
+        "agg_weekly_track_sources",
+        "agg_weekly_albums",
+        "agg_weekly_artists",
+    )
+    aggregate_missing = has_plays and any(
+        int(conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]) == 0
+        for table in aggregate_tables
+    )
+    if not aggregate_missing:
+        return
+
+    conn.execute("DELETE FROM agg_config")
+    conn.execute(
+        """UPDATE music_search_snapshot_meta
+              SET status='stale', last_error='canonical aggregate rebuild required'
+            WHERE status IN ('pending', 'running', 'ready')"""
+    )
+
+
+@migration(57, "spotify_track_owner_track_id_restore")
+def migrate_057(conn: sqlite3.Connection):
+    """Restore the existing track_id as the only application track identity.
+
+    Migrations 48-56 briefly introduced one synthetic identity per Spotify id.
+    That split historical track rows which intentionally owned several Spotify
+    ids (for example album editions of the same recording).  Keep the old L1
+    tables only as an internal compatibility projection where ``l1_id`` is
+    exactly ``tracks.track_id`` and make provider ownership directional.
+
+    Raw plays, tracks and credits are never rewritten by this migration.
+    """
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS spotify_track_owners (
+                spotify_track_id TEXT PRIMARY KEY,
+                track_id         INTEGER NOT NULL REFERENCES tracks(track_id),
+                evidence_type    TEXT NOT NULL DEFAULT 'import_match'
+                                 CHECK(evidence_type IN (
+                                     'import_match', 'play_majority',
+                                     'catalog_projection', 'manual_override'
+                                 )),
+                first_seen_at    TEXT,
+                last_seen_at     TEXT,
+                created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_spotify_track_owners_track
+                ON spotify_track_owners(track_id);
+
+            DROP TABLE IF EXISTS _spotify_owner_candidates_v57;
+            CREATE TEMP TABLE _spotify_owner_candidates_v57 AS
+            WITH candidates AS (
+                SELECT p.spotify_track_id_at_play AS spotify_track_id,
+                       p.track_id,
+                       COUNT(*) AS play_count,
+                       MIN(p.ts) AS first_seen_at,
+                       MAX(p.ts) AS last_seen_at,
+                       MAX(CASE WHEN t.artist_id IS NOT NULL
+                                     AND COALESCE(TRIM(a.artist_name), '') != ''
+                                THEN 1 ELSE 0 END) AS has_artist,
+                       MAX(CASE WHEN t.album_id IS NOT NULL OR p.source_album_id IS NOT NULL
+                                THEN 1 ELSE 0 END) AS has_album
+                  FROM plays p
+                  JOIN tracks t ON t.track_id=p.track_id
+                  LEFT JOIN artists a ON a.artist_id=t.artist_id
+                 WHERE p.spotify_track_id_at_play IS NOT NULL
+                   AND p.spotify_track_id_at_play != ''
+                 GROUP BY p.spotify_track_id_at_play, p.track_id
+                UNION ALL
+                SELECT t.spotify_track_id, t.track_id, 0, NULL, NULL,
+                       CASE WHEN t.artist_id IS NOT NULL
+                                  AND COALESCE(TRIM(a.artist_name), '') != ''
+                            THEN 1 ELSE 0 END,
+                       CASE WHEN t.album_id IS NOT NULL THEN 1 ELSE 0 END
+                  FROM tracks t
+                  LEFT JOIN artists a ON a.artist_id=t.artist_id
+                 WHERE t.spotify_track_id IS NOT NULL
+                   AND t.spotify_track_id != ''
+            ), combined AS (
+                SELECT spotify_track_id, track_id,
+                       SUM(play_count) AS play_count,
+                       MIN(first_seen_at) AS first_seen_at,
+                       MAX(last_seen_at) AS last_seen_at,
+                       MAX(has_artist) AS has_artist,
+                       MAX(has_album) AS has_album
+                  FROM candidates
+                 GROUP BY spotify_track_id, track_id
+            )
+            SELECT spotify_track_id, track_id, play_count,
+                   first_seen_at, last_seen_at, has_artist, has_album,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY spotify_track_id
+                       ORDER BY CASE WHEN play_count > 0 THEN 0 ELSE 1 END,
+                                play_count DESC,
+                                has_artist DESC,
+                                has_album DESC,
+                                track_id
+                   ) AS owner_rank
+              FROM combined;
+
+            INSERT INTO spotify_track_owners(
+                spotify_track_id, track_id, evidence_type,
+                first_seen_at, last_seen_at
+            )
+            SELECT spotify_track_id, track_id,
+                   CASE WHEN play_count > 0
+                        THEN 'play_majority' ELSE 'catalog_projection' END,
+                   first_seen_at, last_seen_at
+              FROM _spotify_owner_candidates_v57
+             WHERE owner_rank=1
+            ON CONFLICT(spotify_track_id) DO NOTHING;
+
+            DROP TABLE IF EXISTS _old_l1_to_track_v57;
+            CREATE TEMP TABLE _old_l1_to_track_v57 AS
+            SELECT l1_id,
+                   COALESCE(representative_track_id, fallback_track_id) AS track_id
+              FROM track_l1_identities;
+
+            DROP TABLE IF EXISTS _track_candidates_v57;
+            CREATE TEMP TABLE _track_candidates_v57 AS
+            SELECT c.scope,
+                   left_map.track_id AS original_track_id,
+                   right_map.track_id AS candidate_track_id,
+                   MAX(c.confidence) AS confidence,
+                   MIN(c.evidence_json) AS evidence_json,
+                   CASE MIN(CASE c.status
+                                  WHEN 'accepted' THEN 0
+                                  WHEN 'pending' THEN 1 ELSE 2 END)
+                        WHEN 0 THEN 'accepted'
+                        WHEN 1 THEN 'pending' ELSE 'rejected' END AS status,
+                   MIN(c.created_at) AS created_at
+              FROM track_group_candidates c
+              JOIN _old_l1_to_track_v57 left_map
+                ON left_map.l1_id=c.original_l1_id
+              JOIN _old_l1_to_track_v57 right_map
+                ON right_map.l1_id=c.candidate_l1_id
+             WHERE left_map.track_id IS NOT NULL
+               AND right_map.track_id IS NOT NULL
+               AND left_map.track_id != right_map.track_id
+             GROUP BY c.scope,
+                      MIN(left_map.track_id, right_map.track_id),
+                      MAX(left_map.track_id, right_map.track_id);
+
+            UPDATE track_identity_events
+               SET survivor_l1_id=(
+                   SELECT track_id FROM _old_l1_to_track_v57 old
+                    WHERE old.l1_id=track_identity_events.survivor_l1_id
+               )
+             WHERE survivor_l1_id IS NOT NULL;
+
+            DELETE FROM agg_weekly_tracks;
+            DELETE FROM agg_weekly_track_sources;
+            DELETE FROM agg_weekly_albums;
+            DELETE FROM agg_weekly_artists;
+            DELETE FROM agg_config;
+            DELETE FROM track_group_candidates;
+            DELETE FROM track_group_l1_members;
+            DELETE FROM track_l1_source_links;
+            DELETE FROM track_l1_external_ids;
+            DELETE FROM track_l1_identities;
+
+            INSERT INTO track_l1_identities(
+                l1_id, provider, external_track_id, fallback_track_id,
+                identity_status, representative_track_id
+            )
+            SELECT track_id, 'local', NULL, track_id, 'active', track_id
+              FROM tracks
+             ORDER BY track_id;
+
+            INSERT INTO track_l1_external_ids(
+                provider, external_track_id, l1_id, evidence_type,
+                is_primary, first_seen_at, last_seen_at
+            )
+            SELECT 'spotify', owners.spotify_track_id, owners.track_id,
+                   'migration',
+                   CASE WHEN owners.spotify_track_id=(
+                       SELECT MIN(peer.spotify_track_id)
+                         FROM spotify_track_owners peer
+                        WHERE peer.track_id=owners.track_id
+                   ) THEN 1 ELSE 0 END,
+                   owners.first_seen_at, owners.last_seen_at
+              FROM spotify_track_owners owners;
+
+            INSERT INTO track_l1_source_links(
+                l1_id, track_id, evidence_type, observed_plays,
+                first_seen_at, last_seen_at
+            )
+            SELECT owners.track_id, p.track_id, 'play_at_time', COUNT(*),
+                   MIN(p.ts), MAX(p.ts)
+              FROM plays p
+              JOIN spotify_track_owners owners
+                ON owners.spotify_track_id=p.spotify_track_id_at_play
+             WHERE p.track_id IS NOT NULL
+             GROUP BY owners.track_id, p.track_id;
+
+            INSERT OR IGNORE INTO track_l1_source_links(
+                l1_id, track_id, evidence_type, observed_plays
+            )
+            SELECT COALESCE(owners.track_id, t.track_id), t.track_id,
+                   'track_projection', 0
+              FROM tracks t
+              LEFT JOIN spotify_track_owners owners
+                ON owners.spotify_track_id=t.spotify_track_id;
+
+            INSERT OR IGNORE INTO track_group_candidates(
+                scope, original_l1_id, candidate_l1_id,
+                confidence, evidence_json, status, created_at
+            )
+            SELECT scope,
+                   MIN(original_track_id, candidate_track_id),
+                   MAX(original_track_id, candidate_track_id),
+                   confidence, evidence_json, status, created_at
+              FROM _track_candidates_v57;
+
+            UPDATE track_groups SET group_status='archived';
+            DELETE FROM track_group_l1_members;
+
+            INSERT OR IGNORE INTO track_group_l1_members(group_id, l1_id)
+            SELECT members.group_id, owners.track_id
+              FROM track_group_members members
+              JOIN tracks source ON source.track_id=members.track_id
+              JOIN spotify_track_owners owners
+                ON owners.spotify_track_id=source.spotify_track_id
+            UNION
+            SELECT members.group_id, owners.track_id
+              FROM track_group_members members
+              JOIN plays p ON p.track_id=members.track_id
+              JOIN spotify_track_owners owners
+                ON owners.spotify_track_id=p.spotify_track_id_at_play
+            UNION
+            SELECT members.group_id, members.track_id
+              FROM track_group_members members
+             WHERE NOT EXISTS (
+                 SELECT 1
+                   FROM tracks source
+                   JOIN spotify_track_owners owners
+                     ON owners.spotify_track_id=source.spotify_track_id
+                  WHERE source.track_id=members.track_id
+             )
+               AND NOT EXISTS (
+                 SELECT 1
+                   FROM plays p
+                   JOIN spotify_track_owners owners
+                     ON owners.spotify_track_id=p.spotify_track_id_at_play
+                  WHERE p.track_id=members.track_id
+             );
+
+            UPDATE track_groups
+               SET primary_l1_id=COALESCE(
+                   (SELECT owners.track_id
+                      FROM tracks source
+                      JOIN spotify_track_owners owners
+                        ON owners.spotify_track_id=source.spotify_track_id
+                     WHERE source.track_id=track_groups.primary_track_id
+                     LIMIT 1),
+                   primary_track_id,
+                   (SELECT MIN(l1_id) FROM track_group_l1_members members
+                     WHERE members.group_id=track_groups.group_id)
+               );
+
+            UPDATE track_identity_state
+               SET current_revision=current_revision+1,
+                   policy_version='spotify_owner_track_v1',
+                   updated_at=datetime('now')
+             WHERE state_id=1;
+
+            UPDATE music_search_snapshot_meta
+               SET status='stale',
+                   last_error='track_id ownership repair requires rebuild'
+             WHERE status IN ('pending', 'running', 'ready');
+            """
+        )
+
+        groups = conn.execute(
+            """SELECT groups.group_id
+                 FROM track_groups groups
+                 JOIN track_group_l1_members members
+                   ON members.group_id=groups.group_id
+                GROUP BY groups.group_id
+               HAVING COUNT(DISTINCT members.l1_id)>1
+                ORDER BY groups.is_manual DESC, groups.group_id"""
+        ).fetchall()
+        for (group_id,) in groups:
+            try:
+                conn.execute(
+                    "UPDATE track_groups SET group_status='active' WHERE group_id=?",
+                    (int(group_id),),
+                )
+            except sqlite3.IntegrityError:
+                conn.execute(
+                    "UPDATE track_groups SET group_status='conflict' WHERE group_id=?",
+                    (int(group_id),),
+                )
+
+        conn.executescript(
+            """
+            DROP TABLE IF EXISTS _spotify_owner_candidates_v57;
+            DROP TABLE IF EXISTS _old_l1_to_track_v57;
+            DROP TABLE IF EXISTS _track_candidates_v57;
+            """
+        )
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
+@migration(58, "normalize_track_governance_to_spotify_owners")
+def migrate_058(conn: sqlite3.Connection):
+    """Normalize L2/L3 governance references without rewriting raw facts.
+
+    Version 57 restored the public canonical id to an existing ``track_id``
+    but deliberately retained compatibility identities for every historical
+    track row.  This follow-up makes saved groups and review candidates owner
+    aware.  A track that owns any play-time Spotify id remains canonical even
+    when its legacy ``tracks.spotify_track_id`` points at another owner.
+    """
+    from backend.domains.metadata.track_identity import resolve_canonical_track_id
+
+    group_rows = conn.execute(
+        """SELECT group_id, scope, is_manual, group_status,
+                  primary_l1_id, primary_track_id
+             FROM track_groups ORDER BY group_id"""
+    ).fetchall()
+    original_status = {int(row[0]): str(row[3]) for row in group_rows}
+    normalized_members: dict[int, list[int]] = {}
+    group_changed = False
+
+    # Disable active-scope triggers while every member is rewritten through
+    # the same canonical resolver.  Original statuses are restored below.
+    conn.execute("UPDATE track_groups SET group_status='archived' WHERE group_status!='archived'")
+    for row in group_rows:
+        group_id = int(row[0])
+        members = [
+            int(member[0])
+            for member in conn.execute(
+                "SELECT l1_id FROM track_group_l1_members WHERE group_id=? ORDER BY l1_id",
+                (group_id,),
+            ).fetchall()
+        ]
+        canonical_members = sorted(
+            {
+                canonical
+                for member in members
+                if (canonical := resolve_canonical_track_id(conn, member)) is not None
+            }
+        )
+        normalized_members[group_id] = canonical_members
+        if canonical_members != members:
+            group_changed = True
+            conn.execute(
+                """INSERT INTO track_group_migration_audit(
+                       group_id, action, distinct_l1_count, details
+                   ) VALUES (?, 'v58_normalized_spotify_owner_members', ?, ?)""",
+                (
+                    group_id,
+                    len(canonical_members),
+                    f"before={','.join(map(str, members))};after={','.join(map(str, canonical_members))}",
+                ),
+            )
+
+    conn.execute("DELETE FROM track_group_l1_members")
+    for row in group_rows:
+        group_id = int(row[0])
+        members = normalized_members[group_id]
+        conn.executemany(
+            "INSERT OR IGNORE INTO track_group_l1_members(group_id,l1_id) VALUES (?,?)",
+            ((group_id, member) for member in members),
+        )
+        primary = resolve_canonical_track_id(conn, int(row[4])) if row[4] is not None else None
+        if primary not in members:
+            primary = members[0] if members else None
+        representative = None
+        if primary is not None:
+            identity = conn.execute(
+                """SELECT identities.representative_track_id, tracks.track_name
+                     FROM track_l1_identities identities
+                     JOIN tracks ON tracks.track_id=identities.representative_track_id
+                    WHERE identities.l1_id=?""",
+                (primary,),
+            ).fetchone()
+            if identity is not None:
+                representative = int(identity[0])
+        conn.execute(
+            """UPDATE track_groups
+                  SET primary_l1_id=?, primary_track_id=COALESCE(?, primary_track_id)
+                WHERE group_id=?""",
+            (primary, representative, group_id),
+        )
+
+    # Restore valid active groups deterministically.  Normalization can reveal
+    # a same-scope overlap that the old compatibility ids concealed.
+    active_rows = sorted(
+        (row for row in group_rows if original_status[int(row[0])] == "active"),
+        key=lambda row: (-int(row[2]), int(row[0])),
+    )
+    for row in active_rows:
+        group_id = int(row[0])
+        members = normalized_members[group_id]
+        if len(members) < 2:
+            group_changed = True
+            conn.execute(
+                """INSERT INTO track_group_migration_audit(
+                       group_id, action, distinct_l1_count, details
+                   ) VALUES (?, 'v58_collapsed_same_spotify_owner', ?, ?)""",
+                (group_id, len(members), f"scope={row[1]}"),
+            )
+            continue
+        try:
+            conn.execute(
+                "UPDATE track_groups SET group_status='active' WHERE group_id=?",
+                (group_id,),
+            )
+        except sqlite3.IntegrityError:
+            group_changed = True
+            conn.execute(
+                "UPDATE track_groups SET group_status='conflict' WHERE group_id=?",
+                (group_id,),
+            )
+            conn.execute(
+                """INSERT INTO track_group_migration_audit(
+                       group_id, action, distinct_l1_count, details
+                   ) VALUES (?, 'v58_quarantined_owner_overlap', ?, ?)""",
+                (group_id, len(members), f"scope={row[1]}"),
+            )
+    for row in group_rows:
+        group_id = int(row[0])
+        if original_status[group_id] == "conflict" and len(normalized_members[group_id]) >= 2:
+            conn.execute(
+                "UPDATE track_groups SET group_status='conflict' WHERE group_id=?",
+                (group_id,),
+            )
+
+    candidate_rows = conn.execute(
+        """SELECT candidate_id, scope, original_l1_id, candidate_l1_id,
+                  confidence, evidence_json, status, created_at
+             FROM track_group_candidates ORDER BY candidate_id"""
+    ).fetchall()
+    candidate_changed = False
+    normalized_candidates: dict[tuple[str, int, int], tuple] = {}
+    status_priority = {"accepted": 0, "pending": 1, "rejected": 2}
+    for row in candidate_rows:
+        left = resolve_canonical_track_id(conn, int(row[2]))
+        right = resolve_canonical_track_id(conn, int(row[3]))
+        if left is None or right is None or left == right:
+            candidate_changed = True
+            conn.execute(
+                """INSERT INTO track_group_migration_audit(
+                       group_id, action, distinct_l1_count, details
+                   ) VALUES (0, 'v58_removed_same_owner_candidate', ?, ?)""",
+                (
+                    0 if left is None and right is None else 1,
+                    f"candidate_id={int(row[0])};before={int(row[2])},{int(row[3])}",
+                ),
+            )
+            continue
+        left, right = sorted((left, right))
+        key = (str(row[1]), left, right)
+        current = normalized_candidates.get(key)
+        if current is None or status_priority[str(row[6])] < status_priority[str(current[6])]:
+            normalized_candidates[key] = (
+                int(row[0]),
+                str(row[1]),
+                left,
+                right,
+                row[4],
+                str(row[5]),
+                str(row[6]),
+                row[7],
+            )
+        if left != int(row[2]) or right != int(row[3]) or current is not None:
+            candidate_changed = True
+
+    conn.execute("DELETE FROM track_group_candidates")
+    for row in sorted(normalized_candidates.values(), key=lambda item: item[0]):
+        status = str(row[6])
+        active_group = conn.execute(
+            """SELECT 1
+                 FROM track_groups groups
+                 JOIN track_group_l1_members left_member
+                   ON left_member.group_id=groups.group_id AND left_member.l1_id=?
+                 JOIN track_group_l1_members right_member
+                   ON right_member.group_id=groups.group_id AND right_member.l1_id=?
+                WHERE groups.scope=? AND groups.group_status='active'
+                LIMIT 1""",
+            (int(row[2]), int(row[3]), str(row[1])),
+        ).fetchone()
+        if active_group is not None and status != "accepted":
+            status = "accepted"
+            candidate_changed = True
+        conn.execute(
+            """INSERT INTO track_group_candidates(
+                   candidate_id, scope, original_l1_id, candidate_l1_id,
+                   confidence, evidence_json, status, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (row[0], row[1], row[2], row[3], row[4], row[5], status, row[7]),
+        )
+
+    if group_changed or candidate_changed:
+        conn.execute(
+            """UPDATE track_identity_state
+                  SET current_revision=current_revision+1,
+                      updated_at=datetime('now')
+                WHERE state_id=1"""
+        )
+    if group_changed:
+        conn.execute(
+            """UPDATE music_search_snapshot_meta
+                  SET status='stale',
+                      last_error='track governance owner normalization requires rebuild'
+                WHERE status IN ('pending', 'running', 'ready')"""
+        )
 
 
 # ── Runner ────────────────────────────────────────────────────────────────

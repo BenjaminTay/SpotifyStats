@@ -445,7 +445,7 @@ def _thinking_fallback_plan(request: dict[str, Any]) -> list[dict[str, Any]]:
     }:
         return _fallback_plan(request)
     base = _base_filter_params(request)
-    merge_level = request.get("merge_level", 1)
+    merge_level = request.get("merge_level", 2)
     return [
         {"tool_name": "analysis_stats", "params": {**base, "period": "this_year"}},
         {
@@ -532,7 +532,7 @@ def _temporal_bounded_tool_call(
             "metric": "plays",
             "limit": 20,
             "offset": 0,
-            "merge_level": request.get("merge_level", 1),
+            "merge_level": request.get("merge_level", 2),
             "include_compilations": False,
         },
     }
@@ -751,7 +751,7 @@ def _available_tools_for_planner() -> list[dict[str, Any]]:
 def _sanitize_plan(raw_items: list[Any], request: dict[str, Any]) -> list[dict[str, Any]]:
     plan: list[dict[str, Any]] = []
     default_filters = _base_filter_params(request)
-    merge_level = request.get("merge_level", 1)
+    merge_level = request.get("merge_level", 2)
     for item in raw_items:
         if not isinstance(item, dict):
             continue
@@ -815,7 +815,7 @@ def _planner_user_content(request: dict[str, Any]) -> str:
         "thinking_mode": _thinking_mode_enabled(request),
         "default_filters": {
             **_base_filter_params(request),
-            "merge_level": request.get("merge_level", 1),
+            "merge_level": request.get("merge_level", 2),
         },
         "available_tools": _available_tools_for_planner(),
     }

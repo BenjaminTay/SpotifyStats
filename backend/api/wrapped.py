@@ -24,7 +24,7 @@ def available_years(conn: Connection = Depends(get_conn)):
 def yearly_wrapped(
     year: int,
     filters: PlayFilters = Depends(),
-    merge_level: int = Query(default=2, ge=1, le=3),
+    merge_level: int = Query(default=2, ge=2, le=3),
     conn: Connection = Depends(get_conn),
 ):
     return get_wrapped_data(
@@ -43,7 +43,7 @@ def yearly_wrapped(
 def yearly_wrapped_full(
     year: int,
     filters: PlayFilters = Depends(),
-    merge_level: int = Query(default=2, ge=1, le=3),
+    merge_level: int = Query(default=2, ge=2, le=3),
     conn: Connection = Depends(get_conn),
 ):
     return get_wrapped_full(

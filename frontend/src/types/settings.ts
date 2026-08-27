@@ -53,7 +53,13 @@ export type SettingsUpdatePayload = Partial<
 
 export interface ImportJob {
   job_id: string;
-  status: "running" | "done" | "error" | "blocked" | "needs_confirmation" | "not_found";
+  status:
+    | "running"
+    | "done"
+    | "error"
+    | "blocked"
+    | "needs_confirmation"
+    | "not_found";
   progress_pct: number;
   message: string;
   result: Record<string, unknown> | null;
@@ -79,6 +85,49 @@ export interface GroupMember {
   album_id: number;
   album_name: string;
   is_primary?: number;
+}
+
+export interface TrackGroup {
+  group_id: number;
+  canonical_name: string;
+  primary_track_id: number | null;
+  primary_l1_id: number | null;
+  spotify_track_id: string | null;
+  primary_track_name: string | null;
+  primary_album_id: number | null;
+  artist_name: string | null;
+  scope: TrackGroupScope;
+  is_manual: number;
+  created_at: string;
+  member_count: number;
+  group_status: "active" | "archived" | "conflict";
+}
+
+export interface TrackGroupMember {
+  l1_id?: number;
+  spotify_track_id?: string | null;
+  track_id: number;
+  track_name: string;
+  album_id: number | null;
+  artist_name: string | null;
+  identity_kind?: "spotify" | "local";
+  source_record_count?: number;
+  metadata_conflict?: boolean;
+  is_primary: number;
+}
+
+export interface TrackIdentitySource {
+  track_id: number;
+  track_name: string;
+  artist_name: string | null;
+  album_name: string | null;
+  cover_url: string | null;
+  spotify_track_id: string | null;
+  evidence_types: Array<"play_at_time" | "track_projection" | "manual">;
+  observed_plays: number;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  is_representative: boolean;
 }
 
 export interface UngroupedAlbum {
@@ -116,8 +165,12 @@ export interface DetectionResult {
 }
 
 export interface TrackGroupCandidate {
+  original_l1_id?: number;
+  original_spotify_track_id?: string;
   original_track_id: number;
   original_track_name: string;
+  candidate_l1_id?: number;
+  candidate_spotify_track_id?: string;
   candidate_track_id: number;
   candidate_track_name: string;
   primary_artist_id: number;
@@ -130,6 +183,9 @@ export interface TrackGroupConfirmResult {
   member_count?: number | null;
   album_projects_rebuilt: boolean;
   message?: string | null;
+  error_code?: string | null;
+  original_l1_id?: number | null;
+  candidate_l1_id?: number | null;
 }
 
 export interface AlbumRelationTrackPair {
@@ -158,6 +214,21 @@ export interface AlbumRelationConfirmResult {
   exclusive_tracks: AlbumRelationExclusiveTrack[];
   album_projects_rebuilt: boolean;
   message?: string | null;
+}
+
+export interface CanonicalTrackMutationResult {
+  status: string;
+  canonical_track_id: number;
+  affected_canonical_track_ids: number[];
+}
+
+export interface CanonicalTrackEvent {
+  event_id: number;
+  action: string;
+  survivor_canonical_track_id?: number | null;
+  affected_canonical_track_ids: number[];
+  reason: string;
+  created_at: string;
 }
 
 // ── Version Merge — Track Comparison ────────────────────────
@@ -279,6 +350,7 @@ export interface TrackCreditState {
 }
 
 export interface TrackCreditTrackCandidate {
+  l1_id?: number;
   track_id: number;
   track_name: string;
   spotify_track_id: string | null;
@@ -288,6 +360,10 @@ export interface TrackCreditTrackCandidate {
   first_play_date: string | null;
   last_play_date: string | null;
   effective_artist_names: string[];
+  identity_kind?: "spotify" | "local";
+  source_record_count?: number;
+  metadata_conflict?: boolean;
+  cover_url?: string | null;
 }
 
 export interface EffectiveTrackCredit {

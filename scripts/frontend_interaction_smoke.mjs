@@ -732,7 +732,10 @@ const SCENARIOS = {
     )
 
     await clickText(client, '流派与语言', waitMs)
-    await waitForText(client, '流派与语言数据健康', waitMs)
+    // The metadata tab already names this panel, so the embedded view intentionally
+    // omits the old duplicate visible heading. Assert its stable accessible region
+    // instead of coupling the smoke test to that removed copy.
+    await waitForSelector(client, '[aria-label="流派与语言数据健康"]', waitMs)
     await assertArtistLanguageHealthControls(client, waitMs)
 
     await waitForAnyText(client, ['连接 Spotify', '同步收藏时间'], waitMs)

@@ -127,7 +127,7 @@ class ChatAgentTaskRequest(BaseModel):
     merge_enabled: bool = True
     dynamic_threshold: bool = True
     max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
-    merge_level: int = Field(default=1, ge=1, le=3)
+    merge_level: int = Field(default=2, ge=2, le=3)
 
 
 class ArtistEnrichmentTaskRequest(BaseModel):

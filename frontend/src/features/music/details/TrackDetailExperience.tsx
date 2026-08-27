@@ -7,9 +7,9 @@ import type { TrackDetailResponse } from '@/types/billboard'
 import { EntityStatsPanel, EntityStatsPrefetch } from '@/components/shared/EntityStatsPanel'
 import { getBillboardName } from '@/lib/billboard-name'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Fingerprint, GitMerge, ListMusic } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import { TrackOverviewSection } from './track/TrackOverviewSection'
 import { VersionGroupSection } from './VersionGroupSection'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
@@ -18,6 +18,7 @@ import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
 import { TrackDetailHero } from './MusicDetailHeader'
 import { displayName } from '@/lib/chinese'
+import { CapabilityGate } from '@/components/capabilities/CapabilityGate'
 
 type TabKey = 'stats' | 'overview'
 
@@ -65,19 +66,19 @@ export function TrackDetailExperience() {
     else next.set('tab', tab)
     setSearchParams(next, { replace: true })
   }
-  const mergeLevel = Number(searchParams.get('merge_level') ?? getDefaultMergeLevel())
+  const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
 
   const summaryParams = { ...billboardParams, view: 'summary' }
   const { data, isPending, error, refetch } = useQuery({
     queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel, summaryParams),
-    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!, summaryParams),
+    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/canonical/' + trackId!, summaryParams),
     enabled: !!trackId && !filtersLoading,
   })
   const { data: overviewData, isPending: overviewPending } = useQuery({
     queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel, { ...billboardParams, view: 'overview' }),
-    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/' + trackId!, { ...billboardParams, view: 'overview' }),
+    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/canonical/' + trackId!, { ...billboardParams, view: 'overview' }),
     enabled: activeTab === 'overview' && !!trackId && !filtersLoading,
   })
   useEffect(() => {
@@ -144,6 +145,28 @@ export function TrackDetailExperience() {
                       { label: '走势排名', value: data.summary?.power_rank ? `#${data.summary.power_rank}` : '—' },
                     ]}
                   />
+                  <CapabilityGate require={['editing', 'metadata_governance']}>
+                    <nav className="mt-3 grid grid-cols-3 gap-2" aria-label="管理这首歌">
+                      <Link
+                        to={`/settings?metadata=merge&merge_type=track&track_id=${encodeURIComponent(trackId ?? '')}&artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}&return_to=${encodeURIComponent(`/music/tracks/${trackId}`)}#music-metadata-management`}
+                        className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-border text-[11px] font-semibold"
+                      >
+                        <GitMerge className="size-3.5" />归并版本
+                      </Link>
+                      <Link
+                        to={`/settings?metadata=track-credits&track_id=${encodeURIComponent(data.representative_track_id ?? data.track_id)}&return_to=${encodeURIComponent(`/music/tracks/${trackId}`)}#music-metadata-management`}
+                        className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-border text-[11px] font-semibold"
+                      >
+                        <ListMusic className="size-3.5" />曲目署名
+                      </Link>
+                      <Link
+                        to={`/settings?metadata=artist-identities&artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}&return_to=${encodeURIComponent(`/music/tracks/${trackId}`)}#music-metadata-management`}
+                        className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-border text-[11px] font-semibold"
+                      >
+                        <Fingerprint className="size-3.5" />艺人身份
+                      </Link>
+                    </nav>
+                  </CapabilityGate>
                 </div>
               ) : (
                 <TrackDetailHero data={data} trackId={trackId ?? ''} onBack={() => navigate(-1)} />

@@ -41,9 +41,9 @@ def load_saved_track_entities(
     """
     rows = load_saved_track_rows(conn)
     group_map = load_track_group_map(conn, context.merge_level)
-    matched_rows = [row for row in rows if row.get("local_track_id") is not None]
+    matched_rows = [row for row in rows if row.get("local_l1_id") is not None]
     for row in matched_rows:
-        local_id = int(row["local_track_id"])
+        local_id = int(row["local_l1_id"])
         row["archive_track_id"] = group_map.get(local_id, local_id)
 
     by_entity: dict[int, list[dict[str, Any]]] = {}
@@ -96,20 +96,42 @@ def load_effective_archive_plays(
 
     play_columns = {row[1] for row in conn.execute("PRAGMA table_info(plays)")}
     source_album_expr = "p.source_album_id" if "source_album_id" in play_columns else "NULL"
+    play_spotify_expr = (
+        "COALESCE(NULLIF(p.spotify_track_id_at_play, ''), NULLIF(t.spotify_track_id, ''))"
+        if "spotify_track_id_at_play" in play_columns
+        else "NULLIF(t.spotify_track_id, '')"
+    )
     has_track_meta = "spotify_track_meta" in required_tables
+    has_l1 = {
+        "track_l1_identities",
+        "track_l1_external_ids",
+        "track_l1_source_links",
+    }.issubset(required_tables)
     duration_expr = "stm.duration_ms" if has_track_meta else "NULL"
     meta_join = (
-        "LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id = t.spotify_track_id"
+        f"LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id = {play_spotify_expr}"
         if has_track_meta
         else ""
     )
+    identity_join = (
+        "LEFT JOIN track_l1_external_ids external ON external.provider='spotify' AND "
+        f"external.external_track_id={play_spotify_expr} "
+        "LEFT JOIN track_l1_identities li ON li.l1_id=external.l1_id "
+        "AND li.identity_status!='superseded' "
+        "LEFT JOIN track_l1_identities local_li ON "
+        "local_li.fallback_track_id=p.track_id AND local_li.identity_status!='superseded'"
+        if has_l1
+        else ""
+    )
+    identity_expr = "COALESCE(li.l1_id, local_li.l1_id, p.track_id)" if has_l1 else "p.track_id"
     frame = pd.read_sql_query(
         f"""
-        SELECT p.play_id, p.ts, p.ms_played, p.track_id,
+        SELECT p.play_id, p.ts, p.ms_played, {identity_expr} AS track_id,
                {source_album_expr} AS source_album_id,
                {duration_expr} AS duration_ms
         FROM plays p
         JOIN tracks t ON t.track_id = p.track_id
+        {identity_join}
         {meta_join}
         WHERE p.track_id IS NOT NULL
         ORDER BY p.ts, p.play_id
@@ -163,14 +185,26 @@ def load_track_preview_map(
     album_columns = {row[1] for row in conn.execute("PRAGMA table_info(albums)")}
     image_path = "al.image_path" if "image_path" in album_columns else "NULL"
     image_url = "al.image_url" if "image_url" in album_columns else "NULL"
+    has_l1 = (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+        ).fetchone()
+        is not None
+    )
+    source = (
+        "track_l1_identities li JOIN tracks t ON t.track_id=li.representative_track_id"
+        if has_l1
+        else "tracks t"
+    )
+    id_expr = "li.l1_id" if has_l1 else "t.track_id"
     rows = conn.execute(
         f"""
-        SELECT t.track_id, t.track_name, a.artist_name, al.album_name,
+        SELECT {id_expr} AS track_id, t.track_name, a.artist_name, al.album_name,
                al.album_id, {image_path} AS image_path, {image_url} AS image_url
-        FROM tracks t
+        FROM {source}
         JOIN artists a ON a.artist_id = t.artist_id
         LEFT JOIN albums al ON al.album_id = t.album_id
-        WHERE t.track_id IN ({placeholders})
+        WHERE {id_expr} IN ({placeholders})
         """,
         tuple(sorted(track_ids)),
     ).fetchall()

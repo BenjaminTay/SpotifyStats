@@ -35,6 +35,22 @@ function LegacyMusicRedirect({ kind }: { kind: 'track' | 'album' | 'artist' }) {
   return <Navigate to={`/music/${plural}/${encodeURIComponent(value ?? '')}${location.search}`} replace />
 }
 
+function LegacyCanonicalTrackRedirect() {
+  const { trackId } = useParams<{ trackId: string }>()
+  const location = useLocation()
+  return <Navigate replace to={`/music/tracks/${encodeURIComponent(trackId ?? '')}${location.search}`} />
+}
+
+function MergeLevelUrlNormalizer() {
+  const location = useLocation()
+  const params = new URLSearchParams(location.search)
+  const value = params.get('merge_level')
+  if (value === null || value === '2' || value === '3') return null
+  params.set('merge_level', '2')
+  const search = params.toString()
+  return <Navigate replace to={`${location.pathname}${search ? `?${search}` : ''}${location.hash}`} />
+}
+
 function RouteFallback() {
   return (
     <div className="space-y-4 py-8">
@@ -67,11 +83,14 @@ function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      <MergeLevelUrlNormalizer />
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Suspense fallback={<RouteFallback />}><DashboardPage /></Suspense>} />
           <Route path="/billboard" element={<Suspense fallback={<RouteFallback />}><BillboardPage /></Suspense>} />
           <Route path="/music/search" element={<Suspense fallback={<RouteFallback />}><MusicSearchPage /></Suspense>} />
+          <Route path="/music/tracks/canonical/:trackId" element={<LegacyCanonicalTrackRedirect />} />
+          <Route path="/music/tracks/l1/:trackId" element={<LegacyCanonicalTrackRedirect />} />
           <Route path="/music/tracks/:trackId" element={<Suspense fallback={<RouteFallback />}><TrackDetailPage /></Suspense>} />
           <Route path="/music/artists/:artistName" element={<Suspense fallback={<RouteFallback />}><ArtistDetailPage /></Suspense>} />
           <Route path="/music/albums/:albumName" element={<Suspense fallback={<RouteFallback />}><AlbumDetailPage /></Suspense>} />

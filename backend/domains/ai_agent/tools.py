@@ -78,12 +78,12 @@ class AnalysisChartsParams(AnalysisStatsParams):
     metric: Literal["plays", "hours"] = "plays"
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=10000)
-    merge_level: int = Field(default=2, ge=1, le=3)
+    merge_level: int = Field(default=2, ge=2, le=3)
     include_compilations: bool = False
 
 
 class PlaybackRecordsParams(AnalysisStatsParams):
-    merge_level: int = Field(default=2, ge=1, le=3)
+    merge_level: int = Field(default=2, ge=2, le=3)
     include_compilations: bool = False
 
 
@@ -94,7 +94,7 @@ class WrappedYearlyParams(BaseModel):
     merge_enabled: bool = True
     dynamic_threshold: bool = True
     max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
-    merge_level: int = Field(default=1, ge=1, le=3)
+    merge_level: int = Field(default=2, ge=2, le=3)
 
 
 class EntityStatsParams(AnalysisStatsParams):
@@ -102,7 +102,7 @@ class EntityStatsParams(AnalysisStatsParams):
     track_id: int | None = Field(default=None, ge=1)
     album_name: str | None = Field(default=None, min_length=1, max_length=300)
     artist_name: str | None = Field(default=None, min_length=1, max_length=300)
-    merge_level: int = Field(default=2, ge=1, le=3)
+    merge_level: int = Field(default=2, ge=2, le=3)
 
     @model_validator(mode="after")
     def validate_entity_identifier(self) -> EntityStatsParams:
@@ -131,7 +131,7 @@ class BillboardEntityDetailParams(BaseModel):
     year_end: int | None = Field(default=None, ge=2000, le=2100)
     dynamic_threshold: bool = True
     max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
-    merge_level: int = Field(default=2, ge=1, le=3)
+    merge_level: int = Field(default=2, ge=2, le=3)
 
     @model_validator(mode="after")
     def validate_entity_identifier(self) -> BillboardEntityDetailParams:
@@ -177,7 +177,7 @@ class CompareEntitiesParams(BaseModel):
     merge_enabled: bool = True
     dynamic_threshold: bool = True
     max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
-    merge_level: int = Field(default=2, ge=1, le=3)
+    merge_level: int = Field(default=2, ge=2, le=3)
 
     @field_validator("names")
     @classmethod
@@ -221,7 +221,7 @@ class CommunityFeedSearchParams(BaseModel):
     year_end: int | None = Field(default=None, ge=2000, le=2100)
     dynamic_threshold: bool = True
     max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
-    merge_level: int = Field(default=2, ge=1, le=3)
+    merge_level: int = Field(default=2, ge=2, le=3)
     include_compilations: bool = False
 
     @field_validator("date_from", "date_to")

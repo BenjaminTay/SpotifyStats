@@ -82,7 +82,7 @@ class TestPlayFilterPropagation:
             "merge_enabled": True,
             "entity": "track",
             "top_n": 100,
-            "merge_level": 1,
+            "merge_level": 2,
         }
         static = client.get(
             "/api/leaderboard",

@@ -9,6 +9,10 @@ from typing import Any
 
 from backend.domains.metadata.artist_identity import get_identity_revision
 from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.metadata.track_identity import (
+    TRACK_IDENTITY_POLICY_VERSION,
+    get_track_identity_revision,
+)
 
 
 def active_playback_lineage(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -44,6 +48,7 @@ def music_search_snapshot_dependency_manifest(conn: sqlite3.Connection) -> dict[
 
     identity_revision = get_identity_revision(conn)
     credit_revision = get_track_credit_revision(conn)
+    track_identity_revision = get_track_identity_revision(conn)
     aggregation_keys = (
         "builder_version",
         "playback_policy_version",
@@ -51,6 +56,7 @@ def music_search_snapshot_dependency_manifest(conn: sqlite3.Connection) -> dict[
         "credit_membership_revision",
         "identity_revision",
         "track_credit_revision",
+        "track_identity_revision",
         "album_project_revision",
     )
     try:
@@ -72,6 +78,8 @@ def music_search_snapshot_dependency_manifest(conn: sqlite3.Connection) -> dict[
         "version": "music_search_snapshot_dependency_v1",
         "identity_revision": identity_revision,
         "track_credit_revision": credit_revision,
+        "track_identity_revision": track_identity_revision,
+        "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
         "aggregation": aggregation,
         "track_group_revision": _table_set_revision(conn, _TRACK_GROUP_TABLES),
         "album_project_revision": _album_project_semantic_revision(conn),

@@ -29,11 +29,9 @@ class MusicSearchSnapshotVariant:
 # reports, tests and job diagnostics can be compared across runs.
 MUSIC_SEARCH_SNAPSHOT_VARIANTS: tuple[MusicSearchSnapshotVariant, ...] = (
     MusicSearchSnapshotVariant(merge_level=2, dynamic_threshold=True, priority=0),
-    MusicSearchSnapshotVariant(merge_level=1, dynamic_threshold=True, priority=1),
-    MusicSearchSnapshotVariant(merge_level=3, dynamic_threshold=True, priority=2),
-    MusicSearchSnapshotVariant(merge_level=2, dynamic_threshold=False, priority=3),
-    MusicSearchSnapshotVariant(merge_level=1, dynamic_threshold=False, priority=4),
-    MusicSearchSnapshotVariant(merge_level=3, dynamic_threshold=False, priority=5),
+    MusicSearchSnapshotVariant(merge_level=3, dynamic_threshold=True, priority=1),
+    MusicSearchSnapshotVariant(merge_level=2, dynamic_threshold=False, priority=2),
+    MusicSearchSnapshotVariant(merge_level=3, dynamic_threshold=False, priority=3),
 )
 
 

@@ -19,6 +19,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
+from backend.core.db import get_db
 from backend.dependencies import BillboardFilters, MergeConfig
 from backend.domains.music_search.timing import MusicSearchTiming
 from backend.services.billboard_service import (
@@ -47,6 +48,8 @@ class TrackHistoryResponse(BaseModel):
     chart_status: Literal["charted", "not_charted"] | None = None
     effective_play_count: int | None = None
     track_id: int | None = None
+    l1_id: int | None = None
+    representative_track_id: int | None = None
     track_name: str | None = None
     artist_name: str | None = None
     artist_names: list[str] | None = None
@@ -171,7 +174,13 @@ class ArtistMultiRequest(BaseModel):
 
 
 @router.get(
-    "/track/{track_id}",
+    "/track/l1/{track_id}",
+    response_model=TrackHistoryResponse,
+    responses={404: {"description": "Track has no resolvable chart or effective-play facts"}},
+    include_in_schema=False,
+)
+@router.get(
+    "/track/canonical/{track_id}",
     response_model=TrackHistoryResponse,
     responses={404: {"description": "Track has no resolvable chart or effective-play facts"}},
 )
@@ -208,6 +217,50 @@ def track_history(
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Track not found")
     return result
+
+
+@router.get(
+    "/track/{track_id}",
+    response_model=TrackHistoryResponse,
+    responses={
+        404: {"description": "Track has no resolvable chart or effective-play facts"},
+        409: {"description": "Legacy track id resolves to multiple L1 identities"},
+    },
+)
+def legacy_track_history(
+    track_id: int,
+    response: Response,
+    filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
+    view: TrackDetailView = Query("full"),
+):
+    from backend.domains.metadata.track_identity import resolve_source_track_l1_ids
+
+    conn = get_db()
+    try:
+        l1_ids = resolve_source_track_l1_ids(conn, track_id)
+    finally:
+        conn.close()
+    if not l1_ids:
+        raise HTTPException(status_code=404, detail="Track not found")
+    if len(l1_ids) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "ambiguous_legacy_track_id",
+                "track_id": int(track_id),
+                "l1_ids": l1_ids,
+            },
+        )
+    return track_history(
+        l1_ids[0],
+        response,
+        filters,
+        merge,
+        include_compilations,
+        view,
+    )
 
 
 @router.get(

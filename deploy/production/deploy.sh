@@ -554,7 +554,7 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
   preflight_report="$DEPLOY_DIR/backups/music-search-preflight-${NEW_TAG:0:12}-${release_stamp}.json"
   search_resume_database="$DEPLOY_DIR/backups/music-search-resume.db"
   # Normal releases run with --statistics-reuse-only and fail before any
-  # candidate/statistics rebuild if the six exact snapshots cannot be reused.
+  # candidate/statistics rebuild if the four exact L2/L3 snapshots cannot be reused.
   # Keep their candidate-only capacity budget independent from the larger
   # one-time statistics bootstrap budget.
   search_preflight_min_mib="$(get_env SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB)"

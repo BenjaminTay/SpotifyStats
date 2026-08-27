@@ -20,6 +20,10 @@ from backend.domains.billboard.week_coverage import (
 from backend.domains.imports.incremental import FingerprintRecord, ImportPlan, dataset_digest
 from backend.domains.metadata.artist_identity import get_identity_revision
 from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.metadata.track_identity import (
+    TRACK_IDENTITY_POLICY_VERSION,
+    get_track_identity_revision,
+)
 from backend.domains.playback.logical_timeline import (
     OVERLAP_TOLERANCE_SECONDS,
     PLAYBACK_EVENT_POLICY_VERSION,
@@ -631,7 +635,7 @@ class _ReconcileBillboardView:
     def _query_exact(self, key: tuple[str, int]) -> dict[str, Any] | None:
         clause, params = self._generation_clause()
         row = self._conn.execute(
-            f"""{_RECONCILE_BILLBOARD_SELECT}
+            f"""{_reconcile_billboard_select(self._conn)}
                  WHERE p.track_id IS NOT NULL {clause}
                    AND p.ts=? AND p.play_id=?""",
             (*params, *key),
@@ -647,7 +651,7 @@ class _ReconcileBillboardView:
         operator = "<" if direction < 0 else ">"
         order = "DESC" if direction < 0 else "ASC"
         row = self._conn.execute(
-            f"""{_RECONCILE_BILLBOARD_SELECT}
+            f"""{_reconcile_billboard_select(self._conn)}
                  WHERE p.track_id IS NOT NULL {clause}
                    AND (p.ts {operator} ? OR (p.ts=? AND p.play_id {operator} ?))
                  ORDER BY p.ts {order}, p.play_id {order} LIMIT 1""",
@@ -678,11 +682,57 @@ class _ReconcileBillboardView:
 
 _RECONCILE_BILLBOARD_SELECT = """SELECT p.play_id, p.ts, p.ts_date,
        p.ts_dow, p.ts_hour, p.ms_played,
-       p.track_id, p.source_album_id, t.track_id AS dimension_track_id,
+       p.track_id AS source_track_id,
+       COALESCE(li_spotify.l1_id, li_local.l1_id) AS l1_id,
+       COALESCE(li_spotify.representative_track_id,
+                li_local.representative_track_id, p.track_id) AS track_id,
+       p.source_album_id,
+       COALESCE(li_spotify.representative_track_id,
+                li_local.representative_track_id, p.track_id) AS dimension_track_id,
        t.album_id, t.artist_id, stm.duration_ms
 FROM plays p
-LEFT JOIN tracks t ON p.track_id=t.track_id
+JOIN tracks t_source ON p.track_id=t_source.track_id
+LEFT JOIN track_l1_external_ids external_spotify
+  ON external_spotify.provider='spotify'
+ AND external_spotify.external_track_id=COALESCE(
+       NULLIF(p.spotify_track_id_at_play, ''),
+       NULLIF(t_source.spotify_track_id, '')
+     )
+LEFT JOIN track_l1_identities li_spotify
+  ON li_spotify.l1_id=external_spotify.l1_id
+ AND li_spotify.identity_status!='superseded'
+LEFT JOIN track_l1_identities li_local
+  ON li_local.fallback_track_id=p.track_id
+ AND li_local.identity_status!='superseded'
+ AND COALESCE(NULLIF(p.spotify_track_id_at_play, ''),
+              NULLIF(t_source.spotify_track_id, '')) IS NULL
+JOIN tracks t ON t.track_id=COALESCE(
+  li_spotify.representative_track_id,
+  li_local.representative_track_id,
+  p.track_id
+)
+LEFT JOIN spotify_track_meta stm
+  ON stm.spotify_track_id=COALESCE(
+       NULLIF(p.spotify_track_id_at_play, ''),
+       NULLIF(t_source.spotify_track_id, '')
+     )"""
+
+_LEGACY_RECONCILE_BILLBOARD_SELECT = """SELECT p.play_id, p.ts, p.ts_date,
+       p.ts_dow, p.ts_hour, p.ms_played,
+       p.track_id AS source_track_id, p.track_id AS l1_id, p.track_id,
+       p.source_album_id, t.track_id AS dimension_track_id,
+       t.album_id, t.artist_id, stm.duration_ms
+FROM plays p
+JOIN tracks t ON p.track_id=t.track_id
 LEFT JOIN spotify_track_meta stm ON t.spotify_track_id=stm.spotify_track_id"""
+
+
+def _reconcile_billboard_select(conn: sqlite3.Connection) -> str:
+    """Return the L1 projection, with a legacy fallback for isolated old schemas."""
+    has_l1 = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+    ).fetchone()
+    return _RECONCILE_BILLBOARD_SELECT if has_l1 else _LEGACY_RECONCILE_BILLBOARD_SELECT
 
 
 def _logical_reconcile_billboard_contribution_weeks(
@@ -829,25 +879,84 @@ def _enrich_removed_billboard_rows(
         row = dict(raw)
         if row.get("track_id") is None:
             continue
-        dimension = conn.execute(
-            """SELECT t.track_id AS dimension_track_id, t.album_id, t.artist_id,
-                      stm.duration_ms
-               FROM tracks t
-               LEFT JOIN spotify_track_meta stm
-                 ON t.spotify_track_id=stm.spotify_track_id
-               WHERE t.track_id=?""",
-            (row["track_id"],),
-        ).fetchone()
+        dimension = _track_identity_dimension(
+            conn,
+            track_id=int(row["track_id"]),
+            spotify_track_id=row.get("spotify_track_id_at_play"),
+        )
         if dimension is None:
             raise RuntimeError("removed playback row no longer maps to a track dimension")
-        row.update(dict(dimension))
+        row.update(dimension)
         enriched.append(_normalise_billboard_row(row))
     return enriched
 
 
+def _track_identity_dimension(
+    conn: sqlite3.Connection,
+    *,
+    track_id: int,
+    spotify_track_id: object,
+) -> dict[str, Any] | None:
+    """Resolve one raw play fact to its immutable L1 and display dimension."""
+    has_l1 = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
+    ).fetchone()
+    if not has_l1:
+        dimension = conn.execute(
+            """SELECT t.track_id AS source_track_id, t.track_id AS l1_id,
+                      t.track_id, t.track_id AS dimension_track_id,
+                      t.album_id, t.artist_id, stm.duration_ms
+                 FROM tracks t
+                 LEFT JOIN spotify_track_meta stm
+                   ON stm.spotify_track_id=COALESCE(NULLIF(?, ''), t.spotify_track_id)
+                WHERE t.track_id=?""",
+            (spotify_track_id, track_id),
+        ).fetchone()
+        return dict(dimension) if dimension is not None else None
+    dimension = conn.execute(
+        """WITH source AS (
+                   SELECT t.*,
+                          COALESCE(NULLIF(?, ''), NULLIF(t.spotify_track_id, ''))
+                            AS effective_spotify_track_id
+                     FROM tracks t WHERE t.track_id=?
+               )
+               SELECT source.track_id AS source_track_id,
+                      COALESCE(li_spotify.l1_id, li_local.l1_id) AS l1_id,
+                      COALESCE(li_spotify.representative_track_id,
+                               li_local.representative_track_id,
+                               source.track_id) AS track_id,
+                      COALESCE(li_spotify.representative_track_id,
+                               li_local.representative_track_id,
+                               source.track_id) AS dimension_track_id,
+                      representative.album_id, representative.artist_id,
+                      stm.duration_ms
+                 FROM source
+                 LEFT JOIN track_l1_external_ids external_spotify
+                   ON external_spotify.provider='spotify'
+                  AND external_spotify.external_track_id=source.effective_spotify_track_id
+                 LEFT JOIN track_l1_identities li_spotify
+                   ON li_spotify.l1_id=external_spotify.l1_id
+                  AND li_spotify.identity_status!='superseded'
+                 LEFT JOIN track_l1_identities li_local
+                   ON li_local.fallback_track_id=source.track_id
+                  AND li_local.identity_status!='superseded'
+                  AND source.effective_spotify_track_id IS NULL
+                 JOIN tracks representative
+                   ON representative.track_id=COALESCE(
+                        li_spotify.representative_track_id,
+                        li_local.representative_track_id,
+                        source.track_id
+                      )
+                 LEFT JOIN spotify_track_meta stm
+                   ON stm.spotify_track_id=source.effective_spotify_track_id""",
+        (spotify_track_id, track_id),
+    ).fetchone()
+    return dict(dimension) if dimension is not None else None
+
+
 def _normalise_billboard_row(raw: Any) -> dict[str, Any]:
     row = dict(raw)
-    required = {"play_id", "ts", "ms_played", "track_id", "source_album_id"}
+    required = {"play_id", "ts", "ms_played", "l1_id", "track_id", "source_album_id"}
     if not required.issubset(row):
         raise RuntimeError("Billboard closure row is missing required facts")
     if row.get("dimension_track_id") is None:
@@ -855,6 +964,9 @@ def _normalise_billboard_row(raw: Any) -> dict[str, Any]:
     try:
         row["play_id"] = int(row["play_id"])
         row["track_id"] = int(row["track_id"])
+        row["l1_id"] = int(row["l1_id"])
+        if row.get("source_track_id") is not None:
+            row["source_track_id"] = int(row["source_track_id"])
         row["ms_played"] = int(row["ms_played"] or 0)
         if row["source_album_id"] is not None:
             row["source_album_id"] = int(row["source_album_id"])
@@ -866,7 +978,7 @@ def _normalise_billboard_row(raw: Any) -> dict[str, Any]:
             row["duration_ms"] = int(row["duration_ms"])
     except (TypeError, ValueError) as exc:
         raise RuntimeError("Billboard closure row has invalid numeric facts") from exc
-    if row["play_id"] <= 0 or row["track_id"] <= 0 or row["ms_played"] < 0:
+    if row["play_id"] <= 0 or row["track_id"] <= 0 or row["l1_id"] <= 0 or row["ms_played"] < 0:
         raise RuntimeError("Billboard closure row has invalid fact values")
     parsed_timestamp = _timestamp(row.get("ts"))
     if parsed_timestamp is None:
@@ -951,15 +1063,9 @@ def _generation_billboard_rows(
 ) -> list[dict[str, Any]]:
     music_clause = "AND p.track_id IS NOT NULL" if music_only else ""
     rows = conn.execute(
-        f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour,
-                   p.ms_played, p.track_id, p.source_album_id,
-                   t.album_id, t.artist_id, stm.duration_ms
-            FROM plays p
-            JOIN tracks t ON p.track_id=t.track_id
-            LEFT JOIN spotify_track_meta stm
-              ON t.spotify_track_id=stm.spotify_track_id
-            WHERE p.import_generation_id=? {music_clause}
-            ORDER BY p.ts, p.play_id""",
+        _reconcile_billboard_select(conn)
+        + f""" WHERE p.import_generation_id=? {music_clause}
+               ORDER BY p.ts, p.play_id""",
         (generation_id,),
     ).fetchall()
     return [dict(row) for row in rows]
@@ -977,17 +1083,11 @@ def _preceding_merge_chain(
     descending: list[dict[str, Any]] = []
     while True:
         rows = conn.execute(
-            """SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour,
-                      p.ms_played, p.track_id, p.source_album_id,
-                      t.album_id, t.artist_id, stm.duration_ms
-               FROM plays p
-               JOIN tracks t ON p.track_id=t.track_id
-               LEFT JOIN spotify_track_meta stm
-                 ON t.spotify_track_id=stm.spotify_track_id
-               WHERE COALESCE(p.import_generation_id, '') != ?
-                 AND (p.ts < ? OR (p.ts = ? AND p.play_id < ?))
-               ORDER BY p.ts DESC, p.play_id DESC
-               LIMIT ?""",
+            _reconcile_billboard_select(conn)
+            + """ WHERE COALESCE(p.import_generation_id, '') != ?
+                    AND (p.ts < ? OR (p.ts = ? AND p.play_id < ?))
+                  ORDER BY p.ts DESC, p.play_id DESC
+                  LIMIT ?""",
             (
                 generation_id,
                 cursor["ts"],
@@ -1022,7 +1122,7 @@ def _rows_share_merge_run(
     *,
     max_gap_minutes: int,
 ) -> bool:
-    if prior["track_id"] != following["track_id"]:
+    if prior["l1_id"] != following["l1_id"]:
         return False
     if prior["source_album_id"] != following["source_album_id"]:
         return False
@@ -1050,10 +1150,13 @@ def _logical_billboard_events(
     frame = pd.DataFrame.from_records(rows)
     if frame.empty:
         return frame
+    if "l1_id" not in frame.columns:
+        frame["l1_id"] = frame["track_id"]
     frame["_source_album_id"] = frame["source_album_id"].fillna(0).astype(int)
     events = reconstruct_logical_plays(
         frame,
         min_ms,
+        identity_column="l1_id",
         dynamic_threshold=dynamic_threshold,
         max_gap_minutes=max_gap_minutes,
         boundary_column="source_album_id",
@@ -1085,7 +1188,7 @@ def _logical_billboard_contribution_signature(
     weighted["_source_album_id"] = weighted["_source_album_id"].fillna(0).astype(int)
     grouped = (
         weighted.groupby(
-            ["billboard_week", "ts_date", "track_id", "_source_album_id"],
+            ["billboard_week", "ts_date", "l1_id", "_source_album_id"],
             dropna=False,
         )
         .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
@@ -1096,7 +1199,7 @@ def _logical_billboard_contribution_signature(
         (
             str(row.billboard_week),
             str(row.ts_date),
-            int(cast(Any, row.track_id)),
+            int(cast(Any, row.l1_id)),
             int(cast(Any, row.source_album_id)),
         ): (int(cast(Any, row.play_count)), int(cast(Any, row.total_ms)))
         for row in grouped.itertuples(index=False)
@@ -1217,18 +1320,27 @@ def _logical_impact_years(
     if not rows:
         return years
 
-    earliest = rows[0]
+    earliest = dict(rows[0])
+    if earliest.get("track_id") is None:
+        return years
+    earliest_dimension = _track_identity_dimension(
+        conn,
+        track_id=int(earliest["track_id"]),
+        spotify_track_id=earliest.get("spotify_track_id_at_play"),
+    )
+    if earliest_dimension is None:
+        raise RuntimeError("incremental playback row has no L1 identity")
+    earliest.update(earliest_dimension)
     next_row = earliest
     prior_rows = conn.execute(
-        """SELECT play_id, ts, track_id, source_album_id, ms_played
-           FROM plays
-           WHERE COALESCE(import_generation_id, '') != ?
-             AND (ts < ? OR (ts = ? AND play_id < ?))
-           ORDER BY ts DESC, play_id DESC""",
+        _reconcile_billboard_select(conn)
+        + """ WHERE COALESCE(p.import_generation_id, '') != ?
+                AND (p.ts < ? OR (p.ts = ? AND p.play_id < ?))
+              ORDER BY p.ts DESC, p.play_id DESC""",
         (generation_id, earliest["ts"], earliest["ts"], earliest["play_id"]),
     )
     for prior in prior_rows:
-        if prior["track_id"] != next_row["track_id"]:
+        if prior["l1_id"] != next_row["l1_id"]:
             break
         if prior["source_album_id"] != next_row["source_album_id"]:
             break
@@ -1444,6 +1556,8 @@ def _semantic_revisions(
         "settings": hashlib.sha256(encoded.encode()).hexdigest()[:20],
         "artist_identity": get_identity_revision(conn),
         "track_credit": get_track_credit_revision(conn),
+        "track_identity": get_track_identity_revision(conn),
+        "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
     }
 
 

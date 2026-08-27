@@ -12,6 +12,12 @@ import { ALL_PERIOD, PERIODS } from '@/features/community/TimeFilter'
 import { MobileSettingsExperience } from '@/features/mobile/settings/MobileSettingsExperience'
 import type { SettingsData } from '@/types/settings'
 
+vi.mock('@/features/settings/components/VersionMergeSection', () => ({
+  VersionMergeSection: ({ initialObjectType, initialTrackId }: { initialObjectType: string; initialTrackId: number | null }) => (
+    <div data-testid="mobile-version-merge">{initialObjectType} · {initialTrackId ?? 'none'}</div>
+  ),
+}))
+
 const settings: SettingsData = {
   spotify_profile: null,
   min_ms: 30_000,
@@ -129,6 +135,14 @@ describe('M6 mobile pages', () => {
     expect(screen.getByText(/曲目署名 · Track 4551/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /返回原页面/ })).toHaveAttribute('href', '/music/tracks/4551')
     expect(screen.getAllByText('在电脑上管理')).toHaveLength(4)
+  })
+
+  it('mounts the shared version-merge workspace for a mobile merge deep link', async () => {
+    renderSettings('/settings?metadata=merge&track_id=4551&return_to=%2Fmusic%2Ftracks%2F4551')
+    expect(screen.getByRole('heading', { name: '高级数据管理' })).toBeInTheDocument()
+    expect(screen.getByText(/歌曲版本归并 · Track 4551/)).toBeInTheDocument()
+    expect(await screen.findByTestId('mobile-version-merge')).toHaveTextContent('track · 4551')
+    expect(screen.getByRole('link', { name: /返回原页面/ })).toHaveAttribute('href', '/music/tracks/4551')
   })
 
   it('loads and switches the active AI profile without exposing credentials', async () => {

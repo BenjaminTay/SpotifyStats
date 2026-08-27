@@ -60,7 +60,7 @@ afterEach(() => vi.restoreAllMocks())
 describe('retired music detail surfaces', () => {
   it('normalizes the retired track lyrics tab without lyrics or enrichment requests', async () => {
     const get = vi.spyOn(api, 'get').mockImplementation((path: string) => {
-      if (path === '/billboard/track/101') {
+      if (path === '/billboard/track/canonical/101') {
         return Promise.resolve({
           found: true,
           track_id: 101,

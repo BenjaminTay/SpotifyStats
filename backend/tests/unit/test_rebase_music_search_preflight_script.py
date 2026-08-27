@@ -169,8 +169,8 @@ def test_rebase_preserves_non_search_writes_and_publishes_exact_ready_set(
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["status"] == "ready"
     assert payload["source_equivalent"] is True
-    assert payload["validation"]["ready_variants"] == 6
-    assert payload["validation"]["unique_fingerprints"] == 6
+    assert payload["validation"]["ready_variants"] == 4
+    assert payload["validation"]["unique_fingerprints"] == 4
     assert payload["validation"]["context_orphan_count"] == 0
     conn = sqlite3.connect(f"{quiescent.resolve().as_uri()}?mode=ro&immutable=1", uri=True)
     assert conn.execute("SELECT value FROM unrelated_release_write").fetchone()[0] == "preserved"
@@ -241,6 +241,6 @@ def test_rebase_migrates_schema_33_quiescent_copy_without_touching_rollback(
         promoted.execute(
             "SELECT COUNT(*) FROM music_search_snapshot_meta WHERE status='ready'"
         ).fetchone()[0]
-        == 6
+        == 4
     )
     promoted.close()

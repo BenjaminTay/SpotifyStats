@@ -47,7 +47,7 @@ class AccountArchiveFilters:
             le=240,
             description="连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟）",
         ),
-        merge_level: int = Query(default=2, ge=1, le=3, description="曲目版本归并级别"),
+        merge_level: int = Query(default=2, ge=2, le=3, description="曲目版本归并级别（L2/L3）"),
     ):
         self.min_ms = min_ms
         self.merge_enabled = merge_enabled

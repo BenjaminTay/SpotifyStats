@@ -1270,7 +1270,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/billboard/track/{track_id}": {
+    "/api/billboard/track/canonical/{track_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1281,7 +1281,24 @@ export interface paths {
          * Track History
          * @description Get detailed track chart history with change column and gapped chart data.
          */
-        get: operations["track_history_api_billboard_track__track_id__get"];
+        get: operations["track_history_api_billboard_track_canonical__track_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billboard/track/{track_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Legacy Track History */
+        get: operations["legacy_track_history_api_billboard_track__track_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1574,6 +1591,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version-merge/track-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Track Groups
+         * @description Get saved L2/L3 track groups with representative metadata.
+         */
+        get: operations["list_track_groups_api_version_merge_track_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/track-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Track L1 Candidates
+         * @description Search canonical-track candidates for manual L2/L3 grouping.
+         */
+        get: operations["track_l1_candidates_api_version_merge_track_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/track-groups/{group_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Track Group Members
+         * @description Get stable track members of one saved track group.
+         */
+        get: operations["list_track_group_members_api_version_merge_track_groups__group_id__members_get"];
+        /**
+         * Update Track Members
+         * @description Add or remove stable IDs from a saved track group.
+         */
+        put: operations["update_track_members_api_version_merge_track_groups__group_id__members_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version-merge/groups/{group_id}/members": {
         parameters: {
             query?: never;
@@ -1713,6 +1794,46 @@ export interface paths {
          */
         post: operations["confirm_track_group_api_version_merge_track_groups_confirm_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/track-groups/{group_id}/primary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Primary Track
+         * @description Change the representative track of a saved group.
+         */
+        put: operations["update_primary_track_api_version_merge_track_groups__group_id__primary_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/track-groups/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Track Group
+         * @description Delete a saved track group while preserving raw metadata facts.
+         */
+        delete: operations["remove_track_group_api_version_merge_track_groups__group_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2015,6 +2136,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/music/tracks/{canonical_track_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Track Canonical Identity */
+        get: operations["track_canonical_identity_api_music_tracks__canonical_track_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/tracks/{canonical_track_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Track Canonical Sources */
+        get: operations["track_canonical_sources_api_music_tracks__canonical_track_id__sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/tracks/legacy/{track_id}/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Legacy Track Identity */
+        get: operations["legacy_track_identity_api_music_tracks_legacy__track_id__identity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/music/tracks/{track_id}/stats": {
         parameters: {
             query?: never;
@@ -2022,8 +2194,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Track Stats */
-        get: operations["track_stats_api_music_tracks__track_id__stats_get"];
+        /** Legacy Track Stats */
+        get: operations["legacy_track_stats_api_music_tracks__track_id__stats_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2107,8 +2279,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Track Plays */
-        get: operations["track_plays_api_music_tracks__track_id__plays_get"];
+        /** Legacy Track Plays */
+        get: operations["legacy_track_plays_api_music_tracks__track_id__plays_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2158,8 +2330,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Track Play Dates */
-        get: operations["track_play_dates_api_music_tracks__track_id__play_dates_get"];
+        /** Legacy Track Play Dates */
+        get: operations["legacy_track_play_dates_api_music_tracks__track_id__play_dates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6462,7 +6634,7 @@ export interface components {
             max_merge_gap_minutes: number | null;
             /**
              * Merge Level
-             * @default 1
+             * @default 2
              */
             merge_level: number;
         };
@@ -7926,6 +8098,18 @@ export interface components {
             total_records: number;
             /** Rows */
             rows: components["schemas"]["LeaderboardEntry"][];
+        };
+        /** LegacyTrackIdentityResolution */
+        LegacyTrackIdentityResolution: {
+            /** Source Track Id */
+            source_track_id: number;
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "not_found" | "unique" | "ambiguous";
+            /** Items */
+            items: components["schemas"]["TrackIdentityEntry"][];
         };
         /** LibraryOverviewResponse */
         LibraryOverviewResponse: {
@@ -9659,6 +9843,13 @@ export interface components {
             /** Album Id */
             album_id: number;
         };
+        /** SetPrimaryTrackRequest */
+        SetPrimaryTrackRequest: {
+            /** L1 Id */
+            l1_id?: number | null;
+            /** Track Id */
+            track_id?: number | null;
+        };
         /**
          * SettingsResponse
          * @description All application settings (API key excluded from response for security).
@@ -10243,10 +10434,18 @@ export interface components {
         };
         /** TrackGroupCandidateResponse */
         TrackGroupCandidateResponse: {
+            /** Original L1 Id */
+            original_l1_id?: number | null;
+            /** Original Spotify Track Id */
+            original_spotify_track_id?: string | null;
             /** Original Track Id */
             original_track_id: number;
             /** Original Track Name */
             original_track_name: string;
+            /** Candidate L1 Id */
+            candidate_l1_id?: number | null;
+            /** Candidate Spotify Track Id */
+            candidate_spotify_track_id?: string | null;
             /** Candidate Track Id */
             candidate_track_id: number;
             /** Candidate Track Name */
@@ -10256,10 +10455,14 @@ export interface components {
         };
         /** TrackGroupConfirmRequest */
         TrackGroupConfirmRequest: {
+            /** Original L1 Id */
+            original_l1_id?: number | null;
+            /** Candidate L1 Id */
+            candidate_l1_id?: number | null;
             /** Original Track Id */
-            original_track_id: number;
+            original_track_id?: number | null;
             /** Candidate Track Id */
-            candidate_track_id: number;
+            candidate_track_id?: number | null;
             /**
              * Scope
              * @default composition
@@ -10283,6 +10486,76 @@ export interface components {
             album_projects_rebuilt: boolean;
             /** Message */
             message?: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /** Original L1 Id */
+            original_l1_id?: number | null;
+            /** Candidate L1 Id */
+            candidate_l1_id?: number | null;
+        };
+        /** TrackGroupMemberResponse */
+        TrackGroupMemberResponse: {
+            /** L1 Id */
+            l1_id?: number | null;
+            /** Spotify Track Id */
+            spotify_track_id?: string | null;
+            /** Track Id */
+            track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Album Id */
+            album_id?: number | null;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Identity Kind */
+            identity_kind?: string | null;
+            /**
+             * Source Record Count
+             * @default 1
+             */
+            source_record_count: number;
+            /**
+             * Metadata Conflict
+             * @default false
+             */
+            metadata_conflict: boolean;
+            /**
+             * Is Primary
+             * @default 0
+             */
+            is_primary: number;
+        };
+        /** TrackGroupResponse */
+        TrackGroupResponse: {
+            /** Group Id */
+            group_id: number;
+            /** Canonical Name */
+            canonical_name: string;
+            /** Primary Track Id */
+            primary_track_id?: number | null;
+            /** Primary L1 Id */
+            primary_l1_id?: number | null;
+            /** Spotify Track Id */
+            spotify_track_id?: string | null;
+            /** Primary Track Name */
+            primary_track_name?: string | null;
+            /** Primary Album Id */
+            primary_album_id?: number | null;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Scope */
+            scope: string;
+            /** Is Manual */
+            is_manual: number;
+            /** Created At */
+            created_at: string;
+            /** Member Count */
+            member_count: number;
+            /**
+             * Group Status
+             * @default active
+             */
+            group_status: string;
         };
         /** TrackHistoryResponse */
         TrackHistoryResponse: {
@@ -10294,6 +10567,10 @@ export interface components {
             effective_play_count?: number | null;
             /** Track Id */
             track_id?: number | null;
+            /** L1 Id */
+            l1_id?: number | null;
+            /** Representative Track Id */
+            representative_track_id?: number | null;
             /** Track Name */
             track_name?: string | null;
             /** Artist Name */
@@ -10334,6 +10611,109 @@ export interface components {
             }[];
         } & {
             [key: string]: unknown;
+        };
+        /** TrackIdentityEntry */
+        TrackIdentityEntry: {
+            /** L1 Id */
+            l1_id: number;
+            /** Canonical Track Id */
+            canonical_track_id: number;
+            /** Spotify Track Id */
+            spotify_track_id?: string | null;
+            /**
+             * Spotify Track Ids
+             * @default []
+             */
+            spotify_track_ids: string[];
+            /**
+             * Identity Kind
+             * @enum {string}
+             */
+            identity_kind: "spotify" | "local";
+            /** Representative Track Id */
+            representative_track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Album Name */
+            album_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Source Record Count */
+            source_record_count: number;
+            /** Metadata Conflict */
+            metadata_conflict: boolean;
+        };
+        /** TrackIdentitySourceEntry */
+        TrackIdentitySourceEntry: {
+            /** Track Id */
+            track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name?: string | null;
+            /** Album Name */
+            album_name?: string | null;
+            /** Cover Url */
+            cover_url?: string | null;
+            /** Spotify Track Id */
+            spotify_track_id?: string | null;
+            /** Evidence Types */
+            evidence_types: ("play_at_time" | "track_projection" | "manual")[];
+            /** Observed Plays */
+            observed_plays: number;
+            /** First Seen At */
+            first_seen_at?: string | null;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Is Representative */
+            is_representative: boolean;
+        };
+        /** TrackL1CandidateResponse */
+        TrackL1CandidateResponse: {
+            /** L1 Id */
+            l1_id: number;
+            /** Spotify Track Id */
+            spotify_track_id?: string | null;
+            /** Track Id */
+            track_id: number;
+            /** Track Name */
+            track_name: string;
+            /** Artist Name */
+            artist_name?: string | null;
+            /**
+             * Identity Kind
+             * @default spotify
+             */
+            identity_kind: string;
+            /**
+             * Source Record Count
+             * @default 1
+             */
+            source_record_count: number;
+            /**
+             * Metadata Conflict
+             * @default false
+             */
+            metadata_conflict: boolean;
+            /** Album Id */
+            album_id?: number | null;
+            /** Album Name */
+            album_name?: string | null;
+            /**
+             * Play Count
+             * @default 0
+             */
+            play_count: number;
+            /** First Play Date */
+            first_play_date?: string | null;
+            /** Last Play Date */
+            last_play_date?: string | null;
+            /** Effective Artist Names */
+            effective_artist_names?: string[];
+            /** Cover Url */
+            cover_url?: string | null;
         };
         /** TrackLyricsResponse */
         TrackLyricsResponse: {
@@ -11234,6 +11614,16 @@ export interface components {
             artist_identity_revision: number;
             /** Track Credit Revision */
             track_credit_revision: number;
+            /**
+             * Track Identity Revision
+             * @default 0
+             */
+            track_identity_revision: number;
+            /**
+             * Track Identity Policy
+             * @default legacy_track_row
+             */
+            track_identity_policy: string;
             /** Track Group Revision */
             track_group_revision: string;
             /** Album Project Revision */
@@ -11703,7 +12093,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -11843,7 +12233,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -11886,7 +12276,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 /** @description 专辑榜包含精选集 */
                 include_compilations?: boolean | null;
@@ -12309,7 +12699,7 @@ export interface operations {
                 top_n?: number;
                 /** @description 专辑榜是否包含精选集 */
                 include_compilations?: boolean;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number;
@@ -13348,7 +13738,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 /** @description 专辑榜包含精选集 */
                 include_compilations?: boolean | null;
@@ -13404,7 +13794,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 /** @description 专辑榜包含精选集 */
                 include_compilations?: boolean | null;
@@ -13454,7 +13844,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 /** @description 专辑榜包含精选集 */
                 include_compilations?: boolean | null;
@@ -13509,7 +13899,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 /** @description 专辑榜包含精选集 */
                 include_compilations?: boolean | null;
@@ -13892,7 +14282,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -13950,7 +14340,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14008,7 +14398,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14066,7 +14456,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14124,7 +14514,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14182,7 +14572,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14242,7 +14632,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14356,7 +14746,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14419,7 +14809,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14479,7 +14869,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14512,7 +14902,7 @@ export interface operations {
             };
         };
     };
-    track_history_api_billboard_track__track_id__get: {
+    track_history_api_billboard_track_canonical__track_id__get: {
         parameters: {
             query?: {
                 include_compilations?: boolean;
@@ -14541,7 +14931,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14563,6 +14953,80 @@ export interface operations {
             };
             /** @description Track has no resolvable chart or effective-play facts */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    legacy_track_history_api_billboard_track__track_id__get: {
+        parameters: {
+            query?: {
+                include_compilations?: boolean;
+                view?: "full" | "summary" | "overview";
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number | null;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number | null;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number | null;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number | null;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number | null;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本归并级别（L2/L3） */
+                merge_level?: number;
+            };
+            header?: never;
+            path: {
+                track_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackHistoryResponse"];
+                };
+            };
+            /** @description Track has no resolvable chart or effective-play facts */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Legacy track id resolves to multiple L1 identities */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14610,7 +15074,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14679,7 +15143,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14747,7 +15211,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14808,7 +15272,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14865,7 +15329,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14934,7 +15398,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -14991,7 +15455,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -15056,7 +15520,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -15113,7 +15577,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
             };
             header?: never;
@@ -15299,7 +15763,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -15364,7 +15828,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -15423,7 +15887,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -15506,6 +15970,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreateGroupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_track_groups_api_version_merge_track_groups_get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackGroupResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    track_l1_candidates_api_version_merge_track_candidates_get: {
+        parameters: {
+            query: {
+                q: string;
+                limit?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackL1CandidateResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_track_group_members_api_version_merge_track_groups__group_id__members_get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                group_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackGroupMemberResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_track_members_api_version_merge_track_groups__group_id__members_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMembersRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -15758,6 +16354,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrackGroupConfirmResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_primary_track_api_version_merge_track_groups__group_id__primary_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPrimaryTrackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_track_group_api_version_merge_track_groups__group_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -16207,7 +16869,7 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -16265,7 +16927,7 @@ export interface operations {
                 year_start?: number | null;
                 /** @description 结束年份 (含) */
                 year_end?: number | null;
-                /** @description 版本合并严格度 */
+                /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -16295,7 +16957,106 @@ export interface operations {
             };
         };
     };
-    track_stats_api_music_tracks__track_id__stats_get: {
+    track_canonical_identity_api_music_tracks__canonical_track_id__get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                canonical_track_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackIdentityEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    track_canonical_sources_api_music_tracks__canonical_track_id__sources_get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                canonical_track_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackIdentitySourceEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    legacy_track_identity_api_music_tracks_legacy__track_id__identity_get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                track_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegacyTrackIdentityResolution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    legacy_track_stats_api_music_tracks__track_id__stats_get: {
         parameters: {
             query?: {
                 period?: string;
@@ -16346,7 +17107,7 @@ export interface operations {
         parameters: {
             query?: {
                 artist?: string | null;
-                /** @description Album project merge level (1=none, 2=recording, 3=composition) */
+                /** @description Album project merge level (2=recording, 3=composition) */
                 merge_level?: number;
                 period?: string;
                 start_date?: string | null;
@@ -16540,7 +17301,7 @@ export interface operations {
             };
         };
     };
-    track_plays_api_music_tracks__track_id__plays_get: {
+    legacy_track_plays_api_music_tracks__track_id__plays_get: {
         parameters: {
             query?: {
                 period?: string;
@@ -16692,7 +17453,7 @@ export interface operations {
             };
         };
     };
-    track_play_dates_api_music_tracks__track_id__play_dates_get: {
+    legacy_track_play_dates_api_music_tracks__track_id__play_dates_get: {
         parameters: {
             query?: {
                 period?: string;
@@ -16874,7 +17635,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 曲目版本归并级别 */
+                /** @description 曲目版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -16915,7 +17676,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 曲目版本归并级别 */
+                /** @description 曲目版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -16956,7 +17717,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 曲目版本归并级别 */
+                /** @description 曲目版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -16997,7 +17758,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 曲目版本归并级别 */
+                /** @description 曲目版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };
@@ -17075,7 +17836,7 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
-                /** @description 曲目版本归并级别 */
+                /** @description 曲目版本归并级别（L2/L3） */
                 merge_level?: number;
                 readonly?: boolean;
             };

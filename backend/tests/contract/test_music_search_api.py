@@ -204,17 +204,15 @@ def test_ready_candidate_and_context_match_legacy_current_metrics(
     finally:
         conn.close()
     assert report["snapshot"]["status"] == "ready"
-    assert report["snapshot_set"]["ready_count"] == 6
+    assert report["snapshot_set"]["ready_count"] == 4
     assert report["snapshot_set"]["failed_count"] == 0
     assert [
         (item["merge_level"], item["dynamic_threshold"])
         for item in report["snapshot_set"]["variants"]
     ] == [
         (2, True),
-        (1, True),
         (3, True),
         (2, False),
-        (1, False),
         (3, False),
     ]
 
@@ -324,7 +322,7 @@ def test_public_ready_search_is_cache_only_and_has_no_database_side_effects(
     assert after == before
 
 
-def test_three_entity_kinds_match_details_across_all_six_variants(
+def test_three_entity_kinds_match_details_across_all_four_variants(
     client: TestClient,
 ) -> None:
     conn = get_db(readonly=False)
@@ -338,7 +336,7 @@ def test_three_entity_kinds_match_details_across_all_six_variants(
         ("album", "Alpha Debut"),
         ("artist", "Alpha"),
     )
-    for merge_level in (1, 2, 3):
+    for merge_level in (2, 3):
         for dynamic_threshold in (True, False):
             for kind, query in cases:
                 _assert_search_context_matches_details(

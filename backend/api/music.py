@@ -43,6 +43,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/music", tags=["Music"])
 
 
+def _legacy_track_l1_id(conn: Connection, track_id: int) -> int | None:
+    from backend.domains.metadata.track_identity import resolve_source_track_l1_ids
+
+    l1_ids = resolve_source_track_l1_ids(conn, track_id)
+    if not l1_ids:
+        return None
+    if len(l1_ids) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "ambiguous_legacy_track_id",
+                "track_id": int(track_id),
+                "l1_ids": l1_ids,
+            },
+        )
+    return l1_ids[0]
+
+
 def _search_filter_context(
     conn: Connection,
     filters: PlayFilters,
@@ -93,7 +111,7 @@ def _reject_unsupported_candidate_filters(
     filters: PlayFilters,
     billboard_filters: BillboardFilters,
 ) -> None:
-    """Reject semantic combinations that the six-variant builder never creates."""
+    """Reject semantic combinations that the four public L2/L3 variants never create."""
 
     settings = SettingsRepository(conn).load_all()
     resolved = {
@@ -157,6 +175,41 @@ class EntityPlaysResponse(BaseModel):
 class PlayDateEntry(BaseModel):
     date: str
     count: int
+
+
+class TrackIdentityEntry(BaseModel):
+    l1_id: int
+    canonical_track_id: int
+    spotify_track_id: str | None = None
+    spotify_track_ids: list[str] = []
+    identity_kind: Literal["spotify", "local"]
+    representative_track_id: int
+    track_name: str
+    artist_name: str | None = None
+    album_name: str | None = None
+    cover_url: str | None = None
+    source_record_count: int
+    metadata_conflict: bool
+
+
+class LegacyTrackIdentityResolution(BaseModel):
+    source_track_id: int
+    resolution: Literal["not_found", "unique", "ambiguous"]
+    items: list[TrackIdentityEntry]
+
+
+class TrackIdentitySourceEntry(BaseModel):
+    track_id: int
+    track_name: str
+    artist_name: str | None = None
+    album_name: str | None = None
+    cover_url: str | None = None
+    spotify_track_id: str | None = None
+    evidence_types: list[Literal["play_at_time", "track_projection", "manual"]]
+    observed_plays: int
+    first_seen_at: str | None = None
+    last_seen_at: str | None = None
+    is_representative: bool
 
 
 class ArtistPersonalRankingResponse(BaseModel):
@@ -357,7 +410,196 @@ def music_search_context(
     return result
 
 
-@router.get("/tracks/{track_id}/stats", response_model=EntityStatsResponse)
+def _track_identity_entries(
+    conn: Connection,
+    *,
+    l1_id: int | None = None,
+    source_track_id: int | None = None,
+) -> list[dict]:
+    clauses: list[str] = []
+    params: list[int] = []
+    if l1_id is not None:
+        clauses.append("li.l1_id=?")
+        params.append(int(l1_id))
+    if source_track_id is not None:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM track_l1_source_links selected "
+            "WHERE selected.l1_id=li.l1_id AND selected.track_id=?)"
+        )
+        params.append(int(source_track_id))
+    where = " AND ".join(clauses) if clauses else "1=1"
+    rows = conn.execute(
+        f"""SELECT li.l1_id,
+                   CASE WHEN COUNT(DISTINCT external.external_track_id)>0
+                        THEN 'spotify' ELSE 'local' END AS identity_kind,
+                   MAX(CASE WHEN external.is_primary=1
+                            THEN external.external_track_id END) AS spotify_track_id,
+                   GROUP_CONCAT(DISTINCT external.external_track_id) AS spotify_track_ids,
+                   li.representative_track_id,
+                   t.track_name, a.artist_name, al.album_name, al.album_id,
+                   COUNT(DISTINCT links.track_id) AS source_record_count,
+                   COUNT(DISTINCT source.track_name) > 1
+                     OR COUNT(DISTINCT source.artist_id) > 1
+                     OR COUNT(DISTINCT source.album_id) > 1 AS metadata_conflict
+              FROM track_l1_identities li
+              JOIN tracks t ON t.track_id=li.representative_track_id
+              LEFT JOIN artists a ON a.artist_id=t.artist_id
+              LEFT JOIN albums al ON al.album_id=t.album_id
+              LEFT JOIN track_l1_source_links links ON links.l1_id=li.l1_id
+              LEFT JOIN track_l1_external_ids external ON external.l1_id=li.l1_id
+              LEFT JOIN tracks source ON source.track_id=links.track_id
+             WHERE li.identity_status!='superseded' AND {where}
+             GROUP BY li.l1_id
+             ORDER BY li.l1_id""",
+        params,
+    ).fetchall()
+    return [
+        {
+            "l1_id": int(row["l1_id"]),
+            "canonical_track_id": int(row["l1_id"]),
+            "spotify_track_id": row["spotify_track_id"],
+            "spotify_track_ids": sorted(
+                value for value in str(row["spotify_track_ids"] or "").split(",") if value
+            ),
+            "identity_kind": row["identity_kind"],
+            "representative_track_id": int(row["representative_track_id"]),
+            "track_name": row["track_name"],
+            "artist_name": row["artist_name"],
+            "album_name": row["album_name"],
+            "cover_url": (
+                f"/covers/albums/{int(row['album_id'])}.jpg"
+                if row["album_id"] is not None
+                else None
+            ),
+            "source_record_count": int(row["source_record_count"]),
+            "metadata_conflict": bool(row["metadata_conflict"]),
+        }
+        for row in rows
+    ]
+
+
+def _track_identity_entry(conn: Connection, canonical_track_id: int) -> dict:
+    items = _track_identity_entries(conn, l1_id=canonical_track_id)
+    if not items:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Canonical track not found"
+        )
+    return items[0]
+
+
+@router.get("/tracks/{canonical_track_id}", response_model=TrackIdentityEntry)
+@router.get(
+    "/tracks/canonical/{canonical_track_id}",
+    response_model=TrackIdentityEntry,
+    include_in_schema=False,
+)
+def track_canonical_identity(
+    canonical_track_id: int,
+    conn: Connection = Depends(get_conn),
+):
+    return _track_identity_entry(conn, canonical_track_id)
+
+
+@router.get("/tracks/l1/{l1_id}", response_model=TrackIdentityEntry, include_in_schema=False)
+def track_l1_identity(l1_id: int, conn: Connection = Depends(get_conn)):
+    return _track_identity_entry(conn, l1_id)
+
+
+def _track_identity_sources(conn: Connection, canonical_track_id: int) -> list[dict]:
+    identity = conn.execute(
+        "SELECT representative_track_id FROM track_l1_identities WHERE l1_id=?",
+        (int(canonical_track_id),),
+    ).fetchone()
+    if identity is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Canonical track not found"
+        )
+    rows = conn.execute(
+        """SELECT links.track_id, t.track_name, a.artist_name,
+                  al.album_name, al.album_id, t.spotify_track_id,
+                  GROUP_CONCAT(DISTINCT links.evidence_type) AS evidence_types,
+                  SUM(links.observed_plays) AS observed_plays,
+                  MIN(links.first_seen_at) AS first_seen_at,
+                  MAX(links.last_seen_at) AS last_seen_at
+             FROM track_l1_source_links links
+             JOIN tracks t ON t.track_id=links.track_id
+             LEFT JOIN artists a ON a.artist_id=t.artist_id
+             LEFT JOIN albums al ON al.album_id=t.album_id
+            WHERE links.l1_id=?
+            GROUP BY links.track_id
+            ORDER BY links.track_id""",
+        (int(canonical_track_id),),
+    ).fetchall()
+    representative_track_id = int(identity[0])
+    return [
+        {
+            "track_id": int(row["track_id"]),
+            "track_name": row["track_name"],
+            "artist_name": row["artist_name"],
+            "album_name": row["album_name"],
+            "cover_url": (
+                f"/covers/albums/{int(row['album_id'])}.jpg"
+                if row["album_id"] is not None
+                else None
+            ),
+            "spotify_track_id": row["spotify_track_id"],
+            "evidence_types": sorted(
+                value for value in str(row["evidence_types"] or "").split(",") if value
+            ),
+            "observed_plays": int(row["observed_plays"] or 0),
+            "first_seen_at": row["first_seen_at"],
+            "last_seen_at": row["last_seen_at"],
+            "is_representative": int(row["track_id"]) == representative_track_id,
+        }
+        for row in rows
+    ]
+
+
+@router.get(
+    "/tracks/canonical/{canonical_track_id}/sources",
+    response_model=list[TrackIdentitySourceEntry],
+    include_in_schema=False,
+)
+@router.get(
+    "/tracks/{canonical_track_id}/sources",
+    response_model=list[TrackIdentitySourceEntry],
+)
+def track_canonical_sources(
+    canonical_track_id: int,
+    conn: Connection = Depends(get_conn),
+):
+    return _track_identity_sources(conn, canonical_track_id)
+
+
+@router.get(
+    "/tracks/l1/{l1_id}/sources",
+    response_model=list[TrackIdentitySourceEntry],
+    include_in_schema=False,
+)
+def track_l1_sources(l1_id: int, conn: Connection = Depends(get_conn)):
+    return _track_identity_sources(conn, l1_id)
+
+
+@router.get(
+    "/tracks/legacy/{track_id}/identity",
+    response_model=LegacyTrackIdentityResolution,
+)
+def legacy_track_identity(track_id: int, conn: Connection = Depends(get_conn)):
+    items = _track_identity_entries(conn, source_track_id=track_id)
+    resolution = "not_found" if not items else "unique" if len(items) == 1 else "ambiguous"
+    return {"source_track_id": track_id, "resolution": resolution, "items": items}
+
+
+@router.get(
+    "/tracks/l1/{track_id}/stats",
+    response_model=EntityStatsResponse,
+    include_in_schema=False,
+)
+@router.get(
+    "/tracks/canonical/{track_id}/stats",
+    response_model=EntityStatsResponse,
+    include_in_schema=False,
+)
 def track_stats(
     track_id: int,
     response: Response,
@@ -387,6 +629,32 @@ def track_stats(
     return result
 
 
+@router.get("/tracks/{track_id}/stats", response_model=EntityStatsResponse)
+def legacy_track_stats(
+    track_id: int,
+    response: Response,
+    filters: PlayFilters = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    include_rank_context: bool = Query(default=True),
+    conn: Connection = Depends(get_conn),
+):
+    l1_id = _legacy_track_l1_id(conn, track_id)
+    if l1_id is None:
+        return {"found": False}
+    return track_stats(
+        l1_id,
+        response,
+        filters,
+        period,
+        start_date,
+        end_date,
+        include_rank_context,
+        conn,
+    )
+
+
 @router.get("/albums/{album_name}/stats", response_model=EntityStatsResponse)
 def album_stats(
     album_name: str,
@@ -395,9 +663,9 @@ def album_stats(
     filters: PlayFilters = Depends(),
     merge_level: int = Query(
         default=2,
-        ge=1,
+        ge=2,
         le=3,
-        description="Album project merge level (1=none, 2=recording, 3=composition)",
+        description="Album project merge level (2=recording, 3=composition)",
     ),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
@@ -467,7 +735,7 @@ def album_personal_rankings(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     filters: PlayFilters = Depends(),
-    merge_level: int = Query(default=2, ge=1, le=3),
+    merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -526,7 +794,16 @@ def artist_personal_rankings(
     )
 
 
-@router.get("/tracks/{track_id}/plays", response_model=EntityPlaysResponse)
+@router.get(
+    "/tracks/l1/{track_id}/plays",
+    response_model=EntityPlaysResponse,
+    include_in_schema=False,
+)
+@router.get(
+    "/tracks/canonical/{track_id}/plays",
+    response_model=EntityPlaysResponse,
+    include_in_schema=False,
+)
 def track_plays(
     track_id: int,
     filters: PlayFilters = Depends(),
@@ -558,12 +835,42 @@ def track_plays(
     )
 
 
+@router.get("/tracks/{track_id}/plays", response_model=EntityPlaysResponse)
+def legacy_track_plays(
+    track_id: int,
+    filters: PlayFilters = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    date: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    conn: Connection = Depends(get_conn),
+):
+    l1_id = _legacy_track_l1_id(conn, track_id)
+    if l1_id is None:
+        return {"found": False, "total": 0, "limit": limit, "offset": offset, "rows": []}
+    return track_plays(
+        l1_id,
+        filters,
+        period,
+        start_date,
+        end_date,
+        search,
+        date,
+        limit,
+        offset,
+        conn,
+    )
+
+
 @router.get("/albums/{album_name}/plays", response_model=EntityPlaysResponse)
 def album_plays(
     album_name: str,
     artist: str | None = Query(default=None),
     filters: PlayFilters = Depends(),
-    merge_level: int = Query(default=2, ge=1, le=3),
+    merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -626,7 +933,16 @@ def artist_plays(
     )
 
 
-@router.get("/tracks/{track_id}/play-dates", response_model=list[PlayDateEntry])
+@router.get(
+    "/tracks/l1/{track_id}/play-dates",
+    response_model=list[PlayDateEntry],
+    include_in_schema=False,
+)
+@router.get(
+    "/tracks/canonical/{track_id}/play-dates",
+    response_model=list[PlayDateEntry],
+    include_in_schema=False,
+)
 def track_play_dates(
     track_id: int,
     filters: PlayFilters = Depends(),
@@ -650,12 +966,34 @@ def track_play_dates(
     )
 
 
+@router.get("/tracks/{track_id}/play-dates", response_model=list[PlayDateEntry])
+def legacy_track_play_dates(
+    track_id: int,
+    filters: PlayFilters = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    conn: Connection = Depends(get_conn),
+):
+    l1_id = _legacy_track_l1_id(conn, track_id)
+    if l1_id is None:
+        return []
+    return track_play_dates(
+        l1_id,
+        filters,
+        period,
+        start_date,
+        end_date,
+        conn,
+    )
+
+
 @router.get("/albums/{album_name}/play-dates", response_model=list[PlayDateEntry])
 def album_play_dates(
     album_name: str,
     artist: str | None = Query(default=None),
     filters: PlayFilters = Depends(),
-    merge_level: int = Query(default=2, ge=1, le=3),
+    merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),

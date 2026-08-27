@@ -45,6 +45,7 @@
 
 ### 元数据、AI 与质量门禁
 
+- [`2026-08-27-spotify-track-l1-identity-migration.md`](2026-08-27-spotify-track-l1-identity-migration.md)
 - [`2026-08-24-fullstack-gate-duration-optimization.md`](2026-08-24-fullstack-gate-duration-optimization.md)
 - [`2026-08-24-fullstack-gate-repair.md`](2026-08-24-fullstack-gate-repair.md)
 - [`2026-07-16-genre-source-quality-audit.md`](2026-07-16-genre-source-quality-audit.md)

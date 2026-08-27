@@ -19,6 +19,8 @@ REVISIONS: dict[str, str | int] = {
     "artist_metadata_revision": "artist-rev",
     "artist_identity_revision": 3,
     "track_credit_revision": 4,
+    "track_identity_revision": 5,
+    "track_identity_policy": "spotify_l1_v1",
     "track_group_revision": "track-groups",
     "album_project_revision": "album-projects",
 }

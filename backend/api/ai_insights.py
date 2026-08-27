@@ -329,7 +329,7 @@ def _visual_yearly_cached_payload_is_displayable(
 def ask(
     body: AskRequest,
     filters: PlayFilters = Depends(),
-    merge_level: int = Query(default=1, ge=1, le=3),
+    merge_level: int = Query(default=2, ge=2, le=3),
     conn: Connection = Depends(get_conn),
 ):
     """Answer a natural-language question about listening history."""

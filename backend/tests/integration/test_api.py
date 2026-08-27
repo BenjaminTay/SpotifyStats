@@ -765,11 +765,13 @@ class TestBillboardDetails:
         assert "track_id" in t
 
     def test_track_history(self, client, default_params):
-        r = client.get("/api/billboard/track/157", params=default_params)
+        entities = client.get("/api/billboard/entity-lists", params=default_params).json()
+        track_id = int(entities["tracks"][0]["track_id"])
+        r = client.get(f"/api/billboard/track/l1/{track_id}", params=default_params)
         assert r.status_code == 200
         d = r.json()
         assert d["found"] is True
-        assert d["track_id"] == 157
+        assert d["track_id"] == track_id
         assert "track_name" in d
         assert "artist_name" in d
         assert "summary" in d
@@ -862,12 +864,14 @@ class TestBillboardDetails:
 
 class TestBillboardVersus:
     def test_versus_track(self, client, default_params):
+        entities = client.get("/api/billboard/entity-lists", params=default_params).json()
+        track_ids = [int(row["track_id"]) for row in entities["tracks"][:2]]
         r = client.get(
             "/api/billboard/versus/track",
             params={
                 **default_params,
-                "track_id_a": 157,
-                "track_id_b": 149,
+                "track_id_a": track_ids[0],
+                "track_id_b": track_ids[1],
             },
         )
         assert r.status_code == 200

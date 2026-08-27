@@ -40,7 +40,7 @@ class YearlyReviewFilterContext(BaseModel):
     merge_enabled: bool
     dynamic_threshold: bool
     max_merge_gap_minutes: int = Field(default=5, ge=1, le=240)
-    merge_level: int = Field(ge=1, le=3)
+    merge_level: int = Field(ge=2, le=3)
     include_compilations: bool
     bb_top_n: int = Field(ge=5, le=100)
     bb_album_top_n: int = Field(ge=5, le=100)
@@ -51,6 +51,8 @@ class YearlyReviewFilterContext(BaseModel):
     artist_metadata_revision: str
     artist_identity_revision: int = Field(ge=0)
     track_credit_revision: int = Field(ge=0)
+    track_identity_revision: int = Field(default=0, ge=0)
+    track_identity_policy: str = "legacy_track_row"
     track_group_revision: str
     album_project_revision: str
     filter_fingerprint: str

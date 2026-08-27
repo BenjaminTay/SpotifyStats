@@ -522,12 +522,6 @@ function GenreDataHealthFrame({
   if (embedded) {
     return (
       <section id="genre-data-health" aria-label="流派与语言数据健康" className="space-y-5">
-        <div>
-          <h3 className="font-serif text-2xl font-bold">流派与语言数据健康</h3>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-            查看艺人流派与常用演唱语言的覆盖率、来源和人工审核记录。
-          </p>
-        </div>
         {children}
       </section>
     )
