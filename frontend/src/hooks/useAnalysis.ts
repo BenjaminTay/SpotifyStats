@@ -351,6 +351,9 @@ export const analysisApi = {
       offset: params.offset ?? 0,
       search: params.search,
       date: params.date,
+      ...(kind === 'track' || kind === 'album'
+        ? { merge_level: params.merge_level ?? filters.merge_level }
+        : {}),
       ...(kind === 'album' && artistName ? { artist: artistName } : {}),
     })
     return fetchQuery(

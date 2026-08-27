@@ -143,3 +143,13 @@ Desktop 1440×1000 与 Phone 390×844 使用真实浏览器验收；“已保存
 - 形成原因是历史重复维表写入与后续父记录清理发生在 `foreign_keys=OFF` 的普通应用连接上，声明的级联没有执行；聊天会话删除路径仍可直接证明这一机制。音乐父记录缺少当时的变更审计，无法可靠归因到某一条历史命令。完整分类、影响与后续清理门禁见 [`../reference/data-import-and-health.md`](../reference/data-import-and-health.md)。
 - 后续 schema 59 已把持久写连接改为外键 fail-closed，修复发行分组错误的临时表自引用，并增加 Track ID 永久别名、清理运行记录和逐行 JSON 归档。受控工具先在真实库 Online Backup 副本完成 7,831 → 0 验收；获得单独授权后，主库以 `spotify_stats_20260827T095959Z_before-main-fk-debt-cleanup_40fa6f50.db` 作为回滚点，由运行 `4682f5e291854b6b98b271763228ab72` 正式执行。共删除 3,100 条无直接播放的旧 Track、3,100 条旧兼容身份、1,590 张无用专辑和 43 条 AI/聊天孤儿日志，同时保留 3,100 个旧 ID 重定向；原始播放、四张 canonical 周聚合、L2/L3 分组和关键歌曲聚合前后相同，清理后 `foreign_key_check=0`、`integrity_check=ok`。
 - 本轮是本地实现与本地真实库迁移，不代表远程生产已经发布；生产仍需按 release Online Backup、预检、四变体复用和业务 smoke 执行。
+
+## 9. 歌曲详情 L2/L3 消费链补充修复
+
+后续真实使用发现，全局 L2 曲目榜已正确消费歌曲版本组，但歌曲详情的统计摘要、最近播放和播放日历仍只按请求的单个 `track_id` 过滤。因此“手心的薔薇 (ft. 邓紫棋)”的活动 L2 组虽然已包含 Track `852/4309`，详情 Track `4309` 仍只显示 55 次，而全局 L2 榜的正确结果是 87 次。这是详情消费链遗漏，不是分组数据、Spotify owner 或原始播放被破坏。
+
+修复后，三个详情接口显式接受且只接受 `merge_level=2|3`，共用全局曲目聚合键解析成员，并在全部成员范围内一次性重建逻辑播放事件。请求任一成员都返回当前层级的代表 Track；最近播放行仍保留实际来源版本。同时修正了旧 resolver 在 L2 也跟随 `composition` 父组的边界错误：L2 仅使用录音组，L3 才扩展到作品组。
+
+本修复不更改 schema，不写入或重建主库。定向 contract 要求统计摘要、分页播放和日历总数从分组内任一成员访问时都与全局 L2/L3 榜一致，并覆盖 L2 录音组、L3 作品父组和公共 L1 拒绝。
+
+最终验收中，真实主库 Track `852/4309` 从任一成员请求均返回代表 Track `4309`、87 次 / 6.6 小时；最近播放和日历合计均为 87，全局 L2 榜为 87 次 / 6.65 小时（小时显示精度不同）。详细播放行同时包含来源 Track `852/4309`；三个接口的 `merge_level=1` 均返回 422。真实浏览器 Desktop 1440×1000 和 Phone 390×844 都显示 87 次与“共 87 条”，请求明确携带 `merge_level=2`，控制台 0 error / 0 warning，Phone `scrollWidth=clientWidth=390`。当前门禁为 unit 1,384 passed、contract 385 passed、前端 585 passed，production build、pre-commit、文档审计和 `git diff --check` 通过。主库只读审计仍为 `integrity_check=ok`、外键 0、Spotify 多 owner 0、未解析播放 0；`plays` 仍为 92,908 条，SHA-256 仍为 `bfa9f79b095d4ca865a6d84a10997f83e1f2fd44db9262c784c8cc1be9e1ad37`。

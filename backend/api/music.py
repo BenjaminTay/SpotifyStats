@@ -604,6 +604,7 @@ def track_stats(
     track_id: int,
     response: Response,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -623,6 +624,7 @@ def track_stats(
             end_date,
             filters.dynamic_threshold,
             filters.max_merge_gap_minutes,
+            merge_level,
             include_rank_context,
         )
     response.headers["Server-Timing"] = timing.server_timing_header()
@@ -634,6 +636,7 @@ def legacy_track_stats(
     track_id: int,
     response: Response,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -647,6 +650,7 @@ def legacy_track_stats(
         l1_id,
         response,
         filters,
+        merge_level,
         period,
         start_date,
         end_date,
@@ -807,6 +811,7 @@ def artist_personal_rankings(
 def track_plays(
     track_id: int,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -823,6 +828,7 @@ def track_plays(
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         merge_enabled=filters.merge_enabled,
+        merge_level=merge_level,
         period=period,
         start_date=start_date,
         end_date=end_date,
@@ -839,6 +845,7 @@ def track_plays(
 def legacy_track_plays(
     track_id: int,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -854,6 +861,7 @@ def legacy_track_plays(
     return track_plays(
         l1_id,
         filters,
+        merge_level,
         period,
         start_date,
         end_date,
@@ -946,6 +954,7 @@ def artist_plays(
 def track_play_dates(
     track_id: int,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -958,6 +967,7 @@ def track_play_dates(
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         merge_enabled=filters.merge_enabled,
+        merge_level=merge_level,
         period=period,
         start_date=start_date,
         end_date=end_date,
@@ -970,6 +980,7 @@ def track_play_dates(
 def legacy_track_play_dates(
     track_id: int,
     filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
@@ -981,6 +992,7 @@ def legacy_track_play_dates(
     return track_play_dates(
         l1_id,
         filters,
+        merge_level,
         period,
         start_date,
         end_date,

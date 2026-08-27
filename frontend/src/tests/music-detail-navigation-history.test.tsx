@@ -31,8 +31,12 @@ vi.mock('@/hooks/useAnalysis', () => ({
 }))
 
 vi.mock('@/components/shared/EntityStatsPanel', () => ({
-  EntityStatsPanel: () => <div>播放统计内容</div>,
-  EntityStatsPrefetch: () => null,
+  EntityStatsPanel: ({ mergeLevel }: { mergeLevel?: number }) => (
+    <div>播放统计内容<span data-testid="track-stats-level">{mergeLevel}</span></div>
+  ),
+  EntityStatsPrefetch: ({ mergeLevel }: { mergeLevel?: number }) => (
+    <span data-testid="track-stats-prefetch-level">{mergeLevel}</span>
+  ),
 }))
 
 const TRACK_DETAIL = {
@@ -109,6 +113,18 @@ function renderWithHistory(path: string, routePath: string, element: ReactElemen
 afterEach(() => vi.restoreAllMocks())
 
 describe('音乐详情页历史记录', () => {
+  it('将 URL 中的归并层级同时传给歌曲统计预取和正式面板', async () => {
+    vi.spyOn(api, 'get').mockResolvedValue(TRACK_DETAIL)
+    renderWithHistory(
+      '/music/tracks/101?merge_level=3',
+      '/music/tracks/:trackId',
+      <TrackDetailExperience />,
+    )
+
+    expect(await screen.findByTestId('track-stats-prefetch-level')).toHaveTextContent('3')
+    expect(await screen.findByTestId('track-stats-level')).toHaveTextContent('3')
+  })
+
   it.each([
     {
       name: '单曲',

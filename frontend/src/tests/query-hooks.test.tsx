@@ -44,6 +44,46 @@ describe('Phase 5 query hook migration', () => {
     vi.restoreAllMocks()
   })
 
+  it('preserves the track merge level for play rows and calendar dates', async () => {
+    queryClient.clear()
+    const filters = {
+      min_ms: 30_000,
+      music_only: true,
+      merge_enabled: true,
+      dynamic_threshold: true,
+      max_merge_gap_minutes: 5,
+      merge_level: 2,
+      include_compilations: false,
+    }
+    vi.spyOn(api, 'get')
+      .mockResolvedValueOnce({ total: 0, limit: 50, offset: 0, rows: [] })
+      .mockResolvedValueOnce([])
+
+    await analysisApi.entityPlays(
+      'track',
+      '4309',
+      filters,
+      { period: 'lifetime', merge_level: 3 },
+    )
+    await analysisApi.entityPlayDates(
+      'track',
+      '4309',
+      filters,
+      { period: 'lifetime', merge_level: 3 },
+    )
+
+    expect(api.get).toHaveBeenNthCalledWith(
+      1,
+      '/music/tracks/4309/plays',
+      expect.objectContaining({ merge_level: 3 }),
+    )
+    expect(api.get).toHaveBeenNthCalledWith(
+      2,
+      '/music/tracks/4309/play-dates',
+      expect.objectContaining({ merge_level: 3 }),
+    )
+  })
+
   it('stores Billboard weekly data in TanStack Query cache', async () => {
     const client = createClient()
     const weekly = {

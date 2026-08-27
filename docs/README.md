@@ -16,6 +16,10 @@
 | 最近变更 | [`CHANGELOG.md`](CHANGELOG.md) |
 | 完整交付证据 | [`reports/README.md`](reports/README.md) |
 
+## 问题台账
+
+长期问题入口：[`issues/README.md`](issues/README.md)；当前开放、部分完成、已解决和已确认不是问题的事项见 [`issues/2026-08-27-issue-register.md`](issues/2026-08-27-issue-register.md)。
+
 ## 当前有效参考规则
 
 `reference/` 是当前统计和数据契约的权威入口。代码、测试或部署运行手册若与这里冲突，应先核对实际实现和证据，再更新规则文档。

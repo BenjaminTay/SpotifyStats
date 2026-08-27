@@ -10,6 +10,8 @@ Settings 的“音乐源数据管理”是人工音乐事实治理的唯一入�
 
 播放归属优先使用事件发生时保存的 `plays.spotify_track_id_at_play`，仅在缺失时回退 `tracks.spotify_track_id`，再通过 `spotify_track_owners` 解析到唯一 `track_id`；没有 Spotify ID 时直接使用 `plays.track_id`。已登记 owner 不能因名称、简繁、艺人、专辑、封面、ISRC 或时长变化而自动改写。确定性历史回填按“有播放记录优先、播放行数最多、艺人与专辑元数据更完整、最后取最小稳定 track_id”选择 owner，并保留人工纠错的扩展位。
 
+歌曲详情的摘要统计、最近播放和播放日历必须与全局曲目榜共用同一 L2/L3 分组解析：L2 只取当前活动 `recording` 组，不跟随其 `composition` 父组；L3 才将子录音组和父作品组的成员纳入同一范围。请求分组内任一成员都应返回同一代表 `track_id` 和相同合计；最近播放行仍保留实际来源版本，便于用户理解统计构成。
+
 歌曲详情和新生成的深链统一使用 `/music/tracks/{track_id}`。旧 `/music/tracks/l1/{id}` 与 `/music/tracks/canonical/{id}` 仅作为隐藏兼容重定向，不能再出现在新链接或 OpenAPI。
 
 L1 不作为设置项或人工合并层级，原“高级：基础身份纠错”入口关闭。底层只执行 Spotify ID 单一归属不变量；需要修正 owner 时必须走单独的受审计数据治理流程，不能通过 L2/L3 或公开 canonical merge/split API 生成新歌曲身份。

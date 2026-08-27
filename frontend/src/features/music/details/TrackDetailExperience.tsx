@@ -90,7 +90,7 @@ export function TrackDetailExperience() {
 
   return (
     <>
-      {activeTab === 'stats' && trackId && <EntityStatsPrefetch kind="track" trackId={trackId} />}
+      {activeTab === 'stats' && trackId && <EntityStatsPrefetch kind="track" trackId={trackId} mergeLevel={mergeLevel} />}
       {isPending && <TrackDetailSkeleton />}
 
       {error && (
@@ -209,7 +209,7 @@ export function TrackDetailExperience() {
                       <TrackOverviewSection data={overviewData} />
                     </>
               )}
-              {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} />}
+              {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} mergeLevel={mergeLevel} />}
             </>
           )}
         </>

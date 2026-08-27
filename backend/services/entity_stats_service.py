@@ -18,6 +18,7 @@ from backend.core.db import (
     load_plays_for_artists,
 )
 from backend.domains.music_search.revisions import get_music_search_revision_state
+from backend.domains.playback.track_groups import resolve_track_aggregation_scope
 from backend.services.analysis_stats_service import (
     PERIOD_LABELS,
     _cumulative_trend,
@@ -177,6 +178,7 @@ def _ranks(
     album_name=None,
     album_names: list[str] | None = None,
     artist_name=None,
+    merge_level: int = 2,
 ) -> dict:
     periods = {
         "lifetime": resolve_period(all_df, "lifetime", None, None),
@@ -197,6 +199,7 @@ def _ranks(
                 "plays",
                 None,
                 0,
+                merge_level=merge_level,
                 duration_frame=empty_duration,
             )
         return rows_by_scope[scope]
@@ -299,11 +302,19 @@ def _build_track_stats(
     end_date: str | None = None,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
+    merge_level: int = 2,
     include_rank_context: bool = True,
 ) -> dict:
+    aggregation_scope = resolve_track_aggregation_scope(conn, track_id, merge_level)
+    member_track_ids = list(aggregation_scope.member_track_ids)
     scoped = not include_rank_context and period in {"lifetime", "custom"}
     loader = (
-        _scoped_play_loader(conn, [track_id], music_only=music_only, ids_are_l1=True)
+        _scoped_play_loader(
+            conn,
+            member_track_ids,
+            music_only=music_only,
+            ids_are_l1=True,
+        )
         if scoped
         else None
     )
@@ -329,19 +340,28 @@ def _build_track_stats(
             music_only=music_only,
         )
         current_df = filter_period_events(all_df, resolved)
-    entity_all = all_df[all_df["track_id"] == track_id]
-    entity_df = current_df[current_df["track_id"] == track_id]
+    entity_all = all_df[all_df["track_id"].isin(member_track_ids)]
+    entity_df = current_df[current_df["track_id"].isin(member_track_ids)]
     if entity_all.empty:
         return {"found": False}
-    info = entity_all.iloc[0]
-    representative_track_id = int(
-        info.get("representative_track_id", track_id)
-        if pd.notna(info.get("representative_track_id", track_id))
-        else track_id
-    )
+    primary_track_id = aggregation_scope.primary_track_id
+    info = conn.execute(
+        """SELECT t.track_name, a.artist_name, al.album_name,
+                  COALESCE(identity.representative_track_id, t.track_id)
+                     AS representative_track_id
+             FROM tracks t
+             LEFT JOIN artists a ON a.artist_id=t.artist_id
+             LEFT JOIN albums al ON al.album_id=t.album_id
+             LEFT JOIN track_l1_identities identity ON identity.l1_id=t.track_id
+            WHERE t.track_id=?""",
+        (primary_track_id,),
+    ).fetchone()
+    if info is None:
+        return {"found": False}
+    representative_track_id = int(info["representative_track_id"])
     primary_artist = info["artist_name"]
     all_artists = get_track_artist_names_map()
-    artist_names = all_artists.get(int(track_id), [primary_artist])
+    artist_names = all_artists.get(primary_track_id, [primary_artist])
     display_artist = ", ".join(artist_names) if len(artist_names) > 1 else primary_artist
     entity_duration = build_duration_frame(entity_all, resolved)
     data = _entity_base(all_df, entity_df, resolved, entity_duration)
@@ -350,14 +370,14 @@ def _build_track_stats(
             "found": True,
             "period": resolved,
             "entity": {
-                "track_id": int(track_id),
-                "l1_id": int(track_id),
+                "track_id": primary_track_id,
+                "l1_id": primary_track_id,
                 "representative_track_id": representative_track_id,
                 "track_name": info["track_name"],
                 "artist_name": display_artist,
                 "artist_names": artist_names,
                 "album_name": info["album_name"],
-                "cover_url": _track_cover_urls(conn, [track_id]).get(int(track_id)),
+                "cover_url": _track_cover_urls(conn, [primary_track_id]).get(primary_track_id),
             },
             "first_played": str(entity_all["ts"].min()),
             "last_played": str(entity_all["ts"].max()),
@@ -368,7 +388,8 @@ def _build_track_stats(
                     current_df,
                     resolved,
                     "track",
-                    track_id=int(track_id),
+                    track_id=primary_track_id,
+                    merge_level=merge_level,
                 )
                 if include_rank_context
                 else None
@@ -1017,6 +1038,15 @@ def get_entity_plays(
     offset: int = 0,
 ) -> dict:
     """Return paginated play records for a specific entity using the shared rules pipeline."""
+    loader = None
+    if entity == "track" and track_id is not None and period in {"lifetime", "custom"}:
+        scope = resolve_track_aggregation_scope(conn, track_id, merge_level)
+        loader = _scoped_play_loader(
+            conn,
+            list(scope.member_track_ids),
+            music_only=music_only,
+            ids_are_l1=True,
+        )
     _, df, _ = load_period_plays(
         conn,
         min_ms,
@@ -1027,7 +1057,7 @@ def get_entity_plays(
         end_date,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
-        _loader=load_plays_for_artists if entity == "artist" else None,
+        _loader=load_plays_for_artists if entity == "artist" else loader,
         attach_duration_slices=False,
     )
     df = _filter_entity_rows(
@@ -1111,7 +1141,9 @@ def _filter_entity_rows(
     if df.empty:
         return df
     if entity == "track" and track_id is not None:
-        return df[df["track_id"] == track_id]
+        scope = resolve_track_aggregation_scope(conn, track_id, merge_level) if conn else None
+        member_ids = scope.member_track_ids if scope is not None else (track_id,)
+        return df[df["track_id"].isin(member_ids)]
     if entity == "album" and album_name is not None:
         # Try album project canonical_song_key attribution first
         if conn is not None and artist_name is not None:
@@ -1156,6 +1188,15 @@ def get_entity_play_dates(
     max_merge_gap_minutes: int | None = 5,
 ) -> list[dict[str, Any]]:
     """Return [{date, count}] for calendar highlighting."""
+    loader = None
+    if entity == "track" and track_id is not None and period in {"lifetime", "custom"}:
+        scope = resolve_track_aggregation_scope(conn, track_id, merge_level)
+        loader = _scoped_play_loader(
+            conn,
+            list(scope.member_track_ids),
+            music_only=music_only,
+            ids_are_l1=True,
+        )
     _, df, _ = load_period_plays(
         conn,
         min_ms,
@@ -1166,7 +1207,7 @@ def get_entity_play_dates(
         end_date,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
-        _loader=load_plays_for_artists if entity == "artist" else None,
+        _loader=load_plays_for_artists if entity == "artist" else loader,
         attach_duration_slices=False,
     )
     df = _filter_entity_rows(
@@ -1240,6 +1281,7 @@ def get_track_stats(
     end_date: str | None = None,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
+    merge_level: int = 2,
     include_rank_context: bool = True,
 ) -> dict:
     args = (
@@ -1252,6 +1294,7 @@ def get_track_stats(
         end_date,
         dynamic_threshold,
         max_merge_gap_minutes,
+        merge_level,
         include_rank_context,
     )
     if _is_primary_connection(conn):

@@ -17223,6 +17223,7 @@ export interface operations {
     legacy_track_stats_api_music_tracks__track_id__stats_get: {
         parameters: {
             query?: {
+                merge_level?: number;
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
@@ -17468,6 +17469,7 @@ export interface operations {
     legacy_track_plays_api_music_tracks__track_id__plays_get: {
         parameters: {
             query?: {
+                merge_level?: number;
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;
@@ -17620,6 +17622,7 @@ export interface operations {
     legacy_track_play_dates_api_music_tracks__track_id__play_dates_get: {
         parameters: {
             query?: {
+                merge_level?: number;
                 period?: string;
                 start_date?: string | null;
                 end_date?: string | null;

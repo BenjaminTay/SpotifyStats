@@ -746,6 +746,7 @@ def entity_stats_handler(params: BaseModel) -> AgentToolResult:
                 conn,
                 track_id=int(parsed.track_id or 0),
                 **_filter_kwargs(parsed),
+                merge_level=parsed.merge_level,
             )
         elif parsed.entity == "album":
             data = entity_stats_service.get_album_stats(

@@ -48,9 +48,8 @@ function entityStatsRequest(
     ...filters,
     ...periodParams,
     include_rank_context: includeRankContext,
-    ...(kind === 'album'
-      ? { merge_level: resolvedMergeLevel, ...(artistName ? { artist: artistName } : {}) }
-      : {}),
+    ...(kind === 'track' || kind === 'album' ? { merge_level: resolvedMergeLevel } : {}),
+    ...(kind === 'album' && artistName ? { artist: artistName } : {}),
   }
   return {
     entityId,
@@ -58,7 +57,7 @@ function entityStatsRequest(
     queryKey: queryKeys.music.entityStats(kind, entityId, statsParams),
     queryFn: () => {
       if (kind === 'track' && trackId != null) {
-        return api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, { ...filters, ...periodParams, include_rank_context: includeRankContext })
+        return api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, { ...filters, ...periodParams, merge_level: resolvedMergeLevel, include_rank_context: includeRankContext })
       }
       if (kind === 'album' && albumName) {
         return api.get<EntityStatsResponse>(
@@ -549,7 +548,7 @@ export function EntityStatsPanel({
           mobile={isPhone}
           fetchPage={async (page, limit, search, date) => {
             if (kind === 'track' && trackId != null)
-              return analysisApi.entityPlays('track', String(trackId), filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date })
+              return analysisApi.entityPlays('track', String(trackId), filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel })
             if (kind === 'album' && albumName)
               return analysisApi.entityPlays('album', albumName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel }, artistName)
             if (kind === 'artist' && artistName)
@@ -558,7 +557,7 @@ export function EntityStatsPanel({
           }}
           fetchPlayDates={async () => {
             if (kind === 'track' && trackId != null)
-              return analysisApi.entityPlayDates('track', String(trackId), filters, apiParams)
+              return analysisApi.entityPlayDates('track', String(trackId), filters, { ...apiParams, merge_level: resolvedMergeLevel })
             if (kind === 'album' && albumName)
               return analysisApi.entityPlayDates('album', albumName, filters, { ...apiParams, merge_level: resolvedMergeLevel }, artistName)
             if (kind === 'artist' && artistName)
