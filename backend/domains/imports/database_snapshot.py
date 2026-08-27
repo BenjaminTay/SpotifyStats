@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.core import db as db_module
+from backend.core.db import enforce_sqlite_foreign_keys
 
 
 class DatabaseSnapshotError(RuntimeError):
@@ -85,8 +86,10 @@ def create_database_snapshot(
     target_conn: sqlite3.Connection | None = None
     try:
         source_conn = sqlite3.connect(source_path, timeout=30)
+        enforce_sqlite_foreign_keys(source_conn)
         source_conn.execute("PRAGMA query_only = ON")
         target_conn = sqlite3.connect(temporary, timeout=30)
+        enforce_sqlite_foreign_keys(target_conn)
         source_conn.backup(target_conn)
         target_conn.commit()
         _verify_integrity(target_conn, source_path)
@@ -133,8 +136,10 @@ def restore_database_snapshot(
     target_conn: sqlite3.Connection | None = None
     try:
         source_conn = sqlite3.connect(source_path, timeout=30)
+        enforce_sqlite_foreign_keys(source_conn)
         source_conn.execute("PRAGMA query_only = ON")
         target_conn = sqlite3.connect(temporary, timeout=30)
+        enforce_sqlite_foreign_keys(target_conn)
         source_conn.backup(target_conn)
         target_conn.commit()
         _verify_integrity(target_conn, source_path)

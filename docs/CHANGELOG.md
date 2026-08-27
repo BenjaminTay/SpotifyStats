@@ -10,6 +10,7 @@
 - 设置中的歌曲/专辑归并统一为“自动检测 / 已保存分组 / 手动创建”和同一三步流程；详情编辑拆分为归并版本、曲目署名、艺人身份三个入口；基础身份误拆/误合只在高级治理区处理并记录依据与审计事件。
 - schema 55 使旧 L1 和旧 builder 搜索快照失效；schema 56 修复 canonical 粒度迁移后四张 Billboard 聚合已清空、派生状态却可能继续显示 ready 的一致性缺口；schema 57 恢复“现有 Track ID 即公开身份”的 owner 模型；schema 58 将手动候选、已保存分组和待确认候选统一归一到 Spotify owner。当前仅保留四套 v8 L2/L3 精确快照；真实库 7,843 个 Spotify ID 均唯一归属、未解析和治理阻断项均为 0。完整证据见 [`reports/2026-08-27-spotify-track-l1-identity-migration.md`](reports/2026-08-27-spotify-track-l1-identity-migration.md)。
 - 精确拆解真实库既有 7,831 条外键债务：其中 6,196 条是同一批 3,098 个未播放重复曲目在主艺人列和署名表被重复计数；所有孤儿曲目都有 Spotify ID 相同且承载播放的有效 owner。当前库与 schema 45/54/57 备份逐行一致，本轮身份迁移没有新增外键债务；历史成因与受控清理边界写入 [`reference/data-import-and-health.md`](reference/data-import-and-health.md)。
+- schema 59 统一为应用、后台作业、导入快照和年度缓存的持久 SQLite 连接启用并验证外键约束，聊天删除增加显式子表清理，并修复 `release_groups.parent_group_id` 错指临时表 `release_groups_new` 的 schema 14 遗留；新增永久 `track_id_aliases`、逐行审计归档及带预览令牌/修订防漂移的历史债务清理工具。真实库一致副本验收后，主库以停机 Online Backup 作为回滚点完成 7,831 → 0；播放事实、canonical 周聚合、L2/L3 分组和 `Anti-Hero` 315 次 / 62,404,986 ms 均保持不变，3,100 个退役 Track ID 已保留永久重定向。
 
 ## 2026-08-25 — 音乐详情页年榜历史
 

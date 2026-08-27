@@ -85,11 +85,11 @@
 - `recommended_action`：下一步建议；
 - `evidence`：关系拆分、检查日期等证据。
 
-具体关系问题会优先展示，外键总数仍保留在 `database.foreign_key_issue_count`。这样同一批孤儿记录不会在用户界面被重复计算；例如当前真实库外键总数为 7,831，但已去重后的问题列表显示曲目/专辑艺人关系、其他历史任务关系和专辑关系等 6 类问题。
+具体关系问题会优先展示，外键总数仍保留在 `database.foreign_key_issue_count`。这样同一批孤儿记录不会在用户界面被重复计算；例如 2026-08-27 清理前真实库外键总数为 7,831，但已去重后的问题列表只显示曲目/专辑艺人关系、其他历史任务关系和专辑关系等 6 类问题。
 
 ### 2026-08-27 真实库外键债务基线
 
-`PRAGMA foreign_key_check` 返回的是“违反外键约束的子表行 × 外键列”数量，不是损坏歌曲数，也不是受影响播放数。当前 7,831 条基线拆分如下：
+`PRAGMA foreign_key_check` 返回的是“违反外键约束的子表行 × 外键列”数量，不是损坏歌曲数，也不是受影响播放数。清理前 7,831 条基线拆分如下：
 
 | 子表与外键 | 数量 | 实际含义 |
 |---|---:|---|
@@ -101,11 +101,15 @@
 | `chat_messages.session_id → chat_sessions.id` | 7 | 4 个已删除会话留下的消息 |
 | `tracks.album_id → albums.album_id` | 2 | 两条未被播放、也没有下游分组引用的历史曲目指向已不存在专辑 |
 
-这批债务的关键证据是：3,098 条孤儿曲目覆盖 2,885 个 Spotify track ID，每一条都能找到 Spotify ID 完全相同、艺人关系有效且承载当前播放的正常曲目；孤儿曲目自身的播放为 0。当前 92,908 条播放和 15,347,703,793 ms 原始时长不由这批外键债务产生差异。当前库、schema 57 备份、canonical 改造前 schema 54 备份以及 2026-08-24 schema 45 备份的 7,831 条检查结果按 `table / rowid / parent / fkid` 完全一致，证明 schema 48–58 没有新增或扩大这批债务。
+这批债务的关键证据是：3,098 条孤儿曲目覆盖 2,885 个 Spotify track ID，每一条都能找到 Spotify ID 完全相同、艺人关系有效且承载当前播放的正常曲目；孤儿曲目自身的播放为 0。清理前后 92,908 条播放和 15,347,703,793 ms 原始时长均保持不变。清理前主库、schema 57 备份、canonical 改造前 schema 54 备份以及 2026-08-24 schema 45 备份的 7,831 条检查结果按 `table / rowid / parent / fkid` 完全一致，证明 schema 48–58 没有新增或扩大这批债务。
 
-最符合现有证据的形成链路是：历史写入先追加了一套晚于有效曲目的重复维表行，之后旧艺人、专辑、AI 任务或聊天会话父记录被重建、清理或删除；应用连接长期没有统一启用 SQLite `foreign_keys`，所以声明的 `ON DELETE CASCADE` 没有执行，子记录被保留下来。聊天删除路径目前仍只删除 `chat_sessions` 父行，是这一机制的可直接复现例子。音乐父记录当年究竟由哪一次本地脚本或人工操作移除，数据库没有变更审计，不能仅凭现有文件断言具体命令。
+最符合现有证据的形成链路是：历史写入先追加了一套晚于有效曲目的重复维表行，之后旧艺人、专辑、AI 任务或聊天会话父记录被重建、清理或删除；旧应用连接没有统一启用 SQLite `foreign_keys`，所以声明的 `ON DELETE CASCADE` 没有执行，子记录被保留下来。修复前的聊天删除路径只删除 `chat_sessions` 父行，是这一机制的可直接复现例子。音乐父记录当年究竟由哪一次本地脚本或人工操作移除，数据库没有变更审计，不能仅凭现有文件断言具体命令。
 
-因此，健康检查继续把它标为历史治理债务，但不把它描述为 7,831 条播放损坏。实际清理必须单独执行：先把 12 条仍留在 6 个自动 Track Group 中的重复成员归一到当前 Spotify owner，再按子表优先处理音乐维表残留；AI/聊天日志按独立保留策略处理。执行前后必须对比外键基线、原始 `plays`、四张周聚合、canonical owner/source 不变量和关键详情页，不允许直接开启外键后批量删除父表或依赖级联猜测清理结果。
+schema 59 起，普通应用、后台作业、导入快照和年度缓存的持久 SQLite 连接会显式启用并验证 `PRAGMA foreign_keys=ON`；聊天删除同时显式先删消息，避免注入的旧连接或测试连接绕过级联。该迁移还修复了 schema 14 遗留的 `release_groups.parent_group_id → release_groups_new` 临时表自引用，将其恢复为 `release_groups`，否则外键开启后删除或更新发行分组会失败。`track_id_aliases` 保存被退役 Track ID 到现有 Spotify owner Track 的永久重定向，旧 URL/治理引用在原始重复行删除后仍能解析。
+
+历史债务不会由 migration 或普通导入自动删除。维护入口为 `python scripts/cleanup_historical_fk_debt.py --preview --db <path>`；预览只有在 3,100 条异常 Track 均无直接播放、均能映射到唯一且关系有效的 Spotify owner、没有未登记下游引用时才返回确认令牌。`--apply --confirmation-token <token>` 会在一个 `BEGIN IMMEDIATE` 事务中归一 12 条旧分组成员、写入别名和逐行 JSON 审计归档、按子表优先删除 3,100 条旧 Track、3,100 条旧兼容身份、1,590 张无用专辑及 43 条 AI/聊天孤儿日志；令牌漂移、播放总量变化、清理后外键非零或 `integrity_check` 失败都会整体回滚。
+
+2026-08-27 的一致数据库副本验收先行通过；获得单独授权后，主库使用停机 Online Backup `spotify_stats_20260827T095959Z_before-main-fk-debt-cleanup_40fa6f50.db` 作为回滚点，并以运行 `4682f5e291854b6b98b271763228ab72` 完成清理。主库 `foreign_key_check` 已从 7,831 降为 0，`integrity_check=ok`；原始播放保持 92,908 条 / 15,347,703,793 ms，四张 canonical 周聚合、L2/L3 分组主体和 `Anti-Hero` Track 157 的 315 次 / 62,404,986 ms 均与停机备份摘要一致，3,100 个别名目标全部存在。逐行归档与运行摘要保留在 `historical_fk_cleanup_archive` 和 `historical_fk_cleanup_runs`。
 
 ## 当前边界
 

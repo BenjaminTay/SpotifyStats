@@ -165,6 +165,39 @@ CREATE TABLE IF NOT EXISTS spotify_track_owners (
 CREATE INDEX IF NOT EXISTS idx_spotify_track_owners_track
     ON spotify_track_owners(track_id);
 
+-- Stable redirects for retired historical raw track ids. alias_track_id is
+-- intentionally not a foreign key: its source row is removed after a
+-- controlled cleanup, while canonical_track_id must always remain valid.
+CREATE TABLE IF NOT EXISTS track_id_aliases (
+    alias_track_id     INTEGER PRIMARY KEY,
+    canonical_track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+    reason             TEXT NOT NULL,
+    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK(alias_track_id != canonical_track_id)
+);
+CREATE INDEX IF NOT EXISTS idx_track_id_aliases_canonical
+    ON track_id_aliases(canonical_track_id);
+
+CREATE TABLE IF NOT EXISTS historical_fk_cleanup_runs (
+    run_id          TEXT PRIMARY KEY,
+    plan_token      TEXT NOT NULL,
+    status          TEXT NOT NULL CHECK(status IN ('running', 'completed')),
+    summary_json    TEXT NOT NULL DEFAULT '{}',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS historical_fk_cleanup_archive (
+    run_id          TEXT NOT NULL REFERENCES historical_fk_cleanup_runs(run_id),
+    source_table    TEXT NOT NULL,
+    source_row_key  TEXT NOT NULL,
+    row_json        TEXT NOT NULL,
+    archived_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(run_id, source_table, source_row_key)
+);
+CREATE INDEX IF NOT EXISTS idx_historical_fk_cleanup_archive_source
+    ON historical_fk_cleanup_archive(source_table, source_row_key);
+
 CREATE TABLE IF NOT EXISTS track_artists (
     track_id INTEGER NOT NULL REFERENCES tracks(track_id),
     artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
@@ -993,6 +1026,22 @@ CREATE TABLE IF NOT EXISTS wikipedia_cache (
 """
 
 
+def enforce_sqlite_foreign_keys(conn: sqlite3.Connection) -> sqlite3.Connection:
+    """Enable and verify SQLite foreign-key enforcement for one connection.
+
+    SQLite keeps this setting per connection and otherwise defaults to OFF.
+    Silent fallback would recreate historical orphan rows, so every persistent
+    application connection fails closed when enforcement cannot be enabled.
+    """
+
+    conn.execute("PRAGMA foreign_keys = ON")
+    row = conn.execute("PRAGMA foreign_keys").fetchone()
+    if row is None or int(row[0]) != 1:
+        conn.close()
+        raise RuntimeError("SQLite foreign-key enforcement could not be enabled")
+    return conn
+
+
 def get_db(readonly: bool = True) -> sqlite3.Connection:
     """Get a database connection."""
     # A public-readonly request must remain read-only even if a legacy service
@@ -1023,14 +1072,17 @@ def get_db(readonly: bool = True) -> sqlite3.Connection:
         # second guard against accidental writes through the open connection.
         db_uri = f"{Path(DB_PATH).resolve().as_uri()}?mode=ro"
         conn = sqlite3.connect(db_uri, uri=True, timeout=30, check_same_thread=False)
+        enforce_sqlite_foreign_keys(conn)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only = ON")
     elif effective_readonly:
         conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+        enforce_sqlite_foreign_keys(conn)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only = ON")
     else:
         conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+        enforce_sqlite_foreign_keys(conn)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode = WAL")
     return conn
@@ -1058,9 +1110,11 @@ def connect_sqlite_path(
             timeout=timeout,
             check_same_thread=check_same_thread,
         )
+        enforce_sqlite_foreign_keys(conn)
         conn.execute("PRAGMA query_only = ON")
         return conn
-    return sqlite3.connect(path, timeout=timeout, check_same_thread=check_same_thread)
+    conn = sqlite3.connect(path, timeout=timeout, check_same_thread=check_same_thread)
+    return enforce_sqlite_foreign_keys(conn)
 
 
 def init_db() -> None:

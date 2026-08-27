@@ -138,7 +138,8 @@ Desktop 1440×1000 与 Phone 390×844 使用真实浏览器验收；“已保存
 - 回滚优先使用迁移前 Online Backup；兼容表名和旧证据未删除，不需要重写原始事实。
 - schema 55/56 的 snapshot stale 与 `agg_config` 清理只影响可重建派生状态；原子重建四张聚合并运行四套 v8 维护即可恢复 ready。
 - 当前真实库已有 817 个 owner Track 拥有多个 Spotify ID，最高 7 个；`Anti-Hero` 的 Track `157` 拥有 4 个标准 Spotify ID，聚合保持 315 次、62,404,986 ms。
-- 迁移前备份和迁移后库均存在完全相同的 7,831 条历史外键债务：`tracks → artists` 3,098、`track_artists → artists` 3,098、`albums → artists` 1,590、`ai_task_events → ai_task_runs` 27、`ai_tool_calls → ai_task_runs` 9、`chat_messages → chat_sessions` 7、`tracks → albums` 2。前两项是同一批 3,098 条重复曲目被两个外键各计一次，不代表 6,196 首坏歌。
+- 身份迁移前备份和历史债务清理前主库均存在完全相同的 7,831 条外键债务：`tracks → artists` 3,098、`track_artists → artists` 3,098、`albums → artists` 1,590、`ai_task_events → ai_task_runs` 27、`ai_tool_calls → ai_task_runs` 9、`chat_messages → chat_sessions` 7、`tracks → albums` 2。前两项是同一批 3,098 条重复曲目被两个外键各计一次，不代表 6,196 首坏歌。
 - 这 3,098 条曲目自身播放为 0，覆盖 2,885 个 Spotify ID；每条都存在 Spotify ID 相同、艺人有效且承载播放的正常 owner。1,590 张孤儿艺人专辑和 2 条缺专辑曲目也没有当前播放引用。当前库与 2026-08-24 schema 45、canonical 改造前 schema 54、schema 57 三份备份按 `table / rowid / parent / fkid` 完全一致，本轮未制造或扩大债务，canonical owner/source 不变量与本次身份迁移阻断项均为 0。
 - 形成原因是历史重复维表写入与后续父记录清理发生在 `foreign_keys=OFF` 的普通应用连接上，声明的级联没有执行；聊天会话删除路径仍可直接证明这一机制。音乐父记录缺少当时的变更审计，无法可靠归因到某一条历史命令。完整分类、影响与后续清理门禁见 [`../reference/data-import-and-health.md`](../reference/data-import-and-health.md)。
+- 后续 schema 59 已把持久写连接改为外键 fail-closed，修复发行分组错误的临时表自引用，并增加 Track ID 永久别名、清理运行记录和逐行 JSON 归档。受控工具先在真实库 Online Backup 副本完成 7,831 → 0 验收；获得单独授权后，主库以 `spotify_stats_20260827T095959Z_before-main-fk-debt-cleanup_40fa6f50.db` 作为回滚点，由运行 `4682f5e291854b6b98b271763228ab72` 正式执行。共删除 3,100 条无直接播放的旧 Track、3,100 条旧兼容身份、1,590 张无用专辑和 43 条 AI/聊天孤儿日志，同时保留 3,100 个旧 ID 重定向；原始播放、四张 canonical 周聚合、L2/L3 分组和关键歌曲聚合前后相同，清理后 `foreign_key_check=0`、`integrity_check=ok`。
 - 本轮是本地实现与本地真实库迁移，不代表远程生产已经发布；生产仍需按 release Online Backup、预检、四变体复用和业务 smoke 执行。

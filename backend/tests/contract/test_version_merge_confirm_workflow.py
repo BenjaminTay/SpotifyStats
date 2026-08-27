@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
 import tempfile
 
 import pytest
@@ -129,12 +130,19 @@ def test_saved_track_group_management_uses_stable_track_ids(isolated_seed_db):
         conn.executemany(
             "INSERT INTO track_group_members(group_id, track_id) VALUES (9930, ?)", [(920,), (926,)]
         )
-        # Historical imports can retain a raw artist id after its artist row was
-        # rebuilt.  Saved-group labels should still resolve from album metadata.
-        conn.execute("UPDATE tracks SET artist_id = 999999 WHERE track_id = 920")
         conn.commit()
     finally:
         conn.close()
+
+    # Reproduce a pre-enforcement orphan through an explicitly legacy
+    # connection. Normal application writes must now reject this update.
+    legacy = sqlite3.connect(isolated_seed_db)
+    try:
+        assert legacy.execute("PRAGMA foreign_keys").fetchone()[0] == 0
+        legacy.execute("UPDATE tracks SET artist_id = 999999 WHERE track_id = 920")
+        legacy.commit()
+    finally:
+        legacy.close()
 
     groups = get_all_track_groups().set_index("group_id")
     assert int(groups.loc[9930, "member_count"]) == 2
@@ -359,15 +367,14 @@ def test_release_group_create_api_accepts_composition_scope(isolated_seed_db):
     from backend.domains.playback.album_projects import rebuild_album_projects
     from backend.main import app
 
-    conn = get_db(readonly=False)
-    try:
-        conn.execute("DELETE FROM release_group_members WHERE group_id = 921")
-        conn.execute("DELETE FROM release_groups WHERE group_id = 921")
-        rebuild_album_projects(conn)
-    finally:
-        conn.close()
-
     with TestClient(app) as client:
+        conn = get_db(readonly=False)
+        try:
+            conn.execute("DELETE FROM release_group_members WHERE group_id = 921")
+            conn.execute("DELETE FROM release_groups WHERE group_id = 921")
+            rebuild_album_projects(conn)
+        finally:
+            conn.close()
         response = client.post(
             "/api/version-merge/groups",
             json={
@@ -468,17 +475,17 @@ def test_album_relation_bundle_api_returns_derived_track_pairs(isolated_seed_db)
     from backend.domains.playback.album_projects import rebuild_album_projects
     from backend.main import app
 
-    conn = get_db(readonly=False)
-    try:
-        conn.execute("DELETE FROM release_group_members WHERE group_id = 921")
-        conn.execute("DELETE FROM release_groups WHERE group_id = 921")
-        conn.execute("DELETE FROM track_group_members WHERE group_id = 921")
-        conn.execute("DELETE FROM track_groups WHERE group_id = 921")
-        rebuild_album_projects(conn)
-    finally:
-        conn.close()
-
     with TestClient(app) as client:
+        conn = get_db(readonly=False)
+        try:
+            conn.execute("DELETE FROM release_group_members WHERE group_id = 921")
+            conn.execute("DELETE FROM release_groups WHERE group_id = 921")
+            conn.execute("DELETE FROM track_group_l1_members WHERE group_id = 921")
+            conn.execute("DELETE FROM track_group_members WHERE group_id = 921")
+            conn.execute("DELETE FROM track_groups WHERE group_id = 921")
+            rebuild_album_projects(conn)
+        finally:
+            conn.close()
         response = client.post(
             "/api/version-merge/album-relations/confirm",
             json={

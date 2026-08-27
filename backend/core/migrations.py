@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 58
+LATEST_SCHEMA_VERSION = 59
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3147,6 +3147,91 @@ def migrate_058(conn: sqlite3.Connection):
                       last_error='track governance owner normalization requires rebuild'
                 WHERE status IN ('pending', 'running', 'ready')"""
         )
+
+
+@migration(59, "historical_fk_cleanup_support")
+def migrate_059(conn: sqlite3.Connection):
+    """Make FK enforcement viable and add explicit debt-cleanup support.
+
+    This migration is deliberately schema-only. Historical rows are removed
+    only by the separately confirmed maintenance command after its preview has
+    been accepted against an unchanged database revision.
+    """
+
+    release_group_fks = conn.execute("PRAGMA foreign_key_list(release_groups)").fetchall()
+    parent_targets = {str(row[2]) for row in release_group_fks if str(row[3]) == "parent_group_id"}
+    if parent_targets != {"release_groups"}:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            conn.execute("DROP TABLE IF EXISTS release_groups_repaired")
+            conn.execute(
+                """CREATE TABLE release_groups_repaired (
+                    group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    canonical_name TEXT NOT NULL,
+                    artist_id INTEGER REFERENCES artists(artist_id),
+                    primary_album_id INTEGER REFERENCES albums(album_id),
+                    scope TEXT NOT NULL DEFAULT 'release'
+                        CHECK(scope IN ('release', 'composition')),
+                    parent_group_id INTEGER REFERENCES release_groups(group_id),
+                    is_manual BOOLEAN DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(canonical_name, artist_id, scope)
+                )"""
+            )
+            conn.execute(
+                """INSERT INTO release_groups_repaired(
+                       group_id, canonical_name, artist_id, primary_album_id,
+                       scope, parent_group_id, is_manual, created_at
+                   )
+                   SELECT group_id, canonical_name, artist_id, primary_album_id,
+                          scope, parent_group_id, is_manual, created_at
+                     FROM release_groups"""
+            )
+            conn.execute("DROP TABLE release_groups")
+            conn.execute("ALTER TABLE release_groups_repaired RENAME TO release_groups")
+            conn.executescript(
+                """
+                CREATE INDEX IF NOT EXISTS idx_rg_artist ON release_groups(artist_id);
+                CREATE INDEX IF NOT EXISTS idx_rg_scope ON release_groups(scope);
+                CREATE INDEX IF NOT EXISTS idx_rg_parent ON release_groups(parent_group_id);
+                """
+            )
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS track_id_aliases (
+            alias_track_id      INTEGER PRIMARY KEY,
+            canonical_track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            reason             TEXT NOT NULL,
+            created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+            CHECK(alias_track_id != canonical_track_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_id_aliases_canonical
+            ON track_id_aliases(canonical_track_id);
+
+        CREATE TABLE IF NOT EXISTS historical_fk_cleanup_runs (
+            run_id          TEXT PRIMARY KEY,
+            plan_token      TEXT NOT NULL,
+            status          TEXT NOT NULL CHECK(status IN ('running', 'completed')),
+            summary_json    TEXT NOT NULL DEFAULT '{}',
+            created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at    TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS historical_fk_cleanup_archive (
+            run_id          TEXT NOT NULL REFERENCES historical_fk_cleanup_runs(run_id),
+            source_table    TEXT NOT NULL,
+            source_row_key  TEXT NOT NULL,
+            row_json        TEXT NOT NULL,
+            archived_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY(run_id, source_table, source_row_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_historical_fk_cleanup_archive_source
+            ON historical_fk_cleanup_archive(source_table, source_row_key);
+        """
+    )
 
 
 # ── Runner ────────────────────────────────────────────────────────────────

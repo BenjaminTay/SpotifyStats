@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from os.path import realpath
 from typing import Any
 
+from backend.core.db import connect_sqlite_path
+
 logger = logging.getLogger(__name__)
 
 _NEXT_ATTEMPT_PAYLOAD_KEY = "__job_queue_next_attempt_at"
@@ -205,7 +207,7 @@ class JobQueue:
         recovered: list[Job] = []
         now = datetime.now(timezone.utc).isoformat()
         try:
-            conn = sqlite3.connect(self._db_path, timeout=5)
+            conn = connect_sqlite_path(self._db_path, timeout=5)
             conn.row_factory = sqlite3.Row
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
@@ -310,7 +312,7 @@ class JobQueue:
         if not self._db_path:
             return False
         try:
-            conn = sqlite3.connect(self._db_path, timeout=5)
+            conn = connect_sqlite_path(self._db_path, timeout=5)
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 """SELECT 1 FROM background_jobs
@@ -448,7 +450,7 @@ class JobQueue:
         if not self._db_path:
             return
         try:
-            conn = sqlite3.connect(self._db_path, timeout=5)
+            conn = connect_sqlite_path(self._db_path, timeout=5)
             row = job.to_row()
             conn.execute(
                 """UPDATE background_jobs
@@ -471,7 +473,7 @@ class JobQueue:
         if not self._db_path:
             return
         try:
-            conn = sqlite3.connect(self._db_path, timeout=5)
+            conn = connect_sqlite_path(self._db_path, timeout=5)
             row = job.to_row()
             conn.execute(
                 """INSERT OR IGNORE INTO background_jobs
@@ -505,7 +507,7 @@ class JobQueue:
         if not self._db_path:
             return
         try:
-            conn = sqlite3.connect(self._db_path, timeout=5)
+            conn = connect_sqlite_path(self._db_path, timeout=5)
             if attempts is None:
                 conn.execute(
                     "UPDATE background_jobs SET status=?, updated_at=?, error=? WHERE job_id=?",

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.core.access_surface import public_readonly_db_guard_active
-from backend.core.db import DB_PATH
+from backend.core.db import DB_PATH, enforce_sqlite_foreign_keys
 
 CACHE_FORMAT_VERSION = 1
 DEFAULT_MAX_ENTRIES = 32
@@ -27,12 +27,14 @@ def _connect(cache_path: str | os.PathLike[str] | None = None) -> sqlite3.Connec
         if not path.is_file():
             raise FileNotFoundError(path)
         conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=30)
+        enforce_sqlite_foreign_keys(conn)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only = ON")
         return conn
 
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=30)
+    enforce_sqlite_foreign_keys(conn)
     conn.row_factory = sqlite3.Row
     conn.execute(
         """CREATE TABLE IF NOT EXISTS yearly_review_artifacts (

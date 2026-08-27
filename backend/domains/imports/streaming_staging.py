@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from backend.core.db import enforce_sqlite_foreign_keys
+
 StreamingSourceType = Literal["audio", "video"]
 _PATTERNS: tuple[tuple[str, StreamingSourceType], ...] = (
     ("Streaming_History_Audio_*.json", "audio"),
@@ -220,6 +222,7 @@ class StreamingImportStaging:
         os.chmod(temp_dir, 0o700)
         database_path = temp_dir / "staging.sqlite3"
         conn = sqlite3.connect(database_path)
+        enforce_sqlite_foreign_keys(conn)
         try:
             conn.executescript(
                 """
@@ -368,6 +371,7 @@ class StreamingImportStaging:
         if self._closed or not self.database_path.is_file():
             raise RuntimeError("streaming import staging is no longer available")
         conn = sqlite3.connect(self.database_path)
+        enforce_sqlite_foreign_keys(conn)
         conn.row_factory = sqlite3.Row
         return conn
 

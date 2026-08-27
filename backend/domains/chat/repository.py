@@ -69,6 +69,9 @@ class ChatRepository:
         return cur.rowcount > 0
 
     def delete_session(self, session_id: int) -> bool:
+        # Keep deletion correct even for an injected legacy/test connection
+        # where SQLite foreign-key cascades were not enabled.
+        self.conn.execute("DELETE FROM chat_messages WHERE session_id = ?", (session_id,))
         cur = self.conn.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
         self.conn.commit()
         return cur.rowcount > 0

@@ -50,14 +50,17 @@ def _build_preflight_fixture(
         );
         """
     )
+    migrations = [
+        (35, "search identity split"),
+        (36, "search candidate ngram index"),
+        (42, "music search incremental lineage"),
+        (REQUIRED_MUSIC_SEARCH_MIGRATION, "music search owner normalization"),
+    ]
+    if LATEST_SCHEMA_VERSION != REQUIRED_MUSIC_SEARCH_MIGRATION:
+        migrations.append((LATEST_SCHEMA_VERSION, "current schema"))
     conn.executemany(
         "INSERT INTO schema_migrations(version, name) VALUES (?, ?)",
-        (
-            (35, "search identity split"),
-            (36, "search candidate ngram index"),
-            (42, "music search incremental lineage"),
-            (LATEST_SCHEMA_VERSION, "current schema"),
-        ),
+        migrations,
     )
     for index, (merge_level, dynamic_threshold) in enumerate(VARIANTS):
         snapshot_key = f"snapshot-{index}"

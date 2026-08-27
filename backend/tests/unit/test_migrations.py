@@ -219,6 +219,12 @@ def test_release_groups_support_scope_and_parent(empty_db):
             pass
     cols = {row[1] for row in empty_db.execute("PRAGMA table_info(release_groups)").fetchall()}
     assert {"scope", "parent_group_id"} <= cols
+    parent_targets = {
+        row[2]
+        for row in empty_db.execute("PRAGMA foreign_key_list(release_groups)").fetchall()
+        if row[3] == "parent_group_id"
+    }
+    assert parent_targets == {"release_groups"}
 
 
 def test_migration_023_adds_artist_genre_resolution_tables(tmp_path, monkeypatch):

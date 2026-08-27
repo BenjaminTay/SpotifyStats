@@ -145,6 +145,13 @@ def resolve_canonical_track_id(
     historical aliases.  A genuinely local-only track remains its own id.
     """
     value = int(reference_id)
+    if _table_exists(conn, "track_id_aliases"):
+        alias = conn.execute(
+            "SELECT canonical_track_id FROM track_id_aliases WHERE alias_track_id=?",
+            (value,),
+        ).fetchone()
+        if alias is not None:
+            return int(alias[0])
     identity_exists = (
         _table_exists(conn, "track_l1_identities")
         and conn.execute(

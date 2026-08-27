@@ -163,6 +163,24 @@ def test_governance_reference_resolves_alias_but_preserves_existing_owner() -> N
     assert resolve_canonical_track_id(conn, 999) is None
 
 
+def test_retired_track_alias_resolves_after_source_row_is_deleted() -> None:
+    conn = sqlite3.connect(":memory:")
+    _schema(conn)
+    conn.executescript(
+        """
+        CREATE TABLE track_id_aliases(
+            alias_track_id INTEGER PRIMARY KEY,
+            canonical_track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            reason TEXT NOT NULL
+        );
+        INSERT INTO tracks VALUES (1, 'Owner', 1, 10, 'spotify-a');
+        INSERT INTO track_id_aliases VALUES (99, 1, 'historical_cleanup');
+        """
+    )
+
+    assert resolve_canonical_track_id(conn, 99) == 1
+
+
 def test_one_track_can_own_multiple_spotify_ids() -> None:
     conn = sqlite3.connect(":memory:")
     _schema(conn)
