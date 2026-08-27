@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from sqlite3 import Connection
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -94,7 +95,11 @@ def _find_active_llm_profile(conn: Connection) -> dict:
 
 
 def _build_settings_response(conn: Connection) -> dict:
-    _ensure_current()
+    # The persisted settings table is the authority.  Refreshing here prevents
+    # a long-lived worker-local cache from resurfacing an already-cleared
+    # rebuild_pending flag after another connection completed the rebuild.
+    global _current
+    _current = _load_settings_from_db()
     db_record_count = 0
     account_data_imported = False
     try:
@@ -262,6 +267,12 @@ def rebuild_aggregations(
             "status": "done",
             "dynamic_threshold": dynamic_threshold,
             "max_merge_gap_minutes": resolved_gap,
+            "rebuild_pending": False,
+            "aggregation_status": "ready",
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "background_tasks": [
+                {"name": "search_snapshots", "status": "warming"},
+            ],
             **result,
         }
     finally:

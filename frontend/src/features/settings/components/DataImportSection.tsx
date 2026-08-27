@@ -41,7 +41,7 @@ export function DataImportSection({
         <CollapsibleSection
           num={2}
           title="数据导入"
-          desc="管理流媒体数据和账号数据的导入。导入过程在后台进行，可以离开页面等待。"
+          desc="先确认数据是否可用，再检查本地数据包并按建议导入。正式写入在后台进行。"
           defaultOpen={!imported}
           summary={
             imported ? (
@@ -58,6 +58,10 @@ export function DataImportSection({
               loading={dataHealth.healthLoading}
               error={dataHealth.healthError}
               onRefresh={() => { void refetchHealth() }}
+              preview={dataHealth.cleanupPreview}
+              previewLoading={dataHealth.cleanupPreviewLoading}
+              previewError={dataHealth.cleanupPreviewError}
+              onPreview={() => { void dataHealth.runCleanupPreview() }}
             />
             <ImportPreflightPanel
               preflight={dataHealth.preflight}

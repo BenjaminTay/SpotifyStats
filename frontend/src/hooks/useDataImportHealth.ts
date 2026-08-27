@@ -1,8 +1,8 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
-import type { ImportHealthResponse, ImportPreflightResponse } from '@/types/data-import'
+import type { ImportCleanupPreviewResponse, ImportHealthResponse, ImportPreflightResponse } from '@/types/data-import'
 
 export function useDataImportHealth() {
   const queryClient = useQueryClient()
@@ -19,6 +19,10 @@ export function useDataImportHealth() {
     staleTime: 30_000,
     retry: 0,
   })
+  const cleanupPreviewMutation = useMutation({
+    mutationKey: queryKeys.dataImport.cleanupPreview(),
+    mutationFn: () => api.post<ImportCleanupPreviewResponse>('/import/governance/cleanup-preview'),
+  })
 
   return {
     health: healthQuery.data ?? null,
@@ -29,6 +33,10 @@ export function useDataImportHealth() {
     preflightLoading: preflightQuery.isFetching,
     preflightError: preflightQuery.error instanceof Error ? preflightQuery.error.message : null,
     runPreflight: () => preflightQuery.refetch(),
+    cleanupPreview: cleanupPreviewMutation.data ?? null,
+    cleanupPreviewLoading: cleanupPreviewMutation.isPending,
+    cleanupPreviewError: cleanupPreviewMutation.error instanceof Error ? cleanupPreviewMutation.error.message : null,
+    runCleanupPreview: () => cleanupPreviewMutation.mutateAsync(),
     invalidate: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.dataImport.all })
     },

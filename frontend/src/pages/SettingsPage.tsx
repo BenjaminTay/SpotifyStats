@@ -39,6 +39,7 @@ export function SettingsPage() {
     updateSettings,
     clearTranslationCache,
     rebuildAgg,
+    markRebuildPending,
     startStreamingImport,
     startAccountImport,
     streamingJob,
@@ -52,15 +53,12 @@ export function SettingsPage() {
     deleteProfile,
   } = useSettings();
 
-  const [rebuildPendingOverride, setRebuildPending] = useState<boolean | null>(
-    null,
-  );
   const [rebuildLoading, setRebuildLoading] = useState(false);
   const [rebuildMsg, setRebuildMsg] = useState("");
   const [chineseStyle, setChineseStyleState] =
     useState<ChineseStyle>(getChineseStyle);
 
-  const handleRequiresRebuild = () => setRebuildPending(true);
+  const handleRequiresRebuild = markRebuildPending;
 
   const handleRebuild = () => {
     setRebuildLoading(true);
@@ -68,7 +66,6 @@ export function SettingsPage() {
     rebuildAgg()
       .then((res) => {
         setRebuildMsg(res.status === "done" ? "聚合表重建完成" : "重建完成");
-        setRebuildPending(false);
         setRebuildLoading(false);
       })
       .catch(() => {
@@ -129,7 +126,7 @@ export function SettingsPage() {
 
   if (!settings) return null;
 
-  const rebuildPending = rebuildPendingOverride ?? settings.rebuild_pending;
+  const rebuildPending = settings.rebuild_pending;
 
   if (isPhone) {
     return (

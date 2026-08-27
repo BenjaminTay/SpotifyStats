@@ -363,6 +363,11 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_import_api_jobs.py + backend/tests/unit/test_import_health.py",
         "Read-only database, relationship, metadata, and derived-data health response is covered.",
     ),
+    ("POST", "/api/import/governance/cleanup-preview"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_import_api_jobs.py + backend/tests/unit/test_import_health.py",
+        "Bounded read-only cleanup preview, excluded issue classes, and zero-write behavior are covered.",
+    ),
     ("POST", "/api/chat/sessions"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_chat_api_crud.py",

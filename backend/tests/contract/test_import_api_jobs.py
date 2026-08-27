@@ -162,6 +162,8 @@ def test_import_preflight_is_read_only_and_has_response_contract(client, monkeyp
     assert payload["requested_mode"] == "auto"
     assert payload["estimated_strategy"] == "full"
     assert payload["planned_actions"]
+    assert payload["comparison_status"] == "baseline_missing"
+    assert payload["record_delta_comparable"] is False
     assert "X-Request-ID" in response.headers
 
     conn = get_db(readonly=True)
@@ -170,6 +172,43 @@ def test_import_preflight_is_read_only_and_has_response_contract(client, monkeyp
     finally:
         conn.close()
     assert run_count_after == run_count_before
+
+
+def test_cleanup_preview_is_bounded_and_read_only(client):
+    from backend.core.db import get_db
+
+    conn = get_db(readonly=True)
+    try:
+        play_count_before = conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+    finally:
+        conn.close()
+
+    response = client.post("/api/import/governance/cleanup-preview?sample_limit=3")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["writes_performed"] is False
+    assert len(payload["preview_token"]) == 64
+    assert all(len(group["samples"]) <= 3 for group in payload["groups"])
+    assert "audio_without_track" in payload["excluded_issue_codes"]
+
+    conn = get_db(readonly=True)
+    try:
+        play_count_after = conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+    finally:
+        conn.close()
+    assert play_count_after == play_count_before
+
+
+@pytest.mark.parametrize("sample_limit", [0, 101])
+def test_cleanup_preview_rejects_out_of_range_sample_limit(client, sample_limit):
+    response = client.post(
+        "/api/import/governance/cleanup-preview",
+        params={"sample_limit": sample_limit},
+    )
+
+    assert response.status_code == 422
 
 
 def test_import_health_has_nested_database_and_derived_sections(client):

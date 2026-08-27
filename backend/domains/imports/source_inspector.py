@@ -218,6 +218,7 @@ def _streaming_quality_findings(
             end = datetime.fromisoformat(overlap_end)
             left_fingerprints = left.get("_record_fingerprints", set())
             right_fingerprints = right.get("_record_fingerprints", set())
+            shared_record_count = len(left_fingerprints & right_fingerprints)
             date_overlaps.append(
                 {
                     "left_file": left["file_name"],
@@ -225,7 +226,10 @@ def _streaming_quality_findings(
                     "overlap_start": overlap_start,
                     "overlap_end": overlap_end,
                     "overlap_days": (end - start).days + 1,
-                    "shared_record_count": len(left_fingerprints & right_fingerprints),
+                    "shared_record_count": shared_record_count,
+                    "classification": (
+                        "duplicate_records" if shared_record_count > 0 else "boundary_only"
+                    ),
                 }
             )
     return duplicate_file_groups, date_overlaps

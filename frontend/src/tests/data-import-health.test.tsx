@@ -118,23 +118,24 @@ describe('data import health UI', () => {
   it('shows health metrics and read-only warnings', () => {
     render(<DataHealthSummary health={health} loading={false} error={null} onRefresh={vi.fn()} />)
 
-    expect(screen.getByText('部分完成')).toBeInTheDocument()
+    expect(screen.getByText('核心统计正常，有历史数据可整理')).toBeInTheDocument()
     expect(screen.getByText('91,286')).toBeInTheDocument()
-    expect(screen.getByText('2022-07-01 → 2026-07-24')).toBeInTheDocument()
-    expect(screen.getByText(/数据库存在外键关系残留：7,831/)).toBeInTheDocument()
+    expect(screen.getByText('7,831 条关系')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '查看问题详情（1）' }))
-    expect(screen.getByText('当前未发现播放记录使用这些残留实体。')).toBeInTheDocument()
-    expect(screen.getByText('当前播放影响：0 条')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '技术详情与全部检查项' }))
+    expect(screen.getAllByText('当前未发现播放记录使用这些残留实体。')).toHaveLength(2)
+    expect(screen.getByText('关联 7,831 条 · 当前播放影响 0 条')).toBeInTheDocument()
   })
 
   it('keeps preflight as an explicit read-only action', () => {
     const onRun = vi.fn()
     render(<ImportPreflightPanel preflight={preflight} loading={false} error={null} onRun={onRun} />)
 
-    expect(screen.getByText('只读取本地 Spotify 数据包，不会修改数据库。')).toBeInTheDocument()
-    expect(screen.getByText('已发现 · 4 条')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '开始检查' }))
+    expect(screen.getByText('只读取 Spotify 导出文件并在临时环境演练，不修改当前数据库。')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /文件详情/ }))
+    expect(screen.getByText('Streaming_History_Audio_000.json')).toBeInTheDocument()
+    expect(screen.getByText('4 条')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '重新检查' }))
     expect(onRun).toHaveBeenCalledOnce()
   })
 
@@ -143,9 +144,9 @@ describe('data import health UI', () => {
 
     expect(screen.getByText('播放事实增量')).toBeInTheDocument()
     expect(screen.getByText('检测到当前数据基础上的完整追加：新增 1,834 条记录，变化涉及 2 个榜单周和 1 个年度范围。')).toBeInTheDocument()
-    expect(screen.getByText('播放事实只处理已证明的变化；榜单、专辑项目与搜索会按影响范围和兼容性选择局部更新或安全全量回退，精确搜索快照可能在后台继续预热。')).toBeInTheDocument()
-    expect(screen.getByText('当前 / 输入：91,286 / 93,120 条')).toBeInTheDocument()
-    expect(screen.getByText('当前范围：2022-07-01 → 2026-07-24')).toBeInTheDocument()
+    expect(screen.getByText('91,286 条')).toBeInTheDocument()
+    expect(screen.getByText('93,120 条')).toBeInTheDocument()
+    expect(screen.getByText('2022-07-01 → 2026-07-24')).toBeInTheDocument()
     expect(screen.getByText('· 更新受影响榜单周')).toBeInTheDocument()
   })
 
@@ -164,7 +165,7 @@ describe('data import health UI', () => {
       />,
     )
 
-    expect(screen.getByText('需要确认')).toBeInTheDocument()
+    expect(screen.getByText('导入前需要确认')).toBeInTheDocument()
     expect(screen.getByText('无法证明输入包是完整快照还是尾部增量，需要确认导入方式。')).toBeInTheDocument()
   })
 })

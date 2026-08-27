@@ -1999,6 +1999,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/import/governance/cleanup-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Import Cleanup
+         * @description Preview historical relationship cleanup without writing to the database.
+         */
+        post: operations["preview_import_cleanup_api_import_governance_cleanup_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/import/streaming": {
         parameters: {
             query?: never;
@@ -7570,6 +7590,58 @@ export interface components {
             /** External Ids */
             external_ids?: components["schemas"]["IdentityExternalIdInput"][];
         };
+        /** ImportCleanupPreviewGroup */
+        ImportCleanupPreviewGroup: {
+            /** Issue Code */
+            issue_code: string;
+            /** Title */
+            title: string;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Affected Play Count
+             * @default 0
+             */
+            affected_play_count: number;
+            /** Proposed Action */
+            proposed_action: string;
+            /**
+             * Automatic Cleanup Allowed
+             * @default false
+             */
+            automatic_cleanup_allowed: boolean;
+            /** Samples */
+            samples?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ImportCleanupPreviewResponse */
+        ImportCleanupPreviewResponse: {
+            /**
+             * Status
+             * @default ready
+             * @constant
+             */
+            status: "ready";
+            /** Generated At */
+            generated_at: string;
+            /** Database Revision */
+            database_revision: string;
+            /** Preview Token */
+            preview_token: string;
+            /**
+             * Writes Performed
+             * @default false
+             */
+            writes_performed: boolean;
+            /** Groups */
+            groups?: components["schemas"]["ImportCleanupPreviewGroup"][];
+            /** Excluded Issue Codes */
+            excluded_issue_codes?: string[];
+        };
         /** ImportDatasetDateRange */
         ImportDatasetDateRange: {
             /** First Date */
@@ -7594,6 +7666,12 @@ export interface components {
              * @default 0
              */
             shared_record_count: number;
+            /**
+             * Classification
+             * @default review_required
+             * @enum {string}
+             */
+            classification: "duplicate_records" | "boundary_only" | "review_required";
         };
         /** ImportDuplicateFileGroup */
         ImportDuplicateFileGroup: {
@@ -7675,6 +7753,28 @@ export interface components {
             evidence?: {
                 [key: string]: unknown;
             };
+            /**
+             * Impact Scope
+             * @default historical_only
+             * @enum {string}
+             */
+            impact_scope: "current_stats" | "source_exclusion" | "historical_only" | "non_music";
+            /**
+             * User Status
+             * @default maintenance
+             * @enum {string}
+             */
+            user_status: "blocking" | "action_required" | "maintenance" | "info";
+            /** User Title */
+            user_title?: string | null;
+            /** User Explanation */
+            user_explanation?: string | null;
+            /**
+             * Action
+             * @default review
+             * @enum {string}
+             */
+            action: "retry" | "review" | "preview_cleanup" | "no_action";
         };
         /** ImportHealthResponse */
         ImportHealthResponse: {
@@ -7699,6 +7799,10 @@ export interface components {
             };
             /** Derived */
             derived?: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary?: {
                 [key: string]: unknown;
             };
             /** Issues */
@@ -7829,6 +7933,17 @@ export interface components {
              * @enum {string}
              */
             estimated_strategy: "noop" | "incremental" | "mixed" | "full";
+            /**
+             * Comparison Status
+             * @default baseline_missing
+             * @enum {string}
+             */
+            comparison_status: "comparable" | "baseline_missing" | "incompatible";
+            /**
+             * Record Delta Comparable
+             * @default false
+             */
+            record_delta_comparable: boolean;
         };
         /**
          * JobStatusResponse
@@ -9439,6 +9554,23 @@ export interface components {
             track_sources: number;
             /** Artists */
             artists: number;
+            /**
+             * Rebuild Pending
+             * @default false
+             */
+            rebuild_pending: boolean;
+            /**
+             * Aggregation Status
+             * @default ready
+             * @enum {string}
+             */
+            aggregation_status: "ready" | "running" | "failed";
+            /** Completed At */
+            completed_at?: string | null;
+            /** Background Tasks */
+            background_tasks?: {
+                [key: string]: string;
+            }[];
         };
         /** RegionDist */
         RegionDist: {
@@ -16667,6 +16799,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportHealthResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_import_cleanup_api_import_governance_cleanup_preview_post: {
+        parameters: {
+            query?: {
+                sample_limit?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportCleanupPreviewResponse"];
                 };
             };
             /** @description Validation Error */

@@ -102,6 +102,44 @@ def test_settings_update_persists_include_compilations_without_rebuild(client):
     assert cleanup.status_code == 200
 
 
+def test_rebuild_response_clears_persisted_pending_state(client, monkeypatch):
+    from backend.core import db as db_mod
+    from backend.services import music_search_maintenance_service as maintenance
+
+    monkeypatch.setattr(
+        db_mod,
+        "build_aggregations",
+        lambda **kwargs: {"tracks": 3, "albums": 2, "track_sources": 3, "artists": 1},
+    )
+    monkeypatch.setattr(maintenance, "mark_music_search_for_rebuild", lambda **kwargs: None)
+    monkeypatch.setattr(
+        maintenance,
+        "enqueue_music_search_snapshot_rebuild",
+        lambda **kwargs: None,
+    )
+
+    update = client.put("/api/settings", json={"min_ms": 30001})
+    assert update.status_code == 200
+    assert update.json()["rebuild_pending"] is True
+
+    response = client.post(
+        "/api/settings/rebuild-agg",
+        params={"dynamic_threshold": True},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "done"
+    assert payload["rebuild_pending"] is False
+    assert payload["aggregation_status"] == "ready"
+    assert payload["completed_at"]
+    assert payload["background_tasks"] == [{"name": "search_snapshots", "status": "warming"}]
+
+    read_back = client.get("/api/settings")
+    assert read_back.status_code == 200
+    assert read_back.json()["rebuild_pending"] is False
+
+
 @pytest.mark.parametrize(
     "payload",
     [

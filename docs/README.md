@@ -37,6 +37,7 @@
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA、远程部署、真机验收和 Capacitor 决策
 - [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)：音乐查找候选索引、统计快照和生产复用方向
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
+- [`plans/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md`](plans/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md)：Phase 0–5 已完成范围验收，保留默认完整全栈门禁待运行状态
 
 ## 已确认但仍有实现参考价值的设计
 
@@ -51,6 +52,7 @@
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
 - [`reports/2026-08-27-spotify-track-l1-identity-migration.md`](reports/2026-08-27-spotify-track-l1-identity-migration.md)：canonical track 唯一归属、公共 L2/L3、真实库迁移和响应式验收证据（文件名为历史兼容）
+- [`reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md`](reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md)：设置重建状态、健康口径、只读预览、导入检查和响应式治理 UI 证据
 - [`reports/2026-08-25-music-detail-year-end-history.md`](reports/2026-08-25-music-detail-year-end-history.md)：详情年榜投影、榜单 KPI、真实数据库副本、性能与响应式浏览器验收证据
 - [`reports/2026-08-24-home-detail-loading-performance-repair.md`](reports/2026-08-24-home-detail-loading-performance-repair.md)：首页/详情冷加载、实体统计分层、按键并发与子榜错误空态的完整修复证据
 - [`reports/2026-08-24-yearly-review-semantic-correction.md`](reports/2026-08-24-yearly-review-semantic-correction.md)：年度里程碑、日极值、首次发现、部分月窗口与跨章节 identity/分母修复证据

@@ -371,10 +371,17 @@ export function MobileSettingsExperience({
     if (panel === 'data') {
       return (
         <div className="mobile-settings-panel-card">
+          <div className="mobile-settings-status-hero">
+            <ShieldCheck className={cn('h-6 w-6', rebuildPending ? 'text-amber-500' : 'text-emerald-500')} />
+            <div>
+              <strong>{rebuildPending ? '统计口径等待重建' : '核心统计已经同步'}</strong>
+              <span>手机端保留关键状态；完整健康明细和历史残留样本请在电脑端查看。</span>
+            </div>
+          </div>
           <SettingRow label="播放记录" description="本地 SQLite 中的已导入记录"><strong>{settings.db_record_count.toLocaleString('zh-CN')} 条</strong></SettingRow>
           <SettingRow label="账号资料" description="收藏、搜索、播客与视频数据"><strong>{settings.account_data_imported ? '已导入' : '未导入'}</strong></SettingRow>
           <SettingRow label="统计聚合" description="参数变更后的计算状态"><strong className={rebuildPending ? 'text-amber-500' : 'text-emerald-500'}>{rebuildPending ? '等待重建 · 统计可能不是最新' : '已同步'}</strong></SettingRow>
-          <p className="mobile-settings-explanation">{rebuildPending ? '当前页面的聚合统计可能尚未反映最新参数。' : '当前统计已经同步。'}文件导入、聚合重建和故障排查请在电脑上完成。</p>
+          <p className="mobile-settings-explanation">{rebuildPending ? '当前页面的聚合统计可能尚未反映最新参数。' : '当前统计已经同步。'}手机端保留状态查看；文件导入、清理预览和聚合重建请在电脑上完成。</p>
         </div>
       )
     }

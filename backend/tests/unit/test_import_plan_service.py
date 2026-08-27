@@ -88,6 +88,8 @@ def test_preflight_reports_baseline_required_without_writing(tmp_path):
     assert replace_report["confirmation_token"] == report["confirmation_token"]
     assert report["existing_record_count"] == 1
     assert report["incoming_record_count"] == 1
+    assert report["comparison_status"] == "baseline_missing"
+    assert report["record_delta_comparable"] is False
     assert conn.total_changes == before
 
 
@@ -129,6 +131,8 @@ def test_preflight_identifies_an_exact_ready_dataset(tmp_path):
     assert report["added_record_count"] == 0
     assert report["removed_record_count"] == 0
     assert report["affected_weeks_count"] == 0
+    assert report["comparison_status"] == "comparable"
+    assert report["record_delta_comparable"] is True
 
 
 def test_preflight_hashes_username_without_exposing_it(tmp_path):

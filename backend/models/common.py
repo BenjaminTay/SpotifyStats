@@ -84,6 +84,10 @@ class RebuildAggregationsResponse(BaseModel):
     albums: int
     track_sources: int
     artists: int
+    rebuild_pending: bool = False
+    aggregation_status: Literal["ready", "running", "failed"] = "ready"
+    completed_at: str | None = None
+    background_tasks: list[dict[str, str]] = Field(default_factory=list)
 
 
 class ClearTranslationCacheResponse(BaseModel):

@@ -38,9 +38,16 @@ from backend.domains.imports.state import (
     summarise_current_playback_dataset,
 )
 from backend.domains.imports.streaming_staging import take_cached_staging
-from backend.domains.metadata.import_health import build_import_health_report
+from backend.domains.metadata.import_health import (
+    build_import_cleanup_preview,
+    build_import_health_report,
+)
 from backend.models.common import ImportJobCreateResponse, ImportJobStatus
-from backend.models.imports import ImportHealthResponse, ImportPreflightResponse
+from backend.models.imports import (
+    ImportCleanupPreviewResponse,
+    ImportHealthResponse,
+    ImportPreflightResponse,
+)
 from backend.services.import_maintenance_service import run_post_streaming_import_maintenance
 from backend.services.import_plan_service import (
     StreamingImportAssessment,
@@ -74,6 +81,22 @@ def get_import_health(conn=Depends(get_conn)) -> dict:
     return {
         "checked_at": datetime.now(timezone.utc).isoformat(),
         **build_import_health_report(conn),
+    }
+
+
+@router.post(
+    "/governance/cleanup-preview",
+    response_model=ImportCleanupPreviewResponse,
+)
+def preview_import_cleanup(
+    sample_limit: int = Query(default=20, ge=1, le=100),
+    conn=Depends(get_conn),
+    auth: None = Depends(require_auth),
+) -> dict:
+    """Preview historical relationship cleanup without writing to the database."""
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        **build_import_cleanup_preview(conn, sample_limit=sample_limit),
     }
 
 

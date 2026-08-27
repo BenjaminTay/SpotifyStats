@@ -226,6 +226,57 @@ describe('Phase 5 query hook migration', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.billboard.all })
   })
 
+  it('clears the cached rebuild flag after a rebuild and keeps it cleared across remounts', async () => {
+    const client = createClient()
+    const settings = {
+      min_ms: 30000,
+      music_only: true,
+      merge_enabled: true,
+      max_merge_gap_minutes: 5,
+      bb_top_n: 30,
+      bb_album_top_n: 20,
+      bb_artist_top_n: 20,
+      bb_week_start_dow: 4,
+      bb_week_start_hour: 0,
+      include_compilations: false,
+      db_record_count: 12,
+      account_data_imported: true,
+      spotify_connected: false,
+      spotify_profile: null,
+      llm_enabled: false,
+      llm_provider: 'deepseek',
+      llm_model: '',
+      has_llm_key: false,
+      llm_active_profile_id: null,
+      llm_active_profile_name: null,
+      rebuild_pending: false,
+    }
+    vi.spyOn(api, 'get').mockResolvedValue(settings)
+    vi.spyOn(api, 'post').mockResolvedValue({
+      status: 'done',
+      rebuild_pending: false,
+      aggregation_status: 'ready',
+      completed_at: '2026-08-27T00:00:00Z',
+      background_tasks: [{ name: 'search_snapshots', status: 'warming' }],
+    })
+
+    const first = renderHook(() => useSettings(), { wrapper: wrapperFor(client) })
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+
+    act(() => first.result.current.markRebuildPending())
+    expect(client.getQueryData<typeof settings>(queryKeys.settings.data())?.rebuild_pending).toBe(true)
+
+    await act(async () => {
+      await first.result.current.rebuildAgg()
+    })
+    expect(client.getQueryData<typeof settings>(queryKeys.settings.data())?.rebuild_pending).toBe(false)
+
+    first.unmount()
+    const second = renderHook(() => useSettings(), { wrapper: wrapperFor(client) })
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+    expect(second.result.current.settings?.rebuild_pending).toBe(false)
+  })
+
   it('forces a fresh AI weekly report request on every manual refresh', async () => {
     const client = createClient()
     const response = {

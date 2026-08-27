@@ -365,6 +365,14 @@ def _assess_streaming_import_with_staging(
         estimated_strategy=(
             "full" if requested_mode == "replace" else plan.estimated_strategy.value
         ),
+        comparison_status=(
+            "comparable"
+            if baseline_status == "ready"
+            else "incompatible"
+            if baseline_status == "incompatible"
+            else "baseline_missing"
+        ),
+        record_delta_comparable=baseline_status == "ready",
     )
     report["confirmation_token"] = confirmation_token
     return StreamingImportAssessment(

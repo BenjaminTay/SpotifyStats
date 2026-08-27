@@ -135,6 +135,12 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("backend/tests/contract/test_yearly_review_v2_contract.py",),
         "Yearly Review records pagination exposes and validates the 1-100 page-size bound.",
     ),
+    ("query", "sample_limit", "integer|maximum=100|minimum=1"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "Cleanup preview contracts cover both invalid bounds and bounded returned samples.",
+        ("backend/tests/contract/test_import_api_jobs.py",),
+    ),
     ("query", "entity", "string|enum=track,album"): ParameterEvidence(
         "targeted_contract",
         (),

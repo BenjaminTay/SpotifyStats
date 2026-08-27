@@ -4,6 +4,8 @@
 
 数据导入区只负责两件事：在导入前确认本地 Spotify 数据包可读，在导入后说明数据库、关系、元数据和派生统计是否可继续使用。健康检查是只读的，不会修复、删除或覆盖原始播放事实。
 
+设置中的“应用改动并重建”完成后，以持久化设置和重建响应中的 `rebuild_pending` 为权威事实。核心聚合完成会清除待生效状态；搜索快照等后台 warming 不再复用“统计口径待生效”提示，也不会被解释成重建失败。
+
 ## 与现有导入流程的关系
 
 当前导入流程仍由 Settings 页面触发：
@@ -19,12 +21,16 @@
 
 `GET /api/import/preflight` 只读检查本地文件，并把输入记录与当前数据库的持久化指纹基线进行比较：
 
+- `comparison_status=comparable|baseline_missing|incompatible` 表示逐条差异是否具备可信比较条件；只有 `record_delta_comparable=true` 时，新增、移除和复用数量才可作为普通差异指标展示。
+- 旧库没有指纹基线时返回 `baseline_missing`。此时输入总量只是本次读到的记录量，不是“真实新增”；界面应解释为首次建立识别基线并隐藏新增/移除 KPI。
+
 - 必需输入：至少一个可解析且非空的 `Streaming_History_Audio_*.json`。
 - 可选输入：视频历史和 Account Data 文件。缺失只产生提示，不阻止串流导入。
 - Streaming History 会检查顶层数组、`ts` 时间戳、记录数量和 `ms_played` 字段提示。
 - JSON 解析失败、必需文件缺失或音频历史为空会标记为 `blocked`。
 - 预检还会计算串流文件 SHA-256，识别完全重复文件；同一文件内的完全重复记录会计入 `duplicate_record_count`。
 - `date_overlaps` 只表示两个文件的日期区间相交，不直接等同于重复播放；每一对会附带 `shared_record_count`，用于区分“边界日期相交但记录不重复”和“确有共同记录”。
+- `date_overlaps.classification=duplicate_records` 表示确有共同记录；`boundary_only` 只表示时间边界相交但没有相同记录，应使用中性说明而不是警告。
 - 完全重复文件会进入 `blockers`；文件内重复记录、日期范围重叠和跨文件共同记录进入 `warnings`。导入时只对完全相同的记录自动去重，保留同一内容在稳定文件顺序中的第一次出现；日期重叠不会被当成重复，也不会自动合并。源 JSON 永远不会被修改。
 - 预检把串流记录一次解析到权限受限的系统临时 SQLite staging。GET 返回的确认标识可在 15 分钟、最多 3 份的进程内缓存中复用；POST 无论复用还是新建，都让关系检测、计数和 ETL 共享同一 staging，不再重复解析源 JSON。staging 不进入主库或 Git，并在阻断、过期、完成、异常或进程退出时清理。
 - `POST /api/import/streaming` 会在后台任务真正创建快照前再次执行这份预检：有 `blockers` 时任务状态为 `blocked`；只有 `warnings` 且未传 `confirm_warnings=true` 时状态为 `needs_confirmation`；确认后才会进入计划执行。源文件集合与 SHA-256 会在 ETL 前和事实提交边界再次核对，预检后发生任何漂移都回滚并要求重新检查。
@@ -65,6 +71,10 @@
 | `metadata` | 最近 90 天的曲目与来源专辑、Spotify 元数据、Album Project 覆盖 | 判断新导入内容是否需要维护 |
 | `derived` | 周聚合、Album Project、Billboard 聚合、artist identity/track credit revision | 判断下游页面是否与当前事实同步 |
 
+产品首页优先读取 `summary`：`safe_to_use` 回答核心统计能否继续使用，`headline` 给出用户结论，其余计数按“影响当前统计的问题类 / 历史建议类 / 说明类”拆分。每个 `issues` 项同时包含 `impact_scope`、`user_status`、`user_title`、`user_explanation` 和 `action`；技术 `code` 与表关系只在高级详情中展示。
+
+近期专辑是否应该建立 Album Project，必须与实际构建器共用 `resolve_album_project_eligibility()`。明确的 single / compilation 计入“按规则无需建立项目”，不进入缺失 membership 的问题；只有资格成立且确实没有 membership 的专辑才计入 `unresolved_recent_albums`。
+
 状态含义：
 
 - `healthy`：没有发现问题。
@@ -86,6 +96,8 @@
 - `evidence`：关系拆分、检查日期等证据。
 
 具体关系问题会优先展示，外键总数仍保留在 `database.foreign_key_issue_count`。这样同一批孤儿记录不会在用户界面被重复计算；例如 2026-08-27 清理前真实库外键总数为 7,831，但已去重后的问题列表只显示曲目/专辑艺人关系、其他历史任务关系和专辑关系等 6 类问题。
+
+`POST /api/import/governance/cleanup-preview?sample_limit=1..100` 是当前页面使用的只读治理预览。它返回数据库修订、预览令牌、各问题类目标数量与有界样例，并固定声明 `writes_performed=false`；原始播放缺少曲目实体的 `audio_without_track` 只做说明，不进入自动整理候选。该接口不会替代下面的维护脚本，也不会执行实际删除。
 
 ### 2026-08-27 真实库外键债务基线
 

@@ -9,6 +9,10 @@ from pydantic import BaseModel, Field
 ImportStatus = Literal["healthy", "partial", "blocked", "stale", "failed"]
 ImportHealthIssueCategory = Literal["database", "relationship", "metadata", "derived"]
 ImportHealthIssueSeverity = Literal["critical", "high", "medium", "low"]
+ImportHealthImpactScope = Literal[
+    "current_stats", "source_exclusion", "historical_only", "non_music"
+]
+ImportHealthUserStatus = Literal["blocking", "action_required", "maintenance", "info"]
 ImportAccountIdentityStatus = Literal["unknown", "not_provided", "matched", "mismatched"]
 ImportFingerprintBaselineStatus = Literal["missing", "ready", "incompatible"]
 ImportDetectedRelation = Literal[
@@ -53,6 +57,9 @@ class ImportDateOverlap(BaseModel):
     overlap_end: str
     overlap_days: int
     shared_record_count: int = 0
+    classification: Literal["duplicate_records", "boundary_only", "review_required"] = (
+        "review_required"
+    )
 
 
 class ImportDatasetDateRange(BaseModel):
@@ -85,6 +92,10 @@ class ImportPreflightResponse(BaseModel):
     affected_years_count: int = Field(default=0, ge=0)
     planned_actions: list[str] = Field(default_factory=list)
     estimated_strategy: ImportEstimatedStrategy = "full"
+    comparison_status: Literal["comparable", "baseline_missing", "incompatible"] = (
+        "baseline_missing"
+    )
+    record_delta_comparable: bool = False
 
 
 class ImportHealthIssue(BaseModel):
@@ -97,6 +108,11 @@ class ImportHealthIssue(BaseModel):
     impact: str
     recommended_action: str
     evidence: dict[str, Any] = Field(default_factory=dict)
+    impact_scope: ImportHealthImpactScope = "historical_only"
+    user_status: ImportHealthUserStatus = "maintenance"
+    user_title: str | None = None
+    user_explanation: str | None = None
+    action: Literal["retry", "review", "preview_cleanup", "no_action"] = "review"
 
 
 class ImportHealthResponse(BaseModel):
@@ -106,6 +122,27 @@ class ImportHealthResponse(BaseModel):
     relationships: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
     derived: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
     issues: list[ImportHealthIssue] = Field(default_factory=list)
     blockers: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+
+class ImportCleanupPreviewGroup(BaseModel):
+    issue_code: str
+    title: str
+    count: int = 0
+    affected_play_count: int = 0
+    proposed_action: str
+    automatic_cleanup_allowed: bool = False
+    samples: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ImportCleanupPreviewResponse(BaseModel):
+    status: Literal["ready"] = "ready"
+    generated_at: str
+    database_revision: str
+    preview_token: str
+    writes_performed: bool = False
+    groups: list[ImportCleanupPreviewGroup] = Field(default_factory=list)
+    excluded_issue_codes: list[str] = Field(default_factory=list)

@@ -2,6 +2,13 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-27 — 设置重建状态与数据治理体验修复
+
+- 设置重建结果改为返回并写回后端权威 `rebuild_pending=false`，前端统一通过 TanStack Query 缓存同步和重新校验；移除页面局部 override，修复重建完成后离开再返回仍显示“统计口径有改动待生效”的问题。
+- 导入健康检查与 Album Project 构建器共用同一资格判定，single / compilation 不再误报为缺少项目；健康响应新增“核心统计是否可用”、影响范围、用户解释和建议动作，技术外键细节降为高级信息。
+- 新增有界、零写入的历史治理预览接口；导入前检查显式返回基线是否可比较，并把真实重复与只有日期边界重叠分开。缺少旧指纹基线时不再展示虚假的新增/移除 KPI。
+- 设置页数据区重做为“可用结论—需要处理—历史建议—说明—技术详情”，导入检查改成三步流程；Phone 保留核心可用状态和桌面治理原因。完整证据见 [`reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md`](reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md)。
+
 ## 2026-08-27 — 基础曲目身份与 L2/L3 版本治理重构
 
 - 将稳定的本地 canonical track 确立为歌曲基础身份：一个 canonical track 可以拥有多个 provider ID，但同一 `(provider, external_track_id)` 只能归属一个 canonical track；不同 Spotify ID 默认新建不同身份，只有受审计的底层纠错可以收敛。

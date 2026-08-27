@@ -111,6 +111,7 @@ export const queryKeys = {
     all: ["data-import"] as const,
     health: () => ["data-import", "health"] as const,
     preflight: () => ["data-import", "preflight"] as const,
+    cleanupPreview: () => ["data-import", "cleanup-preview"] as const,
   },
 
   metadata: {

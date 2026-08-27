@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 from datetime import date, timedelta
 from typing import Any
@@ -80,6 +82,96 @@ def _default_since_date(conn: sqlite3.Connection) -> str:
         return (date.fromisoformat(str(latest)) - timedelta(days=90)).isoformat()
     except ValueError:
         return "1900-01-01"
+
+
+def _recent_album_project_health(
+    conn: sqlite3.Connection,
+    since_date: str,
+) -> dict[str, int]:
+    """Count only recent source albums that share builder eligibility rules."""
+
+    from backend.domains.playback.album_projects import (
+        resolve_album_project_eligibility,
+    )
+
+    if not _table_exists(conn, "plays"):
+        return {
+            "unresolved_recent_albums": 0,
+            "recent_album_project_eligible": 0,
+            "recent_album_project_not_required": 0,
+        }
+    rows = conn.execute(
+        """SELECT p.source_album_id AS album_id,
+                  COUNT(DISTINCT p.track_id) AS local_tracks
+             FROM plays p
+            WHERE p.ts_date > ?
+              AND p.content_type = 'audio'
+              AND p.track_id IS NOT NULL
+              AND p.source_album_id IS NOT NULL
+            GROUP BY p.source_album_id""",
+        (since_date,),
+    ).fetchall()
+    memberships = (
+        {
+            int(row[0])
+            for row in conn.execute("SELECT DISTINCT album_id FROM album_project_albums").fetchall()
+        }
+        if _table_exists(conn, "album_project_albums")
+        else set()
+    )
+    name_match_types: dict[int, str | None] = {}
+    if all(
+        _table_exists(conn, table) for table in ("albums", "artists", "spotify_album_meta")
+    ) and all(
+        (
+            _column_exists(conn, "albums", "album_name"),
+            _column_exists(conn, "artists", "artist_name"),
+            _column_exists(conn, "spotify_album_meta", "album_name"),
+            _column_exists(conn, "spotify_album_meta", "album_artists"),
+        )
+    ):
+        for row in conn.execute(
+            """SELECT al.album_id,
+                      (SELECT sam.album_type
+                         FROM spotify_album_meta sam
+                        WHERE lower(sam.album_name) = lower(al.album_name)
+                          AND (sam.album_artists IS NULL
+                               OR ar.artist_name IS NULL
+                               OR instr(lower(sam.album_artists), lower(ar.artist_name)) > 0)
+                        ORDER BY CASE sam.album_type
+                                   WHEN 'album' THEN 0
+                                   WHEN 'ep' THEN 1
+                                   WHEN 'single' THEN 2
+                                   ELSE 3
+                                 END
+                        LIMIT 1) AS album_type
+                 FROM albums al
+                 LEFT JOIN artists ar ON ar.artist_id = al.artist_id"""
+        ).fetchall():
+            name_match_types[int(row[0])] = str(row[1]) if row[1] else None
+
+    eligible = 0
+    unresolved = 0
+    not_required = 0
+    for row in rows:
+        album_id = int(row[0])
+        result = resolve_album_project_eligibility(
+            conn,
+            album_id,
+            name_match_type=name_match_types.get(album_id),
+            local_tracks=int(row[1] or 0),
+        )
+        if not result.eligible:
+            not_required += 1
+            continue
+        eligible += 1
+        if album_id not in memberships:
+            unresolved += 1
+    return {
+        "unresolved_recent_albums": unresolved,
+        "recent_album_project_eligible": eligible,
+        "recent_album_project_not_required": not_required,
+    }
 
 
 def _build_database_health(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -395,6 +487,37 @@ def _build_health_issues(
         recommended_action: str,
         evidence: dict[str, Any] | None = None,
     ) -> None:
+        blocking_codes = {
+            "no_play_records",
+            "sqlite_integrity_failed",
+            "orphan_play_tracks",
+            "orphan_play_albums",
+            "canonical_track_identity_invalid",
+        }
+        if code in blocking_codes:
+            impact_scope = "current_stats"
+            user_status = "blocking"
+            action = "review"
+        elif code == "audio_without_track":
+            impact_scope = "source_exclusion"
+            user_status = "info"
+            action = "no_action"
+        elif code == "foreign_key_orphans":
+            impact_scope = "non_music"
+            user_status = "maintenance"
+            action = "preview_cleanup"
+        elif category == "relationship" and affected_play_count == 0:
+            impact_scope = "historical_only"
+            user_status = "maintenance"
+            action = "preview_cleanup"
+        elif category in {"metadata", "derived"}:
+            impact_scope = "current_stats" if affected_play_count else "historical_only"
+            user_status = "action_required" if severity in {"critical", "high"} else "maintenance"
+            action = "retry" if category == "derived" else "review"
+        else:
+            impact_scope = "current_stats"
+            user_status = "action_required"
+            action = "review"
         issues.append(
             {
                 "code": code,
@@ -406,6 +529,11 @@ def _build_health_issues(
                 "impact": impact,
                 "recommended_action": recommended_action,
                 "evidence": evidence or {},
+                "impact_scope": impact_scope,
+                "user_status": user_status,
+                "user_title": title,
+                "user_explanation": impact,
+                "action": action,
             }
         )
 
@@ -697,22 +825,6 @@ def build_import_health_report(
           SELECT DISTINCT source_album_id AS album_id
           FROM recent_plays
           WHERE source_album_id IS NOT NULL
-        ),
-        recent_album_state AS (
-          SELECT
-            ra.album_id,
-            COUNT(DISTINCT rp.track_id) AS local_tracks,
-            MAX(CASE WHEN sam.album_type = 'album' THEN 1 ELSE 0 END) AS has_album_type
-          FROM recent_albums ra
-          LEFT JOIN recent_plays rp ON rp.source_album_id = ra.album_id
-          LEFT JOIN album_spotify_links asl ON asl.album_id = ra.album_id
-          LEFT JOIN spotify_album_meta sam ON sam.spotify_album_id = asl.spotify_album_id
-          GROUP BY ra.album_id
-        ),
-        project_candidate_albums AS (
-          SELECT album_id
-          FROM recent_album_state
-          WHERE has_album_type = 1 OR local_tracks >= 7
         )
         SELECT
           (SELECT COUNT(*) FROM recent_plays) AS recent_plays,
@@ -723,11 +835,7 @@ def build_import_health_report(
              LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id = rt.spotify_track_id
              LEFT JOIN spotify_album_meta sam ON sam.spotify_album_id = stm.spotify_album_id
             WHERE stm.spotify_track_id IS NULL OR sam.spotify_album_id IS NULL
-               OR COALESCE(sam.image_url, '') = '') AS unresolved_recent_tracks,
-          (SELECT COUNT(*)
-             FROM project_candidate_albums pca
-             LEFT JOIN album_project_albums apa ON apa.album_id = pca.album_id
-            WHERE apa.album_id IS NULL) AS unresolved_recent_albums
+               OR COALESCE(sam.image_url, '') = '') AS unresolved_recent_tracks
         """,
             (effective_since_date,),
         ).fetchone()
@@ -742,9 +850,9 @@ def build_import_health_report(
             "recent_tracks": 0,
             "recent_source_albums": 0,
             "unresolved_recent_tracks": 0,
-            "unresolved_recent_albums": 0,
         }
     )
+    metadata.update(_recent_album_project_health(conn, effective_since_date))
     metadata["since_date"] = effective_since_date
 
     blockers: list[str] = []
@@ -808,12 +916,45 @@ def build_import_health_report(
     else:
         status = "healthy"
 
+    safe_to_use = not blockers
+    historical_issue_count = sum(
+        1 for issue in issues if issue["impact_scope"] in {"historical_only", "non_music"}
+    )
+    current_stats_issues = [issue for issue in issues if issue["impact_scope"] == "current_stats"]
+    informational_count = sum(1 for issue in issues if issue["user_status"] == "info")
+    if not safe_to_use:
+        headline = "当前统计需要先处理关键问题"
+    elif current_stats_issues:
+        headline = "核心统计可用，但有数据项需要复核"
+    elif historical_issue_count:
+        headline = "核心统计正常，有历史数据可整理"
+    else:
+        headline = "数据状态良好，核心统计可以正常使用"
+    summary = {
+        "safe_to_use": safe_to_use,
+        "headline": headline,
+        "current_stats_issue_count": len(current_stats_issues),
+        "current_stats_affected_play_count": sum(
+            int(issue["affected_play_count"]) for issue in current_stats_issues
+        ),
+        "historical_issue_count": historical_issue_count,
+        "informational_count": informational_count,
+        "recommended_action": (
+            "先处理阻断问题，再重新检查"
+            if not safe_to_use
+            else "可继续使用；历史残留可在方便时预览整理"
+            if historical_issue_count
+            else "无需操作"
+        ),
+    }
+
     return {
         "status": status,
         "database": database,
         "relationships": relationships,
         "metadata": metadata,
         "derived": derived,
+        "summary": summary,
         "issues": issues,
         "blockers": blockers,
         "warnings": warnings,
@@ -821,4 +962,114 @@ def build_import_health_report(
         **metadata,
         "unresolved_recent_tracks": metadata.get("unresolved_recent_tracks", 0),
         "unresolved_recent_albums": metadata.get("unresolved_recent_albums", 0),
+    }
+
+
+def _sample_rows(
+    conn: sqlite3.Connection,
+    sql: str,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    cursor = conn.execute(sql, (limit,))
+    columns = [str(item[0]) for item in cursor.description or []]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
+def build_import_cleanup_preview(
+    conn: sqlite3.Connection,
+    *,
+    sample_limit: int = 20,
+) -> dict[str, Any]:
+    """Build a bounded, read-only cleanup plan for historical relationship rows."""
+
+    health = build_import_health_report(conn)
+    issue_by_code = {issue["code"]: issue for issue in health["issues"]}
+    sample_queries = {
+        "artist_dimension_orphans": """SELECT t.track_id, t.track_name, t.artist_id,
+                   COUNT(p.play_id) AS current_play_count
+              FROM tracks t
+              LEFT JOIN artists a ON a.artist_id=t.artist_id
+              LEFT JOIN plays p ON p.track_id=t.track_id
+             WHERE a.artist_id IS NULL
+             GROUP BY t.track_id
+             ORDER BY current_play_count DESC, t.track_id
+             LIMIT ?""",
+        "album_artist_dimension_orphans": """SELECT al.album_id, al.album_name, al.artist_id,
+                   COUNT(p.play_id) AS current_play_count
+              FROM albums al
+              LEFT JOIN artists a ON a.artist_id=al.artist_id
+              LEFT JOIN plays p ON p.source_album_id=al.album_id
+             WHERE a.artist_id IS NULL
+             GROUP BY al.album_id
+             ORDER BY current_play_count DESC, al.album_id
+             LIMIT ?""",
+        "track_album_dimension_orphans": """SELECT t.track_id, t.track_name, t.album_id,
+                   COUNT(p.play_id) AS current_play_count
+              FROM tracks t
+              LEFT JOIN albums al ON al.album_id=t.album_id
+              LEFT JOIN plays p ON p.track_id=t.track_id
+             WHERE t.album_id IS NOT NULL AND al.album_id IS NULL
+             GROUP BY t.track_id
+             ORDER BY current_play_count DESC, t.track_id
+             LIMIT ?""",
+    }
+    groups: list[dict[str, Any]] = []
+    for issue_code, query in sample_queries.items():
+        issue = issue_by_code.get(issue_code)
+        if not issue:
+            continue
+        groups.append(
+            {
+                "issue_code": issue_code,
+                "title": issue["title"],
+                "count": issue["count"],
+                "affected_play_count": issue["affected_play_count"],
+                "proposed_action": issue["recommended_action"],
+                "automatic_cleanup_allowed": False,
+                "samples": _sample_rows(conn, query, limit=sample_limit),
+            }
+        )
+    secondary_issue = issue_by_code.get("foreign_key_orphans")
+    if secondary_issue:
+        explicit = {
+            "tracks -> artists",
+            "track_artists -> artists",
+            "albums -> artists",
+            "tracks -> albums",
+        }
+        samples = [
+            {"child_table": str(row[0]), "row_id": row[1], "parent_table": str(row[2])}
+            for row in conn.execute("PRAGMA foreign_key_check").fetchall()
+            if f"{row[0]} -> {row[2]}" not in explicit
+        ][:sample_limit]
+        groups.append(
+            {
+                "issue_code": "foreign_key_orphans",
+                "title": secondary_issue["title"],
+                "count": secondary_issue["count"],
+                "affected_play_count": 0,
+                "proposed_action": secondary_issue["recommended_action"],
+                "automatic_cleanup_allowed": False,
+                "samples": samples,
+            }
+        )
+    revision_row = conn.execute("PRAGMA data_version").fetchone()
+    database_revision = str(revision_row[0] if revision_row else 0)
+    token_payload = {
+        "database_revision": database_revision,
+        "groups": [
+            {"issue_code": group["issue_code"], "count": group["count"]} for group in groups
+        ],
+    }
+    preview_token = hashlib.sha256(
+        json.dumps(token_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return {
+        "status": "ready",
+        "database_revision": database_revision,
+        "preview_token": preview_token,
+        "writes_performed": False,
+        "groups": groups,
+        "excluded_issue_codes": ["audio_without_track"],
     }

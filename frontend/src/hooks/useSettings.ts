@@ -57,6 +57,7 @@ interface UseSettingsResult {
   updateApiKey: (apiKey: string, baseUrl?: string) => Promise<void>
   clearTranslationCache: () => Promise<ClearCacheResult>
   rebuildAgg: () => Promise<RebuildResult>
+  markRebuildPending: () => void
   startStreamingImport: (options?: StreamingImportOptions) => void
   startAccountImport: () => void
   streamingJob: ImportJob | null
@@ -132,11 +133,27 @@ export function useSettings(): UseSettingsResult {
     [settingsQuery],
   )
 
-  const rebuildAgg = useCallback(() => {
+  const markRebuildPending = useCallback(() => {
+    queryClient.setQueryData<SettingsData>(queryKeys.settings.data(), (current) => (
+      current ? { ...current, rebuild_pending: true } : current
+    ))
+  }, [queryClient])
+
+  const rebuildAgg = useCallback(async () => {
     const params = new URLSearchParams()
     params.set('dynamic_threshold', String(getStoredBool('spotify_stats_dynamic_threshold', true)))
-    return api.post<RebuildResult>(`/settings/rebuild-agg?${params.toString()}`, undefined, 120_000)
-  }, [])
+    const result = await api.post<RebuildResult>(`/settings/rebuild-agg?${params.toString()}`, undefined, 120_000)
+    queryClient.setQueryData<SettingsData>(queryKeys.settings.data(), (current) => (
+      current ? { ...current, rebuild_pending: result.rebuild_pending } : current
+    ))
+    await queryClient.invalidateQueries({ queryKey: queryKeys.settings.data() })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.home.all })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.billboard.all })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.analysis.all })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.music.all })
+    return result
+  }, [queryClient])
 
   const clearTranslationCache = useCallback(() => {
     return api.post<ClearCacheResult>('/settings/clear-translation-cache')
@@ -308,6 +325,7 @@ export function useSettings(): UseSettingsResult {
     updateApiKey,
     clearTranslationCache,
     rebuildAgg,
+    markRebuildPending,
     startStreamingImport,
     startAccountImport,
     streamingJob,

@@ -33,6 +33,7 @@ export interface ImportDateOverlap {
   overlap_end: string
   overlap_days: number
   shared_record_count: number
+  classification?: 'duplicate_records' | 'boundary_only' | 'review_required'
 }
 
 export type ImportAccountIdentityStatus = 'unknown' | 'not_provided' | 'matched' | 'mismatched'
@@ -92,6 +93,8 @@ export interface ImportPreflightResponse {
   affected_years_count?: number
   planned_actions?: string[]
   estimated_strategy?: ImportEstimatedStrategy
+  comparison_status?: 'comparable' | 'baseline_missing' | 'incompatible'
+  record_delta_comparable?: boolean
 }
 
 export interface ImportHealthIssue {
@@ -104,6 +107,11 @@ export interface ImportHealthIssue {
   impact: string
   recommended_action: string
   evidence: Record<string, unknown>
+  impact_scope?: 'current_stats' | 'source_exclusion' | 'historical_only' | 'non_music'
+  user_status?: 'blocking' | 'action_required' | 'maintenance' | 'info'
+  user_title?: string | null
+  user_explanation?: string | null
+  action?: 'retry' | 'review' | 'preview_cleanup' | 'no_action'
 }
 
 export interface ImportHealthResponse {
@@ -153,7 +161,36 @@ export interface ImportHealthResponse {
     artist_identity: Record<string, unknown>
     track_credits: Record<string, unknown>
   }
+  summary?: {
+    safe_to_use: boolean
+    headline: string
+    current_stats_issue_count: number
+    current_stats_affected_play_count: number
+    historical_issue_count: number
+    informational_count: number
+    recommended_action: string
+  }
   issues: ImportHealthIssue[]
   blockers: string[]
   warnings: string[]
+}
+
+export interface ImportCleanupPreviewGroup {
+  issue_code: string
+  title: string
+  count: number
+  affected_play_count: number
+  proposed_action: string
+  automatic_cleanup_allowed: boolean
+  samples: Array<Record<string, unknown>>
+}
+
+export interface ImportCleanupPreviewResponse {
+  status: 'ready'
+  generated_at: string
+  database_revision: string
+  preview_token: string
+  writes_performed: boolean
+  groups: ImportCleanupPreviewGroup[]
+  excluded_issue_codes: string[]
 }

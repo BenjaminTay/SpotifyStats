@@ -138,6 +138,50 @@ def test_import_health_report_prefers_play_time_spotify_track_id():
     report = build_import_health_report(conn, since_date="2026-05-13")
 
     assert report["unresolved_recent_tracks"] == 0
+    assert report["unresolved_recent_albums"] == 0
+
+
+def test_album_project_eligibility_uses_weighted_links_and_excludes_single():
+    from backend.domains.playback.album_projects import resolve_album_project_eligibility
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE spotify_album_meta(
+            spotify_album_id TEXT PRIMARY KEY,
+            album_type TEXT
+        );
+        CREATE TABLE album_spotify_links(
+            album_id INTEGER,
+            spotify_album_id TEXT,
+            play_count INTEGER
+        );
+        INSERT INTO spotify_album_meta VALUES ('album-link', 'album');
+        INSERT INTO spotify_album_meta VALUES ('single-link', 'single');
+        INSERT INTO album_spotify_links VALUES (10, 'album-link', 1);
+        INSERT INTO album_spotify_links VALUES (10, 'single-link', 20);
+        """
+    )
+
+    result = resolve_album_project_eligibility(conn, 10, local_tracks=8)
+
+    assert result.eligible is False
+    assert result.resolved_album_type == "single"
+    assert result.reason_code == "spotify_single"
+
+
+def test_album_project_eligibility_uses_local_track_threshold_only_for_unknown_type():
+    from backend.domains.playback.album_projects import resolve_album_project_eligibility
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+
+    result = resolve_album_project_eligibility(conn, 10, local_tracks=7)
+
+    assert result.eligible is True
+    assert result.resolved_album_type == "album"
+    assert result.reason_code == "local_track_threshold"
 
 
 def test_import_health_separates_legacy_fk_orphans_from_playback_blockers():
@@ -202,6 +246,8 @@ def test_import_health_separates_legacy_fk_orphans_from_playback_blockers():
     assert report["relationships"]["orphan_play_track_count"] == 0
     assert report["relationships"]["orphan_play_album_count"] == 0
     assert report["blockers"] == []
+    assert report["summary"]["safe_to_use"] is True
+    assert report["summary"]["headline"] == "核心统计可用，但有数据项需要复核"
     artist_issue = next(
         issue for issue in report["issues"] if issue["code"] == "artist_dimension_orphans"
     )

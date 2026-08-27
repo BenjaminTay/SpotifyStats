@@ -38,6 +38,15 @@ class AlbumProjectRebuildReport:
 
 
 @dataclass(frozen=True)
+class AlbumProjectEligibility:
+    """Pure eligibility result shared by rebuilds and health checks."""
+
+    eligible: bool
+    resolved_album_type: str
+    reason_code: str
+
+
+@dataclass(frozen=True)
 class _AlbumProjectImpactPlan:
     album_ids: frozenset[int]
     release_group_ids: frozenset[int]
@@ -1104,8 +1113,12 @@ def _resolve_standalone_album_type(
 
     # ② No name-match — vote by album_spotify_links (weighted by play_count)
     try:
+        link_columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(album_spotify_links)")
+        }
+        play_count_expression = "asl.play_count" if "play_count" in link_columns else "1"
         links = conn.execute(
-            """SELECT sam.album_type, asl.play_count
+            f"""SELECT sam.album_type, {play_count_expression} AS play_count
                FROM album_spotify_links asl
                JOIN spotify_album_meta sam
                  ON sam.spotify_album_id = asl.spotify_album_id
@@ -1128,6 +1141,31 @@ def _resolve_standalone_album_type(
             return best
 
     return "unknown"
+
+
+def resolve_album_project_eligibility(
+    conn: sqlite3.Connection,
+    album_id: int,
+    *,
+    name_match_type: str | None = None,
+    local_tracks: int = 0,
+) -> AlbumProjectEligibility:
+    """Resolve whether a local source album should own an Album Project.
+
+    This is intentionally side-effect free so the builder and import health
+    report cannot drift into different definitions of an eligible album.
+    """
+
+    resolved = _resolve_standalone_album_type(conn, album_id, name_match_type)
+    if resolved == "single":
+        return AlbumProjectEligibility(False, resolved, "spotify_single")
+    if resolved == "compilation":
+        return AlbumProjectEligibility(False, resolved, "spotify_compilation")
+    if resolved in {"album", "ep"}:
+        return AlbumProjectEligibility(True, resolved, f"spotify_{resolved}")
+    if resolved == "unknown" and local_tracks >= 7:
+        return AlbumProjectEligibility(True, "album", "local_track_threshold")
+    return AlbumProjectEligibility(False, resolved, "insufficient_album_evidence")
 
 
 def _bootstrap_standalone_album_projects(
@@ -1195,24 +1233,13 @@ def _bootstrap_standalone_album_projects(
         local_tracks = len({track_id for track_id, _album_id in active_memberships})
 
         # ── Resolve album type: Spotify metadata first, links second ──
-        resolved = _resolve_standalone_album_type(conn, int(album["album_id"]), name_match_type)
-
-        # Singles do not chart (R13)
-        if resolved == "single":
-            continue
-
-        # Compilations handled by _bootstrap_compilation_exclusive_projects
-        if resolved == "compilation":
-            continue
-
-        # Unknown type: only create project when there's strong evidence (≥7 tracks)
-        if resolved == "unknown":
-            if local_tracks >= 7:
-                resolved = "album"
-            else:
-                continue
-
-        if resolved not in ("album", "ep"):
+        eligibility = resolve_album_project_eligibility(
+            conn,
+            int(album["album_id"]),
+            name_match_type=name_match_type,
+            local_tracks=local_tracks,
+        )
+        if not eligibility.eligible:
             continue
 
         # Release date: prefer name-match; fall back to best linked album

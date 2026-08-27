@@ -245,6 +245,13 @@ export interface TrackComparison {
 
 export interface RebuildResult {
   status: string;
+  rebuild_pending: boolean;
+  aggregation_status: "ready" | "running" | "failed";
+  completed_at: string | null;
+  background_tasks: Array<{
+    name: string;
+    status: string;
+  }>;
   [key: string]: unknown;
 }
 
