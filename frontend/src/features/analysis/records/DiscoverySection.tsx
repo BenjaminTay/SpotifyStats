@@ -2,13 +2,14 @@
 
 import { Compass } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { PlaybackDiscoveryRecords, PlaybackRecordRow } from '@/types/analysis'
 import { EntityRecordCard, RecordCard, MiniRankTable, RankNum, TrackCell, ArtistCell, AlbumCell, SectionHeader, ValueBar } from './PlaybackRecordsPrimitives'
 
 interface Props { data: PlaybackDiscoveryRecords }
 
 function SameNameArtistVersions({ row }: { row: PlaybackRecordRow }) {
+  useChineseTextVersion()
   const names = row.artist_names?.length
     ? row.artist_names
     : (row.caption?.split('、').filter(Boolean) ?? [])
@@ -42,6 +43,7 @@ function SameNameArtistVersions({ row }: { row: PlaybackRecordRow }) {
 }
 
 export function DiscoverySection({ data }: Props) {
+  useChineseTextVersion()
   const featTrackRows = data.feat_lover?.track ?? []
   const featSummaryRow = featTrackRows.find((row) =>
     row.rank === 0 || row.name === '合作曲播放佔比' || row.name === '合作曲播放占比',

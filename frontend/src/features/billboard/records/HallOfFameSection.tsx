@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Crown } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import type { BillboardRecords, DecadeBestRecord } from '@/types/billboard'
 import type { CoverMaps } from './recordsData'
@@ -23,6 +23,7 @@ import {
 } from './RecordsPrimitives'
 
 function DecadeBestCard({ covers, decadeGroups }: { covers: CoverMaps; decadeGroups: Map<string, DecadeBestRecord[]> }) {
+  useChineseTextVersion()
   const decades = useMemo(() => Array.from(decadeGroups.keys()).sort(), [decadeGroups])
   const [activeDecade, setActiveDecade] = useState<string>(decades[decades.length - 1] ?? '')
   const decadeTabsRef = useRef<HTMLDivElement>(null)
@@ -70,6 +71,7 @@ function DecadeBestCard({ covers, decadeGroups }: { covers: CoverMaps; decadeGro
 }
 
 export function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; covers: CoverMaps }) {
+  useChineseTextVersion()
   const decadeGroups = useMemo(() => {
     const map = new Map<string, typeof rec.decade_best>()
     for (const r of rec.decade_best) { const key = r['年代']; if (!map.has(key)) map.set(key, []); map.get(key)!.push(r) }

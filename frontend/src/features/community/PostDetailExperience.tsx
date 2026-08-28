@@ -2,7 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 
 import { useCommunityChartParams, useCommunityPost, useCommunityTrending } from '@/hooks/useCommunity'
 import type { CommunityPost } from '@/types/community'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 import { AccountAvatar } from './AccountAvatar'
 import { CommunitySidebar } from './CommunitySidebar'
@@ -31,6 +31,7 @@ function parsePost(apiPost: Record<string, unknown>): CommunityPost {
 }
 
 export function PostDetailExperience() {
+  useChineseTextVersion()
   const { postId } = useParams<{ postId: string }>()
   const chartParams = useCommunityChartParams()
   const { detail, loading, error, refetch } = useCommunityPost(postId ?? '', chartParams)

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Sparkles } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import type { ArtistTrackCounts, BillboardRecords, DoubleDebutRecord, TrackSummary, TripleNo1Record } from '@/types/billboard'
 import { useViewportMode } from '@/hooks/useViewportMode'
@@ -36,6 +36,7 @@ type MobileAchievement = {
 }
 
 function MobileChartAchievementRow({ achievement }: { achievement: MobileAchievement }) {
+  useChineseTextVersion()
   return (
     <Link
       to={achievement.detailLink}
@@ -118,6 +119,7 @@ function SortToggle({ mode, desc, onChange, dateLabel }: { mode: DebutSortMode; 
 export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCounts }: {
   rec: BillboardRecords; covers: CoverMaps; trackSummary: TrackSummary[]; artistTrackCounts: ArtistTrackCounts[]
 }) {
+  useChineseTextVersion()
   const weekPlays = useMemo(() => {
     const map = new Map<string, number>()
     for (const w of rec.week_total_plays) {

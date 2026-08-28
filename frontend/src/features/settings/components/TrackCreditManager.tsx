@@ -29,6 +29,7 @@ import type {
   TrackCreditRole,
   TrackCreditState,
 } from "@/types/settings";
+import { displayName, useDisplayName, useChineseTextVersion } from "@/lib/chinese";
 
 function Input({ className, ...props }: ComponentProps<"input">) {
   return (
@@ -44,10 +45,11 @@ function Input({ className, ...props }: ComponentProps<"input">) {
 
 function Avatar({ name, coverUrl }: { name: string; coverUrl?: string | null }) {
   const [failed, setFailed] = useState(false);
+  const renderedName = useDisplayName(name);
   if (!coverUrl || failed) {
     return (
       <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-foreground/10 font-serif text-sm font-bold text-accent-foreground">
-        {name.trim().slice(0, 1).toUpperCase() || <UserRound className="size-4" />}
+        {renderedName.trim().slice(0, 1).toUpperCase() || <UserRound className="size-4" />}
       </span>
     );
   }
@@ -159,6 +161,7 @@ export function TrackCreditManager({
   onComplete?: () => void;
   onCancel?: () => void;
 }) {
+  useChineseTextVersion();
   const [tab, setTab] = useState<"edit" | "manual">("edit");
   const [trackSearch, setTrackSearch] = useState("");
   const [selectedTrackId, setSelectedTrackId] = useState<number | null>(
@@ -241,7 +244,7 @@ export function TrackCreditManager({
 
   const undoManualChange = async (change: TrackCreditManualChange) => {
     if (!state || change.event_id == null) return;
-    if (!window.confirm(`撤销“${change.track_name} · ${change.artist_name}”的人工修改？`)) {
+    if (!window.confirm(`撤销“${displayName(change.track_name)} · ${displayName(change.artist_name)}”的人工修改？`)) {
       return;
     }
     await credits.undo.mutateAsync({
@@ -339,9 +342,9 @@ export function TrackCreditManager({
                       <Music2 className="size-4" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block break-words text-sm font-semibold">{track.track_name}</span>
+                      <span className="block break-words text-sm font-semibold">{displayName(track.track_name)}</span>
                       <span className="block break-words text-[11px] text-muted-foreground">
-                        {track.effective_artist_names.join("、") || track.artist_name} · #{track.track_id} · {track.play_count.toLocaleString()} 次
+                        {displayName(track.effective_artist_names.join("、") || track.artist_name)} · #{track.track_id} · {track.play_count.toLocaleString()} 次
                       </span>
                     </span>
                     <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
@@ -355,9 +358,9 @@ export function TrackCreditManager({
             <div className="space-y-4 rounded-2xl border border-border bg-muted/20 p-4 sm:p-5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="font-serif text-xl font-bold">{detail.track.track_name}</p>
+                  <p className="font-serif text-xl font-bold">{displayName(detail.track.track_name)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {detail.track.album_name ?? "未知专辑"} · local track #{detail.track.track_id}
+                    {displayName(detail.track.album_name ?? "未知专辑")} · local track #{detail.track.track_id}
                     {detail.track.spotify_track_id ? ` · Spotify ${detail.track.spotify_track_id}` : ""}
                   </p>
                 </div>
@@ -463,9 +466,9 @@ export function TrackCreditManager({
                     >
                       <Avatar name={artist.artist_name} coverUrl={artist.cover_url} />
                       <span className="min-w-0 flex-1">
-                        <span className="block break-words text-sm font-semibold">{artist.artist_name}</span>
+                        <span className="block break-words text-sm font-semibold">{displayName(artist.artist_name)}</span>
                         <span className="block break-words text-[11px] text-muted-foreground">
-                          raw #{artist.artist_id} → canonical #{artist.canonical_artist_id} {artist.canonical_display_name} · {artist.play_count.toLocaleString()} 次
+                          raw #{artist.artist_id} → canonical #{artist.canonical_artist_id} {displayName(artist.canonical_display_name)} · {artist.play_count.toLocaleString()} 次
                         </span>
                         <span className="block break-words text-[10px] text-muted-foreground">
                           {artist.external_ids.map((item) => `${item.provider}:${item.external_id}${item.verified ? " ✓" : ""}`).join(" · ") || "暂无 provider id"}
@@ -531,7 +534,7 @@ export function TrackCreditManager({
             <div key={change.override_id} className="flex flex-col gap-3 rounded-xl border border-border bg-background p-3 sm:flex-row sm:items-center">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-foreground/10 text-accent-foreground"><ShieldCheck className="size-4" /></span>
               <div className="min-w-0 flex-1">
-                <p className="break-words text-sm font-semibold">{change.track_name} · {change.canonical_display_name}</p>
+                <p className="break-words text-sm font-semibold">{displayName(change.track_name)} · {displayName(change.canonical_display_name)}</p>
                 <p className="break-words text-xs text-muted-foreground">
                   {change.action === "add" ? "添加" : change.action === "remove" ? "移除" : "调整"}署名 · {change.role === "primary" ? "主艺人" : "合作艺人"} · local artist #{change.artist_id}
                 </p>
@@ -564,6 +567,7 @@ function CreditColumn({
   onSetRole?: (credit: EffectiveTrackCredit) => void;
   onRemove?: (credit: EffectiveTrackCredit) => void;
 }) {
+  useChineseTextVersion();
   return (
     <div className="min-w-0 rounded-xl border border-border bg-background p-3">
       <div className="mb-3"><p className="text-xs font-bold uppercase tracking-[1px]">{title}</p><p className="text-[10px] text-muted-foreground">{description}</p></div>
@@ -572,7 +576,7 @@ function CreditColumn({
           <div key={`${credit.artist_id}-${credit.action ?? credit.source}`} className="rounded-lg bg-muted/40 p-2.5">
             <div className="flex min-w-0 items-center gap-2">
               <Avatar name={credit.artist_name} coverUrl={`/covers/artists/${credit.artist_id}.jpg`} />
-              <span className="min-w-0 flex-1"><span className="block break-words text-sm font-semibold">{credit.artist_name}</span><span className="text-[10px] text-muted-foreground">canonical #{credit.artist_id} · {credit.role === "primary" ? "主艺人" : "合作艺人"}</span></span>
+              <span className="min-w-0 flex-1"><span className="block break-words text-sm font-semibold">{displayName(credit.artist_name)}</span><span className="text-[10px] text-muted-foreground">canonical #{credit.artist_id} · {credit.role === "primary" ? "主艺人" : "合作艺人"}</span></span>
             </div>
             {(onSetRole || onRemove) && (
               <div className="mt-2 flex flex-wrap gap-1.5">

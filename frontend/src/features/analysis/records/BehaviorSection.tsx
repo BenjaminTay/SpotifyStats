@@ -1,12 +1,13 @@
 /** 高光时刻中的播放里程碑卡片 */
 
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { PlaybackBehaviorRecords } from '@/types/analysis'
 import { RecordCard, TrackCell } from './PlaybackRecordsPrimitives'
 
 interface Props { data: PlaybackBehaviorRecords }
 
 export function PlaybackMilestonesCard({ data }: Props) {
+  useChineseTextVersion()
   const milestones = data.playback_milestones ?? []
   const currentTotal = milestones[0]?.total_plays
 

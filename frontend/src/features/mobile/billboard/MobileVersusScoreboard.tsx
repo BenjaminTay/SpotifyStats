@@ -4,6 +4,7 @@ import { Crown } from 'lucide-react'
 
 import { ENTITY_COLORS } from '@/features/billboard/versus/versusData'
 import type { VersusEntityData } from '@/types/billboard'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 export interface MobileVersusMetric {
   label: string
@@ -73,9 +74,10 @@ export function MobileVersusScoreboard({
   wins,
   personalLoading,
 }: MobileVersusScoreboardProps) {
+  useChineseTextVersion()
   const maxWins = Math.max(...wins)
   const winnerIndices = wins.map((value, index) => value === maxWins ? index : -1).filter((index) => index >= 0)
-  const winnerLabel = winnerIndices.length === 1 ? entities[winnerIndices[0]]?.name : '并列胜出'
+  const winnerLabel = winnerIndices.length === 1 ? displayName(entities[winnerIndices[0]]?.name ?? '') : '并列胜出'
   const totalWinners = maxWins > 0 ? winnerIndices : []
 
   return (
@@ -92,7 +94,9 @@ export function MobileVersusScoreboard({
               <tr>
                 <th scope="col" className="mobile-versus-matrix-label mobile-versus-matrix-corner">指标</th>
                 {entities.map((entity, index) => {
-                  const { title, subtitle } = splitEntityName(entity.name ?? '未命名实体')
+                  const split = splitEntityName(entity.name ?? '未命名实体')
+                  const title = displayName(split.title)
+                  const subtitle = split.subtitle ? displayName(split.subtitle) : null
                   return (
                     <th key={`${entity.name}:${index}`} scope="col" className="mobile-versus-matrix-entity" style={entityStyle(index)}>
                       <span className="mobile-versus-matrix-entity-index">对决 {String(index + 1).padStart(2, '0')}</span>

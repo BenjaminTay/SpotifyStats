@@ -4,6 +4,13 @@ import { useArchiveOtherMedia } from '@/features/account-archive/hooks/useAccoun
 import { useArchiveSection } from '@/features/account-archive/hooks/useArchiveSection'
 import { formatArchiveHours, formatArchiveNumber } from '@/features/account-archive/model/archiveModel'
 import { PhoneArchiveError, PhoneArchiveLoading, PhoneArchiveUnavailable, PhoneChapterHeading, PhoneEntityCard } from './PhoneArchivePrimitives'
+import { useDisplayName } from '@/lib/chinese'
+
+function PhonePodcastName({ name, publisher }: { name: string; publisher?: string | null }) {
+  const displayShowName = useDisplayName(name)
+  const displayPublisher = useDisplayName(publisher ?? '')
+  return <span className="phone-archive-podcast-copy"><strong>{displayShowName}</strong>{publisher ? <span>{displayPublisher}</span> : null}</span>
+}
 
 export function PhoneOtherMediaChapter() {
   const { ref, enabled } = useArchiveSection()
@@ -35,10 +42,7 @@ export function PhoneOtherMediaChapter() {
                       <img src={show.cover_url} alt="" loading="lazy" />
                     </span>
                   ) : null}
-                  <span className="phone-archive-podcast-copy">
-                    <strong>{show.show_name}</strong>
-                    {show.publisher ? <span>{show.publisher}</span> : null}
-                  </span>
+                  <PhonePodcastName name={show.show_name} publisher={show.publisher} />
                   <b>{formatArchiveHours(show.effective_ms)}</b>
                 </div>
               ))}

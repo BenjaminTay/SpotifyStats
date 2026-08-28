@@ -17,7 +17,7 @@ import { buildBillboardContextParams } from '@/features/billboard/billboardConte
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
 import { TrackDetailHero } from './MusicDetailHeader'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { CapabilityGate } from '@/components/capabilities/CapabilityGate'
 
 type TabKey = 'stats' | 'overview'
@@ -54,6 +54,7 @@ function TrackDetailSkeleton() {
 }
 
 export function TrackDetailExperience() {
+  useChineseTextVersion()
   const { trackId } = useParams<{ trackId: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()

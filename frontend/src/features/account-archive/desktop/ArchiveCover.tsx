@@ -3,6 +3,7 @@ import { ArrowDown, Disc3 } from 'lucide-react'
 
 import type { ArchiveFeaturedItem, ArchiveOverview } from '@/types/accountArchive'
 import { formatArchiveNumber } from '@/features/account-archive/model/archiveModel'
+import { useDisplayName } from '@/lib/chinese'
 
 const ROLE_LABELS: Record<ArchiveFeaturedItem['role'], string> = {
   first_saved: '最早收藏',
@@ -12,6 +13,8 @@ const ROLE_LABELS: Record<ArchiveFeaturedItem['role'], string> = {
 }
 
 function ArchiveSleeve({ item, index }: { item: ArchiveFeaturedItem; index: number }) {
+  const displayTrackName = useDisplayName(item.track_name)
+  const displayArtistName = useDisplayName(item.artist_name)
   const content = (
     <>
       <span className="archive-sleeve-art">
@@ -19,8 +22,8 @@ function ArchiveSleeve({ item, index }: { item: ArchiveFeaturedItem; index: numb
       </span>
       <span className="archive-sleeve-caption">
         <small>{ROLE_LABELS[item.role]}</small>
-        <strong>{item.track_name}</strong>
-        <span>{item.artist_name}</span>
+        <strong>{displayTrackName}</strong>
+        <span>{displayArtistName}</span>
       </span>
     </>
   )

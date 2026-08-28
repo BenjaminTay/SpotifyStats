@@ -1,3 +1,5 @@
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
+
 function readField(value: unknown, field: string): string {
   if (!value || typeof value !== 'object') return ''
   const raw = (value as Record<string, unknown>)[field]
@@ -5,6 +7,7 @@ function readField(value: unknown, field: string): string {
 }
 
 export function AlbumDualityCompare({ data }: { data: unknown }) {
+  useChineseTextVersion()
   const record = data as {
     playback_leader?: unknown
     chart_leader?: unknown
@@ -26,15 +29,15 @@ export function AlbumDualityCompare({ data }: { data: unknown }) {
           <p className="text-[11px] font-semibold uppercase tracking-[0.8px] text-muted-foreground">
             最常播放
           </p>
-          <p className="mt-2 break-words font-serif text-[18px] text-foreground">{playback}</p>
-          {playbackArtist && <p className="mt-1 text-[12px] text-muted-foreground">{playbackArtist}</p>}
+          <p className="mt-2 break-words font-serif text-[18px] text-foreground">{displayName(playback)}</p>
+          {playbackArtist && <p className="mt-1 text-[12px] text-muted-foreground">{displayName(playbackArtist)}</p>}
         </div>
         <div className="min-w-0 rounded-[8px] border border-border/70 p-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.8px] text-muted-foreground">
             最稳定在榜
           </p>
-          <p className="mt-2 break-words font-serif text-[18px] text-foreground">{chart}</p>
-          {chartArtist && <p className="mt-1 text-[12px] text-muted-foreground">{chartArtist}</p>}
+          <p className="mt-2 break-words font-serif text-[18px] text-foreground">{displayName(chart)}</p>
+          {chartArtist && <p className="mt-1 text-[12px] text-muted-foreground">{displayName(chartArtist)}</p>}
         </div>
       </div>
       {record?.interpretation && (

@@ -1,5 +1,6 @@
 import { Disc3, LoaderCircle, RotateCcw } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useDisplayName } from '@/lib/chinese'
 
 export function PhoneChapterHeading({
   number,
@@ -50,6 +51,8 @@ export function PhoneEntityCard({
   meta?: string
   ordinal?: number
 }) {
+  const displayTrackName = useDisplayName(name)
+  const displayArtistName = useDisplayName(artist)
   const content = (
     <>
       <span className="phone-archive-entity-art">
@@ -57,9 +60,9 @@ export function PhoneEntityCard({
       </span>
       <span className="phone-archive-entity-copy">
         {ordinal ? <small>{String(ordinal).padStart(2, '0')}</small> : null}
-        <strong>{name}</strong>
+        <strong>{displayTrackName}</strong>
         <span className="phone-archive-entity-details">
-          <span>{artist}</span>
+          <span>{displayArtistName}</span>
           {meta ? <em>{meta}</em> : null}
         </span>
       </span>

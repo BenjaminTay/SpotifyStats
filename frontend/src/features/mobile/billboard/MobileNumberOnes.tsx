@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import { MobileEntityArtwork, MobilePageHeader, MobileRankList } from '@/components/mobile'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import type { MobileEntityRowProps } from '@/components/mobile'
@@ -95,6 +95,7 @@ export function MobileNumberOnes({
   selectedYear,
   onYearChange,
 }: MobileNumberOnesProps) {
+  useChineseTextVersion()
   const uniqueCount = activeTab === 'tracks' ? yearFiltered.uniqueTrackCount : activeTab === 'albums' ? yearFiltered.uniqueAlbumCount : yearFiltered.uniqueArtistCount
 
   return (

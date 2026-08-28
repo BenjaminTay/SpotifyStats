@@ -16,6 +16,7 @@ import {
 } from '@/features/account-archive/model/archiveModel'
 import type { ArchiveLibraryEntityType, ArchiveLibraryItem } from '@/types/accountArchive'
 import { PhoneArchiveError, PhoneArchiveLoading, PhoneChapterHeading } from './PhoneArchivePrimitives'
+import { useDisplayName } from '@/lib/chinese'
 
 function itemContent(item: ArchiveLibraryItem) {
   if (item.entity_type === 'track') return { name: item.track_name, secondary: item.artist_name, meta: formatArchiveDate(item.added_date), cover: item.cover_url, href: item.deep_link }
@@ -26,11 +27,13 @@ function itemContent(item: ArchiveLibraryItem) {
 
 function PhoneLibraryRow({ item, index }: { item: ArchiveLibraryItem; index: number }) {
   const detail = itemContent(item)
+  const displayEntityName = useDisplayName(detail.name)
+  const displaySecondary = useDisplayName(detail.secondary)
   const content = (
     <>
       <span className="phone-library-number">{String(index).padStart(3, '0')}</span>
       <span className="phone-library-art">{detail.cover ? <img src={detail.cover} alt="" loading="lazy" /> : <Disc3 />}</span>
-      <span className="phone-library-copy"><strong>{detail.name}</strong><small>{detail.secondary}</small></span>
+      <span className="phone-library-copy"><strong>{displayEntityName}</strong><small>{displaySecondary}</small></span>
       <em>{detail.meta}</em>
     </>
   )

@@ -5,6 +5,7 @@ import { GenreLanguageMixChart } from './charts/GenreLanguageMixChart'
 import { HighlightDayTimeline } from './charts/HighlightDayTimeline'
 import { ListeningCalendarChart } from './charts/ListeningCalendarChart'
 import type { YearlyChartSpec } from './yearlyArtifactTypes'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 type MatrixItemType = 'track' | 'album' | 'artist'
 
@@ -114,6 +115,7 @@ function chartObservations(data: unknown): string[] {
 }
 
 function PlaybackBillboardMatrixChart({ data }: { data: unknown }) {
+  useChineseTextVersion()
   const items = toMatrixDisplayItems(data).slice(0, 6)
 
   if (!items.length) return <p className="text-[12px] text-muted-foreground">播放与榜单矩阵数据不足</p>
@@ -135,8 +137,8 @@ function PlaybackBillboardMatrixChart({ data }: { data: unknown }) {
             <span className="inline-flex rounded-full border border-border bg-card/60 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
               {item.typeLabel}
             </span>
-            <p className="mt-2 break-words text-[13px] font-semibold text-foreground">{item.name}</p>
-            {item.artist && <p className="mt-1 text-[12px] text-muted-foreground">{item.artist}</p>}
+            <p className="mt-2 break-words text-[13px] font-semibold text-foreground">{displayName(item.name)}</p>
+            {item.artist && <p className="mt-1 text-[12px] text-muted-foreground">{displayName(item.artist)}</p>}
             {metrics.length > 0 && (
               <p className="mt-2 text-[11px] text-muted-foreground">
                 {metrics.join(' · ')}

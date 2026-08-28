@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-r
 import { CoverCell } from '@/components/shared/CoverCell'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { MobileRankList } from '@/components/mobile'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import {
@@ -61,6 +61,7 @@ export function MusicTracksSection({
     onPageChange: (page: number) => void
   }
 }) {
+  useChineseTextVersion()
   const isPhone = useViewportMode() === 'phone'
   const pageSize = pagination?.pageSize ?? (isPhone ? 20 : PAGE_SIZE)
   const [pageState, setPageState] = useState({ source: tracks, page: 1 })

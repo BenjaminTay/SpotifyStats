@@ -2,7 +2,7 @@ import type { ReleaseCycleArtistOverviewResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { RankTrendChart } from '@/components/charts/RankTrendChart'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   KpiCard,
@@ -43,6 +43,7 @@ export function ArtistReleasesSection({
   releaseCycleLoading,
   releaseCycleError,
 }: ArtistReleasesSectionProps) {
+  useChineseTextVersion()
   const releaseCycles = releaseCycle?.cycles ?? []
   const albumReleaseCycles = releaseCycles.filter((cycle) => cycle.album_type === 'album')
   const singleReleaseCycles = releaseCycles.filter((cycle) => cycle.album_type === 'single')

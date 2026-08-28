@@ -9,6 +9,7 @@ import { MobilePersonalRankList } from '@/features/mobile/analysis/MobilePersona
 import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { matchesPersonalRankSearch, PERSONAL_RANK_PAGE_SIZE } from '@/lib/personal-rank'
+import { useChineseTextVersion } from '@/lib/chinese'
 
 const ENTITY_TITLE = {
   track: '歌曲榜',
@@ -17,6 +18,7 @@ const ENTITY_TITLE = {
 }
 
 export function AnalysisChartsPage() {
+  const chineseTextVersion = useChineseTextVersion()
   const isPhone = useViewportMode() === 'phone'
   const [searchQuery, setSearchQuery] = useState('')
   const [pageState, setPageState] = useState({ key: '', page: 1 })
@@ -36,7 +38,7 @@ export function AnalysisChartsPage() {
   const filteredRows = useMemo(() => {
     if (!data?.rows) return []
     return searchQuery ? data.rows.filter((row) => matchesPersonalRankSearch(row, entity, searchQuery)) : data.rows
-  }, [data, entity, searchQuery])
+  }, [chineseTextVersion, data, entity, searchQuery])
   const pageKey = JSON.stringify({ entity, metric, period, periodValue, startDate, endDate, searchQuery })
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PERSONAL_RANK_PAGE_SIZE))
   const page = pageState.key === pageKey ? Math.min(pageState.page, totalPages) : 1

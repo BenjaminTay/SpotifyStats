@@ -6,7 +6,7 @@ import { queryKeys } from '@/api/query-keys'
 import type { ArtistDetailResponse } from '@/types/billboard'
 import { EntityStatsPanel, EntityStatsPrefetch } from '@/components/shared/EntityStatsPanel'
 import { Skeleton } from '@/components/ui/skeleton'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { getBillboardName } from '@/lib/billboard-name'
 import { AlertCircle } from 'lucide-react'
 import { ArtistDetailHero, DetailTabs } from './MusicDetailHeader'
@@ -30,6 +30,7 @@ const TABS: { key: TabKey; label: string }[] = [
 ]
 
 export function ArtistDetailExperience() {
+  useChineseTextVersion()
   const { artistName } = useParams<{ artistName: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()

@@ -24,6 +24,7 @@ import {
 } from '@/lib/mobile-navigation'
 import { MobileBottomSheet } from '@/components/mobile'
 import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 let rememberedDetailOrigin: MobileDetailOrigin | null = null
 
@@ -40,6 +41,7 @@ function decodePathSegment(value: string): string {
 }
 
 export function MobileTopBar() {
+  useChineseTextVersion()
   const { capabilities } = useRuntimeCapabilities()
   const location = useLocation()
   const navigate = useNavigate()
@@ -67,9 +69,10 @@ export function MobileTopBar() {
   )
   const isMusicDetail = isMusicDetailPath(location.pathname)
   const currentTarget = currentLocationTarget(location.pathname, location.search)
+  const displayedMobileTitle = isMusicDetail ? displayName(context.mobileTitle) : context.mobileTitle
   const currentNonDetailOrigin = useMemo<MobileDetailOrigin>(
-    () => ({ to: currentTarget, label: context.mobileTitle }),
-    [context.mobileTitle, currentTarget],
+    () => ({ to: currentTarget, label: displayedMobileTitle }),
+    [displayedMobileTitle, currentTarget],
   )
   const detailOrigin = mobileDetailOriginFromState(location.state) ?? rememberedDetailOrigin
 
@@ -242,21 +245,21 @@ export function MobileTopBar() {
                 ref={sectionTriggerRef}
                 type="button"
                 className="mobile-section-trigger"
-                aria-label={`切换${context.mobileEyebrow ?? ''}栏目，当前${context.mobileTitle}`}
+                aria-label={`切换${context.mobileEyebrow ?? ''}栏目，当前${displayedMobileTitle}`}
                 aria-haspopup="dialog"
                 aria-expanded={sectionOpen}
                 onClick={() => setSectionOpen(true)}
               >
                 <span className="min-w-0 text-left">
                   {context.mobileEyebrow && <span className="mobile-topbar-eyebrow">{context.mobileEyebrow}</span>}
-                  <span className="mobile-topbar-title">{context.mobileTitle}</span>
+                  <span className="mobile-topbar-title">{displayedMobileTitle}</span>
                 </span>
                 <ChevronDown className="h-4 w-4 shrink-0 text-accent-foreground" aria-hidden="true" />
               </button>
             ) : context.mobileTopBarMode !== 'root' || location.pathname !== '/' ? (
               <div className="min-w-0">
                 {context.mobileEyebrow && <span className="mobile-topbar-eyebrow">{context.mobileEyebrow}</span>}
-                <span className="mobile-topbar-title truncate">{context.mobileTitle}</span>
+                <span className="mobile-topbar-title truncate">{displayedMobileTitle}</span>
               </div>
             ) : null}
           </div>

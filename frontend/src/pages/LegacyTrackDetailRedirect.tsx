@@ -3,7 +3,7 @@ import { AlertCircle } from 'lucide-react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 
 import { api } from '@/lib/api'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 type TrackIdentity = {
   l1_id: number
@@ -22,6 +22,7 @@ type LegacyResolution = {
 }
 
 export function LegacyTrackDetailRedirect() {
+  useChineseTextVersion()
   const { legacyTrackId } = useParams<{ legacyTrackId: string }>()
   const location = useLocation()
   const { data, isPending, error } = useQuery({

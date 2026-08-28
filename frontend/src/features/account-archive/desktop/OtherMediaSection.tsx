@@ -10,6 +10,13 @@ import {
   ArchiveSectionHeading,
   ArchiveUnavailable,
 } from '@/features/account-archive/components/ArchivePrimitives'
+import { useDisplayName } from '@/lib/chinese'
+
+function PodcastName({ name, publisher }: { name: string; publisher?: string | null }) {
+  const displayShowName = useDisplayName(name)
+  const displayPublisher = useDisplayName(publisher ?? '')
+  return <span className="archive-podcast-copy"><strong>{displayShowName}</strong>{publisher ? <span>{displayPublisher}</span> : null}</span>
+}
 
 export function OtherMediaSection() {
   const { ref, enabled } = useArchiveSection()
@@ -46,10 +53,7 @@ export function OtherMediaSection() {
                       <img src={show.cover_url} alt="" loading="lazy" />
                     </span>
                   ) : null}
-                  <span className="archive-podcast-copy">
-                    <strong>{show.show_name}</strong>
-                    {show.publisher ? <span>{show.publisher}</span> : null}
-                  </span>
+                  <PodcastName name={show.show_name} publisher={show.publisher} />
                   <b>{formatArchiveHours(show.effective_ms)}</b>
                 </div>
               ))}

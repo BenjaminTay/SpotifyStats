@@ -20,7 +20,7 @@ import {
   type MergedTrackRow,
   type PeakFilter,
 } from '@/features/billboard/all-time/allTimeData'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 
@@ -111,6 +111,7 @@ export function MobileAllTime({
   onVisibleColumnsChange,
   onPageChange,
 }: MobileAllTimeProps) {
+  useChineseTextVersion()
   const [fieldOpen, setFieldOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
   const fieldTriggerRef = useRef<HTMLButtonElement>(null)

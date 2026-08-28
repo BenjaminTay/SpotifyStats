@@ -5,6 +5,7 @@ import {
   formatArchiveNumber,
 } from '@/features/account-archive/model/archiveModel'
 import type { ArchiveOverview } from '@/types/accountArchive'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 const ROLES = {
   first_saved: '最早收藏',
@@ -14,6 +15,7 @@ const ROLES = {
 }
 
 export function PhoneArchiveCover({ overview }: { overview: ArchiveOverview }) {
+  useChineseTextVersion()
   const featured = overview.featured_items.slice(0, 2)
   return (
     <section id="archive-cover" className="phone-archive-cover" data-archive-section="cover">
@@ -24,8 +26,8 @@ export function PhoneArchiveCover({ overview }: { overview: ArchiveOverview }) {
             <>
               <span>{item.cover_url ? <img src={item.cover_url} alt="" /> : <Disc3 />}</span>
               <small>{ROLES[item.role]}</small>
-              <strong>{item.track_name}</strong>
-              <em>{item.artist_name}</em>
+              <strong>{displayName(item.track_name)}</strong>
+              <em>{displayName(item.artist_name)}</em>
             </>
           )
           return item.deep_link

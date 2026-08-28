@@ -23,7 +23,7 @@ import {
 } from "@/features/settings/components/SettingsHelpers";
 import { useVersionMerge } from "@/hooks/useSettings";
 import { api } from "@/lib/api";
-import { displayName } from "@/lib/chinese";
+import { displayName, useChineseTextVersion } from "@/lib/chinese";
 import { cn } from "@/lib/utils";
 import type {
   DetectionResult,
@@ -75,6 +75,7 @@ export function VersionMergeSection({
   initialObjectType?: ObjectType;
   initialTrackId?: number | null;
 }) {
+  useChineseTextVersion();
   const [objectType, setObjectType] = useState<ObjectType>(initialObjectType);
   const [activeTab, setActiveTab] = useState<MergeTabKey>(
     initialArtistFilter || initialCanonicalName || initialTrackId
@@ -721,14 +722,14 @@ function TrackSavedGroupCard({
           <CoverCell
             index={0}
             coverUrl={`/covers/albums/${group.primary_album_id}.jpg`}
-            label={group.primary_track_name ?? group.canonical_name}
+            label={displayName(group.primary_track_name ?? group.canonical_name)}
             className="size-10 rounded-lg"
           />
         ) : (
           <Music2 className="size-4" />
         )
       }
-      title={group.canonical_name}
+      title={displayName(group.canonical_name)}
       subtitle={`${group.artist_name ? `${displayName(group.artist_name)} · ` : ""}${group.member_count} 个成员`}
       scope={group.scope === "recording" ? "L2 同一录音" : "L3 同一作品"}
       manual={Boolean(group.is_manual)}
@@ -804,14 +805,14 @@ function AlbumSavedGroupCard({
           <CoverCell
             index={0}
             coverUrl={`/covers/albums/${group.primary_album_id}.jpg`}
-            label={group.primary_album_name ?? group.canonical_name}
+            label={displayName(group.primary_album_name ?? group.canonical_name)}
             className="size-10 rounded-lg"
           />
         ) : (
           <Disc3 className="size-4" />
         )
       }
-      title={group.canonical_name}
+      title={displayName(group.canonical_name)}
       subtitle={displayName(group.artist_name)}
       scope={group.scope === "release" ? "L2 发行版本" : "L3 作品版本"}
       manual={Boolean(group.is_manual)}
@@ -880,6 +881,7 @@ function SavedGroupShell({
   onDelete: () => void;
   children: React.ReactNode;
 }) {
+  useChineseTextVersion();
   return (
     <div className="rounded-2xl border border-border bg-background p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
@@ -929,7 +931,7 @@ function SavedGroupShell({
           ) : (
             <Button
               type="button"
-              aria-label={`删除 ${title}`}
+              aria-label={`删除 ${displayName(title)}`}
               variant="ghost"
               onClick={onAskDelete}
               className="min-h-11 min-w-11 text-destructive hover:text-destructive"
@@ -965,6 +967,8 @@ function MemberRow({
   onRemove: () => void;
   details?: React.ReactNode;
 }) {
+  useChineseTextVersion();
+  const renderedTitle = displayName(title)
   return (
     <div className="rounded-xl bg-muted/25">
       <div className="flex min-w-0 items-center gap-3 p-2.5">
@@ -972,7 +976,7 @@ function MemberRow({
         <CoverCell
           index={0}
           coverUrl={coverUrl}
-          label={title}
+          label={renderedTitle}
           className="size-9 rounded-lg"
         />
       ) : (
@@ -981,7 +985,7 @@ function MemberRow({
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[12px] font-medium">{displayName(title)}</p>
+        <p className="truncate text-[12px] font-medium">{renderedTitle}</p>
         <p className="truncate text-[10px] text-muted-foreground">{subtitle}</p>
       </div>
       {primary ? (
@@ -1001,7 +1005,7 @@ function MemberRow({
           </Button>
           <Button
             type="button"
-            aria-label={`移除 ${title}`}
+            aria-label={`移除 ${renderedTitle}`}
             variant="ghost"
             onClick={onRemove}
             className="min-h-11 min-w-11 text-destructive hover:text-destructive"
@@ -1063,7 +1067,7 @@ function TrackSourceDisclosure({ l1Id }: { l1Id: number }) {
                 <CoverCell
                   index={0}
                   coverUrl={source.cover_url}
-                  label={source.track_name}
+                  label={displayName(source.track_name)}
                   className="size-8 rounded-md"
                 />
               ) : (
@@ -1808,7 +1812,7 @@ function SelectedTrackCards({
             {onRemove && !compact && (
               <button
                 type="button"
-                aria-label={`移除 ${track.track_name}`}
+                aria-label={`移除 ${displayName(track.track_name)}`}
                 onClick={() => onRemove(identityId)}
                 className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
               >

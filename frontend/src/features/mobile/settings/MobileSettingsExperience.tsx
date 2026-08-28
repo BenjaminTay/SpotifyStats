@@ -21,7 +21,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { setDynamicThreshold } from '@/hooks/useAnalysis'
 import { getDefaultMergeLevel, setDefaultMergeLevel } from '@/lib/merge-level'
 import { getBillboardName, setBillboardName } from '@/lib/billboard-name'
-import type { ChineseStyle } from '@/lib/chinese'
+import { displayName, useChineseTextVersion, type ChineseStyle } from '@/lib/chinese'
 import type { LLMProfile, SettingsData, SettingsUpdatePayload } from '@/types/settings'
 import { cn } from '@/lib/utils'
 import { PwaInstallCard } from './PwaInstallCard'
@@ -148,6 +148,7 @@ export function MobileSettingsExperience({
   onFetchProfiles,
   onApplyProfile,
 }: MobileSettingsExperienceProps) {
+  useChineseTextVersion()
   const { capabilities } = useRuntimeCapabilities()
   const [searchParams, setSearchParams] = useSearchParams()
   const metadataTarget = searchParams.get('metadata')
@@ -193,11 +194,11 @@ export function MobileSettingsExperience({
     if (metadataTarget === 'album-projects') {
       const album = searchParams.get('album_name')
       const artist = searchParams.get('artist')
-      return [album || '专辑版本与发行项目', artist].filter(Boolean).join(' · ')
+      return [album ? displayName(album) : '专辑版本与发行项目', artist ? displayName(artist) : null].filter(Boolean).join(' · ')
     }
     if (metadataTarget === 'artist-identities') {
       const artist = searchParams.get('artist')
-      return artist ? `艺人身份归并 · ${artist}` : '艺人身份归并'
+      return artist ? `艺人身份归并 · ${displayName(artist)}` : '艺人身份归并'
     }
     return metadataTarget
   }, [metadataTarget, searchParams])

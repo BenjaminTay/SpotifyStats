@@ -1,7 +1,7 @@
 import { ArrowRight, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { HomeChartChampion, HomeEntityMetric, HomeOverviewResponse } from '@/types/home'
 import {
   HomeChange,
@@ -50,6 +50,7 @@ function PhoneSection({ index, eyebrow, title, children }: { index: string; eyeb
 }
 
 export function HomePhoneExperience({ data }: { data: HomeOverviewResponse }) {
+  useChineseTextVersion()
   const recent = data.recent
   const recentAnalysisRoute = homeRecentAnalysisRoute(recent?.period)
   return (

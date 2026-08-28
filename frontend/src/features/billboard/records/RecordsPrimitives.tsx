@@ -12,7 +12,7 @@ import {
 } from '@/components/mobile/MobileRecordTable'
 import { mobileRecordTitle } from '@/components/mobile/mobileRecordUtils'
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import { useViewportMode } from '@/hooks/useViewportMode'
 
@@ -269,6 +269,7 @@ export function PeakNum({ rank }: { rank: number }) {
 }
 
 export function TrackCell({ trackId, trackName, artistName, artistNames, coverUrl }: { trackId?: number; trackName: string; artistName?: string; artistNames?: string[]; coverUrl?: string | null }) {
+  useChineseTextVersion()
   const link = trackId != null ? billboardDetailLink(`/music/tracks/${trackId}`) : '#'
   return (
     <div className="flex items-center gap-3">
@@ -288,6 +289,7 @@ export function TrackCell({ trackId, trackName, artistName, artistNames, coverUr
 }
 
 export function ArtistCell({ artistName, coverUrl, compact }: { artistName: string; coverUrl?: string | null; compact?: boolean }) {
+  useChineseTextVersion()
   return (
     <div className="flex items-center gap-3">
       <ArtistCoverImg url={coverUrl} size={compact ? 'sm' : undefined} />
@@ -297,6 +299,7 @@ export function ArtistCell({ artistName, coverUrl, compact }: { artistName: stri
 }
 
 export function AlbumCell({ albumName, artistName, coverUrl }: { albumName: string; artistName: string; coverUrl?: string | null }) {
+  useChineseTextVersion()
   return (
     <div className="flex items-center gap-3">
       <CoverImg url={coverUrl} />

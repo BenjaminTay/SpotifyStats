@@ -7,7 +7,7 @@ import { LazyEChart } from '@/components/charts/LazyEChart'
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTheme } from '@/hooks/useTheme'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { getChartColors } from '@/lib/theme'
 import { billboardDetailLink } from '@/lib/navigation'
 import { formatNumber } from './numberOnesData'
@@ -58,6 +58,7 @@ export function No1BarChart({
   data: { name: string; value: number; subtitle?: string }[]
   label: string
 }) {
+  useChineseTextVersion()
   const { isDark } = useTheme()
   const base = buildChartBase(isDark)
   const colors = getChartColors(isDark)
@@ -158,6 +159,7 @@ export function NameWithCover({
   artistLink?: string
   badge?: string
 }) {
+  useChineseTextVersion()
   return (
     <div className="flex min-w-0 items-center gap-3">
       <CoverImg url={coverUrl} />
@@ -208,6 +210,7 @@ export function ArtistWithCover({
   artistName: string
   badge?: string
 }) {
+  useChineseTextVersion()
   return (
     <div className="flex items-center gap-3">
       <CoverImg url={coverUrl} />

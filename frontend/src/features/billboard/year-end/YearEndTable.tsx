@@ -5,7 +5,7 @@ import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { PaginationBar } from '@/components/shared/PaginationBar'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import type {
@@ -86,6 +86,7 @@ function detailHref(tab: YearEndTab, row: YearEndRow): string {
 }
 
 function EntityCell({ tab, row }: { tab: YearEndTab; row: YearEndRow }) {
+  useChineseTextVersion()
   const subtitle = subtitleForRow(tab, row)
   const label = displayName(entityNameForRow(tab, row))
   return (

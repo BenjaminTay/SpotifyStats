@@ -7,7 +7,7 @@ import { CoverCell } from '@/components/shared/CoverCell'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { RecentPlayRow, EntityPlaysResponse, AnalysisFilters, AnalysisPeriod } from '@/types/analysis'
 import { MobileEntityRow, MobilePagination, MobileStatePanel } from '@/components/mobile'
 import { recentPlayRowKey } from './recentPlaysUtils'
@@ -63,6 +63,7 @@ function RecentPlaysContent({
   fetchPlayDates,
   mobile = false,
 }: RecentPlaysSectionProps) {
+  useChineseTextVersion()
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')

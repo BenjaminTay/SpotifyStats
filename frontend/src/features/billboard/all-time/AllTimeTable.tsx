@@ -12,7 +12,7 @@ import {
 
 import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import { RankNumber } from '@/components/shared/RankNumber'
 import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
@@ -255,6 +255,7 @@ export function AllTimeTable({
   emptyMessage = '暂无数据',
   onColumnClick,
 }: AllTimeTableProps) {
+  useChineseTextVersion()
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(loadColumnWidths)
   const columnWidthsRef = useRef(columnWidths)
   useEffect(() => { columnWidthsRef.current = columnWidths }, [columnWidths])

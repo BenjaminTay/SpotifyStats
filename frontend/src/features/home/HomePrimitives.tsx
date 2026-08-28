@@ -3,7 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { HomeEntityRef, HomeTrendPoint } from '@/types/home'
 import { formatHomeDate, formatHomeNumber } from './home-format'
 
@@ -41,6 +41,7 @@ export function HomeEntityArtwork({
   eager?: boolean
   className?: string
 }) {
+  useChineseTextVersion()
   const name = displayName(entity?.name ?? '音乐档案')
   return (
     <div className={cn('home-entity-artwork', className)} data-entity-type={entity?.entity_type ?? 'archive'}>

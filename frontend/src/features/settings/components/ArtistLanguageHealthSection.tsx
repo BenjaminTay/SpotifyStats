@@ -24,6 +24,7 @@ import type {
   ArtistLanguageReviewStatus,
 } from '@/types/artist-language-metadata'
 import type { MusicSearchCandidate } from '@/types/music-search'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 const STATUS_OPTIONS: Array<{ value: ArtistLanguageReviewStatus; label: string }> = [
   { value: 'open', label: '待审核' },
@@ -93,6 +94,7 @@ function LanguageCollapsibleSection({
 }
 
 export function ArtistLanguageHealthSection() {
+  useChineseTextVersion()
   const { filters } = useAnalysisFilters()
   const [reviewStatus, setReviewStatus] = useState<ArtistLanguageReviewStatus>('open')
   const artistInput = useMusicSearchInputController('')
@@ -220,13 +222,13 @@ export function ArtistLanguageHealthSection() {
               <div className="mt-2 max-h-40 overflow-y-auto rounded-[8px] border border-border bg-background p-1">
                 {searchResults.map((artist) => (
                   <button
-                    aria-label={`选择艺人 ${artist.label}`}
+                    aria-label={`选择艺人 ${displayName(artist.label)}`}
                     className="flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left text-[12.5px] hover:bg-muted"
                     key={`${artist.artist_id}:${artist.label}`}
                     onClick={() => setSelectedArtist(artist)}
                     type="button"
                   >
-                    <span className="min-w-0 truncate text-foreground">{artist.label}</span>
+                    <span className="min-w-0 truncate text-foreground">{displayName(artist.label)}</span>
                     <span className="shrink-0 text-[11px] text-muted-foreground">本地艺人</span>
                   </button>
                 ))}
@@ -235,10 +237,10 @@ export function ArtistLanguageHealthSection() {
             {selectedArtist?.artist_id != null && (
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-[8px] bg-muted/25 px-3 py-2">
                 <span className="min-w-0 break-words text-[12.5px] font-medium text-foreground">
-                  {selectedArtist.label}
+                  {displayName(selectedArtist.label)}
                 </span>
                 <Button
-                  aria-label={`开始审核 ${selectedArtist.label}`}
+                  aria-label={`开始审核 ${displayName(selectedArtist.label)}`}
                   disabled={startReview.isPending}
                   onClick={() => void beginReview(selectedArtist.artist_id!)}
                   size="sm"
@@ -257,11 +259,11 @@ export function ArtistLanguageHealthSection() {
                   <li className="flex items-center justify-between gap-3 py-2.5" key={artist.artist_id}>
                     <div className="flex min-w-0 items-center gap-2 text-[12.5px]">
                       <span className="w-4 shrink-0 font-mono text-[11px] text-muted-foreground">{index + 1}</span>
-                      <span className="min-w-0 break-words text-foreground">{artist.artist_name}</span>
+                      <span className="min-w-0 break-words text-foreground">{displayName(artist.artist_name)}</span>
                       <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{formatHours(artist.hours)}</span>
                     </div>
                     <Button
-                      aria-label={`审核 ${artist.artist_name}`}
+                      aria-label={`审核 ${displayName(artist.artist_name)}`}
                       disabled={startReview.isPending}
                       onClick={() => void beginReview(artist.artist_id)}
                       size="xs"
@@ -303,7 +305,7 @@ export function ArtistLanguageHealthSection() {
                 {reviews.slice(0, 100).map((review) => (
                   <div className="flex flex-wrap items-center justify-between gap-2 py-2.5" key={review.review_id}>
                     <div className="min-w-0">
-                      <p className="break-words text-[12.5px] font-medium text-foreground">{review.artist_name}</p>
+                      <p className="break-words text-[12.5px] font-medium text-foreground">{displayName(review.artist_name)}</p>
                       <p className="mt-0.5 break-words text-[11.5px] text-muted-foreground">
                         {review.resolution_note
                           || `${formatHours(review.play_hours_snapshot)} · ${review.pre_review_recommendation
@@ -312,7 +314,7 @@ export function ArtistLanguageHealthSection() {
                       </p>
                     </div>
                     <Button
-                      aria-label={`打开审核记录 ${review.artist_name}`}
+                      aria-label={`打开审核记录 ${displayName(review.artist_name)}`}
                       onClick={() => openReview(review)}
                       size="xs"
                       variant="ghost"

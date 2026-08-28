@@ -3,6 +3,7 @@ import { FormattedText } from '@/components/shared/FormattedText'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ExternalLink } from 'lucide-react'
 import type { TrackDetailResponse, LyricsData, TrackEnrichmentResponse } from '@/types/billboard'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function TrackLyricsSection({ data, enrichment, lyrics, lyricsLoading }: Props) {
+  useChineseTextVersion()
   return (
     <div className="mobile-track-lyrics mb-8">
       {/* Genius Song Info */}
@@ -32,7 +34,7 @@ export function TrackLyricsSection({ data, enrichment, lyrics, lyricsLoading }: 
                   <p className="font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground">
                     收录专辑
                   </p>
-                  <p className="mt-1 font-sans text-[13px] font-semibold">{enrichment.genius.album_name}</p>
+                  <p className="mt-1 font-sans text-[13px] font-semibold">{displayName(enrichment.genius.album_name)}</p>
                 </div>
               )}
               {enrichment.genius.release_date && (

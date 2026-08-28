@@ -9,6 +9,7 @@ import type { EntityStatsResponse } from '@/types/analysis'
 import { METRIC_DEFS, METRIC_GROUPS, bestIndices, ENTITY_COLORS, type VersusKind, type MetricGroup } from './versusData'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileVersusScoreboard, type MobileVersusMetricGroup } from '@/features/mobile/billboard/MobileVersusScoreboard'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 interface VersusScoreboardSectionProps {
   entities: VersusEntityData[] | null
@@ -41,6 +42,7 @@ export function VersusScoreboardSection({
   buildDetailLink,
   personalStatsParams,
 }: VersusScoreboardSectionProps) {
+  useChineseTextVersion()
   const isPhone = useViewportMode() === 'phone'
   // ── Personal stats (useQueries, only when versus data is ready) ──
   const personalResults = useQueries({
@@ -204,6 +206,8 @@ export function VersusScoreboardSection({
                 const sepIdx = raw.indexOf(' — ')
                 const titleName = sepIdx >= 0 ? raw.slice(0, sepIdx) : raw
                 const subtitle = sepIdx >= 0 ? raw.slice(sepIdx + 3) : null
+                const renderedTitleName = displayName(titleName)
+                const renderedSubtitle = subtitle ? displayName(subtitle) : null
 
                 return (
                   <th
@@ -218,18 +222,18 @@ export function VersusScoreboardSection({
                       <Link
                         to={detailLinks[i]}
                         className="block truncate text-[13px] font-serif font-semibold transition-colors hover:underline"
-                        title={titleName}
+                        title={renderedTitleName}
                       >
-                        {titleName}
+                        {renderedTitleName}
                       </Link>
                     ) : (
-                      <span className="block truncate text-[13px] font-serif font-semibold" title={titleName}>
-                        {titleName}
+                      <span className="block truncate text-[13px] font-serif font-semibold" title={renderedTitleName}>
+                        {renderedTitleName}
                       </span>
                     )}
-                    {subtitle && (
+                    {renderedSubtitle && (
                       <span className="mt-0.5 block font-sans text-[12px] italic">
-                        {subtitle}
+                        {renderedSubtitle}
                       </span>
                     )}
                   </th>

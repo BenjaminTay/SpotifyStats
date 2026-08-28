@@ -1,3 +1,5 @@
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
+
 interface TimelineHour {
   hour: number
   plays: number
@@ -30,6 +32,7 @@ function toTimelineTrack(value: unknown, index: number): TimelineTrack | null {
 }
 
 export function HighlightDayTimeline({ data }: { data: unknown }) {
+  useChineseTextVersion()
   const record = data as {
     date?: string
     title?: string
@@ -77,7 +80,7 @@ export function HighlightDayTimeline({ data }: { data: unknown }) {
         <div className="flex flex-wrap gap-2">
           {tracks.map((track) => (
             <span className="rounded-full border border-border px-2 py-1 text-[11px] text-muted-foreground" key={track.key}>
-              {track.label}
+              {displayName(track.label)}
             </span>
           ))}
         </div>

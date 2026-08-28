@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 
 import type { FeedMeta } from '@/types/community'
 import type { TrendingEntity, TrendingData } from '@/hooks/useCommunity'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 import { AccountAvatar } from './AccountAvatar'
 import { ACCOUNT_CONFIG, formatFollowerCount } from './communityData'
@@ -25,6 +25,7 @@ export function CommunitySidebar({
   latestNo1,
   latestDebut,
 }: CommunitySidebarProps) {
+  useChineseTextVersion()
   const accounts = useMemo(() => Object.values(ACCOUNT_CONFIG), [])
 
   // Coverage period from oldest and newest post

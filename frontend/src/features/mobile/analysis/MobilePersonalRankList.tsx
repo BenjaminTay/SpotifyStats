@@ -3,7 +3,7 @@ import { Search, X } from 'lucide-react'
 
 import { MobileRankList, MobileStatePanel } from '@/components/mobile'
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { AnalysisChartRow, AnalysisChartsResponse, AnalysisMetric, LeaderboardEntity } from '@/types/analysis'
 
 const PAGE_SIZE = 20
@@ -71,6 +71,7 @@ export function MobilePersonalRankList({
   onEntityChange,
   timeControl,
 }: MobilePersonalRankListProps) {
+  useChineseTextVersion()
   const [pageState, setPageState] = useState({ data, entity, searchQuery, page: 1 })
   const page = pageState.data === data && pageState.entity === entity && pageState.searchQuery === searchQuery
     ? pageState.page

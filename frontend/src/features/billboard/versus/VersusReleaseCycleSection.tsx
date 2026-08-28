@@ -2,6 +2,7 @@ import { useReleaseCycleCompare } from '@/hooks/useBillboard'
 import { GlassCard } from '@/components/shared/GlassCard'
 import type { ReleaseCycleCompareItem } from '@/types/billboard'
 import { ENTITY_COLORS, bestIndices } from './versusData'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 interface AlbumSlot {
   albumName: string
@@ -15,6 +16,7 @@ interface VersusReleaseCycleSectionProps {
 }
 
 export function VersusReleaseCycleSection({ albums, billboardParams }: VersusReleaseCycleSectionProps) {
+  useChineseTextVersion()
   const { data, loading } = useReleaseCycleCompare(
     albums.map((a) => ({ artist_name: a.artistName, album_name: a.albumName })),
     billboardParams,
@@ -56,7 +58,7 @@ export function VersusReleaseCycleSection({ albums, billboardParams }: VersusRel
                   className="py-2.5 pr-4 text-right text-[10px] font-bold uppercase tracking-[1.2px]"
                   style={{ color: ENTITY_COLORS[i % ENTITY_COLORS.length] }}
                 >
-                  {a.name}
+                  {displayName(a.name)}
                 </th>
               ))}
             </tr>

@@ -34,6 +34,7 @@ import type {
   ArtistLanguageReviewItem,
   LanguageClassification,
 } from '@/types/artist-language-metadata'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 interface EvidenceDraft extends ArtistLanguageEvidenceInput {
   client_id: string
@@ -320,7 +321,7 @@ function EvidenceEditor({
           <div className="mt-1 max-h-32 overflow-y-auto rounded-[8px] border border-border bg-background p-1">
             {tracks.map((track) => (
               <button
-                aria-label={`选择曲目 ${track.label}`}
+                aria-label={`选择曲目 ${displayName(track.label)}`}
                 className="flex w-full min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-[12px] hover:bg-muted"
                 key={`${track.track_id}:${track.label}`}
                 onClick={() => {
@@ -329,8 +330,8 @@ function EvidenceEditor({
                 }}
                 type="button"
               >
-                <span className="min-w-0 truncate text-foreground">{track.label}</span>
-                <span className="min-w-0 truncate text-muted-foreground">{track.artist_name}</span>
+                <span className="min-w-0 truncate text-foreground">{displayName(track.label)}</span>
+                <span className="min-w-0 truncate text-muted-foreground">{displayName(track.artist_name ?? '')}</span>
               </button>
             ))}
           </div>
@@ -380,6 +381,7 @@ function ArtistLanguageReviewDialogContent({
   review,
   onOpenChange,
 }: ArtistLanguageReviewDialogProps) {
+  useChineseTextVersion()
   const [classification, setClassification] = useState<LanguageClassification>(
     review?.source?.classification ?? 'single_language',
   )
@@ -460,7 +462,7 @@ function ArtistLanguageReviewDialogContent({
     <Dialog onOpenChange={(nextOpen) => onOpenChange(nextOpen)} open={open}>
       <DialogContent className="max-w-3xl gap-5 overflow-x-hidden p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="break-words">审核 {review?.artist_name ?? '艺人语言事实'}</DialogTitle>
+          <DialogTitle className="break-words">审核 {review?.artist_name ? displayName(review.artist_name) : '艺人语言事实'}</DialogTitle>
           <DialogDescription className="break-words">
             {review ? `${review.play_hours_snapshot.toFixed(1)}h 播放 · 仅批准有可审计证据的艺人级结论。` : '选择艺人后开始审核。'}
           </DialogDescription>

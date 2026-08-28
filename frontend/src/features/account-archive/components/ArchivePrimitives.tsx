@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertCircle, ArrowUpRight, Disc3, LoaderCircle } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { useDisplayName } from '@/lib/chinese'
 
 export function ArchiveSectionHeading({
   number,
@@ -56,6 +57,8 @@ export function ArchiveEntityRow({
   meta?: string
   index?: number
 }) {
+  const displayTrackName = useDisplayName(name)
+  const displayArtistName = useDisplayName(artist)
   const content = (
     <>
       {index !== undefined && <span className="archive-entity-index">{String(index).padStart(2, '0')}</span>}
@@ -63,8 +66,8 @@ export function ArchiveEntityRow({
         {coverUrl ? <img src={coverUrl} alt="" loading="lazy" /> : <Disc3 />}
       </span>
       <span className="archive-entity-copy">
-        <strong>{name}</strong>
-        <span>{artist}</span>
+        <strong>{displayTrackName}</strong>
+        <span>{displayArtistName}</span>
       </span>
       {meta && <span className="archive-entity-meta">{meta}</span>}
       {href && <ArrowUpRight className="archive-entity-arrow" aria-hidden="true" />}

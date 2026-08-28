@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { Trophy } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import type {
   BillboardRecords,
@@ -42,6 +42,7 @@ import {
 } from './RecordsPrimitives'
 
 export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; covers: CoverMaps }) {
+  useChineseTextVersion()
   const [no1Type, setNo1Type] = useState<EntityType>('track')
   const [debutType, setDebutType] = useState<EntityType>('track')
   const [returnType, setReturnType] = useState<EntityType>('track')

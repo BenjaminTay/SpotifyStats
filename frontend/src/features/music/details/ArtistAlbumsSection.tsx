@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-r
 import type { ArtistAlbumEntry, ArtistInfo } from '@/types/billboard'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { MobileRankList } from '@/components/mobile'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import {
@@ -25,6 +25,7 @@ export function ArtistAlbumsSection({
   info: ArtistInfo
   albums: ArtistAlbumEntry[]
 }) {
+  useChineseTextVersion()
   const isPhone = useViewportMode() === 'phone'
   const pageSize = isPhone ? 20 : PAGE_SIZE
   const [pageState, setPageState] = useState({ source: albums, page: 1 })

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +13,7 @@ export function ArtistLinks({
   artistNames?: string[]
   className?: string
 }) {
+  useChineseTextVersion()
   const names =
     artistNames && artistNames.length > 1 ? artistNames : [artistName]
 

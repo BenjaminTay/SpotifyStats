@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import {
   NameWithCover,
@@ -26,6 +26,7 @@ export function AlbumsNumberOnesSection({
   selectedYear,
   onYearChange,
 }: AlbumsNumberOnesSectionProps) {
+  useChineseTextVersion()
   const longestAlbum = computed.albumLongest.streak > 0
     ? computed.albumNo1WeeksSorted.find((album) => album.album_name === computed.albumLongest.name)
     : null

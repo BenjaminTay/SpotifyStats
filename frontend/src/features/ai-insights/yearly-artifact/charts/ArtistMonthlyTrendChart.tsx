@@ -1,3 +1,5 @@
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
+
 interface TrendPoint {
   month: string
   value: number
@@ -51,6 +53,7 @@ function toRows(data: unknown): Array<{ label: string; points: TrendPoint[] }> {
 }
 
 export function ArtistMonthlyTrendChart({ data }: { data: unknown }) {
+  useChineseTextVersion()
   const rows = toRows(data).slice(0, 5)
   const max = Math.max(...rows.flatMap((row) => row.points.map((point) => point.value)), 1)
 
@@ -60,11 +63,11 @@ export function ArtistMonthlyTrendChart({ data }: { data: unknown }) {
     <div className="space-y-3">
       {rows.map((row) => (
         <div className="min-w-0" key={row.label}>
-          <p className="mb-1 break-words text-[12px] font-semibold text-foreground">{row.label}</p>
+          <p className="mb-1 break-words text-[12px] font-semibold text-foreground">{displayName(row.label)}</p>
           <div className="grid grid-cols-12 gap-1">
             {row.points.slice(0, 12).map((point, index) => (
               <span
-                aria-label={`${row.label} ${point.month} ${point.value} 次`}
+                aria-label={`${displayName(row.label)} ${point.month} ${point.value} 次`}
                 className="block rounded-[2px] bg-accent-foreground/70"
                 key={`${row.label}-${point.month}-${index}`}
                 style={{ height: `${16 + (point.value / max) * 48}px` }}

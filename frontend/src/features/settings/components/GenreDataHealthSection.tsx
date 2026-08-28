@@ -37,6 +37,7 @@ import type {
   ArtistGenreRiskFlag,
   ArtistGenreReviewItem,
 } from '@/types/artist-genre-metadata'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 type GenreHealthPanel = 'overview' | 'reviews' | 'audit'
 type GenreReviewStatus = 'open' | 'approved' | 'rejected'
@@ -213,6 +214,7 @@ function MappingRow({ item }: { item: ArtistGenreRawMappingItem }) {
 }
 
 function CanonicalGenreAuditRow({ genre }: { genre: ArtistGenreCanonicalItem }) {
+  useChineseTextVersion()
   const label = genre.label || genre.name
   const axis = genre.axis || 'style'
   const topSource = genre.source_mix?.[0]
@@ -235,9 +237,9 @@ function CanonicalGenreAuditRow({ genre }: { genre: ArtistGenreCanonicalItem }) 
       <div className="mb-1 flex items-start justify-between gap-3 text-[12px]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-medium text-foreground">{label}</span>
+            <span className="font-medium text-foreground">{displayName(label)}</span>
             {label !== genre.name && (
-              <span className="font-mono text-[11px] text-muted-foreground">{genre.name}</span>
+              <span className="font-mono text-[11px] text-muted-foreground">{displayName(genre.name)}</span>
             )}
             <span className="rounded-full border border-border bg-background px-1.5 py-0.5 text-[10.5px] font-medium text-muted-foreground">
               {axis}
@@ -284,7 +286,7 @@ function CanonicalGenreAuditRow({ genre }: { genre: ArtistGenreCanonicalItem }) 
                 <span className="font-medium text-foreground/80">代表艺人</span>
                 {topArtists.map((artist) => (
                   <span className="min-w-0" key={artist.artist_name}>
-                    <span className="font-medium text-foreground">{artist.artist_name}</span>
+                    <span className="font-medium text-foreground">{displayName(artist.artist_name)}</span>
                     <span className="font-mono">
                       {' '}
                       · {formatPct(artist.share_pct)}
@@ -324,15 +326,16 @@ function AxisGenreGroup({
   summary: ArtistGenreAxisSummaryItem
   genres: ArtistGenreCanonicalItem[]
 }) {
+  useChineseTextVersion()
   return (
     <section
-      aria-label={`genre axis ${summary.label}`}
+      aria-label={`genre axis ${displayName(summary.label)}`}
       className="rounded-[8px] border border-border bg-background/70 p-3"
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h5 className="text-[12.5px] font-semibold text-foreground">{summary.label}</h5>
+            <h5 className="text-[12.5px] font-semibold text-foreground">{displayName(summary.label)}</h5>
             <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground">
               {summary.axis}
             </span>
@@ -375,20 +378,21 @@ function ReviewCard({
   onReject: (reviewId: number) => void
   onSaveEvidence: (reviewId: number, evidenceUrl: string, evidenceSummary: string) => void
 }) {
+  useChineseTextVersion()
   const [evidenceUrl, setEvidenceUrl] = useState(item.evidence_url ?? '')
   const [evidenceSummary, setEvidenceSummary] = useState(item.evidence_summary ?? '')
   const isOpen = item.review_status === 'open'
   const canApprove = isOpen && item.evidence_url?.startsWith('https://')
   return (
     <article
-      aria-label={`审核 ${item.artist_name} 的 genre 建议`}
+      aria-label={`审核 ${displayName(item.artist_name)} 的 genre 建议`}
       className="rounded-[8px] border border-border bg-muted/20 p-4"
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="truncate text-[14px] font-semibold text-foreground">
-              {item.artist_name}
+              {displayName(item.artist_name)}
             </h4>
             <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
               {sourceLabel(item.source)}
@@ -403,7 +407,7 @@ function ReviewCard({
         </div>
         {isOpen && <div className="flex shrink-0 gap-2">
           <Button
-            aria-label={`通过 ${item.artist_name} 的 genre 建议`}
+            aria-label={`通过 ${displayName(item.artist_name)} 的 genre 建议`}
             className="gap-1.5"
             disabled={busy || !canApprove}
             onClick={() => onApprove(item.review_id)}
@@ -414,7 +418,7 @@ function ReviewCard({
             通过
           </Button>
           <Button
-            aria-label={`拒绝 ${item.artist_name} 的 genre 建议`}
+            aria-label={`拒绝 ${displayName(item.artist_name)} 的 genre 建议`}
             className="gap-1.5"
             disabled={busy}
             onClick={() => onReject(item.review_id)}
@@ -477,7 +481,7 @@ function ReviewCard({
       {isOpen && !item.evidence_url && (
         <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <input
-            aria-label={`证据链接 ${item.artist_name}`}
+              aria-label={`证据链接 ${displayName(item.artist_name)}`}
             className="h-9 min-w-0 rounded-[8px] border border-input bg-background px-3 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             onChange={(event) => setEvidenceUrl(event.target.value)}
             placeholder="https:// 官方或编辑来源"
@@ -485,7 +489,7 @@ function ReviewCard({
             value={evidenceUrl}
           />
           <input
-            aria-label={`证据摘要 ${item.artist_name}`}
+              aria-label={`证据摘要 ${displayName(item.artist_name)}`}
             className="h-9 min-w-0 rounded-[8px] border border-input bg-background px-3 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
             onChange={(event) => setEvidenceSummary(event.target.value)}
             placeholder="这份来源支持哪些标签"
@@ -542,6 +546,7 @@ function GenreDataHealthFrame({
 }
 
 export function GenreDataHealthSection({ embedded = false }: { embedded?: boolean }) {
+  useChineseTextVersion()
   const { filters } = useAnalysisFilters()
   const queryClient = useQueryClient()
   const [message, setMessage] = useState<string | null>(null)
@@ -831,7 +836,7 @@ export function GenreDataHealthSection({ embedded = false }: { embedded?: boolea
                               <div className="min-w-0">
                                 <p className="truncate text-foreground">
                                   <span className="mr-2 font-mono text-muted-foreground">{index + 1}</span>
-                                  {artist.artist_name}
+                                  {displayName(artist.artist_name)}
                                 </p>
                                 <p className="mt-0.5 truncate pl-5 text-[10.5px] text-muted-foreground">
                                   {artist.raw_genres.join(' · ') || '无原始标签'}

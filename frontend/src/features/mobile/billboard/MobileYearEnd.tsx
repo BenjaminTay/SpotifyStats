@@ -18,7 +18,7 @@ import {
   type YearEndSortKey,
   type YearEndTab,
 } from '@/features/billboard/year-end/yearEndData'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import type {
@@ -96,6 +96,7 @@ export function MobileYearEnd({
   onSortChange,
   onPageChange,
 }: MobileYearEndProps) {
+  useChineseTextVersion()
   const [sortOpen, setSortOpen] = useState(false)
   const sortTriggerRef = useRef<HTMLButtonElement>(null)
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))

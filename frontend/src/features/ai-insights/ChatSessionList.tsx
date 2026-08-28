@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { MessageSquare, Plus, Trash2, X } from 'lucide-react'
 import { formatRelativeTimeZh } from '@/lib/datetime'
 import type { ChatSession } from '@/types/ai-insights'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 interface Props {
   sessions: ChatSession[]
@@ -71,6 +72,7 @@ function SessionItem({
   onSelect: () => void
   onDelete: () => void
 }) {
+  useChineseTextVersion()
   const [confirming, setConfirming] = useState(false)
 
   return (
@@ -84,7 +86,7 @@ function SessionItem({
       <div className="flex items-start justify-between gap-1">
         <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left">
           <p className="truncate text-[13px] font-medium text-foreground/85">
-            {session.title}
+            {displayName(session.title)}
           </p>
           <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/40">
             <span>{session.message_count} 条消息</span>

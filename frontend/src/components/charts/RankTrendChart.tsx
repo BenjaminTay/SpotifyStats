@@ -2,6 +2,7 @@ import { useState, useMemo, type CSSProperties } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
 import { LazyEChart } from './LazyEChart'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 interface RankDataPoint {
   week: string
@@ -126,6 +127,7 @@ export function RankTrendChart({
   detailWindowSize = 52,
   detailWindowPosition = 'start',
 }: RankTrendChartProps) {
+  useChineseTextVersion()
   const { isDark } = useTheme()
   const base = useMemo(() => buildChartBase(isDark), [isDark])
 
@@ -317,7 +319,7 @@ export function RankTrendChart({
             const display = val === null || val === undefined
               ? '<span style="opacity:0.4">—</span>'
               : `<span style="font-weight:600">#${val}</span>`
-            const labelPart = lbl ? ` <span style="opacity:0.6;font-size:10px">${lbl}</span>` : ''
+            const labelPart = lbl ? ` <span style="opacity:0.6;font-size:10px">${displayName(lbl)}</span>` : ''
             return `${p.marker} ${p.seriesName}: ${display}${labelPart}`
           },
         },
@@ -393,7 +395,7 @@ export function RankTrendChart({
           const display = val === null || val === undefined
             ? '<span style="opacity:0.4">—</span>'
             : `<span style="font-weight:600">#${val}</span>`
-          const labelPart = lbl ? ` <span style="opacity:0.6;font-size:10px">${lbl}</span>` : ''
+          const labelPart = lbl ? ` <span style="opacity:0.6;font-size:10px">${displayName(lbl)}</span>` : ''
           html += `<div style="font-size:11px;line-height:1.7;font-family:'Inter Variable',sans-serif">${p.marker} ${p.seriesName}: ${display}${labelPart}</div>`
         })
         return html

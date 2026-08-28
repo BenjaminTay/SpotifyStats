@@ -1,7 +1,7 @@
 import { ArrowRight, Disc3, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { HomeChartChampion, HomeEntityMetric, HomeOverviewResponse } from '@/types/home'
 import {
   HomeChange,
@@ -188,6 +188,7 @@ function LongMemory({ data }: { data: HomeOverviewResponse }) {
 }
 
 export function HomeDesktopExperience({ data }: { data: HomeOverviewResponse }) {
+  useChineseTextVersion()
   const recentAnalysisRoute = homeRecentAnalysisRoute(data.recent?.period)
   return (
     <div className="home-experience home-desktop-experience" data-home-presentation="desktop">

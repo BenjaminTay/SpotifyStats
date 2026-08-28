@@ -1,7 +1,7 @@
 /** 个人王朝 */
 
 import { Crown } from 'lucide-react'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { PlaybackReignRecords, PlaybackRecordRow } from '@/types/analysis'
 import { EntityRecordCard, RankNum, TrackCell, ArtistCell, AlbumCell, RecordDateValue, SectionHeader } from './PlaybackRecordsPrimitives'
 
@@ -20,6 +20,7 @@ function entityNameCol(entity: string) {
 }
 
 export function ReignsSection({ data }: Props) {
+  useChineseTextVersion()
   return (
     <div>
       <SectionHeader icon={Crown} title="个人王朝" subtitle="关于谁在你的时间线上统治过——日冠军、月冠军、年冠军。" />
@@ -56,6 +57,7 @@ export function ReignsSection({ data }: Props) {
 }
 
 export function FastestMilestoneCard({ data }: Props) {
+  useChineseTextVersion()
   return (
     <EntityRecordCard title="最快里程碑 · Fastest Milestone" subtitle="歌曲 50 次、艺人 250 次从首次播放计时；专辑忽略正式发行日前播放，从发行后首次播放累计至 100 次，缺失可靠发行日不参与"
       recordsByEntity={{ track: data.fastest_milestone?.track ?? [], album: data.fastest_milestone?.album ?? [], artist: data.fastest_milestone?.artist ?? [] }}

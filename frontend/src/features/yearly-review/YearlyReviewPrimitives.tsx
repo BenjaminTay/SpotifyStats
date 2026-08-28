@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { YearlyEntityRef, YearlyMetric } from '@/types/yearly-review-v2'
 import { displayYearlyText, entitySubtitle, formatMetric } from './yearlyReviewData'
 
@@ -27,6 +27,7 @@ export function SectionHeading({
 }
 
 export function MetricLine({ metric, compact = false }: { metric: YearlyMetric; compact?: boolean }) {
+  useChineseTextVersion()
   return (
     <div className={cn('yearly-v2-metric-line', compact && 'is-compact')}>
       <span>{displayYearlyText(metric.label)}</span>
@@ -44,6 +45,7 @@ export function EntityLink({
   children?: ReactNode
   className?: string
 }) {
+  useChineseTextVersion()
   const body = children ?? (
     <>
       <strong>{displayName(entity.name)}</strong>
@@ -58,6 +60,7 @@ export function EntityLink({
 }
 
 export function EntityCover({ entity, size = 'medium' }: { entity: YearlyEntityRef; size?: 'small' | 'medium' }) {
+  useChineseTextVersion()
   const displayEntityName = displayName(entity.name)
   return (
     <div
@@ -88,6 +91,7 @@ export function EntityMediaLink({
   className?: string
   meta?: ReactNode
 }) {
+  useChineseTextVersion()
   return (
     <EntityLink entity={entity} className={cn('yearly-v2-entity-media', className)}>
       <EntityCover entity={entity} size={size} />

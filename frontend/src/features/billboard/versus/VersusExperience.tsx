@@ -16,6 +16,7 @@ import { buildBillboardContextParams, buildPersonalStatsParams } from '../billbo
 import { MobilePageHeader } from '@/components/mobile'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { cn } from '@/lib/utils'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 const KIND_LABELS: Record<VersusKind, string> = { track: '歌曲', album: '专辑', artist: '艺人' }
 
@@ -54,6 +55,7 @@ function entityKey(item: EntityListItem): string {
 }
 
 export function VersusExperience() {
+  useChineseTextVersion()
   const isPhone = useViewportMode() === 'phone'
   const [kind, setKindState] = useState<VersusKind>(cachedKind)
   const [queue, setQueue] = useState<EntityListItem[]>(cachedQueues[cachedKind])
@@ -162,7 +164,7 @@ export function VersusExperience() {
                 {quickAddItems.map((item) => (
                   <button key={entityKey(item)} type="button" onClick={() => handleAdd(item)}>
                     <Plus aria-hidden="true" />
-                    <span>{item.display}</span>
+                    <span>{displayName(item.display)}</span>
                   </button>
                 ))}
               </div>

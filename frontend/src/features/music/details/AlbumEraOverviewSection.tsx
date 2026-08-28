@@ -1,6 +1,6 @@
 import type { AlbumDetailResponse, ReleaseCycleAlbumDetailResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import {
   MiniStat,
   formatHalfLife,
@@ -19,6 +19,7 @@ type AlbumEraOverviewSectionProps = {
 }
 
 export function AlbumEraOverviewSection({ data, releaseCycle }: AlbumEraOverviewSectionProps) {
+  useChineseTextVersion()
   return (
     <>
       <div className="mb-8">

@@ -9,7 +9,7 @@ import {
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { BillboardWeekCalendar } from '@/components/shared/WeekSelector'
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { BillboardWeeklyResponse } from '@/types/billboard'
 import {
   BILLBOARD_WEEKLY_TABS,
@@ -143,6 +143,7 @@ export function MobileBillboardWeekly({
   historicalEntries,
   summary,
 }: MobileBillboardWeeklyProps) {
+  useChineseTextVersion()
   return (
     <div className="mobile-m3-page" data-mobile-page="billboard-weekly">
       <MobileWeekHeader

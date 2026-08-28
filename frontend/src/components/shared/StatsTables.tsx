@@ -6,7 +6,7 @@ import { CoverCell } from '@/components/shared/CoverCell'
 import { RankNumber } from '@/components/shared/RankNumber'
 import type { AnalysisChartRow } from '@/types/analysis'
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { MobileRankList } from '@/components/mobile'
 import { useViewportMode } from '@/hooks/useViewportMode'
 
@@ -144,6 +144,7 @@ function matchesPersonalRankSearch(
 }
 
 export function PersonalRankTable({ rows, entity, metric, pagination, searchQuery = '' }: { rows: AnalysisChartRow[]; entity: 'track' | 'album' | 'artist'; metric: 'plays' | 'hours'; pagination?: { total: number; page: number; pageSize: number; onPageChange: (page: number) => void }; searchQuery?: string }) {
+  useChineseTextVersion()
   const isPhone = useViewportMode() === 'phone'
   const [internalPageState, setInternalPageState] = useState({ rows, entity, searchQuery, page: 1 })
   const internalPage = internalPageState.rows === rows

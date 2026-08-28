@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import {
   ArtistWithCover,
   No1BarChart,
@@ -25,6 +25,7 @@ export function ArtistsNumberOnesSection({
   selectedYear,
   onYearChange,
 }: ArtistsNumberOnesSectionProps) {
+  useChineseTextVersion()
   const longestArtist = computed.artistLongest.streak > 0
     ? computed.artistNo1WeeksSorted.find((artist) => artist.artist_name === computed.artistLongest.name)
     : null

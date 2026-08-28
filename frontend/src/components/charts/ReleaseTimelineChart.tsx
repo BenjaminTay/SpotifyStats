@@ -3,6 +3,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { buildChartBase } from './EChartsTheme'
 import { LazyEChart } from './LazyEChart'
 import type { AdvanceSingleRank, ReleaseCycleRankEntry, ReleaseCycleTimelineEntry, WikiSingle } from '@/types/billboard'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 interface AlbumHistoryEntry {
   week?: string
@@ -108,6 +109,7 @@ export function ReleaseTimelineChart({
   advanceSingleRanks = [],
   bestTrackRanks = null,
 }: ReleaseTimelineChartProps) {
+  useChineseTextVersion()
   const { isDark } = useTheme()
   const base = useMemo(() => buildChartBase(isDark), [isDark])
   const offsetMode = albumHistory.some((e) => typeof e.week_offset === 'number')
@@ -210,10 +212,10 @@ export function ReleaseTimelineChart({
       const idx = offsetLabels.indexOf(off)
       if (idx >= 0) {
         markLines.push({
-          name: single.name,
+          name: displayName(single.name),
           xAxis: idx,
           lineStyle: { color: singleLineColor, type: 'dotted', width: 1, opacity: 0.5 },
-          label: { formatter: single.name, position: 'insideEndTop', fontSize: 9, color: singleLineColor },
+          label: { formatter: displayName(single.name), position: 'insideEndTop', fontSize: 9, color: singleLineColor },
         })
       }
     }
@@ -236,10 +238,10 @@ export function ReleaseTimelineChart({
       const idx = nearestLabelIndex(labels, d)
       if (idx >= 0) {
         markLines.push({
-          name: single.name,
+          name: displayName(single.name),
           xAxis: idx,
           lineStyle: { color: singleLineColor, type: 'dotted', width: 1, opacity: 0.5 },
-          label: { formatter: single.name, position: 'insideEndTop', fontSize: 9, color: singleLineColor },
+          label: { formatter: displayName(single.name), position: 'insideEndTop', fontSize: 9, color: singleLineColor },
         })
       }
     }
@@ -249,7 +251,7 @@ export function ReleaseTimelineChart({
     ? advanceSingleRanks.map((single, i) => {
         const byOffset = new Map(single.ranks.map((rank) => [rank.week_offset, rank.rank]))
         return {
-          name: `先行曲: ${single.name}`,
+          name: `先行曲: ${displayName(single.name ?? '')}`,
           type: 'line',
           yAxisIndex: 0,
           data: offsetLabels.map((offset) => byOffset.get(offset) ?? null),
@@ -265,7 +267,7 @@ export function ReleaseTimelineChart({
 
   const bestTrackSeries: ChartSeries[] = offsetMode && bestTrackRanks
     ? [{
-        name: `最佳走势: ${bestTrackRanks.name}`,
+        name: `最佳走势: ${displayName(bestTrackRanks.name)}`,
         type: 'line',
         yAxisIndex: 0,
         data: offsetLabels.map((offset) => {

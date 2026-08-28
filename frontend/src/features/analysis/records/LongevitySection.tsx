@@ -1,7 +1,7 @@
 /** 长线陪伴 */
 
 import { Heart } from 'lucide-react'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { PlaybackLongevityRecords, PlaybackRecordRow } from '@/types/analysis'
 import { EntityRecordCard, RankNum, TrackCell, ArtistCell, AlbumCell, ValueBar, SectionHeader } from './PlaybackRecordsPrimitives'
 
@@ -20,6 +20,7 @@ function entityNameCol(entity: string) {
 }
 
 export function LongevitySection({ data }: Props) {
+  useChineseTextVersion()
   return (
     <div>
       <SectionHeader icon={Heart} title="长线陪伴" subtitle="关于长期关系——哪首歌陪你最久、谁在离开后再次回来。" />

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { Clock3, Flame, Hash } from 'lucide-react'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { EntityRecordType, PlaybackBehaviorRecords, PlaybackObsessionRecords, PlaybackRecordRow, PlaybackReignRecords } from '@/types/analysis'
 import {
   EntityRecordCard,
@@ -193,6 +193,7 @@ function marathonCols(entity: EntityRecordType, rows: PlaybackRecordRow[]) {
 }
 
 export function ObsessionSection({ data, reigns, behavior }: Props) {
+  useChineseTextVersion()
   const [dailyTotalSort, setDailyTotalSort] = useState<DailyTotalSortMode>('plays')
   const dailyTotalRows = useMemo(() => {
     const rows = [...(data.daily_total_record ?? [])]

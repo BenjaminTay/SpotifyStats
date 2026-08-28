@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import type { EntityListItem, VersusEntityData } from '@/types/billboard'
 import { ENTITY_COLORS, MAX_QUEUE_SIZE } from './versusData'
+import { displayName, useDisplayName, useChineseTextVersion } from '@/lib/chinese'
 
 // ── Skeleton ──
 
@@ -29,6 +30,7 @@ export function VersusEntityCard({
   detailLink?: string
   index: number
 }) {
+  const renderedName = useDisplayName(entity?.name ?? '')
   if (!entity) return null
   const color = ENTITY_COLORS[index % ENTITY_COLORS.length]
   const bg = `${color}0F`
@@ -47,7 +49,7 @@ export function VersusEntityCard({
         />
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate font-serif text-base font-semibold">{entity.name}</p>
+        <p className="truncate font-serif text-base font-semibold">{renderedName}</p>
         {detailLink && (
           <Link
             to={detailLink}
@@ -76,6 +78,7 @@ export function SearchableAddSelect({
   placeholder: string
   disabled: boolean
 }) {
+  useChineseTextVersion()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
@@ -147,7 +150,7 @@ export function SearchableAddSelect({
                   }}
                   className="w-full flex items-center justify-between px-3 py-2 text-left text-[13px] transition-colors hover:bg-muted"
                 >
-                  <span className="truncate">{item.display}</span>
+                  <span className="truncate">{displayName(item.display)}</span>
                   <span className="ml-2 text-[10px] text-muted-foreground flex-shrink-0">+ 添加</span>
                 </button>
               ))
@@ -172,6 +175,7 @@ export function EntityQueue({
   onMoveUp: (index: number) => void
   onMoveDown: (index: number) => void
 }) {
+  useChineseTextVersion()
   if (items.length === 0) return null
 
   return (
@@ -192,7 +196,7 @@ export function EntityQueue({
             >
               {i + 1}
             </span>
-            <span className="flex-1 truncate text-[13px] font-medium">{item.display}</span>
+            <span className="flex-1 truncate text-[13px] font-medium">{displayName(item.display)}</span>
             <div className="flex items-center gap-1">
               <button
                 type="button"

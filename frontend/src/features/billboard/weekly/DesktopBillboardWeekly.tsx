@@ -8,7 +8,7 @@ import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { PaginationBar } from '@/components/shared/PaginationBar'
 import { WeekSelector } from '@/components/shared/WeekSelector'
 import { cn } from '@/lib/utils'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import { getBillboardName } from '@/lib/billboard-name'
 import type { BillboardWeeklyResponse, WeeklyTrackEntry } from '@/types/billboard'
@@ -66,6 +66,7 @@ export function DesktopBillboardWeekly({
   pageSize,
   onPageChange,
 }: DesktopBillboardWeeklyProps) {
+  useChineseTextVersion()
   const pageEntries = entries.slice((page - 1) * pageSize, page * pageSize)
 
   return (

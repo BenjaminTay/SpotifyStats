@@ -5,6 +5,7 @@ import { GenreTags } from '@/components/shared/GenreTags'
 import { ChartBars } from '@/components/shared/ChartBars'
 import type { StructuredAlbum } from '@/types/billboard'
 import { Sparkles, Disc3 } from 'lucide-react'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 function SectionHead({ dot, title }: { dot: string; title: string }) {
   return (
@@ -48,6 +49,7 @@ export function albumSingleCompactCoverKey(name: string) {
 }
 
 export function AlbumEnrichmentView({ data, singleCoverUrls = {} }: AlbumEnrichmentViewProps) {
+  useChineseTextVersion()
   return (
     <div className="space-y-8">
       {/* Summary */}
@@ -154,7 +156,7 @@ export function AlbumEnrichmentView({ data, singleCoverUrls = {} }: AlbumEnrichm
                           <Disc3 className="h-3.5 w-3.5 text-muted-foreground/50" />
                         </span>
                       )}
-                      <span className="min-w-0 flex-1 truncate font-sans text-[13px] font-semibold text-foreground/85">{s.name}</span>
+                      <span className="min-w-0 flex-1 truncate font-sans text-[13px] font-semibold text-foreground/85">{displayName(s.name)}</span>
                       {s.certification && (
                         <span className="font-sans text-[11px] text-muted-foreground">{s.certification}</span>
                       )}

@@ -2,7 +2,7 @@ import { memo, useCallback, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import type { CommunityPost } from '@/types/community'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 import { AccountAvatar } from './AccountAvatar'
 import { PostMetricsBar } from './PostMetrics'
@@ -20,6 +20,7 @@ interface PostCardProps {
 }
 
 function PostCardInner({ post }: PostCardProps) {
+  useChineseTextVersion()
   const navigate = useNavigate()
   const account = ACCOUNT_CONFIG[post.account_handle]
   const relativeTime = formatRelativeTime(post.posted_at)
@@ -144,6 +145,7 @@ function PostCardInner({ post }: PostCardProps) {
 
 /** Renders post content with linked entity names as clickable <Link> elements. */
 export function PostContent({ content, linkedEntities }: { content: string; linkedEntities?: CommunityPost['linked_entities'] }) {
+  useChineseTextVersion()
   if (!linkedEntities || linkedEntities.length === 0) {
     return <span>{displayName(content)}</span>
   }

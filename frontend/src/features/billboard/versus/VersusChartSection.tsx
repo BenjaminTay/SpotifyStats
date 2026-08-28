@@ -2,6 +2,7 @@ import { VersusRankChart } from '@/components/charts/VersusRankChart'
 import { GlassCard } from '@/components/shared/GlassCard'
 import type { VersusRankPoint } from '@/types/billboard'
 import { toChartData } from './versusData'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 interface VersusChartSectionProps {
   rankHistories: (VersusRankPoint[] | null)[] | null
@@ -14,11 +15,12 @@ export function VersusChartSection({
   names,
   topN = 30,
 }: VersusChartSectionProps) {
+  useChineseTextVersion()
   if (!rankHistories || rankHistories.length < 2) return null
 
   const series = rankHistories
     .map((rh, i) => ({
-      name: names[i] ?? `Entity ${i + 1}`,
+      name: displayName(names[i] ?? `Entity ${i + 1}`),
       data: rh && rh.length > 0 ? toChartData(rh) : [],
     }))
     .filter((s) => s.data.length > 0)

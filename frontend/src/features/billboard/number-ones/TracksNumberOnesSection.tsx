@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
 import {
   NameWithCover,
@@ -51,6 +51,7 @@ export function TracksNumberOnesSection({
   selectedYear,
   onYearChange,
 }: TracksNumberOnesSectionProps) {
+  useChineseTextVersion()
   const longestTrack = computed.trackLongest.streak > 0
     ? computed.trackNo1WeeksSorted.find((track) => track.track_name === computed.trackLongest.name)
     : null

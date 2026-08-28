@@ -1,5 +1,5 @@
 import { CoverCell } from '@/components/shared/CoverCell'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { BillboardYearEndHonors } from '@/types/billboard'
 import {
   entityNameForRow,
@@ -59,6 +59,7 @@ export function YearEndHonors({
   honors: BillboardYearEndHonors
   isCompleteYear?: boolean
 }) {
+  useChineseTextVersion()
   return (
     <section
       className="mb-6 grid gap-3 border-b border-border pb-5 sm:grid-cols-2 lg:grid-cols-3"

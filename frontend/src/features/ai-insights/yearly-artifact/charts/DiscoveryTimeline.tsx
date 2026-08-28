@@ -1,3 +1,5 @@
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
+
 interface DiscoveryItem {
   name: string
   first_seen?: string
@@ -35,6 +37,7 @@ function toDiscoveryItems(data: unknown): DiscoveryItem[] {
 }
 
 export function DiscoveryTimeline({ data }: { data: unknown }) {
+  useChineseTextVersion()
   const items = toDiscoveryItems(data).slice(0, 8)
 
   if (!items.length) return <p className="text-[12px] text-muted-foreground">新发现时间线数据不足</p>
@@ -45,7 +48,7 @@ export function DiscoveryTimeline({ data }: { data: unknown }) {
         <li className="grid min-w-0 grid-cols-[auto_1fr] gap-3" key={`${item.name}-${item.first_seen ?? ''}`}>
           <span className="mt-1 h-2 w-2 rounded-full bg-accent-foreground" />
           <div className="min-w-0">
-            <p className="break-words text-[13px] font-semibold text-foreground">{item.name}</p>
+            <p className="break-words text-[13px] font-semibold text-foreground">{displayName(item.name)}</p>
             <p className="text-[12px] text-muted-foreground">
               {[item.first_seen, item.plays != null ? `${item.plays} 次` : null].filter(Boolean).join(' · ')}
             </p>

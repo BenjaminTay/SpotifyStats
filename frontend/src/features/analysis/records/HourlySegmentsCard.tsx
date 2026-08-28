@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useViewportMode } from '@/hooks/useViewportMode'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { EntityRecordFamily, EntityRecordType, PlaybackRecordRow } from '@/types/analysis'
 import { EntityRecordToggle, RecordCard } from './PlaybackRecordsPrimitives'
 
@@ -23,6 +23,7 @@ function hourOf(row: PlaybackRecordRow) {
 }
 
 function EntityName({ row, entity }: { row: PlaybackRecordRow; entity: EntityRecordType }) {
+  useChineseTextVersion()
   const name = displayName(row.name)
   const className = 'font-sans text-[12px] font-medium leading-[1.35] text-foreground break-words hover:text-accent-foreground'
   if (entity === 'artist') {

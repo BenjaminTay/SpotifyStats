@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 import { CoverCell } from '@/components/shared/CoverCell'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import type { ReleaseCycleArtistOverviewResponse } from '@/types/billboard'
 import { formatDateShort, formatOptionalRank } from './MusicDetailPrimitives'
 
@@ -60,6 +60,7 @@ export function ReleaseCycleSection({
   artistName: string
   startIndex?: number
 }) {
+  useChineseTextVersion()
   return (
     <div className="mb-5 last:mb-0">
       <div className="mb-3 flex items-end justify-between border-b border-border pb-2">

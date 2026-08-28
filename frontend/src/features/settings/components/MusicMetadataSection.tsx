@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MergeLevelControl } from "@/features/settings/components/MergeLevelControl";
 import { CollapsibleSection } from "@/features/settings/components/SettingsHelpers";
 import { cn } from "@/lib/utils";
+import { useChineseTextVersion } from "@/lib/chinese";
 
 const TrackCreditManager = lazy(() =>
   import("@/features/settings/components/TrackCreditManager").then(
@@ -74,6 +75,7 @@ function LoadingPanel() {
 }
 
 export function MusicMetadataSection() {
+  useChineseTextVersion();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();

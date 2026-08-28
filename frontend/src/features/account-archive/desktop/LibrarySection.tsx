@@ -20,6 +20,7 @@ import {
 } from '@/features/account-archive/components/ArchivePrimitives'
 import type { ArchiveLibraryEntityType } from '@/types/accountArchive'
 import { cn } from '@/lib/utils'
+import { useDisplayName } from '@/lib/chinese'
 
 function LibrarySearch({
   initialValue,
@@ -52,6 +53,12 @@ function LibrarySearch({
       <button type="submit">搜索</button>
     </form>
   )
+}
+
+function LibraryEntityCopy({ name, secondary }: { name: string; secondary: string }) {
+  const displayEntityName = useDisplayName(name)
+  const displaySecondary = useDisplayName(secondary)
+  return <span className="archive-library-copy"><strong>{displayEntityName}</strong><small>{displaySecondary}</small></span>
 }
 
 export function LibrarySection() {
@@ -157,7 +164,7 @@ export function LibrarySection() {
                       <span className="archive-library-cover">
                         {cover ? <img src={cover} alt="" loading="lazy" /> : <Disc3 aria-hidden="true" />}
                       </span>
-                      <span className="archive-library-copy"><strong>{name}</strong><small>{secondary}</small></span>
+                      <LibraryEntityCopy name={name} secondary={secondary} />
                       <span className="archive-library-meta">{meta}</span>
                     </>
                   )

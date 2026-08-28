@@ -9,6 +9,7 @@ import { VisualYearlyReport } from './yearly-artifact/VisualYearlyReport'
 import type { VisualYearlyArtifact } from './yearly-artifact/yearlyArtifactTypes'
 import { formatRelativeTimeZh, parseBackendTimestamp } from '@/lib/datetime'
 import type { ReportEntities, ReportType } from '@/types/ai-insights'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 function formatReportTimestamp(value: string | null | undefined): string {
   const date = parseBackendTimestamp(value)
@@ -85,6 +86,7 @@ export function ReportCard({
   onGenerate,
   generateLabel = '生成报告',
 }: ReportCardProps) {
+  useChineseTextVersion()
   const [copied, setCopied] = useState(false)
 
   if (loading && !report && !artifact) return <ReportSkeleton onCancel={onCancel} />
@@ -247,7 +249,7 @@ export function ReportCard({
                   to={`/music/artists/${encodeURIComponent(name)}`}
                   className="rounded-full border border-border bg-card/60 px-2.5 py-0.5 text-[11px] text-muted-foreground backdrop-blur-[4px] transition-colors hover:border-accent-foreground/20 hover:text-foreground"
                 >
-                  {name}
+                  {displayName(name)}
                 </Link>
               ))}
             </div>
@@ -263,7 +265,7 @@ export function ReportCard({
                   to={`/music/tracks/${encodeURIComponent(name)}`}
                   className="rounded-full border border-border bg-card/60 px-2.5 py-0.5 text-[11px] text-muted-foreground backdrop-blur-[4px] transition-colors hover:border-accent-foreground/20 hover:text-foreground"
                 >
-                  {name}
+                  {displayName(name)}
                 </Link>
               ))}
             </div>
@@ -284,7 +286,7 @@ export function ReportCard({
                 onClick={() => onFollowUp?.(q, title)}
                 className="flex items-center gap-1 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[12px] text-muted-foreground backdrop-blur-[4px] transition-colors hover:border-accent-foreground/20 hover:text-foreground"
               >
-                {q}
+                {displayName(q)}
                 <ArrowRight className="h-3 w-3" />
               </button>
             ))}

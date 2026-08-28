@@ -1,6 +1,7 @@
 import { Star } from 'lucide-react'
 import type { AlbumVersionGroup } from '@/types/billboard'
 import { cn } from '@/lib/utils'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 interface VersionCoverageMatrixProps {
   albumData: AlbumVersionGroup | null
@@ -11,6 +12,7 @@ export function VersionCoverageMatrix({
   albumData,
   compact = false,
 }: VersionCoverageMatrixProps) {
+  useChineseTextVersion()
   if (!albumData?.track_coverage?.length) return null
 
   return (
@@ -28,7 +30,7 @@ export function VersionCoverageMatrix({
                   key={version.album_id ?? version.album_name}
                   className="text-center py-1.5 px-2 font-medium w-[72px]"
                 >
-                  {version.is_primary ? '标准版' : (version.album_name ?? '').slice(0, 6)}
+                  {version.is_primary ? '标准版' : displayName((version.album_name ?? '').slice(0, 6))}
                 </th>
               ))}
             </tr>
@@ -44,7 +46,7 @@ export function VersionCoverageMatrix({
               >
                 <td className="py-1.5 pr-4">
                   <span className="flex items-center gap-1.5">
-                    {track.track_name}
+                    {displayName(track.track_name)}
                     {track.is_exclusive && (
                       <Star className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
                     )}

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, Fingerprint, GitMerge, ListMusic, Settings2 } from 'lucide-react'
 import type { AlbumDetailResponse, ArtistDetailResponse, TrackDetailResponse } from '@/types/billboard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import { formatAlbumKind, formatArtistFollowers } from './MusicDetailFormatters'
 import { CapabilityGate } from '@/components/capabilities/CapabilityGate'
@@ -42,10 +42,12 @@ export function TrackDetailHero({
   trackId: string
   onBack: () => void
 }) {
+  useChineseTextVersion()
   const artists = data.artist_names?.length ? data.artist_names : [data.artist_name]
   const returnTo = `/music/tracks/${trackId}`
   const representativeTrackId = data.representative_track_id ?? data.track_id
   const artistName = data.primary_artist_name ?? artists[0] ?? data.artist_name
+  const renderedTrackName = displayName(data.track_name)
   return (
     <section className="mb-6">
       <button
@@ -57,19 +59,19 @@ export function TrackDetailHero({
       </button>
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
         {data.cover_url && (
-          <img src={data.cover_url} alt={data.track_name} className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg" />
+          <img src={data.cover_url} alt={renderedTrackName} className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg" />
         )}
         <div className="min-w-0 max-w-full flex-1">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
-              {displayName(data.track_name)}
+              {renderedTrackName}
             </h1>
             <CapabilityGate require={['editing', 'metadata_governance']}>
               <Popover>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    aria-label={`编辑 ${data.track_name} 的曲目信息`}
+                    aria-label={`编辑 ${renderedTrackName} 的曲目信息`}
                     title="选择要编辑的内容"
                     className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
                   >
@@ -151,6 +153,8 @@ export function ArtistDetailHero({
   data: ArtistDetailResponse
   onBack: () => void
 }) {
+  useChineseTextVersion()
+  const renderedArtistName = displayName(data.artist_name)
   return (
     <section className="mb-6">
       <button
@@ -164,7 +168,7 @@ export function ArtistDetailHero({
         {data.cover_url && (
           <img
             src={data.cover_url}
-            alt={data.artist_name}
+            alt={renderedArtistName}
             style={{ width: 120, height: 120 }}
             className="h-[120px] w-[120px] flex-shrink-0 rounded-full object-cover shadow-lg"
           />
@@ -172,11 +176,11 @@ export function ArtistDetailHero({
         <div className="min-w-0 max-w-full flex-1">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
-              {displayName(data.artist_name)}
+              {renderedArtistName}
             </h1>
             <CapabilityGate require={['editing', 'metadata_governance']}>
               <Link
-                aria-label={`管理 ${data.artist_name} 的艺人身份`}
+                aria-label={`管理 ${renderedArtistName} 的艺人身份`}
                 title="管理艺人身份"
                 to={`/settings?metadata=artist-identities&artist=${encodeURIComponent(data.artist_name)}&return_to=${encodeURIComponent(`/music/artists/${data.artist_name}`)}#music-metadata-management`}
                 className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
@@ -240,10 +244,13 @@ export function AlbumDetailHero({
   onBack: () => void
   projectTrackCount?: number
 }) {
+  useChineseTextVersion()
   const showDualTrackCount =
     projectTrackCount != null &&
     data.meta?.total_tracks != null &&
     projectTrackCount !== data.meta.total_tracks
+  const renderedAlbumName = displayName(data.album_name)
+  const renderedArtistName = displayName(data.artist_name)
 
   return (
     <section className="mb-6">
@@ -258,7 +265,7 @@ export function AlbumDetailHero({
         {data.cover_url && (
           <img
             src={data.cover_url}
-            alt={data.album_name}
+            alt={renderedAlbumName}
             style={{ width: 120, height: 120 }}
             className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg"
           />
@@ -266,11 +273,11 @@ export function AlbumDetailHero({
         <div className="min-w-0 max-w-full flex-1">
           <div className="flex min-w-0 items-start justify-between gap-3">
             <h1 className="min-w-0 break-words font-serif text-[44px] font-bold leading-[1.06] tracking-normal">
-              {displayName(data.album_name)}
+              {renderedAlbumName}
             </h1>
             <CapabilityGate require={['editing', 'metadata_governance']}>
               <Link
-                aria-label={`管理 ${data.album_name} 的专辑版本`}
+                aria-label={`管理 ${renderedAlbumName} 的专辑版本`}
                 title="管理专辑版本"
                 to={`/settings?metadata=album-projects&album_name=${encodeURIComponent(data.album_name)}&artist=${encodeURIComponent(data.artist_name)}&return_to=${encodeURIComponent(`/music/albums/${data.album_name}?artist=${data.artist_name}`)}#music-metadata-management`}
                 className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 text-[11px] font-semibold text-muted-foreground transition hover:border-accent-foreground/40 hover:text-foreground"
@@ -285,7 +292,7 @@ export function AlbumDetailHero({
               to={`/music/artists/${encodeURIComponent(data.artist_name)}`}
               className="transition-colors hover:text-accent-foreground"
             >
-              {displayName(data.artist_name)}
+              {renderedArtistName}
             </Link>
           </p>
           {data.meta && (

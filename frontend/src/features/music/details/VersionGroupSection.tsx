@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Disc, Layers } from 'lucide-react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import type { TrackVersionGroup, AlbumVersionGroup, AlbumSourceBreakdownItem } from '@/types/billboard'
 import { VersionCoverageMatrix } from './VersionCoverageMatrix'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 
 interface Props {
   kind: 'track' | 'album'
@@ -44,6 +45,7 @@ const BUCKET_LABELS: Record<string, string> = {
 }
 
 export function VersionGroupSection({ kind, data, sourceBreakdown, collapsible = false }: Props) {
+  useChineseTextVersion()
   const [open, setOpen] = useState(false)
 
   const hasSourceBreakdown = kind === 'album' && sourceBreakdown && sourceBreakdown.length > 0
@@ -151,17 +153,17 @@ export function VersionGroupSection({ kind, data, sourceBreakdown, collapsible =
                             to={`/music/albums/${encodeURIComponent(row.name)}?artist=${encodeURIComponent(row.artist ?? '')}`}
                             className="text-primary hover:underline block truncate"
                           >
-                            {row.name}
+                            {displayName(row.name)}
                           </Link>
                         ) : !isAlbum && row.trackId != null ? (
                           <Link
                             to={`/music/tracks/${row.trackId}`}
                             className="text-primary hover:underline block truncate"
                           >
-                            {row.name ?? `Track #${row.trackId}`}
+                            {displayName(row.name ?? `Track #${row.trackId}`)}
                           </Link>
                         ) : (
-                          <span className="text-muted-foreground truncate block">{row.name ?? '—'}</span>
+                          <span className="text-muted-foreground truncate block">{displayName(row.name ?? '—')}</span>
                         )}
                         {!isAlbum && row.recordingKind && (
                           <span className="inline-block mt-0.5 text-[10px] text-muted-foreground bg-muted/40 rounded px-1 py-px">

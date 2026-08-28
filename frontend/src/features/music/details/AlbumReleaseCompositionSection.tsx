@@ -1,6 +1,6 @@
 import type { AlbumEnrichmentResponse, ReleaseCycleAlbumDetailResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { formatDateShort } from './MusicDetailPrimitives'
 
 type AlbumReleaseCompositionSectionProps = {
@@ -12,6 +12,7 @@ export function AlbumReleaseCompositionSection({
   enrichment,
   releaseCycle,
 }: AlbumReleaseCompositionSectionProps) {
+  useChineseTextVersion()
   const hasWikiSingles = (enrichment?.wiki?.infobox?.singles.length ?? 0) > 0
   const shouldRender = releaseCycle.advance_singles.length > 0 || hasWikiSingles
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import type { ConverterFunction } from 'opencc-js/core'
 
 export type ChineseStyle = 'original' | 'simplified' | 'traditional'
@@ -12,8 +12,22 @@ let t2sConverter: ConverterFunction | null = null
 let s2tLoading: Promise<void> | null = null
 let t2sLoading: Promise<void> | null = null
 
+const subscribers = new Set<() => void>()
+let changeVersion = 0
+
 function notifyChange() {
+  changeVersion += 1
+  subscribers.forEach((subscriber) => subscriber())
   window.dispatchEvent(new Event('chinese-style-change'))
+}
+
+function subscribe(listener: () => void) {
+  subscribers.add(listener)
+  return () => subscribers.delete(listener)
+}
+
+function getSnapshot() {
+  return changeVersion
 }
 
 async function loadSimplifiedConverter() {
@@ -78,13 +92,15 @@ export function displayName(name: string): string {
 }
 
 export function useChineseTextVersion(): number {
-  const [version, setVersion] = useState(0)
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
 
-  useEffect(() => {
-    const handleChange = () => setVersion((v) => v + 1)
-    window.addEventListener('chinese-style-change', handleChange)
-    return () => window.removeEventListener('chinese-style-change', handleChange)
-  }, [])
-
-  return version
+/**
+ * A display-only name that also rerenders when the preference or lazy
+ * converter changes. Keep raw values for URLs, keys, search identity and API
+ * payloads; use this hook only at the presentation boundary.
+ */
+export function useDisplayName(name: string): string {
+  useChineseTextVersion()
+  return displayName(name)
 }

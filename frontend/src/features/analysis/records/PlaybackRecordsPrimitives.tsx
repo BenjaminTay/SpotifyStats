@@ -10,7 +10,7 @@ import {
 } from '@/components/mobile/MobileRecordTable'
 import { mobileRecordTitle } from '@/components/mobile/mobileRecordUtils'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import type { EntityRecordType, PlaybackRecordRow } from '@/types/analysis'
 import { useViewportMode } from '@/hooks/useViewportMode'
@@ -467,6 +467,7 @@ export function TrackCell({
   artistName?: string | null
   coverUrl?: string | null
 }) {
+  useChineseTextVersion()
   return (
     <div className="flex items-center gap-2.5 min-w-0">
       <CoverImg url={coverUrl} />
@@ -490,6 +491,7 @@ export function TrackCell({
 }
 
 export function ArtistCell({ name, coverUrl }: { name: string; coverUrl?: string | null }) {
+  useChineseTextVersion()
   return (
     <div className="flex items-center gap-2.5 min-w-0">
       <ArtistCoverImg url={coverUrl} />
@@ -512,6 +514,7 @@ export function AlbumCell({
   artistName?: string | null
   coverUrl?: string | null
 }) {
+  useChineseTextVersion()
   const artistQuery = artistName ? `?artist=${encodeURIComponent(artistName)}` : ''
 
   return (

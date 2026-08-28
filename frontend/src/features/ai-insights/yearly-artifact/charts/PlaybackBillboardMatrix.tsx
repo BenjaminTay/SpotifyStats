@@ -1,3 +1,5 @@
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
+
 interface MatrixItem {
   name: string
   artist?: string
@@ -33,6 +35,7 @@ function toMatrixItems(data: unknown): MatrixItem[] {
 }
 
 export function PlaybackBillboardMatrix({ data }: { data: unknown }) {
+  useChineseTextVersion()
   const items = toMatrixItems(data).slice(0, 6)
 
   if (!items.length) return <p className="text-[12px] text-muted-foreground">播放与榜单矩阵数据不足</p>
@@ -41,8 +44,8 @@ export function PlaybackBillboardMatrix({ data }: { data: unknown }) {
     <div className="grid min-w-0 gap-2 sm:grid-cols-2">
       {items.map((item) => (
         <div className="min-w-0 rounded-[8px] border border-border/70 p-3" key={`${item.name}-${item.artist ?? ''}`}>
-          <p className="break-words text-[13px] font-semibold text-foreground">{item.name}</p>
-          {item.artist && <p className="mt-1 text-[12px] text-muted-foreground">{item.artist}</p>}
+          <p className="break-words text-[13px] font-semibold text-foreground">{displayName(item.name)}</p>
+          {item.artist && <p className="mt-1 text-[12px] text-muted-foreground">{displayName(item.artist)}</p>}
           <p className="mt-2 text-[11px] text-muted-foreground">
             {[
               item.plays != null ? `${item.plays} 次播放` : null,

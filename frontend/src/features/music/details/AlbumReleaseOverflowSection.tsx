@@ -1,6 +1,6 @@
 import type { ReleaseCycleAlbumDetailResponse } from '@/types/billboard'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { displayName } from '@/lib/chinese'
+import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { formatNumber } from './MusicDetailPrimitives'
 
 type AlbumReleaseOverflowSectionProps = {
@@ -8,6 +8,7 @@ type AlbumReleaseOverflowSectionProps = {
 }
 
 export function AlbumReleaseOverflowSection({ releaseCycle }: AlbumReleaseOverflowSectionProps) {
+  useChineseTextVersion()
   if (releaseCycle.catalog_reentries.length === 0 && releaseCycle.bonus_tracks.length === 0) {
     return null
   }

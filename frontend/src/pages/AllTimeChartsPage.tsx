@@ -34,6 +34,7 @@ import { buildBillboardContextParams } from '@/features/billboard/billboardConte
 import { cn } from '@/lib/utils'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileAllTime } from '@/features/mobile/billboard/MobileAllTime'
+import { useChineseTextVersion } from '@/lib/chinese'
 
 let cachedEntityTab: EntityTab = 'tracks'
 let cachedPeakFilter: PeakFilter = 'all'
@@ -76,6 +77,7 @@ function ErrorState({ error, refetch }: { error: string; refetch: () => void }) 
 }
 
 export function AllTimeChartsPage() {
+  const chineseTextVersion = useChineseTextVersion()
   const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
@@ -116,7 +118,7 @@ export function AllTimeChartsPage() {
   const allTimeRows = useMemo(() => data ? buildAllTimeRows(data) : EMPTY_ALL_TIME_ROWS, [data])
   const displayRows = useMemo(
     () => selectAllTimeRows(allTimeRows, activeTab, peakFilter, sortKey, sortDir, searchQuery),
-    [activeTab, allTimeRows, peakFilter, searchQuery, sortDir, sortKey],
+    [activeTab, allTimeRows, chineseTextVersion, peakFilter, searchQuery, sortDir, sortKey],
   )
   const visibleColumns = useMemo(
     () => visibleColumnsForTab(activeTab, visibleColumnsByTab[activeTab]),

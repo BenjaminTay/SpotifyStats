@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 
 import type { CommunityPost } from '@/types/community'
 
@@ -36,6 +36,7 @@ import { CommunityExperience } from '@/features/community/CommunityExperience'
 import { CommunityTimeline } from '@/features/community/CommunityTimeline'
 import { FeedToggle } from '@/features/community/FeedToggle'
 import { PostCard } from '@/features/community/PostCard'
+import { setChineseStyle } from '@/lib/chinese'
 
 // Mock IntersectionObserver for jsdom
 class MockIntersectionObserver {
@@ -67,6 +68,10 @@ beforeEach(() => {
   })
 })
 
+afterEach(() => {
+  act(() => setChineseStyle('original'))
+})
+
 function makePost(overrides: Partial<CommunityPost> = {}): CommunityPost {
   return {
     id: 'test-post-1',
@@ -95,6 +100,22 @@ function LocationProbe() {
   const location = useLocation()
   return <div data-testid="location-path">{location.pathname}</div>
 }
+
+it('updates names inside memoized community cards without changing entity links', async () => {
+  renderWithRouter(
+    <PostCard
+      post={makePost({
+        content: '永恆的主題，值得再次播放。',
+        linked_entities: [{ type: 'track', id: 1, name: '永恆的主題' }],
+      })}
+    />,
+  )
+
+  act(() => setChineseStyle('simplified'))
+
+  await waitFor(() => expect(screen.getByText('永恒的主题')).toBeInTheDocument())
+  expect(screen.getByRole('link', { name: '永恒的主题' })).toHaveAttribute('href', '/music/tracks/1')
+})
 
 
 describe('AccountAvatar', () => {
