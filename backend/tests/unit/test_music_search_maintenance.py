@@ -10,6 +10,7 @@ from backend.core.migrations import (
     migrate_035,
     migrate_042,
     migrate_046,
+    migrate_060,
 )
 from backend.domains.music_search import context as context_module
 from backend.domains.music_search import index as index_module
@@ -58,6 +59,7 @@ def _conn() -> sqlite3.Connection:
     migrate_032(conn)
     migrate_034(conn)
     migrate_035(conn)
+    migrate_060(conn)
     conn.commit()
     return conn
 
@@ -135,7 +137,7 @@ def _built_snapshot_set_report(contexts: tuple) -> dict:
     }
 
 
-def test_mark_for_rebuild_fails_closed_and_invalidates_document_revision() -> None:
+def test_mark_for_rebuild_preserves_serving_candidate_and_marks_target_pending() -> None:
     conn = _conn()
     conn.execute(
         """UPDATE music_search_index_state
@@ -164,8 +166,11 @@ def test_mark_for_rebuild_fails_closed_and_invalidates_document_revision() -> No
         conn.execute(
             "SELECT source_revision FROM music_search_index_state WHERE state_id=1"
         ).fetchone()[0]
-        is None
+        == "source"
     )
+    candidate_maintenance = index_module.get_music_search_candidate_maintenance_state(conn)
+    assert candidate_maintenance["maintenance_status"] == "pending"
+    assert candidate_maintenance["target_source_revision"] != "source"
     assert (
         conn.execute(
             "SELECT metadata_revision FROM music_search_revision_state WHERE state_id=1"
@@ -580,6 +585,32 @@ def test_ordinary_repeated_maintenance_reuses_all_four_statistics_at_zero_ms(
         assert all(variant["duration_ms"] == 0 for variant in snapshot_set["variants"])
 
 
+def test_year_end_failure_does_not_downgrade_ready_core_snapshots(monkeypatch) -> None:
+    conn = _conn()
+    contexts = _seed_ready_candidate_and_statistics(conn)
+    monkeypatch.setattr(
+        maintenance,
+        "ensure_year_end_projection_set",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("projection failed")),
+    )
+
+    report = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        statistics_reuse_only=True,
+    )
+
+    assert report["status"] == "ready"
+    assert report["snapshot_set"]["ready_count"] == len(contexts)
+    assert report["year_end_projection"]["status"] == "failed"
+    assert {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT status FROM music_search_snapshot_meta WHERE semantic_base_key=?",
+            (contexts[0].semantic_base_key,),
+        )
+    } == {"ready"}
+
+
 def test_candidate_only_invalidation_keeps_statistics_ready() -> None:
     conn = _conn()
     contexts = _seed_ready_candidate_and_statistics(conn)
@@ -599,8 +630,11 @@ def test_candidate_only_invalidation_keeps_statistics_ready() -> None:
         )
     } == {"ready"}
     state = maintenance.get_music_search_index_state(conn)
-    assert state["source_revision"] is None
-    assert state["candidate_index_version"] is None
+    assert state["source_revision"] is not None
+    assert state["candidate_index_version"] is not None
+    candidate_maintenance = index_module.get_music_search_candidate_maintenance_state(conn)
+    assert candidate_maintenance["maintenance_status"] == "pending"
+    assert candidate_maintenance["target_source_revision"] != state["source_revision"]
 
 
 def test_statistics_reuse_only_fails_before_any_expensive_rebuild(monkeypatch) -> None:

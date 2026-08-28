@@ -20,6 +20,11 @@ def _get(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
 
+def _get_bool(key: str, default: bool) -> bool:
+    value = _get(key, "1" if default else "0").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
 # ── Spotify ──────────────────────────────────────────────────────────────
 
 SPOTIFY_CLIENT_ID = _get("SPOTIFY_CLIENT_ID")
@@ -50,6 +55,9 @@ FRONTEND_ORIGIN = _get("FRONTEND_ORIGIN", "http://localhost:5173")
 
 SPOTIFY_STATS_WARMUP = _get("SPOTIFY_STATS_WARMUP", "1")
 PYTEST_CURRENT_TEST = _get("PYTEST_CURRENT_TEST", "")
+MUSIC_SEARCH_CANDIDATE_LKG = _get_bool("MUSIC_SEARCH_CANDIDATE_LKG", True)
+MUSIC_SEARCH_STATISTICS_LKG = _get_bool("MUSIC_SEARCH_STATISTICS_LKG", True)
+MUSIC_SEARCH_TRACK_CREDIT_DELTA = _get_bool("MUSIC_SEARCH_TRACK_CREDIT_DELTA", True)
 
 # ── Remote access auth (Task 5) ──────────────────────────────────────
 

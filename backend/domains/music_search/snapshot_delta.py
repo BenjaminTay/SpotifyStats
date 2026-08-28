@@ -565,6 +565,7 @@ def build_incremental_music_search_snapshot_set(
             return None
 
     from backend.domains.music_search.snapshot import (
+        _activate_snapshot_variant,
         _assert_shared_full_publish_fence,
         _prune_old_music_search_snapshot_bases,
         _validate_context_rows,
@@ -654,6 +655,7 @@ def build_incremental_music_search_snapshot_set(
                     snapshot_key,
                 ),
             )
+            _activate_snapshot_variant(conn, context, snapshot_key)
             reports.append(
                 {
                     "status": "ready",

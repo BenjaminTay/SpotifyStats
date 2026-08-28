@@ -6,6 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+from backend.domains.music_search.deny_overlay import deny_overlay_available
 from backend.domains.music_search.index import get_music_search_index_state
 from backend.domains.music_search.normalization import (
     QueryScriptCategory,
@@ -80,6 +81,7 @@ def _ranked_match_cte(
     document_kinds: tuple[str, ...],
     use_fts: bool,
     snapshot_key: str | None,
+    deny_overlay: bool,
 ) -> tuple[str, dict[str, Any]]:
     """Build the bounded SQL match/rank source shared by totals and pages.
 
@@ -204,6 +206,7 @@ def _ranked_match_cte(
               AND d.generation_id=:generation_id
               AND d.kind IN ({", ".join(kind_names)})
               AND (d.kind!='track' OR d.merge_level=:merge_level)
+              {"AND NOT EXISTS (SELECT 1 FROM music_search_entity_deny_overlay denied WHERE denied.entity_key=d.entity_key)" if deny_overlay else ""}
         )"""
     return cte, params
 
@@ -226,6 +229,7 @@ def _query_ranked_rows(
         document_kinds=document_kinds,
         use_fts=use_fts,
         snapshot_key=snapshot_key,
+        deny_overlay=deny_overlay_available(conn),
     )
     params.update({"generation_id": generation_id, "merge_level": merge_level})
     order_by = "match_rank, popularity_tiebreaker DESC, normalized_label, entity_key"
@@ -436,6 +440,7 @@ def _query_fuzzy_rows(
               AND d.generation_id=:generation_id
               AND d.kind IN ({", ".join(kind_names)})
               AND (d.kind!='track' OR d.merge_level=:merge_level)
+              {"AND NOT EXISTS (SELECT 1 FROM music_search_entity_deny_overlay denied WHERE denied.entity_key=d.entity_key)" if deny_overlay_available(conn) else ""}
             ORDER BY fuzzy_recall_rank, d.normalized_label, d.entity_key
             LIMIT :pool_size""",
         params,
@@ -456,7 +461,7 @@ def search_music_index(
     state = get_music_search_index_state(conn)
     generation_id = state.get("active_generation_id")
     state_status = str(state.get("status") or "missing")
-    if not generation_id or state_status not in {"ready", "degraded"}:
+    if not generation_id:
         return MusicSearchRepositoryResult(
             status="failed" if state_status == "failed" else "missing",
             generation_id=None,
@@ -466,6 +471,29 @@ def search_music_index(
             albums=[],
             artists=[],
         )
+    # Legacy builds used the serving status column for shadow-build progress.
+    # Trust the immutable active pointer when its documents still exist; a
+    # pending/building/failed next generation must not create search downtime.
+    active_document = conn.execute(
+        """SELECT 1 FROM music_search_documents
+           WHERE generation_id=? LIMIT 1""",
+        (str(generation_id),),
+    ).fetchone()
+    if active_document is None:
+        return MusicSearchRepositoryResult(
+            status="missing",
+            generation_id=None,
+            candidate_index_version=None,
+            total_by_kind=MusicSearchKindTotals(),
+            tracks=[],
+            albums=[],
+            artists=[],
+        )
+    effective_status: Literal["ready", "degraded"] = (
+        "degraded"
+        if state_status == "degraded" or str(state.get("tokenizer") or "").startswith("bounded_")
+        else "ready"
+    )
     query_variants = _query_variants(query)
     normalized_query = query_variants[0][0]
     document_kinds = _allowed_document_kinds(kind, merge_level)
@@ -479,12 +507,13 @@ def search_music_index(
             kind=kind,
             page=page,
             page_size=page_size,
-            use_fts=state_status == "ready",
+            use_fts=effective_status == "ready",
             snapshot_key=snapshot_key,
         )
     except sqlite3.OperationalError:
-        if state_status != "ready":
+        if effective_status != "ready":
             raise
+        effective_status = "degraded"
         totals, rows = _query_ranked_rows(
             conn,
             generation_id=str(generation_id),
@@ -515,7 +544,7 @@ def search_music_index(
         )
         grouped[candidate.kind].append(candidate)
 
-    if totals.track + totals.album + totals.artist == 0 and state_status == "ready":
+    if totals.track + totals.album + totals.artist == 0 and effective_status == "ready":
         fuzzy_rows = _query_fuzzy_rows(
             conn,
             generation_id=str(generation_id),
@@ -567,7 +596,7 @@ def search_music_index(
             artist=fuzzy_totals.get("artist", 0),
         )
     return MusicSearchRepositoryResult(
-        status=cast(Literal["ready", "degraded"], state_status),
+        status=effective_status,
         generation_id=str(generation_id),
         candidate_index_version=str(state.get("candidate_index_version") or "") or None,
         total_by_kind=totals,

@@ -4,8 +4,11 @@ import sqlite3
 
 import pytest
 
-from backend.core.migrations import migrate_032, migrate_034, migrate_035
+from backend.core.migrations import migrate_032, migrate_034, migrate_035, migrate_060, migrate_063
+from backend.domains.music_search import index as index_module
+from backend.domains.music_search.deny_overlay import deny_music_search_entities
 from backend.domains.music_search.index import (
+    get_music_search_candidate_maintenance_state,
     get_music_search_index_state,
     rebuild_music_search_index,
 )
@@ -77,6 +80,8 @@ def _conn() -> sqlite3.Connection:
     migrate_032(conn)
     migrate_034(conn)
     migrate_035(conn)
+    migrate_060(conn)
+    migrate_063(conn)
     conn.commit()
     return conn
 
@@ -109,6 +114,67 @@ def test_rebuild_generation_is_random_but_candidate_version_is_deterministic() -
     assert first["generation_id"] != second["generation_id"]
     assert first["candidate_index_version"] == second["candidate_index_version"]
     assert first["content_digest"] == second["content_digest"]
+
+
+def test_failed_shadow_build_preserves_active_generation_and_serving_state(monkeypatch) -> None:
+    conn = _conn()
+    first = rebuild_music_search_index(conn)
+
+    def fail_build(_conn):
+        active = search_music_index(
+            _conn,
+            query="card",
+            kind="track",
+            page=1,
+            page_size=5,
+            merge_level=2,
+        )
+        assert [item.entity_key for item in active.tracks] == ["track:100"]
+        raise RuntimeError("shadow build failed")
+
+    monkeypatch.setattr(index_module, "build_music_search_documents", fail_build)
+
+    with pytest.raises(RuntimeError, match="shadow build failed"):
+        rebuild_music_search_index(conn)
+
+    state = get_music_search_index_state(conn)
+    maintenance = get_music_search_candidate_maintenance_state(conn)
+    assert state["active_generation_id"] == first["generation_id"]
+    assert state["status"] in {"ready", "degraded"}
+    assert state["source_revision"] == first["source_revision"]
+    assert state["candidate_index_version"] == first["candidate_index_version"]
+    assert maintenance["maintenance_status"] == "failed"
+    assert maintenance["last_error"] == "RuntimeError"
+
+
+def test_superseded_shadow_failure_does_not_overwrite_newer_pending_target(monkeypatch) -> None:
+    conn = _conn()
+    first = rebuild_music_search_index(conn)
+
+    def supersede_then_fail(_conn):
+        _conn.execute(
+            """UPDATE music_search_candidate_maintenance_state
+                  SET maintenance_status='pending', building_generation_id=NULL,
+                      target_source_revision='source-new',
+                      target_candidate_index_version='candidate-new',
+                      last_error=NULL
+                WHERE state_id=1"""
+        )
+        _conn.commit()
+        raise RuntimeError("old shadow superseded")
+
+    monkeypatch.setattr(index_module, "build_music_search_documents", supersede_then_fail)
+
+    with pytest.raises(RuntimeError, match="old shadow superseded"):
+        rebuild_music_search_index(conn)
+
+    state = get_music_search_index_state(conn)
+    maintenance = get_music_search_candidate_maintenance_state(conn)
+    assert state["active_generation_id"] == first["generation_id"]
+    assert maintenance["maintenance_status"] == "pending"
+    assert maintenance["target_source_revision"] == "source-new"
+    assert maintenance["target_candidate_index_version"] == "candidate-new"
+    assert maintenance["last_error"] is None
 
 
 def test_rebuild_excludes_dimensions_unreachable_from_active_plays() -> None:
@@ -432,3 +498,34 @@ def test_atomic_publish_retains_only_active_and_previous_generation() -> None:
     assert generations == {second["generation_id"], third["generation_id"]}
     assert first["generation_id"] not in generations
     assert third["previous_generation_id"] == second["generation_id"]
+
+
+def test_deny_overlay_filters_lkg_and_clears_only_after_absence_is_proven() -> None:
+    conn = _conn()
+    first = rebuild_music_search_index(conn)
+    deny_music_search_entities(
+        conn,
+        ("track:100", "track:999"),
+        reason="privacy fixture",
+        target_source_revision=first["source_revision"],
+    )
+    conn.commit()
+
+    hidden = search_music_index(
+        conn,
+        query="cardigan",
+        kind="track",
+        page=1,
+        page_size=20,
+        merge_level=2,
+    )
+    assert hidden.tracks == []
+
+    rebuild_music_search_index(conn)
+    remaining = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT entity_key FROM music_search_entity_deny_overlay"
+        ).fetchall()
+    }
+    assert remaining == {"track:100"}

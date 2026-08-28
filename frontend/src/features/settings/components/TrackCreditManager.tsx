@@ -27,6 +27,7 @@ import type {
   TrackCreditAction,
   TrackCreditManualChange,
   TrackCreditRole,
+  TrackCreditState,
 } from "@/types/settings";
 
 function Input({ className, ...props }: ComponentProps<"input">) {
@@ -81,6 +82,74 @@ function selectedFromCredit(credit: EffectiveTrackCredit): SelectedArtist {
   };
 }
 
+function candidateMaintenanceLabel(state: TrackCreditState | undefined): string {
+  if (!state) return "搜索候选 · 检查中";
+  const maintenance = state.candidate_maintenance_status;
+  if (state.serving_revision != null) {
+    if (maintenance === "pending" || maintenance === "building") {
+      return "搜索候选 · 上一版本可用";
+    }
+    if (maintenance === "failed") return "搜索候选 · 上一版本可用";
+    return "搜索候选 · 已同步";
+  }
+  if (maintenance === "missing" || maintenance === "failed") {
+    return "搜索候选 · 暂不可用";
+  }
+  return state.rebuild_status === "ready"
+    ? "搜索候选 · 已同步"
+    : "搜索候选 · 状态待确认";
+}
+
+function statisticsMaintenanceLabel(state: TrackCreditState | undefined): string {
+  if (!state) return "播放统计 · 检查中";
+  const variants = state.statistics_variant_statuses ?? [];
+  if (variants.some((variant) => variant.maintenance_status === "failed")) {
+    return "播放统计 · 部分更新失败";
+  }
+  if (variants.some((variant) =>
+    variant.maintenance_status === "pending" || variant.maintenance_status === "building"
+  )) {
+    return variants.some((variant) => variant.freshness === "last_known_good")
+      ? "播放统计 · 上一版本可用"
+      : "播放统计 · 更新中";
+  }
+  if (variants.length > 0 && variants.every((variant) => variant.maintenance_status === "ready")) {
+    return "播放统计 · 已同步";
+  }
+  if (state.rebuild_status === "failed") return "播放统计 · 更新失败";
+  if (state.rebuild_status === "running") return "播放统计 · 更新中";
+  if (state.rebuild_status === "pending") return "播放统计 · 待同步";
+  return "播放统计 · 已同步";
+}
+
+function maintenanceTone(
+  state: TrackCreditState | undefined,
+  layer: "candidate" | "statistics",
+): string {
+  if (!state) return "bg-muted text-muted-foreground";
+  if (layer === "candidate") {
+    if (state.serving_revision != null) {
+      return state.candidate_maintenance_status === "ready" || state.candidate_maintenance_status == null
+        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+        : "bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    }
+    if (state.candidate_maintenance_status === "failed" || state.candidate_maintenance_status === "missing") {
+      return "bg-destructive/10 text-destructive";
+    }
+  }
+  const variants = state.statistics_variant_statuses ?? [];
+  if (state.rebuild_status === "failed" || variants.some((variant) => variant.maintenance_status === "failed")) {
+    return "bg-destructive/10 text-destructive";
+  }
+  if (
+    state.rebuild_status === "pending" || state.rebuild_status === "running" ||
+    variants.some((variant) => variant.maintenance_status === "pending" || variant.maintenance_status === "building")
+  ) {
+    return "bg-amber-500/10 text-amber-700 dark:text-amber-300";
+  }
+  return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+}
+
 export function TrackCreditManager({
   initialTrackId,
   onComplete,
@@ -109,6 +178,9 @@ export function TrackCreditManager({
   );
   const detail = credits.detail.data;
   const state = credits.state;
+  const retryAllowed = state?.retry_allowed ?? (
+    state?.rebuild_status === "pending" || state?.rebuild_status === "failed"
+  );
 
   const draft: TrackCreditDraft | null =
     selectedTrackId != null && selectedArtist
@@ -185,24 +257,28 @@ export function TrackCreditManager({
             人工修改 {credits.manualChanges.length} 项
           </span>
           <span
-            className={cn(
-              "rounded-full px-2.5 py-1",
-              state?.rebuild_status === "ready"
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                : state?.rebuild_status === "failed"
-                  ? "bg-destructive/10 text-destructive"
-                  : "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-            )}
+            className={cn("rounded-full px-2.5 py-1", maintenanceTone(state, "candidate"))}
           >
-            {state?.rebuild_status === "ready"
-              ? "数据已同步"
-              : state?.rebuild_status === "failed"
-                ? "同步失败 · 实时修改仍生效"
-                : "正在同步 · 实时修改已生效"}
+            {candidateMaintenanceLabel(state)}
           </span>
-          {state?.rebuild_status === "failed" && (
-            <Button type="button" size="sm" variant="outline" onClick={() => credits.rebuild.mutate()}>
-              <RefreshCw className="size-3.5" />重试
+          <span className={cn("rounded-full px-2.5 py-1", maintenanceTone(state, "statistics"))}>
+            {statisticsMaintenanceLabel(state)}
+          </span>
+          {state?.serving_revision != null && state.target_revision != null && (
+            <span className="rounded-full border border-border bg-background px-2.5 py-1 tabular-nums text-muted-foreground">
+              服务 revision {state.serving_revision} → 目标 {state.target_revision}
+            </span>
+          )}
+          {retryAllowed && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={credits.rebuild.isPending}
+              onClick={() => credits.rebuild.mutate()}
+            >
+              <RefreshCw className={cn("size-3.5", credits.rebuild.isPending && "animate-spin")} />
+              {state?.rebuild_status === "failed" ? "重试维护" : "恢复维护"}
             </Button>
           )}
       </div>

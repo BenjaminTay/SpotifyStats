@@ -10,6 +10,9 @@ from backend.domains.music_search.contracts import parse_music_search_entity_key
 
 MusicSearchKind = Literal["track", "album", "artist"]
 MusicSearchSnapshotStatus = Literal["ready", "warming", "unavailable", "stale", "failed"]
+MusicSearchCandidateStatus = Literal["ready", "degraded", "unavailable"]
+MusicSearchCandidateFreshness = Literal["current", "last_known_good", "fallback", "unavailable"]
+MusicSearchStatisticsFreshness = Literal["current", "last_known_good", "unavailable"]
 MusicSearchMatchField = Literal["label", "artist", "album", "alias"]
 MusicSearchMatchQuality = Literal["exact", "prefix", "token", "substring", "fuzzy"]
 MusicSearchMatchType = Literal["original", "simplified", "traditional", "fuzzy"]
@@ -89,7 +92,13 @@ class MusicSearchCandidateResponse(BaseModel):
     query: str
     normalized_query: str
     snapshot_status: MusicSearchSnapshotStatus
+    candidate_status: MusicSearchCandidateStatus = "unavailable"
+    candidate_freshness: MusicSearchCandidateFreshness = "unavailable"
+    statistics_status: MusicSearchSnapshotStatus = "unavailable"
+    statistics_freshness: MusicSearchStatisticsFreshness = "unavailable"
     filter_fingerprint: str | None = None
+    served_filter_fingerprint: str | None = None
+    target_filter_fingerprint: str | None = None
     candidate_index_version: str | None = None
     kind: MusicSearchKind | None = None
     page: int = Field(default=1, ge=1)
@@ -111,6 +120,10 @@ class MusicSearchContextResponse(BaseModel):
     response_version: Literal["music_search_context_v1"] = "music_search_context_v1"
     snapshot_status: MusicSearchSnapshotStatus
     filter_fingerprint: str | None = None
+    statistics_status: MusicSearchSnapshotStatus = "unavailable"
+    statistics_freshness: MusicSearchStatisticsFreshness = "unavailable"
+    served_filter_fingerprint: str | None = None
+    target_filter_fingerprint: str | None = None
     items: dict[str, MusicSearchContextItem] = Field(default_factory=dict)
 
     @field_validator("items")

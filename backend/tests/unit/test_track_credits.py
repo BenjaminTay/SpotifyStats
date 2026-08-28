@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+import threading
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -136,6 +138,80 @@ def test_manual_featured_credit_preserves_raw_facts_and_single_track_event(conn)
     ]
     assert _facts_hash(conn) == before_hash
     assert conn.execute("SELECT COUNT(*) FROM plays WHERE track_id=175").fetchone()[0] == 2
+
+
+def test_idempotent_replay_is_explicit_and_does_not_advance_revision(conn):
+    created = _add_britney(conn)
+
+    replayed = _add_britney(conn)
+
+    assert created["idempotent_replay"] is False
+    assert replayed["idempotent_replay"] is True
+    assert replayed["event_id"] == created["event_id"]
+    assert get_track_credit_state(conn)["current_revision"] == 1
+    assert conn.execute("SELECT COUNT(*) FROM track_credit_events").fetchone()[0] == 1
+
+
+def test_two_connections_competing_for_one_revision_yield_one_conflict(
+    conn,
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "track-credit-cas.db"
+    target = sqlite3.connect(path)
+    conn.backup(target)
+    target.close()
+    barrier = threading.Barrier(2)
+    from backend.domains.metadata import track_credits as track_credit_module
+
+    original_next_revision = track_credit_module._next_revision
+
+    def synchronized_next_revision(database, expected_revision):
+        barrier.wait(timeout=5)
+        return original_next_revision(database, expected_revision)
+
+    monkeypatch.setattr(track_credit_module, "_next_revision", synchronized_next_revision)
+
+    def mutate(suffix: str):
+        database = sqlite3.connect(path, timeout=5)
+        database.row_factory = sqlite3.Row
+        try:
+            return apply_track_credit_override(
+                database,
+                track_id=175,
+                artist_id=53,
+                action="add",
+                role="featured",
+                evidence_type="user_confirmed",
+                evidence_source=None,
+                reason="concurrency fixture",
+                expected_revision=0,
+                idempotency_key=f"concurrent-credit-{suffix}",
+            )
+        except ValueError as exc:
+            return exc
+        finally:
+            database.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(mutate, ("first", "second")))
+
+    successes = [result for result in results if isinstance(result, dict)]
+    conflicts = [result for result in results if isinstance(result, ValueError)]
+    assert len(successes) == 1
+    assert len(conflicts) == 1
+    assert "revision conflict" in str(conflicts[0])
+    verify = sqlite3.connect(path)
+    try:
+        assert (
+            verify.execute(
+                "SELECT current_revision FROM track_credit_state WHERE state_id=1"
+            ).fetchone()[0]
+            == 1
+        )
+        assert verify.execute("SELECT COUNT(*) FROM track_credit_events").fetchone()[0] == 1
+    finally:
+        verify.close()
 
 
 def test_identity_alias_overlap_is_canonicalized_and_deduplicated(conn):

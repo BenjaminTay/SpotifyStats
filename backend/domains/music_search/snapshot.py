@@ -11,6 +11,7 @@ from typing import Any, Literal, cast
 import pandas as pd
 
 from backend.core.cache_manager import invalidate, invalidate_except
+from backend.core.config import MUSIC_SEARCH_STATISTICS_LKG
 from backend.domains.ai_agent.entity_resolver import EntityType
 from backend.domains.billboard.chart_power_score import (
     compute_album_power_scores,
@@ -34,7 +35,10 @@ from backend.domains.music_search.context import (
     music_search_snapshot_policy_key,
 )
 from backend.domains.music_search.contracts import make_music_search_entity_key
-from backend.domains.music_search.index import get_music_search_index_state
+from backend.domains.music_search.index import (
+    get_music_search_index_state,
+    mark_music_search_candidate_maintenance_pending,
+)
 from backend.domains.music_search.snapshot_lineage import (
     active_playback_lineage,
     music_search_snapshot_dependency_digest,
@@ -60,6 +64,198 @@ from backend.services.music_search_service import (
 
 SnapshotBuildStatus = Literal["pending", "running", "ready", "failed", "stale"]
 WeeklyLedgerRow = tuple[str, str, str, int, int, int, str]
+
+
+def _snapshot_variant_state_exists(conn: sqlite3.Connection) -> bool:
+    return (
+        conn.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='music_search_snapshot_variant_state'"""
+        ).fetchone()
+        is not None
+    )
+
+
+def _set_snapshot_variant_target(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+    *,
+    status: Literal["ready", "pending", "building", "failed"],
+    last_error: str | None = None,
+    replace_target: bool = True,
+) -> None:
+    """Record maintenance intent without changing the serving snapshot."""
+    if not _snapshot_variant_state_exists(conn):
+        return
+    conflict_where = (
+        ""
+        if replace_target
+        else (
+            " WHERE music_search_snapshot_variant_state.target_filter_fingerprint="
+            "excluded.target_filter_fingerprint"
+        )
+    )
+    conn.execute(
+        """INSERT INTO music_search_snapshot_variant_state(
+               merge_level, dynamic_threshold, active_snapshot_key,
+               active_filter_fingerprint, target_filter_fingerprint,
+               maintenance_status, last_error, updated_at
+           ) VALUES (?, ?, NULL, NULL, ?, ?, ?, datetime('now'))
+           ON CONFLICT(merge_level, dynamic_threshold) DO UPDATE SET
+               target_filter_fingerprint=excluded.target_filter_fingerprint,
+               maintenance_status=excluded.maintenance_status,
+               last_error=excluded.last_error,
+               updated_at=datetime('now')"""
+        + conflict_where,
+        (
+            context.merge_level,
+            int(context.dynamic_threshold),
+            context.filter_fingerprint,
+            status,
+            last_error[:500] if last_error else None,
+        ),
+    )
+
+
+def _activate_snapshot_variant(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+    snapshot_key: str,
+) -> None:
+    """Atomically point one variant at a completely published snapshot."""
+    if not _snapshot_variant_state_exists(conn):
+        return
+    conn.execute(
+        """INSERT INTO music_search_snapshot_variant_state(
+               merge_level, dynamic_threshold, active_snapshot_key,
+               active_filter_fingerprint, target_filter_fingerprint,
+               maintenance_status, last_error, updated_at
+           ) VALUES (?, ?, ?, ?, ?, 'ready', NULL, datetime('now'))
+           ON CONFLICT(merge_level, dynamic_threshold) DO UPDATE SET
+               active_snapshot_key=excluded.active_snapshot_key,
+               active_filter_fingerprint=excluded.active_filter_fingerprint,
+               target_filter_fingerprint=excluded.target_filter_fingerprint,
+               maintenance_status='ready', last_error=NULL,
+               updated_at=datetime('now')""",
+        (
+            context.merge_level,
+            int(context.dynamic_threshold),
+            snapshot_key,
+            context.filter_fingerprint,
+            context.filter_fingerprint,
+        ),
+    )
+
+
+def _fail_snapshot_variant_target(
+    conn: sqlite3.Connection,
+    context: MusicSearchFilterContext,
+    *,
+    last_error: str,
+) -> None:
+    """Fail only the target still owned by this builder invocation."""
+    if not _snapshot_variant_state_exists(conn):
+        return
+    conn.execute(
+        """UPDATE music_search_snapshot_variant_state
+           SET maintenance_status='failed', last_error=?, updated_at=datetime('now')
+           WHERE merge_level=? AND dynamic_threshold=?
+             AND target_filter_fingerprint=?""",
+        (
+            last_error[:500],
+            context.merge_level,
+            int(context.dynamic_threshold),
+            context.filter_fingerprint,
+        ),
+    )
+
+
+def get_serving_music_search_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    filter_fingerprint: str,
+    merge_level: int,
+    dynamic_threshold: bool,
+) -> dict[str, Any]:
+    """Resolve current exact statistics or a validated last-known-good snapshot."""
+    exact = conn.execute(
+        """SELECT snapshot_key, status, builder_version
+           FROM music_search_snapshot_meta WHERE filter_fingerprint=?""",
+        (filter_fingerprint,),
+    ).fetchone()
+    if (
+        exact is not None
+        and str(exact[1] or "") == "ready"
+        and str(exact[2] or "") == MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+    ):
+        return {
+            "snapshot_key": str(exact[0]),
+            "status": "ready",
+            "freshness": "current",
+            "served_filter_fingerprint": filter_fingerprint,
+            "target_filter_fingerprint": filter_fingerprint,
+        }
+
+    target_status = _snapshot_public_status(str(exact[1]) if exact is not None else None)
+    if exact is not None and str(exact[2] or "") != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION:
+        target_status = "stale"
+    if not MUSIC_SEARCH_STATISTICS_LKG or not _snapshot_variant_state_exists(conn):
+        return {
+            "snapshot_key": None,
+            "status": target_status,
+            "freshness": "unavailable",
+            "served_filter_fingerprint": None,
+            "target_filter_fingerprint": filter_fingerprint,
+        }
+    state = conn.execute(
+        """SELECT active_snapshot_key, active_filter_fingerprint,
+                  target_filter_fingerprint, maintenance_status
+           FROM music_search_snapshot_variant_state
+           WHERE merge_level=? AND dynamic_threshold=?""",
+        (int(merge_level), int(dynamic_threshold)),
+    ).fetchone()
+    if state is None or not state[0]:
+        return {
+            "snapshot_key": None,
+            "status": target_status,
+            "freshness": "unavailable",
+            "served_filter_fingerprint": None,
+            "target_filter_fingerprint": filter_fingerprint,
+        }
+    active = conn.execute(
+        """SELECT filter_fingerprint, status, builder_version,
+                  EXISTS(SELECT 1 FROM music_search_entity_context payload
+                         WHERE payload.snapshot_key=meta.snapshot_key) AS has_payload
+           FROM music_search_snapshot_meta meta WHERE snapshot_key=?""",
+        (state[0],),
+    ).fetchone()
+    if (
+        active is None
+        or str(active[1] or "") not in {"ready", "stale"}
+        or str(active[2] or "") != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+        or not bool(active[3])
+    ):
+        return {
+            "snapshot_key": None,
+            "status": target_status,
+            "freshness": "unavailable",
+            "served_filter_fingerprint": None,
+            "target_filter_fingerprint": filter_fingerprint,
+        }
+    maintenance_status = str(state[3] or "pending")
+    if maintenance_status in {"pending", "building"}:
+        public_status: MusicSearchSnapshotStatus = "warming"
+    elif maintenance_status == "failed":
+        public_status = "failed"
+    else:
+        public_status = target_status if target_status != "unavailable" else "stale"
+    return {
+        "snapshot_key": str(state[0]),
+        "status": public_status,
+        "freshness": "last_known_good",
+        "served_filter_fingerprint": str(active[0]),
+        "target_filter_fingerprint": str(state[2] or filter_fingerprint),
+    }
 
 
 def _snapshot_public_status(status: str | None) -> MusicSearchSnapshotStatus:
@@ -125,29 +321,50 @@ def lookup_music_search_context(
     *,
     filter_fingerprint: str,
     entity_keys: list[str],
+    merge_level: int | None = None,
+    dynamic_threshold: bool | None = None,
+    include_target_fingerprint: bool = True,
 ) -> MusicSearchContextResponse:
-    meta = conn.execute(
-        """SELECT snapshot_key, status, builder_version FROM music_search_snapshot_meta
-           WHERE filter_fingerprint=?""",
-        (filter_fingerprint,),
-    ).fetchone()
-    if meta is not None and str(meta["builder_version"] or "") != (
-        MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
-    ):
-        status: MusicSearchSnapshotStatus = "stale"
+    serving: dict[str, Any] | None = None
+    if merge_level is not None and dynamic_threshold is not None:
+        serving = get_serving_music_search_snapshot(
+            conn,
+            filter_fingerprint=filter_fingerprint,
+            merge_level=merge_level,
+            dynamic_threshold=dynamic_threshold,
+        )
+        snapshot_key = serving["snapshot_key"]
+        status = cast(MusicSearchSnapshotStatus, serving["status"])
     else:
-        status = _snapshot_public_status(str(meta["status"]) if meta else None)
-    if meta is None or status != "ready" or not entity_keys:
+        meta = conn.execute(
+            """SELECT snapshot_key, status, builder_version
+               FROM music_search_snapshot_meta WHERE filter_fingerprint=?""",
+            (filter_fingerprint,),
+        ).fetchone()
+        if meta is not None and str(meta["builder_version"] or "") != (
+            MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+        ):
+            status = "stale"
+        else:
+            status = _snapshot_public_status(str(meta["status"]) if meta else None)
+        snapshot_key = str(meta["snapshot_key"]) if meta is not None else None
+    if snapshot_key is None or (serving is None and status != "ready") or not entity_keys:
         return MusicSearchContextResponse(
             snapshot_status=status,
             filter_fingerprint=filter_fingerprint,
+            statistics_status=status,
+            statistics_freshness=(serving["freshness"] if serving is not None else "unavailable"),
+            served_filter_fingerprint=(
+                serving["served_filter_fingerprint"] if serving is not None else None
+            ),
+            target_filter_fingerprint=(filter_fingerprint if include_target_fingerprint else None),
         )
     unique_keys = list(dict.fromkeys(entity_keys))[:30]
     placeholders = ",".join("?" for _ in unique_keys)
     rows = conn.execute(
         f"""SELECT * FROM music_search_entity_context
             WHERE snapshot_key=? AND entity_key IN ({placeholders})""",
-        (meta["snapshot_key"], *unique_keys),
+        (snapshot_key, *unique_keys),
     ).fetchall()
     items: dict[str, MusicSearchContextItem] = {}
     for row in rows:
@@ -176,8 +393,14 @@ def lookup_music_search_context(
             chart=chart,
         )
     return MusicSearchContextResponse(
-        snapshot_status="ready",
+        snapshot_status=status,
         filter_fingerprint=filter_fingerprint,
+        statistics_status=status,
+        statistics_freshness=(serving["freshness"] if serving is not None else "current"),
+        served_filter_fingerprint=(
+            serving["served_filter_fingerprint"] if serving is not None else filter_fingerprint
+        ),
+        target_filter_fingerprint=(filter_fingerprint if include_target_fingerprint else None),
         items=items,
     )
 
@@ -849,7 +1072,9 @@ def prepare_music_search_snapshot_set(
     with conn:
         for context in contexts:
             if get_ready_music_search_snapshot_key(conn, context.filter_fingerprint) is not None:
+                _activate_snapshot_variant(conn, context, context.filter_fingerprint)
                 continue
+            _set_snapshot_variant_target(conn, context, status="pending")
             conn.execute(
                 """INSERT INTO music_search_snapshot_meta(
                        snapshot_key, filter_fingerprint, source_revision, status,
@@ -877,11 +1102,120 @@ def prepare_music_search_snapshot_set(
             )
 
 
+def promote_role_only_music_search_snapshots(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+) -> bool:
+    """Re-key exact statistics after a proven role-only credit revision.
+
+    Role labels change candidate presentation but not artist membership or any
+    metric.  Copying the compact, already-validated payload avoids all lifetime
+    and Billboard computation while keeping fingerprint truthfulness.
+    The caller owns the surrounding revision transaction.
+    """
+    if not contexts or not _snapshot_variant_state_exists(conn):
+        return False
+    sources: list[tuple[MusicSearchFilterContext, sqlite3.Row]] = []
+    for context in contexts:
+        row = conn.execute(
+            """SELECT meta.*
+               FROM music_search_snapshot_variant_state state
+               JOIN music_search_snapshot_meta meta
+                 ON meta.snapshot_key=state.active_snapshot_key
+               WHERE state.merge_level=? AND state.dynamic_threshold=?
+                 AND meta.status IN ('ready', 'stale')
+                 AND meta.builder_version=?
+                 AND EXISTS(
+                     SELECT 1 FROM music_search_entity_context payload
+                     WHERE payload.snapshot_key=meta.snapshot_key
+                 )""",
+            (
+                context.merge_level,
+                int(context.dynamic_threshold),
+                MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            ),
+        ).fetchone()
+        if row is None:
+            return False
+        sources.append((context, row))
+
+    dependency_digest = music_search_snapshot_dependency_digest(conn)
+    ledger_exists = bool(
+        conn.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type='table' AND name='music_search_weekly_chart_context'"""
+        ).fetchone()
+    )
+    for context, source in sources:
+        source_key = str(source["snapshot_key"])
+        target_key = context.filter_fingerprint
+        if source_key == target_key:
+            _activate_snapshot_variant(conn, context, target_key)
+            continue
+        clear_year_end_projection(conn, target_key)
+        conn.execute(
+            "DELETE FROM music_search_entity_context WHERE snapshot_key=?",
+            (target_key,),
+        )
+        if ledger_exists:
+            conn.execute(
+                "DELETE FROM music_search_weekly_chart_context WHERE snapshot_key=?",
+                (target_key,),
+            )
+        conn.execute("DELETE FROM music_search_snapshot_meta WHERE snapshot_key=?", (target_key,))
+        conn.execute(
+            """INSERT INTO music_search_snapshot_meta(
+                   snapshot_key, filter_fingerprint, source_revision, status,
+                   created_at, activated_at, last_accessed_at, last_error,
+                   semantic_base_key, merge_level, dynamic_threshold,
+                   builder_version, policy_key, source_generation_id,
+                   source_dataset_digest, base_snapshot_key, build_strategy,
+                   dependency_digest, change_set_digest
+               ) VALUES (?, ?, ?, 'ready', datetime('now'), datetime('now'), NULL, NULL,
+                         ?, ?, ?, ?, ?, ?, ?, ?, 'role_only_rekey', ?, NULL)""",
+            (
+                target_key,
+                target_key,
+                context.source_revision,
+                context.semantic_base_key,
+                context.merge_level,
+                int(context.dynamic_threshold),
+                MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+                music_search_snapshot_policy_key(context),
+                source["source_generation_id"],
+                source["source_dataset_digest"],
+                source_key,
+                dependency_digest,
+            ),
+        )
+        conn.execute(
+            """INSERT INTO music_search_entity_context
+               SELECT ?, entity_key, play_events, total_ms, peak_position,
+                      peak_weeks, weeks_on_chart, weeks_at_no1, power_score,
+                      power_rank, first_week, latest_week, first_peak_week
+               FROM music_search_entity_context WHERE snapshot_key=?""",
+            (target_key, source_key),
+        )
+        if ledger_exists:
+            conn.execute(
+                """INSERT INTO music_search_weekly_chart_context
+                   SELECT ?, family, week, entity_key, rank, play_count,
+                          total_ms, stable_sort_key
+                   FROM music_search_weekly_chart_context WHERE snapshot_key=?""",
+                (target_key, source_key),
+            )
+        _activate_snapshot_variant(conn, context, target_key)
+    return True
+
+
 def build_music_search_snapshot(
     conn: sqlite3.Connection,
     context: MusicSearchFilterContext,
 ) -> dict[str, Any]:
     snapshot_key = context.filter_fingerprint
+    candidate_generation_id = str(
+        get_music_search_index_state(conn).get("active_generation_id") or ""
+    )
     conn.execute(
         """INSERT INTO music_search_snapshot_meta(
                snapshot_key, filter_fingerprint, source_revision, status, created_at,
@@ -906,11 +1240,41 @@ def build_music_search_snapshot(
             MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
         ),
     )
+    _set_snapshot_variant_target(
+        conn,
+        context,
+        status="building",
+        replace_target=False,
+    )
     conn.commit()
     try:
         rows = _context_rows(conn, context)
         _validate_context_rows(rows)
-        with conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            current_context = build_music_search_filter_context(
+                conn,
+                context.filter_values(),
+            )
+            if (
+                current_context.filter_fingerprint != context.filter_fingerprint
+                or current_context.source_revision != context.source_revision
+            ):
+                raise RuntimeError("music-search context changed during snapshot build")
+            current_generation_id = str(
+                get_music_search_index_state(conn).get("active_generation_id") or ""
+            )
+            if current_generation_id != candidate_generation_id:
+                raise RuntimeError("candidate generation changed during snapshot build")
+            if _snapshot_variant_state_exists(conn):
+                owner = conn.execute(
+                    """SELECT target_filter_fingerprint
+                       FROM music_search_snapshot_variant_state
+                       WHERE merge_level=? AND dynamic_threshold=?""",
+                    (context.merge_level, int(context.dynamic_threshold)),
+                ).fetchone()
+                if owner is None or str(owner[0] or "") != context.filter_fingerprint:
+                    raise RuntimeError("snapshot target ownership changed during build")
             clear_year_end_projection(conn, snapshot_key)
             conn.execute(
                 "DELETE FROM music_search_entity_context WHERE snapshot_key=?",
@@ -930,6 +1294,11 @@ def build_music_search_snapshot(
                    WHERE snapshot_key=?""",
                 (snapshot_key,),
             )
+            _activate_snapshot_variant(conn, context, snapshot_key)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         return {
             "status": "ready",
             "snapshot_key": snapshot_key,
@@ -938,10 +1307,16 @@ def build_music_search_snapshot(
             "source_revision": context.source_revision,
         }
     except Exception as exc:
+        conn.rollback()
         conn.execute(
             """UPDATE music_search_snapshot_meta
                SET status='failed', last_error=? WHERE snapshot_key=?""",
             (type(exc).__name__, snapshot_key),
+        )
+        _fail_snapshot_variant_target(
+            conn,
+            context,
+            last_error=type(exc).__name__,
         )
         conn.commit()
         raise
@@ -963,6 +1338,28 @@ def _prune_old_music_search_snapshot_bases(
     keep = [str(row[0]) for row in rows[:2]]
     if current_semantic_base_key not in keep:
         keep.insert(0, current_semantic_base_key)
+    if _snapshot_variant_state_exists(conn):
+        active_bases = conn.execute(
+            """SELECT DISTINCT meta.semantic_base_key
+               FROM music_search_snapshot_variant_state state
+               JOIN music_search_snapshot_meta meta
+                 ON meta.snapshot_key=state.active_snapshot_key
+               WHERE meta.semantic_base_key IS NOT NULL"""
+        ).fetchall()
+        for row in active_bases:
+            if str(row[0]) not in keep:
+                keep.append(str(row[0]))
+    protected_active = (
+        """
+        AND snapshot_key NOT IN (
+            SELECT active_snapshot_key
+            FROM music_search_snapshot_variant_state
+            WHERE active_snapshot_key IS NOT NULL
+        )
+    """
+        if _snapshot_variant_state_exists(conn)
+        else ""
+    )
     placeholders = ",".join("?" for _ in keep)
     with conn:
         # Normal application connections do not enable SQLite foreign-key
@@ -976,6 +1373,7 @@ def _prune_old_music_search_snapshot_bases(
                     WHERE (semantic_base_key IS NULL
                            OR semantic_base_key NOT IN ({placeholders}))
                       AND status NOT IN ('pending', 'running')
+                      {protected_active}
                 )""",
             tuple(keep),
         )
@@ -991,6 +1389,7 @@ def _prune_old_music_search_snapshot_bases(
                         WHERE (semantic_base_key IS NULL
                                OR semantic_base_key NOT IN ({placeholders}))
                           AND status NOT IN ('pending', 'running')
+                          {protected_active}
                     )""",
                 tuple(keep),
             )
@@ -1011,6 +1410,7 @@ def _prune_old_music_search_snapshot_bases(
                             WHERE (semantic_base_key IS NULL
                                    OR semantic_base_key NOT IN ({placeholders}))
                               AND status NOT IN ('pending', 'running')
+                              {protected_active}
                         )""",
                     tuple(keep),
                 )
@@ -1029,13 +1429,15 @@ def _prune_old_music_search_snapshot_bases(
                         WHERE (semantic_base_key IS NULL
                                OR semantic_base_key NOT IN ({placeholders}))
                           AND status NOT IN ('pending', 'running')
+                          {protected_active}
                     )""",
                 tuple(keep),
             )
         conn.execute(
             f"""DELETE FROM music_search_snapshot_meta
                 WHERE (semantic_base_key IS NULL OR semantic_base_key NOT IN ({placeholders}))
-                  AND status NOT IN ('pending', 'running')""",
+                  AND status NOT IN ('pending', 'running')
+                  {protected_active}""",
             tuple(keep),
         )
 
@@ -1180,6 +1582,17 @@ def _assert_shared_full_publish_fence(
             raise RuntimeError(
                 "music-search semantic base changed during shared-full snapshot build"
             )
+        if _snapshot_variant_state_exists(conn):
+            owner = conn.execute(
+                """SELECT target_filter_fingerprint
+                   FROM music_search_snapshot_variant_state
+                   WHERE merge_level=? AND dynamic_threshold=?""",
+                (context.merge_level, int(context.dynamic_threshold)),
+            ).fetchone()
+            if owner is None or str(owner[0] or "") != context.filter_fingerprint:
+                raise RuntimeError(
+                    "music-search snapshot target ownership changed during shared-full build"
+                )
 
 
 def _publish_shared_full_snapshot_set(
@@ -1276,6 +1689,8 @@ def _publish_shared_full_snapshot_set(
                WHERE snapshot_key IN ({})""".format(",".join("?" for _ in contexts)),
             tuple(context.filter_fingerprint for context in contexts),
         )
+        for context in contexts:
+            _activate_snapshot_variant(conn, context, context.filter_fingerprint)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -1320,6 +1735,14 @@ def build_shared_full_music_search_snapshot_set(
             lineage_ready = False
     try:
         prepare_music_search_snapshot_set(conn, contexts)
+        for context in contexts:
+            _set_snapshot_variant_target(
+                conn,
+                context,
+                status="building",
+                replace_target=False,
+            )
+        conn.commit()
         for dynamic_threshold in dict.fromkeys(context.dynamic_threshold for context in contexts):
             threshold_contexts = tuple(
                 context for context in contexts if context.dynamic_threshold == dynamic_threshold
@@ -1497,6 +1920,12 @@ def build_shared_full_music_search_snapshot_set(
             ),
             tuple(context.filter_fingerprint for context in contexts),
         )
+        for context in contexts:
+            _fail_snapshot_variant_target(
+                conn,
+                context,
+                last_error="shared_full_snapshot_failed",
+            )
         conn.commit()
         raise
     finally:
@@ -1550,14 +1979,22 @@ def mark_music_search_derived_data_dirty(
     documents: bool = False,
 ) -> None:
     if snapshots:
-        conn.execute(
-            """UPDATE music_search_snapshot_meta
-               SET status='stale', last_error=? WHERE status IN ('ready', 'pending')""",
-            (reason[:200],),
-        )
+        if _snapshot_variant_state_exists(conn):
+            # Active rows are immutable serving facts.  Dirtiness belongs to
+            # the next target, never to the last successfully published LKG.
+            conn.execute(
+                """UPDATE music_search_snapshot_variant_state
+                   SET target_filter_fingerprint=NULL,
+                       maintenance_status='pending', last_error=?,
+                       updated_at=datetime('now')""",
+                (reason[:200],),
+            )
+        else:
+            # Compatibility for pre-migration and narrow unit-test schemas.
+            conn.execute(
+                """UPDATE music_search_snapshot_meta
+                   SET status='stale', last_error=? WHERE status IN ('ready', 'pending')""",
+                (reason[:200],),
+            )
     if documents:
-        conn.execute(
-            """UPDATE music_search_index_state
-               SET source_revision=NULL, candidate_index_version=NULL,
-                   updated_at=datetime('now') WHERE state_id=1"""
-        )
+        mark_music_search_candidate_maintenance_pending(conn)

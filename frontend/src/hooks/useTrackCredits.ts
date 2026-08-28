@@ -50,6 +50,26 @@ export function useTrackCredits(
       api.get<{ state: TrackCreditState }>(
         "/music-metadata/track-credits/status",
       ),
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      if (!state) return false;
+      if (state.rebuild_status === "pending" || state.rebuild_status === "running") {
+        return 3_000;
+      }
+      if (
+        state.candidate_maintenance_status === "pending" ||
+        state.candidate_maintenance_status === "building" ||
+        state.statistics_variant_statuses?.some(
+          (variant) =>
+            variant.maintenance_status === "pending" ||
+            variant.maintenance_status === "building",
+        )
+      ) {
+        return 3_000;
+      }
+      return false;
+    },
+    refetchIntervalInBackground: false,
   });
   const tracks = useQuery({
     queryKey: queryKeys.settings.trackCreditTracks(trackSearch),
@@ -171,8 +191,12 @@ export function useTrackCredits(
     onSuccess: invalidate,
   });
 
+  const state = detail.data?.state && status.data?.state
+    ? { ...detail.data.state, ...status.data.state }
+    : status.data?.state ?? detail.data?.state;
+
   return {
-    state: detail.data?.state ?? status.data?.state,
+    state,
     tracks: tracks.data?.items ?? [],
     tracksLoading: tracks.isFetching,
     detail,

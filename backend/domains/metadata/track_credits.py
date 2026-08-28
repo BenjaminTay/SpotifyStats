@@ -474,18 +474,19 @@ def _active_override_snapshot(
 
 
 def _next_revision(conn: sqlite3.Connection, expected_revision: int) -> int:
-    current = get_track_credit_revision(conn)
-    if current != expected_revision:
+    revision = int(expected_revision) + 1
+    cursor = conn.execute(
+        """UPDATE track_credit_state
+           SET current_revision=?, rebuild_status='pending', last_error=NULL,
+               updated_at=datetime('now')
+           WHERE state_id=1 AND current_revision=?""",
+        (revision, int(expected_revision)),
+    )
+    if cursor.rowcount != 1:
+        current = get_track_credit_revision(conn)
         raise ValueError(
             f"track credit revision conflict: expected {expected_revision}, current {current}"
         )
-    revision = current + 1
-    conn.execute(
-        """UPDATE track_credit_state
-           SET current_revision=?, rebuild_status='pending', last_error=NULL,
-               updated_at=datetime('now') WHERE state_id=1""",
-        (revision,),
-    )
     return revision
 
 
@@ -495,7 +496,122 @@ def _idempotent_result(conn: sqlite3.Connection, key: str) -> dict[str, Any] | N
            FROM track_credit_events WHERE idempotency_key=?""",
         (key,),
     ).fetchone()
-    return dict(row) if row else None
+    if row is None:
+        return None
+    result = dict(row)
+    result["idempotent_replay"] = True
+    return result
+
+
+def _change_credit_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return the stable canonical credit facts required by delta maintenance."""
+    return [
+        {
+            "artist_id": int(row["artist_id"]),
+            "role": str(row["role"]),
+            "raw_artist_ids": sorted(int(value) for value in row.get("raw_artist_ids", [])),
+        }
+        for row in sorted(
+            rows,
+            key=lambda item: (
+                0 if str(item["role"]) == "primary" else 1,
+                int(item["artist_id"]),
+            ),
+        )
+    ]
+
+
+def _canonical_track_ids_for_change(conn: sqlite3.Connection, track_id: int) -> list[int]:
+    if not _table_exists(conn, "track_l1_source_links"):
+        return [int(track_id)]
+    rows = conn.execute(
+        "SELECT DISTINCT l1_id FROM track_l1_source_links WHERE track_id=? ORDER BY l1_id",
+        (int(track_id),),
+    ).fetchall()
+    return [int(row[0]) for row in rows] or [int(track_id)]
+
+
+def _record_track_credit_change_set(
+    conn: sqlite3.Connection,
+    *,
+    revision: int,
+    track_id: int,
+    before: Iterable[dict[str, Any]],
+    after: Iterable[dict[str, Any]],
+) -> None:
+    """Persist the complete before/after canonical membership in the mutation transaction."""
+    if not _table_exists(conn, "track_credit_change_sets"):
+        return
+    before_rows = _change_credit_rows(before)
+    after_rows = _change_credit_rows(after)
+    before_ids = {int(row["artist_id"]) for row in before_rows}
+    after_ids = {int(row["artist_id"]) for row in after_rows}
+    conn.execute(
+        """INSERT INTO track_credit_change_sets(
+               from_revision, to_revision, track_id, canonical_track_ids_json,
+               before_credits_json, after_credits_json,
+               before_roles_json, after_roles_json, affected_artist_ids_json,
+               candidate_changed, statistics_membership_changed
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+        (
+            int(revision) - 1,
+            int(revision),
+            int(track_id),
+            json.dumps(
+                _canonical_track_ids_for_change(conn, track_id),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            json.dumps(before_rows, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+            json.dumps(after_rows, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+            json.dumps(
+                {str(row["artist_id"]): row["role"] for row in before_rows},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            json.dumps(
+                {str(row["artist_id"]): row["role"] for row in after_rows},
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            json.dumps(sorted(before_ids | after_ids), separators=(",", ":")),
+            int(before_ids != after_ids),
+        ),
+    )
+
+
+def list_track_credit_change_sets(
+    conn: sqlite3.Connection,
+    *,
+    after_revision: int,
+    through_revision: int,
+) -> list[dict[str, Any]]:
+    """Load one contiguous maintenance range with decoded canonical facts."""
+    if not _table_exists(conn, "track_credit_change_sets"):
+        return []
+    rows = conn.execute(
+        """SELECT * FROM track_credit_change_sets
+           WHERE to_revision>? AND to_revision<=?
+           ORDER BY to_revision, change_set_id""",
+        (int(after_revision), int(through_revision)),
+    ).fetchall()
+    result: list[dict[str, Any]] = []
+    json_fields = (
+        "canonical_track_ids_json",
+        "before_credits_json",
+        "after_credits_json",
+        "before_roles_json",
+        "after_roles_json",
+        "affected_artist_ids_json",
+    )
+    for row in rows:
+        item = dict(row)
+        for field in json_fields:
+            item[field.removesuffix("_json")] = json.loads(item.get(field) or "[]")
+        result.append(item)
+    return result
 
 
 def apply_track_credit_override(
@@ -523,6 +639,8 @@ def apply_track_credit_override(
         raise ValueError("track credit conflicts with an existing canonical artist identity")
     if preview["no_change"]:
         raise ValueError("track credit override would not change effective credits")
+    before_effective = list(preview["before"])
+    after_effective = list(preview["after"])
     before = _active_override_snapshot(conn, track_id, artist_id)
     revision = _next_revision(conn, expected_revision)
     previous_id = before.get("override_id")
@@ -568,6 +686,13 @@ def apply_track_credit_override(
             idempotency_key,
         ),
     )
+    _record_track_credit_change_set(
+        conn,
+        revision=revision,
+        track_id=track_id,
+        before=before_effective,
+        after=after_effective,
+    )
     conn.commit()
     return {
         "event_id": int(event.lastrowid),
@@ -575,6 +700,7 @@ def apply_track_credit_override(
         "track_id": track_id,
         "artist_id": artist_id,
         "revision": revision,
+        "idempotent_replay": False,
     }
 
 
@@ -660,6 +786,7 @@ def undo_track_credit_event(
         raise ValueError("track credit event has already been undone")
     track_id = int(event["track_id"])
     artist_id = int(event["artist_id"])
+    before_effective = get_effective_track_credits(conn, [track_id])
     current = _active_override_snapshot(conn, track_id, artist_id)
     revision = _next_revision(conn, expected_revision)
     if current:
@@ -709,6 +836,13 @@ def undo_track_credit_event(
             event_id,
         ),
     )
+    _record_track_credit_change_set(
+        conn,
+        revision=revision,
+        track_id=track_id,
+        before=before_effective,
+        after=get_effective_track_credits(conn, [track_id]),
+    )
     conn.commit()
     return {
         "event_id": int(undo_event.lastrowid),
@@ -716,4 +850,5 @@ def undo_track_credit_event(
         "track_id": track_id,
         "artist_id": artist_id,
         "revision": revision,
+        "idempotent_replay": False,
     }

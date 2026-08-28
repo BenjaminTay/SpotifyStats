@@ -40,6 +40,7 @@
 - [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md)：AI Agent Harness 持续质量路线
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA、远程部署、真机验收和 Capacitor 决策
 - [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)：音乐查找候选索引、统计快照和生产复用方向
+- [`plans/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md`](plans/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md)：搜索 LKG 零停机、影子 generation 原子切换、任务竞态与署名增量维护方案
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
 - [`plans/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md`](plans/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md)：Phase 0–5 已完成范围验收，保留默认完整全栈门禁待运行状态
 

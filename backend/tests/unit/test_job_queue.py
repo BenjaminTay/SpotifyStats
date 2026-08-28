@@ -149,6 +149,30 @@ def test_enqueue_if_not_pending_uses_db_state(temp_db):
     assert q.enqueue_if_not_pending(second) is None
 
 
+def test_revision_specific_entity_ids_do_not_drop_later_revision(temp_db):
+    q = JobQueue(max_workers=1)
+    q._db_path = temp_db
+    revision_34 = Job.create(
+        "track_credit_rebuild", "track_credit", "global:revision:34", revision=34
+    )
+    revision_35 = Job.create(
+        "track_credit_rebuild", "track_credit", "global:revision:35", revision=35
+    )
+
+    assert q.enqueue_if_not_pending(revision_34) == revision_34.job_id
+    assert q.enqueue_if_not_pending(revision_35) == revision_35.job_id
+
+    with sqlite3.connect(temp_db) as conn:
+        rows = conn.execute(
+            """SELECT entity_id, status FROM background_jobs
+               WHERE job_type='track_credit_rebuild' ORDER BY entity_id"""
+        ).fetchall()
+    assert rows == [
+        ("global:revision:34", "pending"),
+        ("global:revision:35", "pending"),
+    ]
+
+
 def test_pending_dedupe_keeps_album_and_artist_ids_separate(temp_db):
     q = JobQueue(max_workers=1)
     q._db_path = temp_db

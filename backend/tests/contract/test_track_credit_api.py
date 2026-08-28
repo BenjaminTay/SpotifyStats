@@ -97,6 +97,58 @@ def test_track_credit_preview_rejects_name_only_payload(client):
     assert response.status_code == 422
 
 
+def test_track_credit_status_separates_serving_and_maintenance_layers(client):
+    response = client.get("/api/music-metadata/track-credits/status")
+    assert response.status_code == 200
+    state = response.json()["state"]
+    assert state["serving_revision"] == state["active_aggregate_revision"]
+    assert state["target_revision"] == state["current_revision"]
+    assert state["candidate_maintenance_status"] in {
+        "missing",
+        "pending",
+        "building",
+        "ready",
+        "failed",
+    }
+    assert isinstance(state["statistics_variant_statuses"], list)
+    assert isinstance(state["queued_or_running_job"], bool)
+    assert isinstance(state["retry_allowed"], bool)
+
+
+def test_idempotent_replay_does_not_dirty_or_enqueue_again(monkeypatch):
+    from backend.api import track_credits as track_credit_api
+
+    monkeypatch.setattr(
+        track_credit_api,
+        "apply_track_credit_override",
+        lambda _conn, **_kwargs: {
+            "event_id": 7,
+            "override_id": 8,
+            "track_id": 175,
+            "artist_id": 53,
+            "revision": 4,
+            "idempotent_replay": True,
+        },
+    )
+    monkeypatch.setattr(
+        track_credit_api,
+        "_enqueue_rebuild",
+        lambda _revision: pytest.fail("idempotent replay must not enqueue maintenance"),
+    )
+
+    result = track_credit_api._write_override(
+        track_id=175,
+        artist_id=53,
+        action="add",
+        role="featured",
+        expected_revision=4,
+        idempotency_key="already-applied-key",
+    )
+
+    assert result["idempotent_replay"] is True
+    assert result["rebuild_job_id"] is None
+
+
 def test_metadata_write_schemas_do_not_require_reason_or_evidence():
     from backend.api.artist_identity import (
         IdentityCreateRequest,

@@ -9,6 +9,12 @@ import {
   type MusicSearchEligibility,
   type MusicSearchVariantParams,
 } from './api'
+import {
+  musicSearchCandidateFreshness,
+  musicSearchCandidateStatus,
+  musicSearchServedFilterFingerprint,
+  musicSearchStatisticsStatus,
+} from './musicSearchUtils'
 import { analyzeMusicSearchQuery } from './searchInputController'
 
 const SNAPSHOT_POLL_START_MS = 2_000
@@ -51,10 +57,18 @@ type CandidatePollingQuery = {
 }
 
 export function musicSearchSnapshotPollInterval(query: CandidatePollingQuery): number | false {
-  const status = query.state.data?.snapshot_status
+  const data = query.state.data
+  const statisticsStatus = data ? musicSearchStatisticsStatus(data) : undefined
+  const candidateStatus = data ? musicSearchCandidateStatus(data) : undefined
+  const candidateNeedsRefresh = Boolean(
+    data
+    && (candidateStatus === 'ready' || candidateStatus === 'degraded')
+    && musicSearchCandidateFreshness(data) === 'last_known_good',
+  )
+  const statisticsNeedsRefresh = statisticsStatus === 'warming' || statisticsStatus === 'stale'
   if (
     query.state.status === 'error'
-    || (status !== 'warming' && status !== 'stale')
+    || (!candidateNeedsRefresh && !statisticsNeedsRefresh)
     || (typeof document !== 'undefined' && document.visibilityState === 'hidden')
   ) {
     return false
@@ -147,8 +161,8 @@ export function useMusicSearchContext({
     refetchOnWindowFocus: false,
     staleTime: 30 * 60 * 1000,
   })
-  const data = result.data?.snapshot_status === 'ready'
-    && result.data.filter_fingerprint === filterFingerprint
+  const data = result.data
+    && musicSearchServedFilterFingerprint(result.data) === filterFingerprint
     ? result.data
     : null
   return {

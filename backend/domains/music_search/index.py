@@ -159,6 +159,60 @@ def expected_candidate_index_version(conn: sqlite3.Connection) -> str:
     )
 
 
+def get_music_search_candidate_maintenance_state(
+    conn: sqlite3.Connection,
+) -> dict[str, Any]:
+    """Return shadow-build state without weakening pre-migration readers."""
+
+    if not _table_exists(conn, "music_search_candidate_maintenance_state"):
+        serving = get_music_search_index_state(conn)
+        legacy_status = str(serving.get("status") or "missing")
+        if legacy_status in {"building", "failed"}:
+            maintenance_status = legacy_status
+        elif serving.get("active_generation_id"):
+            maintenance_status = "ready"
+        else:
+            maintenance_status = "missing"
+        return {
+            "maintenance_status": maintenance_status,
+            "target_source_revision": serving.get("source_revision"),
+            "target_candidate_index_version": serving.get("candidate_index_version"),
+            "building_generation_id": None,
+            "job_id": None,
+            "last_error": serving.get("last_error"),
+        }
+    row = conn.execute(
+        """SELECT * FROM music_search_candidate_maintenance_state
+           WHERE state_id=1"""
+    ).fetchone()
+    return dict(row) if row else {"maintenance_status": "missing"}
+
+
+def mark_music_search_candidate_maintenance_pending(
+    conn: sqlite3.Connection,
+    *,
+    target_source_revision: str | None = None,
+    target_candidate_index_version: str | None = None,
+) -> None:
+    """Record a new build target while leaving the serving proof untouched."""
+
+    if not _table_exists(conn, "music_search_candidate_maintenance_state"):
+        return
+    target_source_revision = target_source_revision or music_search_source_revision(conn)
+    target_candidate_index_version = (
+        target_candidate_index_version or expected_candidate_index_version(conn)
+    )
+    conn.execute(
+        """UPDATE music_search_candidate_maintenance_state
+              SET target_source_revision=?, target_candidate_index_version=?,
+                  maintenance_status='pending', building_generation_id=NULL,
+                  job_id=NULL, started_at=NULL, finished_at=NULL, last_error=NULL,
+                  updated_at=datetime('now')
+            WHERE state_id=1""",
+        (target_source_revision, target_candidate_index_version),
+    )
+
+
 def _document_content_digest(documents: list[dict[str, Any]]) -> str:
     digest = hashlib.sha256()
     for document in sorted(
@@ -728,11 +782,23 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
         source_revision=source_revision,
         tokenizer=runtime.tokenizer,
     )
-    conn.execute(
-        """UPDATE music_search_index_state
-           SET status='building', last_error=NULL, updated_at=datetime('now')
-           WHERE state_id=1"""
-    )
+    maintenance_table_ready = _table_exists(conn, "music_search_candidate_maintenance_state")
+    if maintenance_table_ready:
+        conn.execute(
+            """UPDATE music_search_candidate_maintenance_state
+                  SET target_source_revision=?, target_candidate_index_version=?,
+                      maintenance_status='building', building_generation_id=?,
+                      started_at=datetime('now'), finished_at=NULL, last_error=NULL,
+                      updated_at=datetime('now')
+                WHERE state_id=1""",
+            (source_revision, index_version, generation_id),
+        )
+    else:
+        conn.execute(
+            """UPDATE music_search_index_state
+                  SET status='building', last_error=NULL, updated_at=datetime('now')
+                WHERE state_id=1"""
+        )
     conn.commit()
     try:
         documents = build_music_search_documents(conn)
@@ -784,11 +850,16 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
                 for ngram in cjk_search_ngrams(str(value))
             }
         )
-        previous = conn.execute(
-            "SELECT active_generation_id FROM music_search_index_state WHERE state_id=1"
-        ).fetchone()
-        previous_id = str(previous[0]) if previous and previous[0] else None
         with conn:
+            # Acquire the publication lock before the revision fence.  The
+            # expensive document build above remains outside the write lock.
+            conn.execute("BEGIN IMMEDIATE")
+            if music_search_source_revision(conn) != source_revision:
+                raise RuntimeError("music-search candidate target changed during shadow build")
+            previous = conn.execute(
+                "SELECT active_generation_id FROM music_search_index_state WHERE state_id=1"
+            ).fetchone()
+            previous_id = str(previous[0]) if previous and previous[0] else None
             placeholders = ",".join("?" for _ in columns)
             conn.executemany(
                 f"INSERT INTO music_search_documents({','.join(columns)}) VALUES ({placeholders})",
@@ -834,6 +905,25 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
                     len(documents),
                 ),
             )
+            if maintenance_table_ready:
+                conn.execute(
+                    """UPDATE music_search_candidate_maintenance_state
+                          SET target_source_revision=?, target_candidate_index_version=?,
+                              maintenance_status='ready', building_generation_id=NULL,
+                              finished_at=datetime('now'), last_error=NULL,
+                              updated_at=datetime('now')
+                        WHERE state_id=1""",
+                    (source_revision, index_version),
+                )
+            from backend.domains.music_search.deny_overlay import (
+                clear_confirmed_music_search_denials,
+            )
+
+            clear_confirmed_music_search_denials(
+                conn,
+                generation_id=generation_id,
+                source_revision=source_revision,
+            )
             keep = [generation_id, *([previous_id] if previous_id else [])]
             placeholders = ",".join("?" for _ in keep)
             conn.execute(
@@ -862,11 +952,22 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
             "tokenizer": runtime.tokenizer,
         }
     except Exception as exc:
-        conn.execute(
-            """UPDATE music_search_index_state
-               SET status='failed', last_error=?, updated_at=datetime('now') WHERE state_id=1""",
-            (type(exc).__name__,),
-        )
+        if maintenance_table_ready:
+            conn.execute(
+                """UPDATE music_search_candidate_maintenance_state
+                      SET maintenance_status='failed', building_generation_id=NULL,
+                          finished_at=datetime('now'), last_error=?,
+                          updated_at=datetime('now')
+                    WHERE state_id=1 AND building_generation_id=?""",
+                (type(exc).__name__, generation_id),
+            )
+        else:
+            conn.execute(
+                """UPDATE music_search_index_state
+                      SET status='failed', last_error=?, updated_at=datetime('now')
+                    WHERE state_id=1""",
+                (type(exc).__name__,),
+            )
         conn.commit()
         raise
 

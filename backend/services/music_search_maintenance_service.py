@@ -33,6 +33,7 @@ from backend.domains.music_search.revisions import (
     bump_music_search_revisions,
 )
 from backend.domains.music_search.snapshot import (
+    _activate_snapshot_variant,
     build_music_search_snapshot_set,
     build_shared_full_music_search_snapshot_set,
     get_ready_music_search_snapshot_key,
@@ -227,6 +228,7 @@ def _adopt_legacy_v2_snapshot_set(
             old_snapshot_key = str(row[0])
             new_snapshot_key = context.filter_fingerprint
             if old_snapshot_key == new_snapshot_key:
+                _activate_snapshot_variant(conn, context, new_snapshot_key)
                 continue
             clear_year_end_projection(conn, new_snapshot_key)
             conn.execute(
@@ -279,6 +281,7 @@ def _adopt_legacy_v2_snapshot_set(
                        WHERE snapshot_key=?""",
                     (new_snapshot_key, old_snapshot_key),
                 )
+            _activate_snapshot_variant(conn, context, new_snapshot_key)
             clear_year_end_projection(conn, old_snapshot_key)
             conn.execute(
                 "DELETE FROM music_search_snapshot_meta WHERE snapshot_key=?",
@@ -529,7 +532,25 @@ def rebuild_current_music_search_derived_data(
         if shared_frame_fallback_reason is not None:
             snapshot_set_report["strategy"] = "full_fallback"
             snapshot_set_report["fallback_reason"] = shared_frame_fallback_reason
-    year_end_projection_report = ensure_year_end_projection_set(conn, contexts)
+    try:
+        year_end_projection_report = ensure_year_end_projection_set(conn, contexts)
+    except Exception as exc:
+        # Core context snapshots have already been atomically published.  A
+        # secondary Year-End projection failure must remain observable without
+        # downgrading candidate or context serving.
+        logger.exception("Music-search Year-End projection maintenance failed")
+        fail_pending_year_end_projection_set(
+            conn,
+            contexts,
+            error_type=type(exc).__name__,
+        )
+        conn.commit()
+        year_end_projection_report = {
+            "status": "failed",
+            "ready_count": 0,
+            "failed_count": len(contexts),
+            "error_type": type(exc).__name__,
+        }
     snapshot_set_report["year_end_projection"] = year_end_projection_report
     default_snapshot = snapshot_set_report["variants"][0]
     return {
@@ -568,11 +589,9 @@ def handle_music_search_snapshot_rebuild(job: Job) -> None:
                     f"failed={snapshot_set['failed_count']}"
                 )
             if report["year_end_projection"]["status"] != "ready":
-                projection = report["year_end_projection"]
-                raise RuntimeError(
-                    "music-search Year-End projection set incomplete: "
-                    f"ready={projection['ready_count']} "
-                    f"failed={projection['failed_count']}"
+                logger.warning(
+                    "Music-search core snapshots are ready while Year-End remains %s",
+                    report["year_end_projection"]["status"],
                 )
         except Exception as exc:
             try:
@@ -692,7 +711,19 @@ def enqueue_music_search_snapshot_rebuild(
                 get_ready_music_search_snapshot_key(target, context.filter_fingerprint) is not None
                 for context in contexts
             )
-            if snapshots_ready:
+            variants_settled = True
+            if target.execute(
+                """SELECT 1 FROM sqlite_master
+                   WHERE type='table' AND name='music_search_snapshot_variant_state'"""
+            ).fetchone():
+                unsettled = target.execute(
+                    """SELECT 1 FROM music_search_snapshot_variant_state
+                       WHERE maintenance_status!='ready'
+                          OR active_filter_fingerprint IS NOT target_filter_fingerprint
+                       LIMIT 1"""
+                ).fetchone()
+                variants_settled = unsettled is None
+            if snapshots_ready and variants_settled:
                 projection_status = year_end_projection_set_status(target, contexts)
                 if projection_status["status"] == "ready":
                     return None

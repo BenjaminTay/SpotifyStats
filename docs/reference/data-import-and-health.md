@@ -50,12 +50,13 @@
 - noop 只更新导入状态摘要并记录运行结果，不提升播放或派生 revision，不重建 Billboard、搜索快照、年度结果或封面任务。
 - append 完成基础事实发布后，会在同一事务生成并持久化 `PlaybackChangeSet`。Spotify 曲目、专辑、艺人元数据和封面只处理相关实体，同时从全局缺失事实中有界抽取历史失败项重试；年度播放分区只从最早受影响年份向后更新，旧年度仍可复用。
 - 已证明的尾部追加会为 Billboard 扩展旧、新连续播放链和跨周时长贡献闭包，只重算受影响完整周；非尾部变化、闭包证据不足、依赖不兼容或受影响周超过 25% 时回退完整聚合。四张周聚合在影子表中共同校验并原子发布。
-- 搜索候选仍整体重建。migration 42 为精确搜索上下文增加稳定策略键、来源代际、数据集 digest、基础 snapshot、构建策略与依赖 digest，并保存按候选实体键归一化的周榜账本；当前公开集合只保留 L2/L3 × 两个阈值作用域，第一次兼容构建仍使用 `shared_full_snapshot_rebuild`，四套全部成功后才共同激活。
+- 搜索候选仍以全量 shadow generation 为默认维护策略，但 active/previous 与 building 状态分离；重建或失败期间继续服务上一成功 generation。migration 42 为精确搜索上下文增加稳定策略键、来源代际、数据集 digest、基础 snapshot、构建策略与依赖 digest，并保存按候选实体键归一化的周榜账本；当前公开集合只保留 L2/L3 × 两个阈值作用域。每个变体通过完整校验后独立切换 active pointer，某个变体失败不会回滚已 ready 变体。
 - reconcile 和 replace 会在播放事实发布事务内同步活动 `track_albums`：已删除事实留下的专辑观察不会继续参与播放统计、自动 Album Project 或搜索；单次播放优先按 `plays.source_album_id` 归属，避免同曲多专辑关系产生重复 fan-out。自动 Track Group 使用 Spotify recording ID + artist ID 的稳定身份，同名不同艺人可以并存，人工组继续独立治理。
 - 已证明的尾部追加如果完全落在同一个当前开放榜单周、没有影响任何已发布完整周，并且四套基础 snapshot、周账本、候选与统计语义依赖全部兼容，则复制旧上下文和周账本，只把新增逻辑播放贡献应用到歌曲、具体来源专辑、L2/L3 Album Project 和有效署名艺人的 lifetime 指标，再整组四套原子激活。
 - 精确尾部追加若恰好跨一个开放周，则有界读取新完成周及必要的前后连续播放链，重建 fixed/dynamic、L2/L3 的歌曲、专辑和艺人周账本；旧历史周直接复用，当前开放周仍不发布。合并账本后按稳定实体 ID 全局重算 peak、在榜周数与 Power score/rank，同名不同 ID 的实体不会合并。
 - 两条搜索 delta 路径执行前后都会复核基础 snapshot、活动事实代际、候选与统计依赖，报告策略为 `incremental_snapshot_delta`，且不扫描完整 lifetime 播放事实。多周跳跃、存在删除/历史修正、缺少兼容 lineage/账本、依赖变化、合并关闭、闭包超过 100,000 行或其他成本门禁失败时安全回退 D1 `shared_full_snapshot_rebuild`。
-- migration 46 从精确周账本派生独立版本的详情年榜投影。shared-full、delta 和 ready snapshot 复用都会在后台确保四套公开投影 ready；应用启动只有在当前四套 snapshot 与当前版本投影同时 ready 时才跳过维护。旧库已有 ready snapshot 但缺少账本/投影时，会幂等排入一个 snapshot-set 后台任务并先公开 `warming`，账本只可在维护任务内补建，详情 GET 不得承担补建。投影失败不会破坏核心搜索 snapshot，任务会以独立失败状态重试；同 fingerprint 重发与旧 snapshot pruning 必须同步清理过期年榜行。
+- schema 60–63 分别保存 candidate maintenance、四变体 active/target pointer、曲目署名 before/after change set 与即时 deny overlay。升级只新增表和索引；旧代码可忽略新表，回滚不得删除仍承担 LKG 或即时撤销展示职责的数据。
+- migration 46 从精确周账本派生独立版本的详情年榜投影。shared-full、delta 和 ready snapshot 复用都会在后台维护四套公开投影；核心 context snapshot 一经发布即可使用，Year-End 的后续失败只记录独立维护状态，不得把 candidate 或核心 context 降级。旧库已有 ready snapshot 但缺少账本/投影时，会幂等排入后台任务，账本只可在维护任务内补建，详情 GET 不得承担补建；同 fingerprint 重发与旧 snapshot pruning 必须同步清理过期年榜行。
 - Album Project 在无删除、实际元数据影响闭包精确且规模未超门限时定向重建；存在删除、闭包不精确、依赖不兼容或成本过高时自动全量回退。自动推断项目按稳定语义键复用 ID 并精确替换 membership，manual 与未受影响项目不变。持久曲目、专辑和艺人维表可为人工治理与审计保留历史行，但自动 Album Project 与搜索候选只消费当前播放事实可达闭包，历史 reconcile 或完整替换淘汰的旧实体不会继续作为活动候选。
 
 检查不会把文件导入数据库，也不会启动后台 Job。确认文件后，用户仍需显式点击已有的「导入串流数据」或「导入账号数据」。

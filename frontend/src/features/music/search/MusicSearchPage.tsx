@@ -11,7 +11,12 @@ import type { MusicSearchKind } from '@/types/music-search'
 
 import { MusicSearchResults } from './MusicSearchResults'
 import { RecentMusicEntityList } from './RecentMusicEntityList'
-import { MUSIC_SEARCH_KIND_LABELS, trimSearchQuery } from './musicSearchUtils'
+import {
+  MUSIC_SEARCH_KIND_LABELS,
+  musicSearchCandidateStatus,
+  musicSearchServedFilterFingerprint,
+  trimSearchQuery,
+} from './musicSearchUtils'
 import { useRecentMusicEntities } from './recentMusicEntities'
 import { useMusicSearchInputController } from './searchInputController'
 import { useMusicSearchCandidates, useMusicSearchContext } from './useMusicSearch'
@@ -117,9 +122,9 @@ export function MusicSearchPage() {
   const entityKeys = useMemo(() => candidateEntityKeys(candidates.data), [candidates.data])
   const context = useMusicSearchContext({
     entityKeys,
-    filterFingerprint: candidates.data?.filter_fingerprint ?? null,
+    filterFingerprint: musicSearchServedFilterFingerprint(candidates.data),
     filters,
-    enabled: candidates.data?.snapshot_status === 'ready' && !candidates.isPlaceholderData,
+    enabled: !candidates.isPlaceholderData,
   })
   const resultQuery = useMemo(() => trimSearchQuery(input.settledQuery), [input.settledQuery])
   const hasQuery = resultQuery.length > 0
@@ -274,7 +279,9 @@ export function MusicSearchPage() {
 
       {!hasQuery && <RecentMusicEntityList items={recent.items} onClear={recent.clear} />}
 
-      {kindParam && candidates.data?.snapshot_status === 'ready' && kindTotal > 0 && (
+      {kindParam && candidates.data
+        && musicSearchCandidateStatus(candidates.data) !== 'unavailable'
+        && kindTotal > 0 && (
         <nav className="flex min-h-11 items-center justify-center gap-3" aria-label="搜索结果分页">
           <button
             type="button"

@@ -514,3 +514,56 @@ def test_migration_036_repairs_a_partially_applied_candidate_schema(empty_db):
            FROM music_search_index_state WHERE state_id=1"""
     ).fetchone()
     assert tuple(state) == (None, None, "missing")
+
+
+@pytest.mark.parametrize("legacy_status", ("building", "failed"))
+def test_migration_060_preserves_legacy_active_candidate_serving(
+    empty_db,
+    legacy_status,
+) -> None:
+    from backend.core import migrations
+
+    migrations.migrate_032(empty_db)
+    migrations.migrate_034(empty_db)
+    migrations.migrate_035(empty_db)
+    empty_db.execute(
+        """INSERT INTO music_search_documents(
+               generation_id, entity_key, kind, merge_level, label,
+               normalized_label, search_text, href
+           ) VALUES ('published', 'track:1', 'track', 2, 'Song', 'song',
+                     'song', '/music/tracks/1')"""
+    )
+    empty_db.execute(
+        """UPDATE music_search_index_state
+              SET active_generation_id='published', status=?, tokenizer='fts5_trigram',
+                  source_revision='source-old', candidate_index_version='candidate-old',
+                  document_count=1, last_error='legacy error'
+            WHERE state_id=1""",
+        (legacy_status,),
+    )
+
+    migrations.migrate_060(empty_db)
+    migrations.migrate_060(empty_db)
+
+    serving = empty_db.execute(
+        """SELECT active_generation_id, status, source_revision,
+                  candidate_index_version
+             FROM music_search_index_state WHERE state_id=1"""
+    ).fetchone()
+    maintenance = empty_db.execute(
+        """SELECT maintenance_status, target_source_revision,
+                  target_candidate_index_version, last_error
+             FROM music_search_candidate_maintenance_state WHERE state_id=1"""
+    ).fetchone()
+    assert tuple(serving) == (
+        "published",
+        "ready",
+        "source-old",
+        "candidate-old",
+    )
+    assert tuple(maintenance) == (
+        legacy_status,
+        "source-old",
+        "candidate-old",
+        "legacy error" if legacy_status == "failed" else None,
+    )

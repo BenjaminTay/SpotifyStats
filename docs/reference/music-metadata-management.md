@@ -38,10 +38,30 @@ Phone 当前把归并、署名和元数据维护明确归入“高级数据管�
 - 单管理员界面只要求选择有效本地实体与角色；`reason`、`evidence_type`、`evidence_source` 均为可选，缺省时后端写入内部的 `user_confirmed`/“个人管理直接修改”标记。同名搜索结果不能代替稳定 ID。
 - 普通修改直接应用；跨 provider、canonical 重叠等明显冲突展示一次确认。底层 preview 仍执行，但不把审计字段变成日常表单。
 - 事务写入 override 与 append-only event 后递增全局 revision、失效缓存；实时 resolver 立即生效。
-- artist weekly aggregates 在临时表中重建并原子切换。重建失败记录 `failed`，允许重试，读取不得混用旧 aggregate。
+- 每次 mutation 在同一事务记录 canonical before/after change set。只调整
+  `primary/featured` 时，艺人成员集合不变，不重建 aggregate、四套搜索统计或 Year-End；只维护候选
+  展示。添加、移除与 undo 优先按受影响歌曲闭包、艺人和 Billboard 周执行 signed delta，证明不足时
+  才进入有原因记录的 full fallback。
+- 维护使用 revision-specific 持久任务；旧 revision 不得吞掉随后发生的新 revision。设置页分别展示
+  实时署名、候选索引和精确统计状态，`pending` 无任务或 `failed` 时可幂等恢复当前 target。
 - undo 本身也是新审计事件和新 revision，不删除历史。
 
-### 3.1 艺人 provider ID 的持久化规则
+### 3.1 搜索与统计的上一可用版本
+
+- `music_search_index_state` 只表示正在服务的 candidate generation；下一代的
+  pending/building/failed 位于独立 maintenance state。新 generation 始终在影子表完成并通过 revision
+  fence 后原子切换，失败不会改坏 active/previous。
+- 四套搜索统计各自维护 active snapshot 与 target fingerprint。target 正在构建或失败时，候选仍可
+  查询；context 默认返回通过 builder/payload 校验的 active snapshot，并明确标记
+  `statistics_freshness=last_known_good`。没有 LKG 时只隐藏统计，不回退到 GET 冷建或虚假 0。
+- candidate 与 context 响应分别声明 status、freshness、served fingerprint 和 target fingerprint；前端
+  只能在 candidate unavailable 且确实没有结果时显示阻塞空态。公开只读响应不暴露 target revision、
+  job 或内部错误。
+- 删除实体、撤销展示资格或隐私相关修改必须与业务 mutation 同事务写入
+  `music_search_entity_deny_overlay`。private/public 查询都会在 active/LKG generation 上即时排除目标；
+  只有新 generation 已激活且可证明不含目标实体时才清理 deny 行。
+
+### 3.2 艺人 provider ID 的持久化规则
 
 - `artists.spotify_artist_id` 是本地实体的便捷投影；稳定 provider 身份事实必须同时写入 `artist_identity_external_ids`，不能只留在 `artists` 或 `spotify_artist_meta`。
 - 曲目元数据精确同名关联或艺人精确搜索写入本地 Spotify artist ID 时，同一事务补写 `provider=spotify` 的 verified 外部 ID。重复刷新不得降低已有人工作证的 `evidence_type`、`evidence_source`、`confidence` 或 `verified`。

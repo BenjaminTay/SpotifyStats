@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlite3 import Connection
+from sqlite3 import Connection, OperationalError
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,11 +11,11 @@ from pydantic import BaseModel, Field
 from backend.core.auth import require_auth
 from backend.core.cache_manager import invalidate_all
 from backend.core.db import get_db
-from backend.core.job_queue import Job, get_job_queue, queue_targets_connection
 from backend.dependencies import get_conn
 from backend.domains.metadata.track_credits import (
     apply_track_credit_override,
     get_track_credit_state,
+    list_track_credit_change_sets,
     list_track_credit_detail,
     list_track_credit_events,
     preview_track_credit_override,
@@ -73,6 +73,7 @@ class TrackCreditMutationResponse(BaseModel):
     artist_id: int
     revision: int
     rebuild_job_id: str | None = None
+    idempotent_replay: bool = False
 
 
 def _mutation_error(exc: ValueError) -> HTTPException:
@@ -81,26 +82,54 @@ def _mutation_error(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=status, detail=message)
 
 
+def _mutation_database_error(exc: OperationalError) -> HTTPException:
+    message = str(exc).lower()
+    if "locked" in message or "busy" in message:
+        return HTTPException(
+            status_code=409,
+            detail="track credit revision conflict: another mutation is in progress",
+        )
+    return HTTPException(status_code=500, detail="track credit mutation failed")
+
+
 def _enqueue_rebuild(revision: int) -> str | None:
     from backend.services.music_search_maintenance_service import (
         mark_music_search_for_rebuild,
     )
+    from backend.services.track_credit_rebuild_service import (
+        ensure_track_credit_rebuild_job,
+    )
 
     invalidate_all()
-    queue = get_job_queue()
     search_conn = get_db(readonly=False)
     try:
-        mark_music_search_for_rebuild(
-            reason="track credit revision changed",
-            documents=True,
-            conn=search_conn,
+        changes = list_track_credit_change_sets(
+            search_conn,
+            after_revision=revision - 1,
+            through_revision=revision,
         )
-        if not queue_targets_connection(queue, search_conn):
-            return None
+        role_only = (
+            bool(changes)
+            and {int(change["to_revision"]) for change in changes} == {revision}
+            and all(not bool(change.get("statistics_membership_changed")) for change in changes)
+        )
+        if role_only:
+            mark_music_search_for_rebuild(
+                reason="track credit role-only revision changed",
+                documents=True,
+                revision_kinds=("candidate",),
+                statistics=False,
+                conn=search_conn,
+            )
+        else:
+            mark_music_search_for_rebuild(
+                reason="track credit revision changed",
+                documents=True,
+                conn=search_conn,
+            )
+        return ensure_track_credit_rebuild_job(revision, conn=search_conn)
     finally:
         search_conn.close()
-    job = Job.create("track_credit_rebuild", "track_credit", "global", revision=revision)
-    return queue.enqueue_if_not_pending(job)
 
 
 def _write_override(**kwargs: Any) -> dict[str, Any]:
@@ -112,15 +141,106 @@ def _write_override(**kwargs: Any) -> dict[str, Any]:
     except ValueError as exc:
         conn.rollback()
         raise _mutation_error(exc) from exc
+    except OperationalError as exc:
+        conn.rollback()
+        raise _mutation_database_error(exc) from exc
     finally:
         conn.close()
-    result["rebuild_job_id"] = _enqueue_rebuild(int(result["revision"]))
+    if result.get("idempotent_replay"):
+        result["rebuild_job_id"] = None
+    else:
+        result["rebuild_job_id"] = _enqueue_rebuild(int(result["revision"]))
     return result
 
 
+def _track_credit_maintenance_status(conn: Connection) -> dict[str, Any]:
+    state = get_track_credit_state(conn)
+    from backend.domains.music_search.index import (
+        get_music_search_candidate_maintenance_state,
+        get_music_search_index_state,
+    )
+
+    serving = get_music_search_index_state(conn)
+    candidate = get_music_search_candidate_maintenance_state(conn)
+    variants: list[dict[str, Any]] = []
+    if conn.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='music_search_snapshot_variant_state'"""
+    ).fetchone():
+        for row in conn.execute(
+            """SELECT merge_level, dynamic_threshold, active_snapshot_key,
+                      active_filter_fingerprint, target_filter_fingerprint,
+                      maintenance_status, last_error, updated_at
+               FROM music_search_snapshot_variant_state
+               ORDER BY CASE
+                   WHEN merge_level=2 AND dynamic_threshold=1 THEN 0
+                   WHEN merge_level=3 AND dynamic_threshold=1 THEN 1
+                   WHEN merge_level=2 AND dynamic_threshold=0 THEN 2 ELSE 3 END"""
+        ).fetchall():
+            item = dict(row)
+            item["dynamic_threshold"] = bool(item["dynamic_threshold"])
+            if not item.get("active_snapshot_key"):
+                item["freshness"] = "unavailable"
+            elif item.get("maintenance_status") == "ready" and item.get(
+                "active_filter_fingerprint"
+            ) == item.get("target_filter_fingerprint"):
+                item["freshness"] = "current"
+            else:
+                item["freshness"] = "last_known_good"
+            variants.append(item)
+    current_revision = int(state.get("current_revision") or 0)
+    active_revision = int(state.get("active_aggregate_revision") or 0)
+    queued_or_running = False
+    if conn.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='background_jobs'"""
+    ).fetchone():
+        queued_or_running = bool(
+            conn.execute(
+                """SELECT 1 FROM background_jobs
+                   WHERE status IN ('pending', 'running')
+                     AND job_type IN ('track_credit_rebuild', 'music_search_snapshot_rebuild')
+                   LIMIT 1"""
+            ).fetchone()
+        )
+    maintenance_failed = (
+        str(state.get("rebuild_status") or "") == "failed"
+        or str(candidate.get("maintenance_status") or "") == "failed"
+        or any(item["maintenance_status"] == "failed" for item in variants)
+    )
+    pending_without_job = (
+        current_revision > active_revision
+        or str(state.get("rebuild_status") or "") in {"pending", "running"}
+        or str(candidate.get("maintenance_status") or "") in {"pending", "building"}
+        or any(item["maintenance_status"] in {"pending", "building"} for item in variants)
+    ) and not queued_or_running
+    built_at = serving.get("built_at")
+    lkg_age = None
+    if built_at:
+        age_row = conn.execute(
+            "SELECT MAX(0, CAST((julianday('now') - julianday(?)) * 86400 AS INTEGER))",
+            (built_at,),
+        ).fetchone()
+        lkg_age = int(age_row[0]) if age_row is not None and age_row[0] is not None else None
+    return {
+        **state,
+        "serving_revision": active_revision,
+        "target_revision": current_revision,
+        "serving_candidate_generation": serving.get("active_generation_id"),
+        "candidate_maintenance_status": candidate.get("maintenance_status", "missing"),
+        "statistics_variant_statuses": variants,
+        "queued_or_running_job": queued_or_running,
+        "lkg_age": lkg_age,
+        "retry_allowed": maintenance_failed or pending_without_job,
+    }
+
+
 @router.get("/status", response_model=dict[str, Any])
-def track_credit_status(conn: Connection = Depends(get_conn)) -> dict[str, Any]:
-    return {"state": get_track_credit_state(conn)}
+def track_credit_status(
+    conn: Connection = Depends(get_conn),
+    auth: None = Depends(require_auth),
+) -> dict[str, Any]:
+    return {"state": _track_credit_maintenance_status(conn)}
 
 
 @router.get("/tracks", response_model=dict[str, Any])
@@ -269,17 +389,43 @@ def undo_credit(
     except ValueError as exc:
         conn.rollback()
         raise _mutation_error(exc) from exc
+    except OperationalError as exc:
+        conn.rollback()
+        raise _mutation_database_error(exc) from exc
     finally:
         conn.close()
-    result["rebuild_job_id"] = _enqueue_rebuild(int(result["revision"]))
+    if result.get("idempotent_replay"):
+        result["rebuild_job_id"] = None
+    else:
+        result["rebuild_job_id"] = _enqueue_rebuild(int(result["revision"]))
     return result
 
 
 @router.post("/rebuild", response_model=dict[str, Any])
 def retry_credit_rebuild(auth: None = Depends(require_auth)) -> dict[str, Any]:
-    conn = get_db()
+    from backend.services.track_credit_rebuild_service import ensure_track_credit_rebuild_job
+
+    conn = get_db(readonly=False)
     try:
-        revision = get_track_credit_state(conn).get("current_revision", 0)
+        status = _track_credit_maintenance_status(conn)
+        revision = int(status.get("current_revision") or 0)
+        active_revision = int(status.get("active_aggregate_revision") or 0)
+        if active_revision < revision or status.get("rebuild_status") in {
+            "pending",
+            "running",
+            "failed",
+        }:
+            job_id = ensure_track_credit_rebuild_job(revision, conn=conn)
+        else:
+            from backend.services.music_search_maintenance_service import (
+                enqueue_music_search_snapshot_rebuild,
+            )
+
+            candidate_status = str(status.get("candidate_maintenance_status") or "missing")
+            job_id = enqueue_music_search_snapshot_rebuild(
+                rebuild_documents=candidate_status != "ready",
+                conn=conn,
+            )
     finally:
         conn.close()
-    return {"revision": revision, "rebuild_job_id": _enqueue_rebuild(int(revision))}
+    return {"revision": revision, "rebuild_job_id": job_id}

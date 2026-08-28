@@ -1,5 +1,9 @@
 export type MusicSearchKind = 'track' | 'album' | 'artist'
 export type MusicSearchSnapshotStatus = 'ready' | 'warming' | 'unavailable' | 'stale' | 'failed'
+export type MusicSearchCandidateStatus = 'ready' | 'degraded' | 'unavailable'
+export type MusicSearchCandidateFreshness = 'current' | 'last_known_good' | 'fallback' | 'unavailable'
+export type MusicSearchStatisticsStatus = MusicSearchSnapshotStatus
+export type MusicSearchStatisticsFreshness = 'current' | 'last_known_good' | 'unavailable'
 export type MusicSearchMatchField = 'label' | 'artist' | 'album' | 'alias'
 export type MusicSearchMatchQuality = 'exact' | 'prefix' | 'token' | 'substring' | 'fuzzy'
 export type MusicSearchMatchType = 'original' | 'simplified' | 'traditional' | 'fuzzy'
@@ -68,7 +72,13 @@ export interface MusicSearchCandidateResponse {
   normalized_query: string
   snapshot_status: MusicSearchSnapshotStatus
   filter_fingerprint: string | null
+  candidate_status?: MusicSearchCandidateStatus
+  candidate_freshness?: MusicSearchCandidateFreshness
   candidate_index_version?: string | null
+  statistics_status?: MusicSearchStatisticsStatus
+  statistics_freshness?: MusicSearchStatisticsFreshness
+  served_filter_fingerprint?: string | null
+  target_filter_fingerprint?: string | null
   kind: MusicSearchKind | null
   page: number
   page_size: number
@@ -89,6 +99,10 @@ export interface MusicSearchContextResponse {
   response_version: 'music_search_context_v1'
   snapshot_status: MusicSearchSnapshotStatus
   filter_fingerprint: string | null
+  statistics_status?: MusicSearchStatisticsStatus
+  statistics_freshness?: MusicSearchStatisticsFreshness
+  served_filter_fingerprint?: string | null
+  target_filter_fingerprint?: string | null
   items: Record<string, MusicSearchContextItem>
 }
 

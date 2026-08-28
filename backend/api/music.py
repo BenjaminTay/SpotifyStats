@@ -15,8 +15,7 @@ from backend.domains.music_search.context import build_music_search_filter_conte
 from backend.domains.music_search.contracts import parse_music_search_entity_key
 from backend.domains.music_search.index import get_music_search_index_state
 from backend.domains.music_search.snapshot import (
-    get_music_search_snapshot_status,
-    get_ready_music_search_snapshot_key,
+    get_serving_music_search_snapshot,
     lookup_music_search_context,
 )
 from backend.domains.music_search.timing import MusicSearchTiming
@@ -283,14 +282,14 @@ def music_search(
                     filters,
                     merge_cfg,
                 )
-                snapshot_status = get_music_search_snapshot_status(
+                statistics = get_serving_music_search_snapshot(
                     conn,
-                    search_context.filter_fingerprint,
+                    filter_fingerprint=search_context.filter_fingerprint,
+                    merge_level=search_context.merge_level,
+                    dynamic_threshold=search_context.dynamic_threshold,
                 )
-                snapshot_key = get_ready_music_search_snapshot_key(
-                    conn,
-                    search_context.filter_fingerprint,
-                )
+                snapshot_status = statistics["status"]
+                snapshot_key = statistics["snapshot_key"]
             result = search_music_candidates(
                 conn,
                 query=q,
@@ -302,7 +301,12 @@ def music_search(
                 snapshot_status=snapshot_status,
                 merge_level=merge_cfg.merge_level,
                 snapshot_key=snapshot_key,
+                statistics_freshness=statistics["freshness"],
+                served_filter_fingerprint=statistics["served_filter_fingerprint"],
                 timing=timing,
+                allow_fallback=not is_public_readonly(request),
+                require_snapshot_membership=is_public_readonly(request),
+                include_target_fingerprint=not is_public_readonly(request),
             )
         else:
             result = search_music_entities(
@@ -395,6 +399,9 @@ def music_search_context(
                 conn,
                 filter_fingerprint=search_context.filter_fingerprint,
                 entity_keys=entity_key,
+                merge_level=search_context.merge_level,
+                dynamic_threshold=search_context.dynamic_threshold,
+                include_target_fingerprint=not is_public_readonly(request),
             )
         with timing.measure("serialize"):
             result.model_dump(mode="json")

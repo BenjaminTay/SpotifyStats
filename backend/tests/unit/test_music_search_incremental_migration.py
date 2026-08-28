@@ -302,7 +302,7 @@ def test_migrate_047_repairs_short_lived_v46_coverage_constraint() -> None:
 
 
 def test_latest_schema_version_matches_registered_migrations() -> None:
-    assert LATEST_SCHEMA_VERSION == 56
+    assert LATEST_SCHEMA_VERSION == 63
     assert max(version for version, _name, _migration in MIGRATIONS) == LATEST_SCHEMA_VERSION
 
 

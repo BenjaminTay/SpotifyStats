@@ -24,6 +24,7 @@
 
 ### 音乐查找
 
+- [`2026-08-28-music-search-zero-downtime-and-credit-delta.md`](2026-08-28-music-search-zero-downtime-and-credit-delta.md)
 - [`2026-08-16-music-search-optimization-delivery.md`](2026-08-16-music-search-optimization-delivery.md)
 - [`2026-08-16-music-search-m0-baseline.md`](2026-08-16-music-search-m0-baseline.md)
 

@@ -74,7 +74,10 @@ async def lifespan(_app: FastAPI):
         enqueue_music_search_snapshot_rebuild,
         handle_music_search_snapshot_rebuild,
     )
-    from backend.services.track_credit_rebuild_service import handle_track_credit_rebuild
+    from backend.services.track_credit_rebuild_service import (
+        ensure_track_credit_rebuild_job,
+        handle_track_credit_rebuild,
+    )
 
     job_queue = get_job_queue()
     job_queue.register("cover_download", handle_cover_download)
@@ -113,11 +116,15 @@ async def lifespan(_app: FastAPI):
     from backend.core.job_queue import Job
     from backend.domains.metadata.artist_identity import get_identity_state
     from backend.domains.metadata.track_credits import get_track_credit_state
+    from backend.domains.music_search.index import (
+        get_music_search_candidate_maintenance_state,
+    )
 
     identity_conn = get_db()
     try:
         identity_state = get_identity_state(identity_conn)
         credit_state = get_track_credit_state(identity_conn)
+        candidate_maintenance = get_music_search_candidate_maintenance_state(identity_conn)
     finally:
         identity_conn.close()
     if identity_state.get("rebuild_status") in {"pending", "failed"}:
@@ -129,19 +136,23 @@ async def lifespan(_app: FastAPI):
                 revision=int(identity_state.get("current_revision") or 0),
             )
         )
-    if credit_state.get("rebuild_status") in {"pending", "failed"}:
-        job_queue.enqueue_if_not_pending(
-            Job.create(
-                "track_credit_rebuild",
-                "track_credit",
-                "global",
-                revision=int(credit_state.get("current_revision") or 0),
-            )
+    credit_current_revision = int(credit_state.get("current_revision") or 0)
+    credit_active_revision = int(credit_state.get("active_aggregate_revision") or 0)
+    if (
+        credit_state.get("rebuild_status") in {"pending", "failed"}
+        or credit_current_revision > credit_active_revision
+    ):
+        ensure_track_credit_rebuild_job(
+            credit_current_revision,
+            queue=job_queue,
         )
 
     outside_pytest = "PYTEST_CURRENT_TEST" not in os.environ
     if _music_search_startup_rebuild_enabled() and outside_pytest:
-        enqueue_music_search_snapshot_rebuild()
+        enqueue_music_search_snapshot_rebuild(
+            rebuild_documents=str(candidate_maintenance.get("maintenance_status") or "missing")
+            in {"missing", "pending", "building", "failed"}
+        )
     if os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0" and outside_pytest:
         start_warmup_thread()
     yield

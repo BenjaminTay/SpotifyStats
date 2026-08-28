@@ -179,6 +179,79 @@ describe('MusicSearchResults', () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps last-known-good candidates clickable while the new index and statistics rebuild', () => {
+    renderResults({
+      ...sampleResults,
+      snapshot_status: 'warming',
+      candidate_status: 'degraded',
+      candidate_freshness: 'last_known_good',
+      statistics_status: 'warming',
+      statistics_freshness: 'last_known_good',
+      served_filter_fingerprint: 'previous-fingerprint',
+      target_filter_fingerprint: 'next-fingerprint',
+    }, 'love', {
+      ...sampleContext,
+      snapshot_status: 'warming',
+      statistics_status: 'warming',
+      statistics_freshness: 'last_known_good',
+      served_filter_fingerprint: 'previous-fingerprint',
+      filter_fingerprint: 'previous-fingerprint',
+    })
+
+    expect(screen.getByText('搜索索引正在更新')).toBeInTheDocument()
+    expect(screen.getByText(/当前继续使用上一可用版本/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Cruel Summer/ })).toHaveAttribute('href', '/music/tracks/42')
+    expect(screen.getAllByText('上一版本').length).toBeGreaterThan(0)
+    expect(screen.queryByText('搜索暂不可用')).not.toBeInTheDocument()
+  })
+
+  it('shows a non-blocking statistics notice alongside a valid empty candidate result', () => {
+    renderResults({
+      ...sampleResults,
+      snapshot_status: 'warming',
+      candidate_status: 'ready',
+      candidate_freshness: 'current',
+      statistics_status: 'warming',
+      statistics_freshness: 'unavailable',
+      total: 0,
+      total_by_kind: { track: 0, album: 0, artist: 0 },
+      tracks: [], albums: [], artists: [],
+    }, 'zzzz', null)
+
+    expect(screen.getByText('搜索可用，播放统计正在更新')).toBeInTheDocument()
+    expect(screen.getByText('没有找到匹配的音乐详情')).toBeInTheDocument()
+    expect(screen.queryByText('搜索暂不可用')).not.toBeInTheDocument()
+  })
+
+  it('does not replace candidates when statistics maintenance fails', () => {
+    renderResults({
+      ...sampleResults,
+      snapshot_status: 'failed',
+      candidate_status: 'ready',
+      candidate_freshness: 'current',
+      statistics_status: 'failed',
+      statistics_freshness: 'last_known_good',
+    })
+
+    expect(screen.getByText('搜索可用，播放统计更新失败')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Cruel Summer/ })).toBeInTheDocument()
+  })
+
+  it('labels bounded local-catalog fallback without hiding its candidates', () => {
+    renderResults({
+      ...sampleResults,
+      snapshot_status: 'unavailable',
+      candidate_status: 'degraded',
+      candidate_freshness: 'fallback',
+      statistics_status: 'unavailable',
+      statistics_freshness: 'unavailable',
+      served_filter_fingerprint: null,
+    }, 'love', null)
+
+    expect(screen.getByText('正在使用基础搜索')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Cruel Summer/ })).toBeInTheDocument()
+  })
+
   it('shows an empty state only for a ready snapshot with no matches', () => {
     renderResults({
       ...sampleResults,

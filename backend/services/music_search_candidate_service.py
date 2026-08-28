@@ -1,30 +1,38 @@
 """Fast first-pass candidates for the versioned music-search API.
 
-M1 deliberately keeps this service independent from filtered lifetime frames
-and Billboard computation.  Exact consumer eligibility is joined from the
-derived snapshot in M3; until that snapshot exists, ``current`` requests fail
-closed with an explicit availability state.  Private metadata-governance
-callers may opt into ``any_local`` candidates.
+Published candidate documents remain queryable while the next generation or
+its exact statistical context is pending, building, or failed.  This service
+never invokes the legacy lifetime/Billboard search path.
 """
 
 from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterable
+from dataclasses import replace
 from typing import Any, Literal, cast
 
+from backend.core.config import MUSIC_SEARCH_CANDIDATE_LKG
 from backend.domains.ai_agent.entity_resolver import EntityType, resolve_entities
 from backend.domains.music_search.contracts import make_music_search_entity_key
+from backend.domains.music_search.deny_overlay import denied_music_search_entity_keys
+from backend.domains.music_search.index import (
+    get_music_search_candidate_maintenance_state,
+    get_music_search_index_state,
+    music_search_source_revision,
+)
 from backend.domains.music_search.normalization import analyze_search_query, normalize_search_text
 from backend.domains.music_search.repository import search_music_index
 from backend.domains.music_search.timing import MusicSearchTiming, measure_search_phase
 from backend.models.music_search import (
+    MusicSearchCandidateFreshness,
     MusicSearchCandidateResponse,
     MusicSearchCandidateResult,
     MusicSearchKindTotals,
     MusicSearchMatchField,
     MusicSearchMatchQuality,
     MusicSearchSnapshotStatus,
+    MusicSearchStatisticsFreshness,
 )
 from backend.services.music_search_service import _convert
 
@@ -113,18 +121,52 @@ def _empty_response(
     page_size: int,
     snapshot_status: MusicSearchSnapshotStatus,
     filter_fingerprint: str | None = None,
+    candidate_status: Literal["ready", "degraded", "unavailable"] = "unavailable",
+    candidate_freshness: MusicSearchCandidateFreshness = "unavailable",
+    candidate_index_version: str | None = None,
+    served_filter_fingerprint: str | None = None,
+    target_filter_fingerprint: str | None = None,
 ) -> MusicSearchCandidateResponse:
     return MusicSearchCandidateResponse(
         query=query,
         normalized_query=normalized_query,
         snapshot_status=snapshot_status,
+        candidate_status=candidate_status,
+        candidate_freshness=candidate_freshness,
+        statistics_status=snapshot_status,
+        statistics_freshness=("current" if snapshot_status == "ready" else "unavailable"),
         filter_fingerprint=filter_fingerprint,
+        served_filter_fingerprint=served_filter_fingerprint,
+        target_filter_fingerprint=target_filter_fingerprint,
+        candidate_index_version=candidate_index_version,
         kind=kind,
         page=page,
         page_size=page_size,
         total=0,
         total_by_kind=MusicSearchKindTotals(),
     )
+
+
+def _published_candidate_freshness(
+    conn: sqlite3.Connection,
+) -> tuple[MusicSearchCandidateFreshness, str | None]:
+    serving = get_music_search_index_state(conn)
+    maintenance = get_music_search_candidate_maintenance_state(conn)
+    active_source = str(serving.get("source_revision") or "")
+    active_version = str(serving.get("candidate_index_version") or "")
+    target_source = str(maintenance.get("target_source_revision") or "")
+    target_version = str(maintenance.get("target_candidate_index_version") or "")
+    current_source = music_search_source_revision(conn)
+    target_matches_active = (not target_source or target_source == active_source) and (
+        not target_version or target_version == active_version
+    )
+    is_current = (
+        bool(active_source)
+        and active_source == current_source
+        and target_matches_active
+        and str(maintenance.get("maintenance_status") or "missing") == "ready"
+    )
+    return ("current" if is_current else "last_known_good"), active_version or None
 
 
 def search_music_candidates(
@@ -139,13 +181,18 @@ def search_music_candidates(
     snapshot_status: MusicSearchSnapshotStatus = "unavailable",
     merge_level: int = 2,
     snapshot_key: str | None = None,
+    statistics_freshness: MusicSearchStatisticsFreshness = "unavailable",
+    served_filter_fingerprint: str | None = None,
     timing: MusicSearchTiming | None = None,
+    allow_fallback: bool = True,
+    require_snapshot_membership: bool = False,
+    include_target_fingerprint: bool = True,
 ) -> MusicSearchCandidateResponse:
     """Return lightweight candidates without loading statistical frames.
 
-    ``current`` is intentionally fail-closed until an exact ready snapshot is
-    supplied by M3.  That prevents a fast raw entity match from pretending to
-    have the same existence semantics as the detail pages.
+    Exact snapshot membership is used when available. Otherwise the published
+    local-catalog generation remains searchable and statistics are explicitly
+    marked unavailable/stale instead of suppressing candidates.
     """
 
     with measure_search_phase(timing, "normalize"):
@@ -159,19 +206,32 @@ def search_music_candidates(
             kind=selected_kind,
             page=page,
             page_size=page_size,
-            snapshot_status="ready" if eligibility == "any_local" else snapshot_status,
+            snapshot_status=("unavailable" if eligibility == "any_local" else snapshot_status),
             filter_fingerprint=filter_fingerprint,
+            target_filter_fingerprint=(filter_fingerprint if include_target_fingerprint else None),
         )
-    if eligibility == "current" and (snapshot_status != "ready" or snapshot_key is None):
+
+    serving_snapshot_key = snapshot_key if eligibility == "current" and snapshot_key else None
+    if require_snapshot_membership and eligibility == "current" and serving_snapshot_key is None:
         return _empty_response(
             query=query,
             normalized_query=analysis.normalized_query,
             kind=selected_kind,
             page=page,
             page_size=page_size,
-            snapshot_status=(snapshot_status if snapshot_status != "ready" else "unavailable"),
+            snapshot_status=snapshot_status,
             filter_fingerprint=filter_fingerprint,
+            target_filter_fingerprint=None,
         )
+    effective_snapshot_status: MusicSearchSnapshotStatus = (
+        "unavailable"
+        if eligibility == "any_local"
+        else (
+            snapshot_status
+            if snapshot_status != "ready" or serving_snapshot_key is not None
+            else "unavailable"
+        )
+    )
 
     with measure_search_phase(timing, "candidate_query"):
         indexed = search_music_index(
@@ -181,16 +241,29 @@ def search_music_candidates(
             page=page,
             page_size=page_size,
             merge_level=merge_level,
-            snapshot_key=snapshot_key if eligibility == "current" else None,
+            snapshot_key=serving_snapshot_key,
         )
     if indexed.status in {"ready", "degraded"}:
+        candidate_freshness, active_index_version = _published_candidate_freshness(conn)
+        if not MUSIC_SEARCH_CANDIDATE_LKG and candidate_freshness != "current":
+            indexed = replace(indexed, status="missing")
+    if indexed.status in {"ready", "degraded"}:
+        candidate_freshness, active_index_version = _published_candidate_freshness(conn)
         totals = indexed.total_by_kind
         response = MusicSearchCandidateResponse(
             query=query,
             normalized_query=analysis.normalized_query,
-            snapshot_status="ready",
+            snapshot_status=effective_snapshot_status,
+            candidate_status=indexed.status,
+            candidate_freshness=candidate_freshness,
+            statistics_status=effective_snapshot_status,
+            statistics_freshness=(
+                statistics_freshness if serving_snapshot_key is not None else "unavailable"
+            ),
             filter_fingerprint=filter_fingerprint,
-            candidate_index_version=indexed.candidate_index_version,
+            served_filter_fingerprint=(served_filter_fingerprint if serving_snapshot_key else None),
+            target_filter_fingerprint=(filter_fingerprint if include_target_fingerprint else None),
+            candidate_index_version=indexed.candidate_index_version or active_index_version,
             kind=selected_kind,
             page=page,
             page_size=page_size,
@@ -204,11 +277,10 @@ def search_music_candidates(
             response.model_dump(mode="json")
         return response
 
-    # The bounded resolver remains available only for private metadata
-    # governance.  ``current`` must not bypass the exact derived snapshot if
-    # the search index is unavailable, because doing so would silently weaken
-    # the detail-page existence contract.
-    if eligibility == "current":
+    # First-start fallback is deliberately private and bounded. Public-readonly
+    # callers need a separately proven public-safe resolver before this layer
+    # can be enabled for them.
+    if not allow_fallback:
         return _empty_response(
             query=query,
             normalized_query=analysis.normalized_query,
@@ -217,6 +289,7 @@ def search_music_candidates(
             page_size=page_size,
             snapshot_status="unavailable",
             filter_fingerprint=filter_fingerprint,
+            target_filter_fingerprint=(filter_fingerprint if include_target_fingerprint else None),
         )
 
     resolver_limit = min(max(page * page_size, 1), 10)
@@ -245,6 +318,11 @@ def search_music_candidates(
                 )
                 is not None
             ]
+            denied = denied_music_search_entity_keys(
+                conn,
+                (item.entity_key for item in converted),
+            )
+            converted = [item for item in converted if item.entity_key not in denied]
             offset = (page - 1) * page_size if selected_kind else 0
             grouped[entity_kind] = converted[offset : offset + page_size]
 
@@ -256,8 +334,13 @@ def search_music_candidates(
     response = MusicSearchCandidateResponse(
         query=query,
         normalized_query=analysis.normalized_query,
-        snapshot_status="ready",
+        snapshot_status=effective_snapshot_status,
+        candidate_status="degraded",
+        candidate_freshness="fallback",
+        statistics_status=effective_snapshot_status,
+        statistics_freshness="unavailable",
         filter_fingerprint=filter_fingerprint,
+        target_filter_fingerprint=(filter_fingerprint if include_target_fingerprint else None),
         kind=selected_kind,
         page=page,
         page_size=page_size,

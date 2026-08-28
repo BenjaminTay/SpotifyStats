@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TrackCreditManager } from '@/features/settings/components/TrackCreditManager'
+import type { TrackCreditState } from '@/types/settings'
 
 const { useTrackCreditsMock, previewMutateAsync, createMutateAsync } = vi.hoisted(() => ({
   useTrackCreditsMock: vi.fn(),
@@ -152,5 +153,64 @@ describe('TrackCreditManager', () => {
     expect(screen.getByRole('combobox', { name: '署名操作' })).toBeEnabled()
     expect(screen.getByRole('combobox', { name: '署名角色' })).toBeEnabled()
     expect(screen.getByRole('tab', { name: '编辑署名' })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('separates candidate serving from statistics maintenance and allows pending recovery', () => {
+    const result = hookResult() as Omit<ReturnType<typeof hookResult>, 'state'> & {
+      state: TrackCreditState
+    }
+    result.state = {
+      ...result.state,
+      current_revision: 35,
+      active_aggregate_revision: 33,
+      rebuild_status: 'pending',
+      serving_revision: 33,
+      target_revision: 35,
+      candidate_maintenance_status: 'building',
+      statistics_variant_statuses: [{
+        merge_level: 2,
+        dynamic_threshold: true,
+        maintenance_status: 'building',
+        freshness: 'last_known_good',
+      }],
+      retry_allowed: true,
+    }
+    useTrackCreditsMock.mockReturnValue(result)
+
+    render(<TrackCreditManager initialTrackId={175} />)
+
+    expect(screen.getByText('搜索候选 · 上一版本可用')).toBeInTheDocument()
+    expect(screen.getByText('播放统计 · 上一版本可用')).toBeInTheDocument()
+    expect(screen.getByText('服务 revision 33 → 目标 35')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '恢复维护' }))
+    expect(result.rebuild.mutate).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the serving candidate version visible when statistics maintenance failed', () => {
+    const result = hookResult() as Omit<ReturnType<typeof hookResult>, 'state'> & {
+      state: TrackCreditState
+    }
+    result.state = {
+      ...result.state,
+      current_revision: 35,
+      active_aggregate_revision: 33,
+      rebuild_status: 'failed',
+      serving_revision: 33,
+      target_revision: 35,
+      candidate_maintenance_status: 'failed',
+      statistics_variant_statuses: [{
+        maintenance_status: 'failed',
+        freshness: 'last_known_good',
+      }],
+      retry_allowed: true,
+    }
+    useTrackCreditsMock.mockReturnValue(result)
+
+    render(<TrackCreditManager initialTrackId={175} />)
+
+    expect(screen.getByText('搜索候选 · 上一版本可用')).toBeInTheDocument()
+    expect(screen.getByText('播放统计 · 部分更新失败')).toBeInTheDocument()
+    expect(screen.queryByText(result.state.last_error ?? 'internal error')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重试维护' })).toBeInTheDocument()
   })
 })

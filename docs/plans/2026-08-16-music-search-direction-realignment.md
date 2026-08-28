@@ -3,7 +3,11 @@
 > 创建日期：2026-08-16
 > 状态：现行维护方向；阶段 A–E 已通过本地、真实副本、CI 与生产验收，后续只保留复用、索引和发布边界维护
 > 适用范围：Masthead Quick Open、`/music/search`、候选索引、搜索统计、模糊匹配、简繁体匹配与生产发布
-> 关联文档：`2026-08-16-music-search-performance-and-experience-optimization-plan.md`、`2026-08-16-music-search-remediation-plan.md`、`../reports/2026-08-16-music-search-optimization-delivery.md`
+> 关联文档：`2026-08-16-music-search-performance-and-experience-optimization-plan.md`、`2026-08-16-music-search-remediation-plan.md`、`2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md`、`../reports/2026-08-16-music-search-optimization-delivery.md`
+
+> 2026-08-28 补充：候选/统计解耦的方向不变；“统计 snapshot 未 ready 时阻断候选”、candidate
+> serving/building 状态混用、曲目署名 revision 竞态和无差别全局重建已完成修复。当前实现与验收以
+> `2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md` 及对应交付报告为准。
 
 ## 0. 结论
 

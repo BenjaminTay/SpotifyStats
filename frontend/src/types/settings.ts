@@ -348,12 +348,35 @@ export interface ArtistIdentityMutation {
 export type TrackCreditRole = "primary" | "featured";
 export type TrackCreditAction = "add" | "remove" | "set_role";
 
+export type MusicSearchMaintenanceStatus =
+  | "missing"
+  | "pending"
+  | "building"
+  | "ready"
+  | "failed";
+
+export interface MusicSearchStatisticsVariantStatus {
+  merge_level?: number;
+  dynamic_threshold?: boolean;
+  maintenance_status: MusicSearchMaintenanceStatus;
+  freshness?: "current" | "last_known_good" | "unavailable";
+  active_filter_fingerprint?: string | null;
+  target_filter_fingerprint?: string | null;
+}
+
 export interface TrackCreditState {
   current_revision: number;
   active_aggregate_revision: number;
   rebuild_status: "ready" | "pending" | "running" | "failed";
   last_error: string | null;
   updated_at?: string;
+  serving_revision?: number | null;
+  target_revision?: number | null;
+  candidate_maintenance_status?: MusicSearchMaintenanceStatus;
+  statistics_variant_statuses?: MusicSearchStatisticsVariantStatus[];
+  queued_or_running_job?: boolean;
+  lkg_age?: number | null;
+  retry_allowed?: boolean;
 }
 
 export interface TrackCreditTrackCandidate {

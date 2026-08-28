@@ -8517,8 +8517,36 @@ export interface components {
              * @enum {string}
              */
             snapshot_status: "ready" | "warming" | "unavailable" | "stale" | "failed";
+            /**
+             * Candidate Status
+             * @default unavailable
+             * @enum {string}
+             */
+            candidate_status: "ready" | "degraded" | "unavailable";
+            /**
+             * Candidate Freshness
+             * @default unavailable
+             * @enum {string}
+             */
+            candidate_freshness: "current" | "last_known_good" | "fallback" | "unavailable";
+            /**
+             * Statistics Status
+             * @default unavailable
+             * @enum {string}
+             */
+            statistics_status: "ready" | "warming" | "unavailable" | "stale" | "failed";
+            /**
+             * Statistics Freshness
+             * @default unavailable
+             * @enum {string}
+             */
+            statistics_freshness: "current" | "last_known_good" | "unavailable";
             /** Filter Fingerprint */
             filter_fingerprint?: string | null;
+            /** Served Filter Fingerprint */
+            served_filter_fingerprint?: string | null;
+            /** Target Filter Fingerprint */
+            target_filter_fingerprint?: string | null;
             /** Candidate Index Version */
             candidate_index_version?: string | null;
             /** Kind */
@@ -8632,6 +8660,22 @@ export interface components {
             snapshot_status: "ready" | "warming" | "unavailable" | "stale" | "failed";
             /** Filter Fingerprint */
             filter_fingerprint?: string | null;
+            /**
+             * Statistics Status
+             * @default unavailable
+             * @enum {string}
+             */
+            statistics_status: "ready" | "warming" | "unavailable" | "stale" | "failed";
+            /**
+             * Statistics Freshness
+             * @default unavailable
+             * @enum {string}
+             */
+            statistics_freshness: "current" | "last_known_good" | "unavailable";
+            /** Served Filter Fingerprint */
+            served_filter_fingerprint?: string | null;
+            /** Target Filter Fingerprint */
+            target_filter_fingerprint?: string | null;
             /** Items */
             items?: {
                 [key: string]: components["schemas"]["MusicSearchContextItem"];
@@ -10491,6 +10535,11 @@ export interface components {
             revision: number;
             /** Rebuild Job Id */
             rebuild_job_id?: string | null;
+            /**
+             * Idempotent Replay
+             * @default false
+             */
+            idempotent_replay: boolean;
         };
         /** TrackCreditPreviewRequest */
         TrackCreditPreviewRequest: {

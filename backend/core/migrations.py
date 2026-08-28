@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 59
+LATEST_SCHEMA_VERSION = 63
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3235,6 +3235,250 @@ def migrate_059(conn: sqlite3.Connection):
 
 
 # ── Runner ────────────────────────────────────────────────────────────────
+
+
+@migration(60, "music_search_candidate_maintenance_state")
+def migrate_060(conn: sqlite3.Connection):
+    """Separate the published candidate generation from its next build."""
+
+    maintenance_state_exists = False
+    if conn.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='music_search_candidate_maintenance_state'"""
+    ).fetchone():
+        prior = conn.execute(
+            """SELECT target_source_revision, target_candidate_index_version,
+                      maintenance_status, started_at, finished_at, last_error
+               FROM music_search_candidate_maintenance_state WHERE state_id=1"""
+        ).fetchone()
+        # The CREATE + default singleton can survive a process interruption
+        # before legacy state is backfilled.  A bare ``missing`` row is not a
+        # completed migration marker and must be retried.
+        maintenance_state_exists = bool(
+            prior
+            and (
+                prior[0]
+                or prior[1]
+                or str(prior[2] or "missing") != "missing"
+                or prior[3]
+                or prior[4]
+                or prior[5]
+            )
+        )
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS music_search_candidate_maintenance_state (
+            state_id INTEGER PRIMARY KEY CHECK (state_id = 1),
+            target_source_revision TEXT,
+            target_candidate_index_version TEXT,
+            maintenance_status TEXT NOT NULL DEFAULT 'missing'
+                CHECK (maintenance_status IN (
+                    'missing', 'pending', 'building', 'ready', 'failed'
+                )),
+            building_generation_id TEXT,
+            job_id TEXT,
+            started_at TEXT,
+            finished_at TEXT,
+            last_error TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO music_search_candidate_maintenance_state(
+            state_id, maintenance_status
+        ) VALUES (1, 'missing');
+        """
+    )
+    if maintenance_state_exists:
+        return
+
+    state = conn.execute(
+        """SELECT active_generation_id, status, tokenizer, source_revision,
+                  candidate_index_version, last_error
+             FROM music_search_index_state WHERE state_id=1"""
+    ).fetchone()
+    if state is None:
+        return
+
+    active_generation_id = str(state[0]) if state[0] else None
+    active_document_exists = bool(
+        active_generation_id
+        and conn.execute(
+            """SELECT 1 FROM music_search_documents
+               WHERE generation_id=? LIMIT 1""",
+            (active_generation_id,),
+        ).fetchone()
+    )
+    legacy_status = str(state[1] or "missing")
+    if active_document_exists:
+        serving_status = (
+            "degraded"
+            if legacy_status == "degraded" or str(state[2] or "").startswith("bounded_")
+            else "ready"
+        )
+    else:
+        serving_status = "missing"
+    conn.execute(
+        """UPDATE music_search_index_state
+              SET status=?, updated_at=datetime('now')
+            WHERE state_id=1""",
+        (serving_status,),
+    )
+
+    if legacy_status in {"building", "failed"}:
+        maintenance_status = legacy_status
+    elif active_document_exists:
+        maintenance_status = "ready"
+    else:
+        maintenance_status = "missing"
+    conn.execute(
+        """UPDATE music_search_candidate_maintenance_state
+              SET target_source_revision=?, target_candidate_index_version=?,
+                  maintenance_status=?,
+                  last_error=CASE WHEN ?='failed' THEN ? ELSE NULL END,
+                  finished_at=CASE WHEN ? IN ('ready', 'failed')
+                                   THEN datetime('now') ELSE NULL END,
+                  updated_at=datetime('now')
+            WHERE state_id=1""",
+        (
+            str(state[3]) if state[3] else None,
+            str(state[4]) if state[4] else None,
+            maintenance_status,
+            maintenance_status,
+            str(state[5]) if state[5] else None,
+            maintenance_status,
+        ),
+    )
+
+
+@migration(61, "music_search_snapshot_variant_state")
+def migrate_061(conn: sqlite3.Connection):
+    """Keep one verified serving snapshot while a newer target is maintained."""
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS music_search_snapshot_variant_state (
+            merge_level INTEGER NOT NULL,
+            dynamic_threshold INTEGER NOT NULL CHECK(dynamic_threshold IN (0, 1)),
+            active_snapshot_key TEXT,
+            active_filter_fingerprint TEXT,
+            target_filter_fingerprint TEXT,
+            maintenance_status TEXT NOT NULL DEFAULT 'ready'
+                CHECK(maintenance_status IN ('ready', 'pending', 'building', 'failed')),
+            job_id TEXT,
+            last_error TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY(merge_level, dynamic_threshold)
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_search_snapshot_variant_active
+            ON music_search_snapshot_variant_state(active_snapshot_key);
+        """
+    )
+    meta_exists = conn.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='music_search_snapshot_meta'"""
+    ).fetchone()
+    payload_exists = conn.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type='table' AND name='music_search_entity_context'"""
+    ).fetchone()
+    if meta_exists is None or payload_exists is None:
+        return
+    for merge_level in (2, 3):
+        for dynamic_threshold in (1, 0):
+            active = conn.execute(
+                """SELECT meta.snapshot_key, meta.filter_fingerprint
+                   FROM music_search_snapshot_meta meta
+                   WHERE meta.merge_level=? AND meta.dynamic_threshold=?
+                     AND meta.status IN ('ready', 'stale')
+                     AND meta.builder_version='music_search_snapshot_v8_canonical_track'
+                     AND EXISTS(
+                         SELECT 1 FROM music_search_entity_context payload
+                         WHERE payload.snapshot_key=meta.snapshot_key
+                     )
+                   ORDER BY COALESCE(meta.activated_at, meta.created_at) DESC
+                   LIMIT 1""",
+                (merge_level, dynamic_threshold),
+            ).fetchone()
+            target = conn.execute(
+                """SELECT filter_fingerprint, status, last_error
+                   FROM music_search_snapshot_meta
+                   WHERE merge_level=? AND dynamic_threshold=?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (merge_level, dynamic_threshold),
+            ).fetchone()
+            if active is None and target is None:
+                continue
+            raw_status = str(target[1] if target is not None else "ready")
+            maintenance_status = {
+                "running": "building",
+                "pending": "pending",
+                "failed": "failed",
+            }.get(raw_status, "ready")
+            conn.execute(
+                """INSERT OR REPLACE INTO music_search_snapshot_variant_state(
+                       merge_level, dynamic_threshold, active_snapshot_key,
+                       active_filter_fingerprint, target_filter_fingerprint,
+                       maintenance_status, last_error, updated_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
+                (
+                    merge_level,
+                    dynamic_threshold,
+                    str(active[0]) if active is not None else None,
+                    str(active[1]) if active is not None else None,
+                    str(target[0]) if target is not None else None,
+                    maintenance_status,
+                    str(target[2]) if target is not None and target[2] else None,
+                ),
+            )
+
+
+@migration(62, "track_credit_change_sets")
+def migrate_062(conn: sqlite3.Connection):
+    """Persist canonical before/after evidence for bounded credit maintenance."""
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS track_credit_change_sets (
+            change_set_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_revision INTEGER NOT NULL,
+            to_revision INTEGER NOT NULL UNIQUE,
+            track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            canonical_track_ids_json TEXT NOT NULL,
+            before_credits_json TEXT NOT NULL,
+            after_credits_json TEXT NOT NULL,
+            before_roles_json TEXT NOT NULL,
+            after_roles_json TEXT NOT NULL,
+            affected_artist_ids_json TEXT NOT NULL,
+            candidate_changed INTEGER NOT NULL DEFAULT 1 CHECK(candidate_changed IN (0, 1)),
+            statistics_membership_changed INTEGER NOT NULL DEFAULT 0
+                CHECK(statistics_membership_changed IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            consumed_at TEXT,
+            CHECK(to_revision = from_revision + 1)
+        );
+        CREATE INDEX IF NOT EXISTS idx_track_credit_change_sets_unconsumed
+            ON track_credit_change_sets(consumed_at, to_revision);
+        CREATE INDEX IF NOT EXISTS idx_track_credit_change_sets_track
+            ON track_credit_change_sets(track_id, to_revision);
+        """
+    )
+
+
+@migration(63, "music_search_entity_deny_overlay")
+def migrate_063(conn: sqlite3.Connection):
+    """Exclude sensitive entities immediately while an older generation serves."""
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS music_search_entity_deny_overlay (
+            entity_key TEXT PRIMARY KEY,
+            reason TEXT NOT NULL,
+            target_source_revision TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_music_search_entity_deny_target
+            ON music_search_entity_deny_overlay(target_source_revision);
+        """
+    )
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

@@ -1,4 +1,12 @@
-import type { MusicSearchKind } from '@/types/music-search'
+import type {
+  MusicSearchCandidateFreshness,
+  MusicSearchCandidateResponse,
+  MusicSearchCandidateStatus,
+  MusicSearchContextResponse,
+  MusicSearchKind,
+  MusicSearchStatisticsFreshness,
+  MusicSearchStatisticsStatus,
+} from '@/types/music-search'
 
 export const MUSIC_SEARCH_KIND_LABELS: Record<MusicSearchKind, string> = {
   track: '单曲',
@@ -40,4 +48,38 @@ export function formatPlayEvents(count: number): string {
 
 export function musicSearchOptionId(entityKey: string): string {
   return `music-search-option-${entityKey.replace(/[^a-z0-9_-]/gi, '-')}`
+}
+
+export function musicSearchCandidateStatus(
+  data: MusicSearchCandidateResponse,
+): MusicSearchCandidateStatus {
+  if (data.candidate_status) return data.candidate_status
+  if (data.snapshot_status === 'ready' || data.total > 0) return 'ready'
+  return 'unavailable'
+}
+
+export function musicSearchCandidateFreshness(
+  data: MusicSearchCandidateResponse,
+): MusicSearchCandidateFreshness {
+  if (data.candidate_freshness) return data.candidate_freshness
+  return data.snapshot_status === 'ready' ? 'current' : 'last_known_good'
+}
+
+export function musicSearchStatisticsStatus(
+  data: MusicSearchCandidateResponse | MusicSearchContextResponse,
+): MusicSearchStatisticsStatus {
+  return data.statistics_status ?? data.snapshot_status
+}
+
+export function musicSearchStatisticsFreshness(
+  data: MusicSearchCandidateResponse | MusicSearchContextResponse,
+): MusicSearchStatisticsFreshness {
+  if (data.statistics_freshness) return data.statistics_freshness
+  return musicSearchStatisticsStatus(data) === 'ready' ? 'current' : 'unavailable'
+}
+
+export function musicSearchServedFilterFingerprint(
+  data: MusicSearchCandidateResponse | MusicSearchContextResponse | null | undefined,
+): string | null {
+  return data?.served_filter_fingerprint ?? data?.filter_fingerprint ?? null
 }

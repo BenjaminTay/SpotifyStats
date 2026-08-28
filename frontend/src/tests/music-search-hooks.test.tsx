@@ -141,6 +141,34 @@ describe('music search v2 hooks', () => {
     })).toHaveLength(1)
   })
 
+  it('pairs context with the actual served fingerprint and accepts last-known-good statistics', async () => {
+    const client = createClient()
+    const get = vi.spyOn(api, 'get').mockResolvedValue({
+      response_version: 'music_search_context_v1',
+      snapshot_status: 'warming',
+      statistics_status: 'warming',
+      statistics_freshness: 'last_known_good',
+      filter_fingerprint: 'target-fingerprint',
+      served_filter_fingerprint: 'served-fingerprint',
+      items: { 'track:1': { play_events: 7, total_ms: 7000, chart: null } },
+    })
+
+    const { result } = renderHook(
+      () => useMusicSearchContext({
+        entityKeys: ['track:1'],
+        filterFingerprint: 'served-fingerprint',
+        filters,
+      }),
+      { wrapper: wrapperFor(client) },
+    )
+
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(result.current.data?.items['track:1']?.play_events).toBe(7))
+    expect(client.getQueryCache().findAll({
+      queryKey: queryKeys.music.searchContext('served-fingerprint', ['track:1']),
+    })).toHaveLength(1)
+  })
+
   it('sends only the two supported search variant parameters', async () => {
     const client = createClient()
     const get = vi.spyOn(api, 'get')
@@ -237,6 +265,18 @@ describe('music search v2 hooks', () => {
     const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
     expect(musicSearchSnapshotPollInterval(query('warming', 2))).toBe(false)
     visibility.mockRestore()
+  })
+
+  it('continues observing a served LKG candidate index even when statistics maintenance failed', () => {
+    const data = {
+      ...candidateResponse('failed', 'served-fingerprint'),
+      candidate_status: 'degraded' as const,
+      candidate_freshness: 'last_known_good' as const,
+      statistics_status: 'failed' as const,
+    }
+    expect(musicSearchSnapshotPollInterval({
+      state: { data, dataUpdateCount: 1, status: 'success' },
+    })).toBe(2_000)
   })
 
   it('automatically observes warming until ready and then stops', async () => {

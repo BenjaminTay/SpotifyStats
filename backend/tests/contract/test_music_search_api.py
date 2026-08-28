@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from backend.core.access_surface import PUBLIC_READONLY_SURFACE, SURFACE_HEADER
 from backend.core.db import get_db
+from backend.domains.music_search.index import rebuild_music_search_index
 from backend.main import app
 from backend.services.music_search_maintenance_service import (
     rebuild_current_music_search_derived_data,
@@ -100,7 +101,9 @@ def test_music_search_endpoint_is_available_on_public_readonly_surface(
     assert response.json()["tracks"][0]["href"] == "/music/tracks/4"
 
 
-def test_candidate_mode_fails_closed_without_snapshot(client: TestClient) -> None:
+def test_private_candidate_mode_uses_bounded_fallback_without_snapshot(
+    client: TestClient,
+) -> None:
     response = client.get(
         "/api/music/search",
         params={
@@ -115,10 +118,98 @@ def test_candidate_mode_fails_closed_without_snapshot(client: TestClient) -> Non
     assert payload["response_version"] == "music_search_v2"
     assert payload["normalized_query"] == "alpha song 4"
     assert payload["snapshot_status"] == "unavailable"
-    assert payload["total"] == 0
-    assert payload["tracks"] == []
+    assert payload["candidate_status"] == "degraded"
+    assert payload["candidate_freshness"] == "fallback"
+    assert payload["statistics_status"] == "unavailable"
+    assert payload["statistics_freshness"] == "unavailable"
+    assert payload["total"] == 1
+    assert payload["tracks"][0]["entity_key"] == "track:4"
     assert "normalize;dur=" in response.headers["server-timing"]
     assert "total;dur=" in response.headers["server-timing"]
+
+
+def test_public_candidate_fails_closed_when_active_index_has_no_safe_membership(
+    client: TestClient,
+) -> None:
+    conn = get_db(readonly=False)
+    try:
+        rebuild_music_search_index(conn)
+        conn.execute("DELETE FROM music_search_snapshot_meta")
+        conn.execute("DELETE FROM music_search_entity_context")
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client.get(
+        "/api/music/search",
+        params={"q": "Alpha Song 4", "kind": "track", "response_mode": "candidates"},
+        headers={SURFACE_HEADER: PUBLIC_READONLY_SURFACE},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["candidate_status"] == "unavailable"
+    assert payload["candidate_freshness"] == "unavailable"
+    assert payload["target_filter_fingerprint"] is None
+    assert payload["total"] == 0
+    assert payload["tracks"] == []
+
+
+@pytest.mark.parametrize("maintenance_status", ("pending", "building", "failed"))
+def test_candidate_mode_serves_lkg_generation_during_candidate_maintenance(
+    client: TestClient,
+    maintenance_status: str,
+) -> None:
+    conn = get_db(readonly=False)
+    try:
+        report = rebuild_music_search_index(conn)
+        conn.execute(
+            """UPDATE music_search_candidate_maintenance_state
+                  SET maintenance_status=?, target_source_revision='target-new',
+                      target_candidate_index_version='candidate-new',
+                      last_error=CASE WHEN ?='failed' THEN 'build failed' ELSE NULL END
+                WHERE state_id=1""",
+            (maintenance_status, maintenance_status),
+        )
+        conn.commit()
+        before = tuple(
+            conn.execute(
+                """SELECT active_generation_id, previous_generation_id, status,
+                          source_revision, candidate_index_version
+                     FROM music_search_index_state WHERE state_id=1"""
+            ).fetchone()
+        )
+    finally:
+        conn.close()
+
+    response = client.get(
+        "/api/music/search",
+        params={
+            "q": "Alpha Song 4",
+            "kind": "track",
+            "response_mode": "candidates",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["candidate_status"] in {"ready", "degraded"}
+    assert payload["candidate_freshness"] == "last_known_good"
+    assert payload["candidate_index_version"] == report["candidate_index_version"]
+    assert payload["tracks"][0]["entity_key"] == "track:4"
+
+    conn = get_db()
+    try:
+        after = tuple(
+            conn.execute(
+                """SELECT active_generation_id, previous_generation_id, status,
+                          source_revision, candidate_index_version
+                     FROM music_search_index_state WHERE state_id=1"""
+            ).fetchone()
+        )
+    finally:
+        conn.close()
+    assert after == before
 
 
 def test_private_any_local_candidate_mode_returns_no_context_metrics(
@@ -136,11 +227,58 @@ def test_private_any_local_candidate_mode_returns_no_context_metrics(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["snapshot_status"] == "ready"
+    assert payload["snapshot_status"] == "unavailable"
     assert payload["tracks"][0]["entity_key"] == "track:4"
     assert "play_events" not in payload["tracks"][0]
     assert "total_ms" not in payload["tracks"][0]
     assert "candidate_query;dur=" in response.headers["server-timing"]
+
+
+def test_deny_overlay_excludes_entity_from_private_and_public_lkg(
+    client: TestClient,
+) -> None:
+    conn = get_db(readonly=False)
+    try:
+        conn.execute(
+            """INSERT INTO music_search_entity_deny_overlay(
+                   entity_key, reason, target_source_revision
+               ) VALUES ('track:4', 'privacy revocation fixture', 'future-revision')"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        private = client.get(
+            "/api/music/search",
+            params={
+                "q": "Alpha Song 4",
+                "kind": "track",
+                "response_mode": "candidates",
+                "eligibility": "any_local",
+            },
+        )
+        public = client.get(
+            "/api/music/search",
+            params={
+                "q": "Alpha Song 4",
+                "kind": "track",
+                "response_mode": "candidates",
+            },
+            headers={SURFACE_HEADER: PUBLIC_READONLY_SURFACE},
+        )
+
+        assert private.status_code == 200
+        assert private.json()["tracks"] == []
+        assert public.status_code == 200
+        assert public.json()["tracks"] == []
+    finally:
+        conn = get_db(readonly=False)
+        try:
+            conn.execute("DELETE FROM music_search_entity_deny_overlay WHERE entity_key='track:4'")
+            conn.commit()
+        finally:
+            conn.close()
 
 
 @pytest.mark.parametrize(
@@ -463,6 +601,10 @@ def test_context_endpoint_is_public_safe_and_fail_closed(client: TestClient) -> 
         "response_version": "music_search_context_v1",
         "snapshot_status": "unavailable",
         "filter_fingerprint": payload["filter_fingerprint"],
+        "statistics_status": "unavailable",
+        "statistics_freshness": "unavailable",
+        "served_filter_fingerprint": None,
+        "target_filter_fingerprint": None,
         "items": {},
     }
     assert len(payload["filter_fingerprint"]) == 64

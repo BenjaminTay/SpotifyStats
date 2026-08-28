@@ -8,7 +8,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from backend.core.migrations import migrate_032, migrate_034, migrate_035, migrate_042
+from backend.core.migrations import migrate_032, migrate_034, migrate_035, migrate_042, migrate_061
 from backend.domains.music_search.context import (
     MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
@@ -868,6 +868,10 @@ def test_snapshot_build_is_exact_lookup_and_stale_never_masquerades_as_ready(
 ) -> None:
     conn = _conn()
     monkeypatch.setattr(
+        "backend.domains.music_search.snapshot.build_music_search_filter_context",
+        lambda _conn, values: MusicSearchFilterContext(**values),
+    )
+    monkeypatch.setattr(
         "backend.domains.music_search.snapshot._metric_maps",
         lambda *_args, **_kwargs: (
             {1: (4, 4000)},
@@ -915,6 +919,10 @@ def test_snapshot_build_is_exact_lookup_and_stale_never_masquerades_as_ready(
 
 def test_snapshot_set_keeps_ready_variants_when_one_variant_fails(monkeypatch) -> None:
     conn = _conn()
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot.build_music_search_filter_context",
+        lambda _conn, values: MusicSearchFilterContext(**values),
+    )
     monkeypatch.setattr(
         "backend.domains.music_search.snapshot._metric_maps",
         lambda *_args, **_kwargs: ({1: (4, 4000)}, {2: (5, 5000)}, {3: (6, 6000)}),
@@ -971,6 +979,48 @@ def test_snapshot_set_keeps_ready_variants_when_one_variant_fails(monkeypatch) -
     assert statuses[(2, False)] == "ready"
     assert statuses[(3, False)] == "ready"
     assert get_music_search_snapshot_status(conn, "fp-3-1") == "failed"
+
+
+def test_snapshot_variant_serves_lkg_while_new_fingerprint_is_pending(monkeypatch) -> None:
+    conn = _conn()
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot.build_music_search_filter_context",
+        lambda _conn, values: MusicSearchFilterContext(**values),
+    )
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot._metric_maps",
+        lambda *_args, **_kwargs: ({1: (4, 4000)}, {2: (5, 5000)}, {3: (6, 6000)}),
+    )
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot._build_chart_lookup",
+        lambda **_kwargs: {"track": {}, "album": {}, "artist": {}},
+    )
+    old_context = _context()
+    build_music_search_snapshot(conn, old_context)
+    migrate_061(conn)
+    new_context = replace(
+        old_context,
+        filter_fingerprint="fingerprint-r2",
+        semantic_base_key="semantic-r2",
+        source_revision="source-r2",
+    )
+    from backend.domains.music_search.snapshot import prepare_music_search_snapshot_set
+
+    prepare_music_search_snapshot_set(conn, (new_context,))
+    response = lookup_music_search_context(
+        conn,
+        filter_fingerprint=new_context.filter_fingerprint,
+        entity_keys=["track:1"],
+        merge_level=2,
+        dynamic_threshold=True,
+    )
+
+    assert response.snapshot_status == "warming"
+    assert response.statistics_status == "warming"
+    assert response.statistics_freshness == "last_known_good"
+    assert response.served_filter_fingerprint == old_context.filter_fingerprint
+    assert response.target_filter_fingerprint == new_context.filter_fingerprint
+    assert response.items["track:1"].play_events == 4
 
 
 def test_snapshot_set_releases_heavy_caches_after_every_variant(monkeypatch) -> None:
@@ -1888,3 +1938,147 @@ def test_snapshot_prune_removes_context_when_foreign_keys_are_disabled() -> None
     assert {
         row[0] for row in conn.execute("SELECT snapshot_key FROM music_search_entity_context")
     } == {"current", "previous"}
+
+
+def test_snapshot_prune_never_removes_active_pointer_with_null_semantic_base() -> None:
+    conn = _conn()
+    conn.execute(
+        """INSERT INTO music_search_snapshot_meta(
+               snapshot_key, filter_fingerprint, source_revision, status,
+               semantic_base_key, merge_level, dynamic_threshold, builder_version,
+               created_at
+           ) VALUES ('legacy-active', 'legacy-active', 'source', 'ready',
+                     NULL, 2, 1, ?, '2025-01-01 00:00:00')""",
+        (MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,),
+    )
+    conn.execute(
+        """INSERT INTO music_search_entity_context(
+               snapshot_key, entity_key, play_events, total_ms
+           ) VALUES ('legacy-active', 'track:1', 1, 1000)"""
+    )
+    migrate_061(conn)
+    conn.executemany(
+        """INSERT INTO music_search_snapshot_meta(
+               snapshot_key, filter_fingerprint, source_revision, status,
+               semantic_base_key, builder_version, created_at
+           ) VALUES (?, ?, 'source', 'ready', ?, ?, ?)""",
+        (
+            ("old", "old", "base-old", MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION, "2026-01-01"),
+            (
+                "previous",
+                "previous",
+                "base-previous",
+                MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+                "2026-01-02",
+            ),
+            (
+                "current",
+                "current",
+                "base-current",
+                MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+                "2026-01-03",
+            ),
+        ),
+    )
+    conn.commit()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    snapshot_module._prune_old_music_search_snapshot_bases(conn, "base-current")
+
+    assert conn.execute(
+        "SELECT 1 FROM music_search_snapshot_meta WHERE snapshot_key='legacy-active'"
+    ).fetchone()
+    assert conn.execute(
+        "SELECT 1 FROM music_search_entity_context WHERE snapshot_key='legacy-active'"
+    ).fetchone()
+
+
+def test_older_builder_cannot_reclaim_newer_variant_target() -> None:
+    conn = _conn()
+    migrate_061(conn)
+    old_context = _context(filter_fingerprint="old-target")
+    new_context = replace(
+        old_context,
+        filter_fingerprint="new-target",
+        semantic_base_key="new-base",
+        source_revision="new-source",
+    )
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    snapshot_module._set_snapshot_variant_target(conn, new_context, status="pending")
+    snapshot_module._set_snapshot_variant_target(
+        conn,
+        old_context,
+        status="building",
+        replace_target=False,
+    )
+
+    state = conn.execute(
+        """SELECT target_filter_fingerprint, maintenance_status
+           FROM music_search_snapshot_variant_state
+           WHERE merge_level=2 AND dynamic_threshold=1"""
+    ).fetchone()
+    assert tuple(state) == ("new-target", "pending")
+
+
+def test_role_only_revision_rekeys_compact_snapshot_without_metric_rebuild(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    migrate_042(conn)
+    old_context = _context(filter_fingerprint="role-old")
+    conn.execute(
+        """INSERT INTO music_search_snapshot_meta(
+               snapshot_key, filter_fingerprint, source_revision, status,
+               semantic_base_key, merge_level, dynamic_threshold, builder_version,
+               policy_key, source_generation_id, source_dataset_digest,
+               build_strategy, dependency_digest
+           ) VALUES (?, ?, ?, 'ready', ?, 2, 1, ?, 'policy', 'import-g2',
+                     'dataset', 'shared_full', 'old-dependency')""",
+        (
+            old_context.filter_fingerprint,
+            old_context.filter_fingerprint,
+            old_context.source_revision,
+            old_context.semantic_base_key,
+            MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+        ),
+    )
+    conn.execute(
+        """INSERT INTO music_search_entity_context(
+               snapshot_key, entity_key, play_events, total_ms
+           ) VALUES (?, 'track:1', 7, 7000)""",
+        (old_context.filter_fingerprint,),
+    )
+    migrate_061(conn)
+    new_context = replace(
+        old_context,
+        filter_fingerprint="role-new",
+        semantic_base_key="role-new-base",
+        source_revision="role-new-source",
+        track_credit_revision=1,
+    )
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    monkeypatch.setattr(
+        snapshot_module,
+        "music_search_snapshot_dependency_digest",
+        lambda _conn: "new-dependency",
+    )
+
+    assert snapshot_module.promote_role_only_music_search_snapshots(conn, (new_context,))
+    pointer = conn.execute(
+        """SELECT active_snapshot_key, maintenance_status
+           FROM music_search_snapshot_variant_state
+           WHERE merge_level=2 AND dynamic_threshold=1"""
+    ).fetchone()
+    payload = conn.execute(
+        """SELECT play_events, total_ms FROM music_search_entity_context
+           WHERE snapshot_key='role-new' AND entity_key='track:1'"""
+    ).fetchone()
+    meta = conn.execute(
+        """SELECT build_strategy, base_snapshot_key, dependency_digest
+           FROM music_search_snapshot_meta WHERE snapshot_key='role-new'"""
+    ).fetchone()
+    assert tuple(pointer) == ("role-new", "ready")
+    assert tuple(payload) == (7, 7000)
+    assert tuple(meta) == ("role_only_rekey", "role-old", "new-dependency")

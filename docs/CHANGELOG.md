@@ -2,6 +2,14 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-28 — 音乐查找零停机与曲目署名增量维护
+
+- candidate serving 与 maintenance 状态拆分，新 generation 在影子数据中完成并通过 revision fence 后原子切换；构建中或失败时继续服务 active/previous，不再把搜索整体降为不可用。
+- 四套 L2/L3 × dynamic/fixed 统计分别维护 active/target pointer；新统计未 ready 时返回明确的上一可用统计，缺少 LKG 时只隐藏统计，不阻塞名称、封面和详情入口。公开只读继续零写入并隐藏 target/job/error 内部信息。
+- 曲目署名任务改为 revision-specific；mutation 使用原子 revision CAS 且幂等重放不再次失效或排队。角色调整只重建 candidate，并对统计 snapshot 做轻量 re-key；成员增删与 undo 优先执行受限 signed delta，lineage、闭包或成本证明不足时显式回退 shared-full。
+- schema 60–63 新增 candidate maintenance、统计变体指针、署名 before/after change set 和即时 deny overlay；删除/权限撤销在 private/public LKG 上立即生效，新 generation 确认不含目标后才清理。
+- Quick Open、完整搜索页和设置页分别呈现 candidate/statistics 的 ready、warming、failed 与上一版本状态；维护期间搜索结果仍可点击，切换完成后自动重新校验。完整证据见 [`reports/2026-08-28-music-search-zero-downtime-and-credit-delta.md`](reports/2026-08-28-music-search-zero-downtime-and-credit-delta.md)。
+
 ## 2026-08-27 — 设置重建状态与数据治理体验修复
 
 - 设置重建结果改为返回并写回后端权威 `rebuild_pending=false`，前端统一通过 TanStack Query 缓存同步和重新校验；移除页面局部 override，修复重建完成后离开再返回仍显示“统计口径有改动待生效”的问题。

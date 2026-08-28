@@ -189,6 +189,40 @@ describe('music search flow', () => {
     }))
   })
 
+  it('uses the served fingerprint for LKG context and keeps pagination available', () => {
+    hookMocks.useMusicSearchCandidates.mockReturnValue({
+      data: {
+        ...pagedTrackResults,
+        snapshot_status: 'warming',
+        candidate_status: 'degraded',
+        candidate_freshness: 'last_known_good',
+        statistics_status: 'warming',
+        statistics_freshness: 'last_known_good',
+        filter_fingerprint: 'target-fingerprint',
+        served_filter_fingerprint: 'served-fingerprint',
+      },
+      initialLoading: false,
+      updating: false,
+      isPlaceholderData: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+
+    renderWithTheme(
+      <Routes>
+        <Route path="/music/search" element={<MusicSearchPage />} />
+      </Routes>,
+      '/music/search?q=love&kind=track&page=2',
+    )
+
+    expect(hookMocks.useMusicSearchContext).toHaveBeenCalledWith(expect.objectContaining({
+      filterFingerprint: 'served-fingerprint',
+      enabled: true,
+    }))
+    expect(screen.getByText('搜索索引正在更新')).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: '搜索结果分页' })).toBeInTheDocument()
+  })
+
   it('does not publish a composition query until compositionend plus debounce', () => {
     vi.useFakeTimers()
     renderWithTheme(

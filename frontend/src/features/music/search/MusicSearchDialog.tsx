@@ -15,7 +15,13 @@ import type { MusicSearchCandidate, MusicSearchCandidateResponse } from '@/types
 
 import { MusicSearchResults } from './MusicSearchResults'
 import { RecentMusicEntityList } from './RecentMusicEntityList'
-import { fullSearchHref, musicSearchOptionId, trimSearchQuery } from './musicSearchUtils'
+import {
+  fullSearchHref,
+  musicSearchCandidateStatus,
+  musicSearchOptionId,
+  musicSearchServedFilterFingerprint,
+  trimSearchQuery,
+} from './musicSearchUtils'
 import { useRecentMusicEntities } from './recentMusicEntities'
 import { useMusicSearchInputController } from './searchInputController'
 import { useMusicSearchCandidates, useMusicSearchContext } from './useMusicSearch'
@@ -57,9 +63,9 @@ export function MusicSearchDialog({ open, onOpenChange }: MusicSearchDialogProps
   const entityKeys = useMemo(() => resultItems.map((item) => item.entity_key), [resultItems])
   const context = useMusicSearchContext({
     entityKeys,
-    filterFingerprint: candidates.data?.filter_fingerprint ?? null,
+    filterFingerprint: musicSearchServedFilterFingerprint(candidates.data),
     filters,
-    enabled: candidates.data?.snapshot_status === 'ready' && !candidates.isPlaceholderData,
+    enabled: !candidates.isPlaceholderData,
   })
   const activeItem = activeEntityKey
     ? resultItems.find((item) => item.entity_key === activeEntityKey)
@@ -136,7 +142,10 @@ export function MusicSearchDialog({ open, onOpenChange }: MusicSearchDialogProps
         </div>
         <div className="max-h-[min(68dvh,620px)] overflow-y-auto overscroll-contain p-3 sm:p-4">
           <p className="sr-only" role="status" aria-live="polite">
-            {candidates.data?.snapshot_status === 'ready'
+            {candidates.data && (
+              musicSearchCandidateStatus(candidates.data) !== 'unavailable'
+              || candidates.data.total > 0
+            )
               ? `找到 ${candidates.data.total} 个结果`
               : candidates.initialLoading
                 ? '正在搜索'
