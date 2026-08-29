@@ -2,6 +2,13 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-29 — Billboard Records 一致性与播放排行稳定排序
+
+- Billboard 全量、分区、曲目署名和艺人身份发布统一使用完整 semantic proof；聚合 hash 纳入 track identity revision，旧 proof 不兼容时安全回退全量重建，不再把失配聚合标为 ready。
+- 完整与 staged Records 共用署名 enrichment 和 Power Score 输入；Records 页面使用完整 Billboard 参数对象同步请求与 TanStack Query key，并等待设置加载后再请求。
+- Records 与艺人/专辑详情补齐稳定实体键；普通播放次数榜改为“次数降序、时长降序、稳定实体键”，播放时长榜保留次数为第二键，Billboard 周榜规则不变。
+- L2/L3 × dynamic/fixed 四变体中 Taylor Swift 的 Records、摘要、详情和冠军稳定 ID 均为 34；主库只刷新 Billboard 派生聚合，92,908 条原始播放事实未变化。完整证据见 [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)。
+
 ## 2026-08-28 — 音乐查找零停机与曲目署名增量维护
 
 - candidate serving 与 maintenance 状态拆分，新 generation 在影子数据中完成并通过 revision fence 后原子切换；构建中或失败时继续服务 active/previous，不再把搜索整体降为不可用。

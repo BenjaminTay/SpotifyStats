@@ -41,6 +41,7 @@
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA、远程部署、真机验收和 Capacitor 决策
 - [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)：音乐查找候选索引、统计快照和生产复用方向
 - [`plans/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md`](plans/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md)：搜索 LKG 零停机、影子 generation 原子切换、任务竞态与署名增量维护方案
+- [`plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：B1–B4、R1 已完成范围验收；默认完整全栈门禁由既有耗时项继续跟踪
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
 - [`plans/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md`](plans/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md)：Phase 0–5 已完成范围验收，保留默认完整全栈门禁待运行状态
 
@@ -56,6 +57,7 @@
 
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
+- [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)：聚合 proof、Records parity/参数、稳定排序、播放排行 tie-breaker、真实库和响应式验收证据
 - [`reports/2026-08-27-spotify-track-l1-identity-migration.md`](reports/2026-08-27-spotify-track-l1-identity-migration.md)：canonical track 唯一归属、公共 L2/L3、真实库迁移和响应式验收证据（文件名为历史兼容）
 - [`reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md`](reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md)：设置重建状态、健康口径、只读预览、导入检查和响应式治理 UI 证据
 - [`reports/2026-08-25-music-detail-year-end-history.md`](reports/2026-08-25-music-detail-year-end-history.md)：详情年榜投影、榜单 KPI、真实数据库副本、性能与响应式浏览器验收证据

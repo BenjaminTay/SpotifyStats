@@ -90,6 +90,15 @@ describe('Phase 5 architecture guardrails', () => {
     expect(recordsPageSource).not.toContain('function MarketSection')
   })
 
+  it('keeps Billboard Records on the complete shared filter fingerprint', () => {
+    expect(recordsPageSource).toContain('useAnalysisFilters()')
+    expect(recordsPageSource).toContain('buildBillboardContextParams')
+    expect(recordsPageSource).toContain('{ ...filters, merge_level: mergeLevel }')
+    expect(recordsPageSource).toContain('!filtersLoading')
+    expect(useBillboardSource).toContain('queryKeys.billboard.data(params)')
+    expect(useBillboardSource).toContain("api.get<BillboardDataResponse>('/billboard/data', params)")
+  })
+
   it('keeps AllTimeChartsPage as a route container with table implementation in feature modules', () => {
     expect(allTimeChartsPageSource.split('\n').length).toBeLessThanOrEqual(450)
     expect(allTimeChartsPageSource).not.toContain('function CoverImg')

@@ -2,12 +2,13 @@
 
 from functools import lru_cache
 
-from backend.core.db import enrich_track_artist_names
 from backend.core.json_helpers import df_to_json as _df_to_json
 from backend.domains.billboard.chart_power_score import (
     compute_album_power_scores,
     compute_artist_power_scores,
-    compute_power_scores,
+)
+from backend.domains.billboard.chart_power_score import (
+    compute_power_scores as compute_power_scores,  # noqa: F401
 )
 from backend.domains.billboard.chart_ranking import (
     compute_album_weekly_rankings as compute_album_weekly_rankings,  # noqa: F401
@@ -18,6 +19,7 @@ from backend.domains.billboard.chart_ranking import (
 from backend.domains.billboard.chart_ranking import (
     compute_weekly_rankings as compute_weekly_rankings,  # noqa: F401
 )
+from backend.domains.billboard.chart_record_inputs import prepare_track_record_inputs
 from backend.domains.billboard.chart_staged_api import (
     compute_power_scores_staged as compute_power_scores_staged,  # noqa: F401
 )
@@ -104,12 +106,12 @@ def _compute_billboard_data_cached(
         track_summary, album_map, weekly_album
     )
 
-    # ── Enrich track artist_name with featured artists ────────────────────
-    weekly = enrich_track_artist_names(weekly)
-    track_summary = enrich_track_artist_names(track_summary)
+    # ── Enrich record inputs before track Power Scores ───────────────────
+    weekly, track_summary, power_scores = prepare_track_record_inputs(
+        weekly, track_summary, bb_top_n
+    )
 
-    # ── Power scores (compute before records to avoid double work) ──────
-    power_scores = compute_power_scores(weekly, bb_top_n)
+    # ── Remaining Power Scores (compute before records to avoid double work) ──
     album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
     artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)
     album_power_scores, artist_power_scores = attach_cross_level_power_metrics(

@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from backend.core.cache_manager import invalidate_all
-from backend.core.db import _agg_param_hash, get_db
+from backend.core.db import (
+    aggregation_partial_base_is_compatible,
+    build_aggregations,
+    get_db,
+    refresh_aggregation_semantic_proof,
+)
 from backend.core.job_queue import Job
 from backend.domains.billboard.data_loader import load_billboard_raw_for_artists
 from backend.domains.metadata.artist_identity import get_identity_revision
 from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.metadata.track_identity import get_track_identity_revision
 from backend.domains.settings.repository import SettingsRepository
 
 
@@ -29,6 +35,48 @@ def handle_artist_identity_rebuild(job: Job) -> None:
         week_start_hour = int(settings.get("bb_week_start_hour", 0))
         dynamic_threshold = True
         max_merge_gap_minutes = int(settings.get("max_merge_gap_minutes", 5))
+        track_credit_revision = get_track_credit_revision(conn)
+        track_identity_revision = get_track_identity_revision(conn)
+
+        if not aggregation_partial_base_is_compatible(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            identity_revision=revision,
+            track_credit_revision=track_credit_revision,
+            track_identity_revision=track_identity_revision,
+            mutable_dependency_keys=frozenset({"identity_revision", "credit_membership_revision"}),
+        ):
+            build_aggregations(
+                min_ms=min_ms,
+                music_only=music_only,
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+            )
+            conn.close()
+            conn = get_db(readonly=False)
+            from backend.services.music_search_maintenance_service import (
+                enqueue_music_search_snapshot_rebuild,
+                mark_music_search_for_rebuild,
+            )
+
+            mark_music_search_for_rebuild(
+                reason="artist identity full aggregate fallback published",
+                documents=True,
+                revision_kinds=("metadata", "candidate"),
+                conn=conn,
+            )
+            enqueue_music_search_snapshot_rebuild(
+                rebuild_documents=True,
+                conn=conn,
+            )
+            return
 
         invalidate_all()
         frame = load_billboard_raw_for_artists(
@@ -99,19 +147,18 @@ def handle_artist_identity_rebuild(job: Job) -> None:
                ) SELECT billboard_week, artist_id, play_count, total_ms
                  FROM agg_weekly_artists_shadow"""
         )
-        param_hash = _agg_param_hash(
-            min_ms,
-            music_only,
-            week_start_dow,
-            week_start_hour,
+        refresh_aggregation_semantic_proof(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
             identity_revision=revision,
-            track_credit_revision=get_track_credit_revision(conn),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
-            (param_hash,),
+            track_credit_revision=track_credit_revision,
+            track_identity_revision=track_identity_revision,
+            build_strategy="identity_full_artist",
         )
         conn.execute(
             """UPDATE artist_identity_state

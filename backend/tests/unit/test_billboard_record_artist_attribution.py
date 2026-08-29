@@ -113,6 +113,25 @@ def test_championship_counts_every_credited_artist_once():
     assert int(simul.loc[simul["artist_name"] == "Taylor Swift", "track_count"].max()) == 2
 
 
+def test_championship_artist_lists_are_stable_under_input_permutation():
+    expected = None
+    for weekly in (_weekly_rows(), _weekly_rows().sample(frac=1, random_state=17)):
+        records = {}
+        compute_championship_records(records, weekly, _track_summary())
+        current = {
+            "most_no1": records["artist_most_no1"][
+                ["artist_name", "冠单数", "单曲冠军周数"]
+            ].to_dict("records"),
+            "simul": records["artist_simul_list"][
+                ["billboard_week", "artist_name", "track_count"]
+            ].to_dict("records"),
+        }
+        if expected is None:
+            expected = current
+        else:
+            assert current == expected
+
+
 def test_self_replacement_matches_shared_credited_artist():
     weekly = _weekly_rows().query("track_id in [1, 2]").copy()
     weekly.loc[weekly["track_id"] == 1, "billboard_week"] = pd.Timestamp("2024-01-04")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import unicodedata
 
 import pandas as pd
 
@@ -16,6 +17,25 @@ from backend.domains.billboard.chart_compute import compute_billboard_data
 from backend.domains.metadata.album_detail_meta import resolve_album_detail_meta
 from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
+
+
+def _stable_detail_track_sort(
+    frame: pd.DataFrame,
+    *,
+    primary_columns: tuple[str, ...],
+    primary_ascending: tuple[bool, ...],
+) -> pd.DataFrame:
+    result = frame.copy()
+    result["_stable_track_name"] = (
+        result["track_name"]
+        .fillna("")
+        .map(lambda value: unicodedata.normalize("NFKC", str(value)).casefold())
+    )
+    return result.sort_values(
+        [*primary_columns, "track_id", "_stable_track_name", "track_name"],
+        ascending=[*primary_ascending, True, True, True],
+        kind="stable",
+    ).drop(columns=["_stable_track_name"])
 
 
 def _track_primary_artist_name(track_id: int, fallback: str) -> str:
@@ -1323,8 +1343,10 @@ def get_artist_chart_detail(
     )
     art_tracks["power_score"] = art_tracks["power_score"].fillna(0).astype(int)
     art_tracks["power_rank"] = art_tracks["power_rank"].fillna(0).astype(int)
-    art_tracks = art_tracks.sort_values(
-        ["peak_position", "weeks_on_chart"], ascending=[True, False]
+    art_tracks = _stable_detail_track_sort(
+        art_tracks,
+        primary_columns=("peak_position", "weeks_on_chart"),
+        primary_ascending=(True, False),
     ).drop_duplicates("track_id")
 
     # Track cover_url lookup
@@ -1752,8 +1774,10 @@ def get_album_chart_detail(
     )
     alb_tracks["power_score"] = alb_tracks["power_score"].fillna(0).astype(int)
     alb_tracks["power_rank"] = alb_tracks["power_rank"].fillna(0).astype(int)
-    alb_tracks = alb_tracks.sort_values(
-        ["peak_position", "weeks_on_chart"], ascending=[True, False]
+    alb_tracks = _stable_detail_track_sort(
+        alb_tracks,
+        primary_columns=("peak_position", "weeks_on_chart"),
+        primary_ascending=(True, False),
     )
 
     # Track cover_url lookup

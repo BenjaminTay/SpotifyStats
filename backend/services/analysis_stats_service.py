@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import unicodedata
 from datetime import date, timedelta
 from functools import lru_cache
 from typing import Any
@@ -30,6 +31,47 @@ PERIOD_LABELS = {
 
 def _hours(series) -> float:
     return float(series.sum() / 3_600_000)
+
+
+def _normalised_chart_text_key(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    return unicodedata.normalize("NFKC", str(value)).casefold()
+
+
+def _sort_chart_rows(agg: pd.DataFrame, entity: str, metric: str) -> pd.DataFrame:
+    """Apply the public metric order plus an input-order-independent entity key."""
+    result = agg.copy()
+    sort_columns = ["plays", "hours"] if metric == "plays" else ["hours", "plays"]
+    ascending = [False, False]
+    id_candidates = {
+        "track": ("track_id",),
+        "album": ("album_project_id", "album_id"),
+        "artist": ("artist_id",),
+    }
+    for column in id_candidates.get(entity, ()):
+        if column in result.columns:
+            sort_columns.append(column)
+            ascending.append(True)
+
+    text_candidates = {
+        "track": ("track_name", "artist_name"),
+        "album": ("album_name", "artist_name"),
+        "artist": ("artist_name",),
+    }
+    temporary_columns: list[str] = []
+    for index, column in enumerate(text_candidates.get(entity, ())):
+        if column not in result.columns:
+            continue
+        normalized = f"_stable_chart_text_{index}"
+        original = f"_stable_chart_original_{index}"
+        result[normalized] = result[column].map(_normalised_chart_text_key)
+        result[original] = result[column].fillna("").astype(str)
+        temporary_columns.extend((normalized, original))
+    sort_columns.extend(temporary_columns)
+    ascending.extend([True] * len(temporary_columns))
+    result = result.sort_values(sort_columns, ascending=ascending, kind="stable")
+    return result.drop(columns=temporary_columns).reset_index(drop=True)
 
 
 def _resolve_album_category(conn: sqlite3.Connection, album_name: str, artist_name: str) -> str:
@@ -812,7 +854,7 @@ def chart_rows(
     total_plays = max(int(df.shape[0]), 1)
     total_hours = max(float(duration_frame["ms_played"].sum() / 3_600_000), 0.000001)
     sort_col = "plays" if metric == "plays" else "hours"
-    agg = agg.sort_values([sort_col, "plays"], ascending=False).reset_index(drop=True)
+    agg = _sort_chart_rows(agg, entity, metric)
     total = int(len(agg))
     sliced = agg.iloc[offset : offset + limit] if limit is not None else agg.iloc[offset:]
 

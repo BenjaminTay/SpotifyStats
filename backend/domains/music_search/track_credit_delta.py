@@ -19,7 +19,7 @@ from typing import Any, cast
 import pandas as pd
 
 from backend.core import config
-from backend.core.db import _agg_param_hash, _aggregation_semantic_dependencies
+from backend.core.db import refresh_aggregation_semantic_proof
 from backend.domains.billboard.data_loader import _track_identity_sql
 from backend.domains.billboard.week_coverage import (
     open_billboard_week_for_latest_timestamp,
@@ -520,35 +520,19 @@ def _publish(
         _apply_aggregate_delta(conn, weekly_aggregate_delta)
         identity_revision = get_identity_revision(conn)
         track_identity_revision = get_track_identity_revision(conn)
-        param_hash = _agg_param_hash(
-            representative.min_ms,
-            representative.music_only,
-            representative.bb_week_start_dow,
-            representative.bb_week_start_hour,
+        refresh_aggregation_semantic_proof(
+            conn,
+            min_ms=representative.min_ms,
+            music_only=representative.music_only,
+            week_start_dow=representative.bb_week_start_dow,
+            week_start_hour=representative.bb_week_start_hour,
             dynamic_threshold=True,
             max_merge_gap_minutes=representative.max_merge_gap_minutes,
             identity_revision=identity_revision,
             track_credit_revision=target_revision,
             track_identity_revision=track_identity_revision,
+            build_strategy="credit_delta",
         )
-        semantic_dependencies = _aggregation_semantic_dependencies(
-            conn,
-            identity_revision=identity_revision,
-            track_credit_revision=target_revision,
-            track_identity_revision=track_identity_revision,
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
-            (param_hash,),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('build_strategy', 'credit_delta')"
-        )
-        for key, value in sorted(semantic_dependencies.items()):
-            conn.execute(
-                "INSERT OR REPLACE INTO agg_config(key, value) VALUES (?, ?)",
-                (key, value),
-            )
         dependency_digest = music_search_snapshot_dependency_digest(conn)
         for context in contexts:
             snapshot_key = context.filter_fingerprint

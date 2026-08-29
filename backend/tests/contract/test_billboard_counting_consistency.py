@@ -223,6 +223,7 @@ class TestRawFallbackConsistency:
                 "playback_policy_version",
                 "identity_revision",
                 "track_credit_revision",
+                "track_identity_revision",
                 "album_project_revision",
                 "duration_revision",
                 "credit_membership_revision",
@@ -319,6 +320,41 @@ class TestRawFallbackConsistency:
         finally:
             conn.close()
         assert project_count > 0
+
+    @pytest.mark.parametrize("merge_level", [2, 3])
+    @pytest.mark.parametrize("dynamic_threshold", [False, True])
+    def test_full_and_staged_records_endpoints_are_identical(
+        self,
+        isolated_seed_db,
+        merge_level,
+        dynamic_threshold,
+    ):
+        from fastapi.testclient import TestClient
+
+        from backend.main import app
+
+        _clear_billboard_runtime_caches()
+        params = {
+            "min_ms": 30_000,
+            "music_only": "true",
+            "merge_enabled": "true",
+            "dynamic_threshold": str(dynamic_threshold).lower(),
+            "max_merge_gap_minutes": 5,
+            "merge_level": merge_level,
+            "include_compilations": "false",
+            "bb_top_n": 30,
+            "bb_album_top_n": 20,
+            "bb_artist_top_n": 20,
+            "bb_week_start_dow": 4,
+            "bb_week_start_hour": 0,
+        }
+        with TestClient(app) as client:
+            full = client.get("/api/billboard/data", params=params)
+            staged = client.get("/api/billboard/records", params=params)
+
+        assert full.status_code == 200, full.text
+        assert staged.status_code == 200, staged.text
+        assert full.json()["records"] == staged.json()["records"]
 
     def test_raw_uses_min_ms_zero_before_merge(self, isolated_seed_db):
         """After fix, raw fallback loads with min_ms=0, merges, then filters.

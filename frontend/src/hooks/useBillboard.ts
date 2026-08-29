@@ -3,6 +3,7 @@ import { keepPreviousData, type QueryClient, useQuery, useQueryClient } from '@t
 
 import { queryClient } from '@/api/query-client'
 import { queryKeys } from '@/api/query-keys'
+import type { BillboardContextParams } from '@/features/billboard/billboardContext'
 import {
   api,
   type BillboardAllTimeResponse,
@@ -18,22 +19,25 @@ import {
 let cachedWeekIndex = 0
 let cachedWeeklyIndex = 0
 
-export function loadBillboardData(force = false): Promise<BillboardDataResponse> {
+export function loadBillboardData(
+  params: BillboardContextParams,
+  force = false,
+): Promise<BillboardDataResponse> {
   return force
     ? queryClient.fetchQuery({
-        queryKey: queryKeys.billboard.data(),
-        queryFn: () => api.get<BillboardDataResponse>('/billboard/data'),
+        queryKey: queryKeys.billboard.data(params),
+        queryFn: () => api.get<BillboardDataResponse>('/billboard/data', params),
       })
     : queryClient.ensureQueryData({
-        queryKey: queryKeys.billboard.data(),
-        queryFn: () => api.get<BillboardDataResponse>('/billboard/data'),
+        queryKey: queryKeys.billboard.data(params),
+        queryFn: () => api.get<BillboardDataResponse>('/billboard/data', params),
       })
 }
 
-export function preloadBillboardData(): void {
+export function preloadBillboardData(params: BillboardContextParams): void {
   void queryClient.prefetchQuery({
-    queryKey: queryKeys.billboard.data(),
-    queryFn: () => api.get<BillboardDataResponse>('/billboard/data'),
+    queryKey: queryKeys.billboard.data(params),
+    queryFn: () => api.get<BillboardDataResponse>('/billboard/data', params),
   })
 }
 
@@ -85,13 +89,17 @@ function selectCurrentWeekData(
   }
 }
 
-export function useBillboard(initialWeek?: string | null, mergeLevel = 2, includeCompilations = false): UseBillboardResult {
+export function useBillboard(
+  params: BillboardContextParams,
+  initialWeek?: string | null,
+  enabled = true,
+): UseBillboardResult {
   const queryClientForHook = useQueryClient()
   const [weekIndex, setWeekIndexState] = useState(cachedWeekIndex)
-  const params = { merge_level: mergeLevel, include_compilations: includeCompilations }
   const query = useQuery({
     queryKey: queryKeys.billboard.data(params),
     queryFn: () => api.get<BillboardDataResponse>('/billboard/data', params),
+    enabled,
   })
 
   const setWeekIndex = useCallback((idx: number) => {
@@ -200,18 +208,18 @@ export function useBillboardWeekly(initialWeek?: string | null, mergeLevel = 2, 
   }
 }
 
-export function preloadRecordsData(): void {
+export function preloadRecordsData(params: BillboardContextParams): void {
   void queryClient.prefetchQuery({
-    queryKey: queryKeys.billboard.records({ merge_level: 2 }),
-    queryFn: () => api.get<BillboardRecordsResponse>('/billboard/records', { merge_level: 2 }),
+    queryKey: queryKeys.billboard.records(params),
+    queryFn: () => api.get<BillboardRecordsResponse>('/billboard/records', params),
   })
 }
 
-export function useBillboardRecords(mergeLevel = 2) {
-  const params = { merge_level: mergeLevel }
+export function useBillboardRecords(params: BillboardContextParams, enabled = true) {
   const query = useQuery({
     queryKey: queryKeys.billboard.records(params),
     queryFn: () => api.get<BillboardRecordsResponse>('/billboard/records', params),
+    enabled,
   })
 
   return {

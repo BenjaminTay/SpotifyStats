@@ -631,6 +631,7 @@ def _ordinary_chart_uses_aggregates(
         get_track_credit_revision,
         get_track_credit_state,
     )
+    from backend.domains.metadata.track_identity import get_track_identity_revision
 
     credit_state = get_track_credit_state(conn)
     if credit_state.get("current_revision", 0) != credit_state.get("active_aggregate_revision", 0):
@@ -644,6 +645,7 @@ def _ordinary_chart_uses_aggregates(
         max_merge_gap_minutes=context.max_merge_gap_minutes,
         identity_revision=get_identity_revision(conn),
         track_credit_revision=get_track_credit_revision(conn),
+        track_identity_revision=get_track_identity_revision(conn),
     )
     if not check_agg_valid(conn, param_hash):
         return False

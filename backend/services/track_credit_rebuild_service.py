@@ -6,7 +6,12 @@ import logging
 from sqlite3 import Connection
 
 from backend.core.cache_manager import invalidate_all
-from backend.core.db import _agg_param_hash, get_db
+from backend.core.db import (
+    aggregation_partial_base_is_compatible,
+    build_aggregations,
+    get_db,
+    refresh_aggregation_semantic_proof,
+)
 from backend.core.job_queue import (
     Job,
     JobQueue,
@@ -20,6 +25,7 @@ from backend.domains.metadata.track_credits import (
     get_track_credit_state,
     list_track_credit_change_sets,
 )
+from backend.domains.metadata.track_identity import get_track_identity_revision
 from backend.domains.settings.repository import SettingsRepository
 
 logger = logging.getLogger(__name__)
@@ -111,6 +117,34 @@ def _publish_role_only_revision(conn: Connection, revision: int) -> bool:
     ):
         return False
 
+    settings = SettingsRepository(conn).load_all()
+    min_ms = int(settings.get("min_ms", 30_000))
+    music_only = bool(settings.get("music_only", True))
+    week_start_dow = int(settings.get("bb_week_start_dow", 4))
+    week_start_hour = int(settings.get("bb_week_start_hour", 0))
+    dynamic_threshold = True
+    max_merge_gap_minutes = int(settings.get("max_merge_gap_minutes", 5))
+    identity_revision = get_identity_revision(conn)
+    track_identity_revision = get_track_identity_revision(conn)
+    if not aggregation_partial_base_is_compatible(
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        identity_revision=identity_revision,
+        track_credit_revision=revision,
+        track_identity_revision=track_identity_revision,
+        mutable_dependency_keys=frozenset({"track_credit_revision"}),
+    ):
+        logger.info(
+            "Track-credit role-only revision %s cannot reuse stale aggregate proof",
+            revision,
+        )
+        return False
+
     conn.execute("BEGIN IMMEDIATE")
     current_state = get_track_credit_state(conn)
     if (
@@ -120,32 +154,23 @@ def _publish_role_only_revision(conn: Connection, revision: int) -> bool:
         conn.rollback()
         _ensure_latest_if_needed(conn, revision)
         return True
-    settings = SettingsRepository(conn).load_all()
-    min_ms = int(settings.get("min_ms", 30_000))
-    music_only = bool(settings.get("music_only", True))
-    week_start_dow = int(settings.get("bb_week_start_dow", 4))
-    week_start_hour = int(settings.get("bb_week_start_hour", 0))
-    dynamic_threshold = True
-    max_merge_gap_minutes = int(settings.get("max_merge_gap_minutes", 5))
     conn.execute(
         """UPDATE track_credit_state
            SET active_aggregate_revision=?, rebuild_status='ready', last_error=NULL,
                updated_at=datetime('now') WHERE state_id=1""",
         (revision,),
     )
-    param_hash = _agg_param_hash(
-        min_ms,
-        music_only,
-        week_start_dow,
-        week_start_hour,
+    refresh_aggregation_semantic_proof(
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
-        identity_revision=get_identity_revision(conn),
+        identity_revision=identity_revision,
         track_credit_revision=revision,
-    )
-    conn.execute(
-        "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
-        (param_hash,),
+        track_identity_revision=track_identity_revision,
     )
     from backend.domains.music_search.snapshot import (
         promote_role_only_music_search_snapshots,
@@ -274,6 +299,54 @@ def handle_track_credit_rebuild(job: Job) -> None:
         dynamic_threshold = True
         max_merge_gap_minutes = int(settings.get("max_merge_gap_minutes", 5))
 
+        identity_revision = get_identity_revision(conn)
+        track_identity_revision = get_track_identity_revision(conn)
+        if not aggregation_partial_base_is_compatible(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            identity_revision=identity_revision,
+            track_credit_revision=revision,
+            track_identity_revision=track_identity_revision,
+            mutable_dependency_keys=frozenset(
+                {"track_credit_revision", "credit_membership_revision"}
+            ),
+        ):
+            logger.info(
+                "Track-credit revision %s requires a full Billboard aggregate rebuild",
+                revision,
+            )
+            build_aggregations(
+                min_ms=min_ms,
+                music_only=music_only,
+                week_start_dow=week_start_dow,
+                week_start_hour=week_start_hour,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+            )
+            conn.close()
+            conn = get_db(readonly=False)
+            from backend.services.music_search_maintenance_service import (
+                enqueue_music_search_snapshot_rebuild,
+                mark_music_search_for_rebuild,
+            )
+
+            mark_music_search_for_rebuild(
+                reason="track credit full aggregate fallback published",
+                documents=True,
+                revision_kinds=("metadata", "candidate"),
+                conn=conn,
+            )
+            enqueue_music_search_snapshot_rebuild(
+                rebuild_documents=True,
+                conn=conn,
+            )
+            return
+
         invalidate_all()
         frame = load_billboard_raw_for_artists(
             min_ms,
@@ -343,19 +416,18 @@ def handle_track_credit_rebuild(job: Job) -> None:
                ) SELECT billboard_week, artist_id, play_count, total_ms
                  FROM agg_weekly_artists_credit_shadow"""
         )
-        param_hash = _agg_param_hash(
-            min_ms,
-            music_only,
-            week_start_dow,
-            week_start_hour,
+        refresh_aggregation_semantic_proof(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
-            identity_revision=get_identity_revision(conn),
+            identity_revision=identity_revision,
             track_credit_revision=revision,
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
-            (param_hash,),
+            track_identity_revision=track_identity_revision,
+            build_strategy="credit_full_artist",
         )
         conn.execute(
             """UPDATE track_credit_state

@@ -6,8 +6,10 @@ import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBillboard } from '@/hooks/useBillboard'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { cn } from '@/lib/utils'
 import type { BillboardRecords } from '@/types/billboard'
+import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { buildCoverMaps } from '@/features/billboard/records/recordsData'
 import { ChampionshipSection } from '@/features/billboard/records/ChampionshipSection'
 import { useViewportMode } from '@/hooks/useViewportMode'
@@ -106,7 +108,16 @@ export function RecordsPage() {
   const isPhone = useViewportMode() === 'phone'
   const [searchParams, setSearchParams] = useSearchParams()
   const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
-  const { data, loading, error } = useBillboard(undefined, mergeLevel)
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
+  const billboardParams = useMemo(
+    () => buildBillboardContextParams({ ...filters, merge_level: mergeLevel }),
+    [filters, mergeLevel],
+  )
+  const { data, loading, error } = useBillboard(
+    billboardParams,
+    undefined,
+    !filtersLoading,
+  )
   const requestedFamily = searchParams.get('family')
   const activeTab: TabKey = RECORD_TABS.some((tab) => tab.key === requestedFamily)
     ? requestedFamily as TabKey
@@ -126,7 +137,7 @@ export function RecordsPage() {
     return buildCoverMaps(data)
   }, [data])
 
-  if (loading) return <LoadingSkeleton />
+  if (filtersLoading || loading) return <LoadingSkeleton />
 
   if (error) {
     return (

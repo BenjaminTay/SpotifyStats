@@ -1506,6 +1506,178 @@ def _aggregation_semantic_dependencies(
     }
 
 
+def build_aggregation_semantic_proof(
+    conn: sqlite3.Connection,
+    *,
+    min_ms: int,
+    music_only: bool,
+    week_start_dow: int,
+    week_start_hour: int,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: int | None,
+    identity_revision: int,
+    track_credit_revision: int,
+    track_identity_revision: int,
+    excluded_generation_id: str | None = None,
+) -> tuple[str, dict[str, str]]:
+    """Build the complete hash and dependency proof for one aggregate snapshot."""
+    dependencies = _aggregation_semantic_dependencies(
+        conn,
+        identity_revision=identity_revision,
+        track_credit_revision=track_credit_revision,
+        track_identity_revision=track_identity_revision,
+        excluded_generation_id=excluded_generation_id,
+    )
+    param_hash = _agg_param_hash(
+        min_ms,
+        music_only,
+        week_start_dow,
+        week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        identity_revision=identity_revision,
+        track_credit_revision=track_credit_revision,
+        track_identity_revision=track_identity_revision,
+    )
+    return param_hash, dependencies
+
+
+def aggregation_partial_base_is_compatible(
+    conn: sqlite3.Connection,
+    *,
+    min_ms: int,
+    music_only: bool,
+    week_start_dow: int,
+    week_start_hour: int,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: int | None,
+    identity_revision: int,
+    track_credit_revision: int,
+    track_identity_revision: int,
+    mutable_dependency_keys: frozenset[str],
+) -> bool:
+    """Return whether a partial publisher may safely advance selected proof keys.
+
+    Older portable fixtures without the versioned proof are allowed through the
+    transitional path.  Versioned production aggregates must prove that their
+    existing hash matches the revisions they claim and that every dependency
+    outside the partial publisher's scope is still current.
+    """
+    config = _aggregation_config(conn)
+    if "builder_version" not in config:
+        return True
+
+    try:
+        configured_identity_revision = int(config["identity_revision"])
+        configured_track_credit_revision = int(config["track_credit_revision"])
+        configured_track_identity_revision = int(config["track_identity_revision"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+    configured_hash = _agg_param_hash(
+        min_ms,
+        music_only,
+        week_start_dow,
+        week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        identity_revision=configured_identity_revision,
+        track_credit_revision=configured_track_credit_revision,
+        track_identity_revision=configured_track_identity_revision,
+    )
+    if config.get("param_hash") != configured_hash:
+        return False
+
+    _, current_dependencies = build_aggregation_semantic_proof(
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        identity_revision=identity_revision,
+        track_credit_revision=track_credit_revision,
+        track_identity_revision=track_identity_revision,
+    )
+    for key, value in current_dependencies.items():
+        if key not in mutable_dependency_keys and config.get(key) != value:
+            return False
+
+    active_generation = _active_playback_generation(conn)
+    if active_generation is not None and config.get("data_generation_id") != active_generation:
+        return False
+    active_digest = _active_playback_dataset_digest(conn)
+    if active_digest is not None and config.get("source_dataset_digest") != active_digest:
+        return False
+    return True
+
+
+def refresh_aggregation_semantic_proof(
+    conn: sqlite3.Connection,
+    *,
+    min_ms: int,
+    music_only: bool,
+    week_start_dow: int,
+    week_start_hour: int,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: int | None,
+    identity_revision: int,
+    track_credit_revision: int,
+    track_identity_revision: int,
+    build_strategy: str | None = None,
+) -> str:
+    """Upsert a complete semantic proof without rewriting aggregate fact rows."""
+    config = _aggregation_config(conn)
+    if "builder_version" in config:
+        param_hash, dependencies = build_aggregation_semantic_proof(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            identity_revision=identity_revision,
+            track_credit_revision=track_credit_revision,
+            track_identity_revision=track_identity_revision,
+        )
+    else:
+        # Compatibility for lightweight fixtures and pre-versioned databases.
+        param_hash = _agg_param_hash(
+            min_ms,
+            music_only,
+            week_start_dow,
+            week_start_hour,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            identity_revision=identity_revision,
+            track_credit_revision=track_credit_revision,
+            track_identity_revision=track_identity_revision,
+        )
+        dependencies = {
+            "identity_revision": str(identity_revision),
+            "track_credit_revision": str(track_credit_revision),
+            "track_identity_revision": str(track_identity_revision),
+        }
+
+    conn.execute(
+        "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('param_hash', ?)",
+        (param_hash,),
+    )
+    if build_strategy is not None:
+        conn.execute(
+            "INSERT OR REPLACE INTO agg_config(key, value) VALUES ('build_strategy', ?)",
+            (build_strategy,),
+        )
+    for key, value in sorted(dependencies.items()):
+        conn.execute(
+            "INSERT OR REPLACE INTO agg_config(key, value) VALUES (?, ?)",
+            (key, value),
+        )
+    return param_hash
+
+
 def _clear_aggregations_for_generation(
     conn: sqlite3.Connection,
     *,
@@ -2291,17 +2463,12 @@ def build_aggregations(
     identity_revision = get_identity_revision(conn)
     track_credit_revision = get_track_credit_revision(conn)
     track_identity_revision = get_track_identity_revision(conn)
-    semantic_dependencies = _aggregation_semantic_dependencies(
+    param_hash, semantic_dependencies = build_aggregation_semantic_proof(
         conn,
-        identity_revision=identity_revision,
-        track_credit_revision=track_credit_revision,
-        track_identity_revision=track_identity_revision,
-    )
-    param_hash = _agg_param_hash(
-        min_ms,
-        music_only,
-        week_start_dow,
-        week_start_hour,
+        min_ms=min_ms,
+        music_only=music_only,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         identity_revision=identity_revision,
@@ -3033,25 +3200,20 @@ def build_aggregations_for_replaced_weeks(
         identity_revision = get_identity_revision(conn)
         credit_revision = get_track_credit_revision(conn)
         track_identity_revision = get_track_identity_revision(conn)
-        current_dependencies = _aggregation_semantic_dependencies(
+        param_hash, current_dependencies = build_aggregation_semantic_proof(
             conn,
-            identity_revision=identity_revision,
-            track_credit_revision=credit_revision,
-            track_identity_revision=track_identity_revision,
-        )
-        reusable_dependencies = dict(current_dependencies)
-        reusable_dependencies.pop("album_project_revision", None)
-        param_hash = _agg_param_hash(
-            min_ms,
-            music_only,
-            week_start_dow,
-            week_start_hour,
+            min_ms=min_ms,
+            music_only=music_only,
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
             identity_revision=identity_revision,
             track_credit_revision=credit_revision,
             track_identity_revision=track_identity_revision,
         )
+        reusable_dependencies = dict(current_dependencies)
+        reusable_dependencies.pop("album_project_revision", None)
         config = _aggregation_config(conn)
         if config.get("param_hash") != param_hash or any(
             config.get(key) != value for key, value in reusable_dependencies.items()
@@ -3217,14 +3379,26 @@ def build_aggregations_for_weeks(
     identity_revision = get_identity_revision(conn)
     credit_revision = get_track_credit_revision(conn)
     track_identity_revision = get_track_identity_revision(conn)
-    current_dependencies = _aggregation_semantic_dependencies(
+    param_hash, current_dependencies = build_aggregation_semantic_proof(
         conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
         identity_revision=identity_revision,
         track_credit_revision=credit_revision,
         track_identity_revision=track_identity_revision,
     )
-    base_dependencies = _aggregation_semantic_dependencies(
+    _, base_dependencies = build_aggregation_semantic_proof(
         conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        week_start_dow=week_start_dow,
+        week_start_hour=week_start_hour,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
         identity_revision=identity_revision,
         track_credit_revision=credit_revision,
         track_identity_revision=track_identity_revision,
@@ -3233,17 +3407,6 @@ def build_aggregations_for_weeks(
     # Album Project membership is applied from track-source rows at read time;
     # it is recorded for audit but is not baked into these four aggregate tables.
     base_dependencies.pop("album_project_revision", None)
-    param_hash = _agg_param_hash(
-        min_ms,
-        music_only,
-        week_start_dow,
-        week_start_hour,
-        dynamic_threshold=dynamic_threshold,
-        max_merge_gap_minutes=max_merge_gap_minutes,
-        identity_revision=identity_revision,
-        track_credit_revision=credit_revision,
-        track_identity_revision=track_identity_revision,
-    )
     base_generation_id = _partition_base_generation(
         conn,
         param_hash=param_hash,

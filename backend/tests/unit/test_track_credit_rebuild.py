@@ -444,9 +444,13 @@ def test_role_only_revision_advances_without_rebuilding_statistics(tmp_path, mon
     with _connection_factory(path)() as conn:
         state = conn.execute("SELECT * FROM track_credit_state").fetchone()
         aggregate = conn.execute("SELECT * FROM agg_weekly_artists").fetchall()
+        config = dict(conn.execute("SELECT key, value FROM agg_config"))
     assert state["active_aggregate_revision"] == 4
     assert state["rebuild_status"] == "ready"
     assert [tuple(row) for row in aggregate] == [("2026-01-02", 99, 7, 7000)]
+    assert config["identity_revision"] == "9"
+    assert config["track_credit_revision"] == "4"
+    assert config["track_identity_revision"] == "0"
     assert calls[0][0] == "mark"
     assert calls[0][1]["revision_kinds"] == ("candidate",)
     assert calls[0][1]["statistics"] is False

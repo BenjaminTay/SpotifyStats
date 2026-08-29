@@ -3,6 +3,23 @@
 import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists
+from backend.domains.billboard.chart_ranking import _normalised_text_key
+
+
+def _stable_artist_metric_sort(
+    frame: pd.DataFrame,
+    metric: str,
+    *,
+    extra_columns: tuple[str, ...] = (),
+) -> pd.DataFrame:
+    result = frame.copy()
+    result["_stable_artist_name"] = result["artist_name"].map(_normalised_text_key)
+    result["_stable_artist_original"] = result["artist_name"].fillna("").astype(str)
+    columns = [metric, "_stable_artist_name", "_stable_artist_original", *extra_columns]
+    ascending = [False, True, True, *([True] * len(extra_columns))]
+    return result.sort_values(columns, ascending=ascending, kind="stable").drop(
+        columns=["_stable_artist_name", "_stable_artist_original"]
+    )
 
 
 def compute_championship_records(
@@ -21,26 +38,23 @@ def compute_championship_records(
         .reset_index(name="track_count")
     )
     if not artist_weekly.empty:
-        best_full = artist_weekly.sort_values("track_count", ascending=False).iloc[0]
+        sorted_artist_weekly = _stable_artist_metric_sort(
+            artist_weekly, "track_count", extra_columns=("billboard_week",)
+        )
+        best_full = sorted_artist_weekly.iloc[0]
         records["artist_simul"] = {
             "artist": best_full["artist_name"],
             "week": best_full["billboard_week"],
             "count": int(best_full["track_count"]),
         }
-        records["artist_simul_list"] = artist_weekly.sort_values(
-            "track_count", ascending=False
-        ).head(15)
+        records["artist_simul_list"] = sorted_artist_weekly.head(15)
 
     # ── 3. Most #1 songs by artist ─────────────────────────────────────
     no1_tracks = credited_weekly[credited_weekly["rank"] == 1][
         ["track_id", "artist_name"]
     ].drop_duplicates()
-    artist_no1 = (
-        no1_tracks.groupby("artist_name")
-        .size()
-        .sort_values(ascending=False)
-        .reset_index(name="冠单数")
-    )
+    artist_no1 = no1_tracks.groupby("artist_name").size().reset_index(name="冠单数")
+    artist_no1 = _stable_artist_metric_sort(artist_no1, "冠单数")
     records["artist_most_no1"] = artist_no1.head(15)
 
     track_no1_weeks = (

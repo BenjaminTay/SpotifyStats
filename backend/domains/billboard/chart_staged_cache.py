@@ -287,12 +287,13 @@ def _compute_records_cached(
     )
 
     track_summary = compute_track_summary(weekly, df_filtered)
-    power_scores = compute_power_scores(weekly, bb_top_n)
+    from backend.domains.billboard.chart_record_inputs import prepare_track_record_inputs
+
+    weekly, track_summary, power_scores = prepare_track_record_inputs(
+        weekly, track_summary, bb_top_n
+    )
     album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
     artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)
-
-    weekly = enrich_track_artist_names(weekly)
-    track_summary = enrich_track_artist_names(track_summary)
 
     from backend.domains.billboard.records import _serialize_records, compute_records  # noqa: E402
 
