@@ -67,6 +67,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
 - [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)：聚合 proof、Records parity/参数、稳定排序、播放排行 tie-breaker、真实库和响应式验收证据
+- [`reports/2026-08-29-l2-track-album-presentation.md`](reports/2026-08-29-l2-track-album-presentation.md)：L2 歌曲专辑归属、独立封面选择、派生数据失效、真实库与响应式验收证据
 - [`reports/2026-08-27-spotify-track-l1-identity-migration.md`](reports/2026-08-27-spotify-track-l1-identity-migration.md)：canonical track 唯一归属、公共 L2/L3、真实库迁移和响应式验收证据（文件名为历史兼容）
 - [`reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md`](reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md)：设置重建状态、健康口径、只读预览、导入检查和响应式治理 UI 证据
 - [`reports/2026-08-25-music-detail-year-end-history.md`](reports/2026-08-25-music-detail-year-end-history.md)：详情年榜投影、榜单 KPI、真实数据库副本、性能与响应式浏览器验收证据

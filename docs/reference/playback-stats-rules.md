@@ -281,17 +281,32 @@ L3 是宽松口径。
 
 ### R14. canonical song 展示
 
-合并后的歌曲展示遵循：
+合并后的歌曲必须通过同一个只读批量 `TrackPresentation` 解析器分别确定 album project
+归属、具体展示发行版和封面发行版，不能再从代表 Track 的 `tracks.album_id` 反推。规则顺序如下：
 
 - 名称优先使用原始作品名，去掉常见版本后缀。
-- 封面优先使用单曲版封面。
-- 归属专辑优先显示该歌曲被收入的原版录音室专辑主版本。
-- 如果歌曲从未被收入录音室专辑，则归属到首次发行的单曲/EP 项目。
-- Deluxe-only / vault track 归属到对应 album project。
+- album project owner 先选人工治理项目，再选 release scope 的非精选项目；在同一项目中，
+  `standard/original_album` 高于 `deluxe`，Deluxe-only / vault track 保留为 `deluxe`。
+- 具体展示发行版优先使用原版录音室专辑主版本。即使当前播放只观察到 Deluxe，只要胜出的原版
+  Spotify album catalog 通过规范化 Spotify Track ID 或 ISRC 证明包含该 L2 录音，也按标准曲处理。
+- 原版 catalog 不包含该录音时，显示最早正式收录它的豪华版；多个豪华版按发行日期、稳定
+  `album_id` 消歧。没有 album project 时，按 LP、EP、独立单曲、精选集顺序回退，并显式标记
+  `fallback`。
+- 封面选择与归属独立：同一 L2 录音存在真正的单曲发行时优先单曲封面；Spotify 标为
+  `single` 但按曲目数判定为 EP 的发行不能抢占单曲封面。没有单曲时使用展示发行版，再回退
+  owner 主版本和其他可靠来源。
+- 普通榜单、搜索、详情、首页、年度总结、Wrapped 和播放记录消费上述 canonical presentation；
+  最近播放、分页播放明细和版本来源拆分仍展示事件的实际 `source_album_id`，不能被 canonical
+  presentation 覆盖。
+- 解析结果至少包含 `album_project_id/name`、`display_album_id/name`、`membership_role`、
+  `cover_album_id/url/source` 和 `resolution_status`。Album Project 发布递增 O(1) revision，候选
+  generation 将 policy version 与该 revision 纳入 source fence，继续以 shadow + LKG 原子切换。
 
 示例：
 
 - `vampire` 显示单曲版封面，但归属专辑显示 `GUTS`。
+- 原版 `GUTS` 不收录而只在豪华版首次出现的曲目，显示并使用该豪华版封面；不能因为同项目存在
+  原版就伪装成原版曲目。
 - `Say Don't Go (Taylor's Version)` 是 `1989 (Taylor's Version)` 独有歌曲，在 L3 下归属到 `1989` album project。
 
 ---

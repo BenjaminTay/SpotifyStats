@@ -2,6 +2,14 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-29 — L2 歌曲专辑归属与封面统一
+
+- 新增只读批量 TrackPresentation 解析器，将歌曲归属 Album Project、展示发行版与封面发行版拆开；标准曲优先原版录音室专辑，deluxe-only 显示豪华版，真正单曲封面独立优先。
+- 原版收录判断支持 Spotify Track ID URI/裸 ID 与 ISRC 等价，并只读取经过项目日期、精确标题、类型和稳定 ID 消歧的一个原版 provider；错误的 Deluxe cross-link 不会把豪华版独占曲误升为原版曲。
+- 搜索 generation、Billboard、播放分析、详情、首页/年度/记录及 Wrapped 共用新解析器；播放明细和版本来源仍保留实际 source album。Album Project revision 与 presentation policy 纳入候选 source fence，继续使用 shadow generation 和 LKG 原子切换。
+- schema 64–65 增加 Album Project O(1) revision 与搜索文档结构化 presentation 字段；详情 API 增加 `album_attribution`，Desktop/Phone 标题区不再读取代表 Spotify Track 的专辑名。
+- 首页只为最终 Top N 歌曲批量解析封面；数 MB Billboard 响应将 gzip 从默认 level 9 调整为在线 level 5。最终默认完整全栈门禁通过，所有热端点 P95 低于 500ms，Chromium、Firefox、WebKit 兼容矩阵通过。
+
 ## 2026-08-29 — 文档状态口径与完成计划归档
 
 - 文档地图和报告索引开始分别记录实现、验证、commit、push、部署、文档状态与外部条件，局部测试、本地提交和历史报告不再被合并描述为“已发布”或当前整站 Pass。

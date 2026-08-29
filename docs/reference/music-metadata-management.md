@@ -12,6 +12,14 @@ Settings 的“音乐源数据管理”是人工音乐事实治理的唯一入�
 
 歌曲详情的摘要统计、最近播放和播放日历必须与全局曲目榜共用同一 L2/L3 分组解析：L2 只取当前活动 `recording` 组，不跟随其 `composition` 父组；L3 才将子录音组和父作品组的成员纳入同一范围。请求分组内任一成员都应返回同一代表 `track_id` 和相同合计；最近播放行仍保留实际来源版本，便于用户理解统计构成。
 
+L2/L3 歌曲的专辑展示不是 Track owner 事实，也不能修改 `tracks.album_id`。统一的
+`backend/domains/metadata/track_presentation.py` 只读解析器把以下身份分开：统计歌曲、归属
+Album Project、页面展示的具体发行版和提供封面的具体发行版。原版 catalog containment 可以纠正
+仅由播放观察造成的 deluxe membership，但只改变展示结果，不回写 Album Project 治理表；胜出的
+原版 provider 必须经过项目日期、精确标题、类型和稳定 ID 消歧，禁止把一个 local album 的所有
+Spotify links 曲目表做并集。播放明细继续使用 `COALESCE(plays.source_album_id,
+tracks.album_id)` 展示实际来源专辑和封面。
+
 歌曲详情和新生成的深链统一使用 `/music/tracks/{track_id}`。旧 `/music/tracks/l1/{id}` 与 `/music/tracks/canonical/{id}` 仅作为隐藏兼容重定向，不能再出现在新链接或 OpenAPI。
 
 L1 不作为设置项或人工合并层级，原“高级：基础身份纠错”入口关闭。底层只执行 Spotify ID 单一归属不变量；需要修正 owner 时必须走单独的受审计数据治理流程，不能通过 L2/L3 或公开 canonical merge/split API 生成新歌曲身份。
@@ -96,4 +104,7 @@ Phone 当前把归并、署名和元数据维护明确归入“高级数据管�
 - 活动分组成员、代表版本和 pending 候选必须都是 owner Track ID 或无法解析 Spotify 身份的本地 fallback；相同 owner 的候选不得进入用户界面。owner 本身即使遗留 `tracks.spotify_track_id` 指向另一 owner，也不能被反向覆盖，因为播放时 Spotify ID 证据优先。
 - 身份迁移、人工归并和撤销前后，`plays`、`tracks`、`track_artists` 行数与稳定 hash 不变；已有外键问题按 baseline/delta 报告，新增问题必须为 0。
 - 搜索、详情、播放记录和榜单统一使用同一 `track_id`；不得重新暴露 synthetic L1/canonical track ID 命名空间。
+- 搜索、详情、榜单、首页、年度总结、Wrapped 和播放纪录中的歌曲归属/封面必须来自同一
+  TrackPresentation；标准曲、deluxe-only、精选集独占、独立单曲/EP、URI/裸 Spotify ID、ISRC
+  等价和错误 cross-link 均有回归覆盖。播放事件行与 source breakdown 仍保留实际来源。
 - provider 刷新、身份创建、身份更新和 undo 必须覆盖 external-ID 持久化、冲突保留、人工证据不降级和 before/after 对称恢复；真实数据测试只断言跨接口一致性与治理不变量，不硬编码会随合法新播放增长的累计次数。
