@@ -198,7 +198,9 @@ export function ObsessionSection({ data, reigns, behavior }: Props) {
   const dailyTotalRows = useMemo(() => {
     const rows = [...(data.daily_total_record ?? [])]
     const valueFor = (row: PlaybackRecordRow) =>
-      dailyTotalSort === 'plays' ? row.total_plays ?? row.value : row.total_hours ?? 0
+      dailyTotalSort === 'plays'
+        ? row.total_plays ?? row.value
+        : row.total_ms ?? (row.total_hours ?? 0) * 3_600_000
     return rows
       .sort((a, b) => {
         const diff = valueFor(b) - valueFor(a)

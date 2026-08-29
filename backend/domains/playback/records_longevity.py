@@ -5,11 +5,11 @@ from __future__ import annotations
 import pandas as pd
 
 from backend.domains.playback.records_helpers import (
-    TOP_RECORD_LIMIT,
     safe_groupby_cols,
     safe_rename,
     unique_cols,
 )
+from backend.domains.playback.records_sorting import sort_and_limit
 
 
 def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="track"):
@@ -27,8 +27,22 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
     for entity_id, grp in presence.groupby(group_col):
         name = str(grp[name_col].iloc[0]) if name_col in grp.columns else str(entity_id)
         artist = str(grp[artist_col].iloc[0]) if artist_col in grp.columns else ""
+        dates = (
+            pd.to_datetime(grp["ts_date"], errors="coerce")
+            .dropna()
+            .dt.date.drop_duplicates()
+            .sort_values()
+            .tolist()
+        )
+        if not dates:
+            continue
 
-        if len(grp) < 2:
+        entity_frame = frame[frame[group_col] == entity_id]
+        total_plays = len(entity_frame)
+        total_ms = float(entity_frame["ms_played"].sum())
+        total_hours = round(total_ms / 3_600_000, 1)
+
+        if len(dates) < 2:
             results.append(
                 {
                     "entity_id": str(entity_id),
@@ -37,13 +51,13 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
                     "streak_days": 1,
                     "start_date": str(grp["ts_date"].iloc[0].date()),
                     "end_date": str(grp["ts_date"].iloc[-1].date()),
-                    "total_plays": len(grp),
-                    "total_hours": 0.0,
+                    "total_plays": total_plays,
+                    "total_ms": total_ms,
+                    "total_hours": total_hours,
                 }
             )
             continue
 
-        dates = grp["ts_date"].dt.date.sort_values().tolist()
         max_streak = 1
         current_streak = 1
         streak_start = dates[0]
@@ -62,11 +76,6 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
                 current_streak = 1
                 streak_start = dates[i]
 
-        # Total stats
-        entity_frame = frame[frame[group_col] == entity_id]
-        total_plays = len(entity_frame)
-        total_hours = round(float(entity_frame["ms_played"].sum()) / 3_600_000, 1)
-
         results.append(
             {
                 "entity_id": str(entity_id),
@@ -76,6 +85,7 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
                 "start_date": str(best_start),
                 "end_date": str(best_end),
                 "total_plays": total_plays,
+                "total_ms": total_ms,
                 "total_hours": total_hours,
             }
         )
@@ -84,10 +94,11 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
         return pd.DataFrame()
 
     df = pd.DataFrame(results)
-    df = df.sort_values(
-        ["streak_days", "total_plays", "end_date"], ascending=[False, False, False]
-    ).head(TOP_RECORD_LIMIT)
-    df["rank"] = range(1, len(df) + 1)
+    df = sort_and_limit(
+        df,
+        ["streak_days", "total_plays", "total_ms", "end_date", "entity_id"],
+        [False, False, False, False, True],
+    )
     df["entity_type"] = entity_type
     df["value"] = df["streak_days"].astype(float)
     df["unit"] = "天連續播放"
@@ -108,21 +119,25 @@ def _longest_span(frame, group_col, name_col, artist_col, entity_type="track"):
             first_date=("ts_date", "min"),
             last_date=("ts_date", "max"),
             total_plays=("play_id", "count"),
-            total_hours=("ms_played", lambda s: round(float(s.sum()) / 3_600_000, 1)),
+            total_ms=("ms_played", "sum"),
         )
         .reset_index()
     )
     span["first_date"] = pd.to_datetime(span["first_date"])
     span["last_date"] = pd.to_datetime(span["last_date"])
     span["span_days"] = (span["last_date"] - span["first_date"]).dt.days + 1
-    span = span.sort_values("span_days", ascending=False).head(TOP_RECORD_LIMIT)
-    span["rank"] = range(1, len(span) + 1)
-    span["entity_type"] = entity_type
     span["entity_id"] = span[group_col].astype(str)
+    span = sort_and_limit(
+        span,
+        ["span_days", "total_plays", "total_ms", "last_date", "entity_id"],
+        [False, False, False, False, True],
+    )
+    span["entity_type"] = entity_type
     span["value"] = span["span_days"].astype(float)
     span["unit"] = "天跨度"
     span["start_date"] = span["first_date"].dt.strftime("%Y-%m-%d")
     span["end_date"] = span["last_date"].dt.strftime("%Y-%m-%d")
+    span["total_hours"] = (span["total_ms"] / 3_600_000).round(1)
     span["secondary_value"] = span["total_hours"].astype(float)
     span["secondary_unit"] = "小時"
     span = safe_rename(span, name_col, artist_col)
@@ -142,9 +157,15 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
 
     results = []
     for entity_id, grp in presence.groupby(group_col):
-        if len(grp) < 2:
+        dates = (
+            pd.to_datetime(grp["ts_date"], errors="coerce")
+            .dropna()
+            .dt.date.drop_duplicates()
+            .sort_values()
+            .tolist()
+        )
+        if len(dates) < 2:
             continue
-        dates = grp["ts_date"].dt.date.sort_values().tolist()
         max_gap = 0
         gap_before = None
         gap_after = None
@@ -159,9 +180,8 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
             name = str(grp[name_col].iloc[0]) if name_col in grp.columns else str(entity_id)
             artist = str(grp[artist_col].iloc[0]) if artist_col in grp.columns else ""
             total_plays = len(frame[frame[group_col] == entity_id])
-            total_hours = round(
-                float(frame[frame[group_col] == entity_id]["ms_played"].sum()) / 3_600_000, 1
-            )
+            total_ms = float(frame[frame[group_col] == entity_id]["ms_played"].sum())
+            total_hours = round(total_ms / 3_600_000, 1)
             results.append(
                 {
                     "entity_id": str(entity_id),
@@ -171,6 +191,7 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
                     "sleep_start": str(gap_before),
                     "wake_date": str(gap_after),
                     "total_plays": total_plays,
+                    "total_ms": total_ms,
                     "total_hours": total_hours,
                 }
             )
@@ -179,8 +200,11 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
         return pd.DataFrame()
 
     df = pd.DataFrame(results)
-    df = df.sort_values("gap_days", ascending=False).head(TOP_RECORD_LIMIT)
-    df["rank"] = range(1, len(df) + 1)
+    df = sort_and_limit(
+        df,
+        ["gap_days", "total_plays", "total_ms", "wake_date", "entity_id"],
+        [False, False, False, False, True],
+    )
     df["entity_type"] = entity_type
     df["value"] = df["gap_days"].astype(float)
     df["unit"] = "天後回歸"
@@ -199,17 +223,25 @@ def _most_active_months(frame, group_col, name_col, artist_col, entity_type="tra
     fm["_ym"] = fm["ts_date"].astype(str).str[:7]
     gb_cols = safe_groupby_cols([], group_col, name_col, artist_col)
     active = (
-        fm.groupby(gb_cols)["_ym"]
-        .nunique()
-        .reset_index(name="active_months")
-        .sort_values("active_months", ascending=False)
-        .head(TOP_RECORD_LIMIT)
+        fm.groupby(gb_cols)
+        .agg(
+            active_months=("_ym", "nunique"),
+            total_plays=("play_id", "count"),
+            total_ms=("ms_played", "sum"),
+        )
+        .reset_index()
     )
-    active["rank"] = range(1, len(active) + 1)
+    active["entity_id"] = active[group_col].astype(str)
+    active = sort_and_limit(
+        active,
+        ["active_months", "total_plays", "total_ms", "entity_id"],
+        [False, False, False, True],
+    )
     active["entity_type"] = entity_type
     active["entity_id"] = active[group_col].astype(str)
     active["value"] = active["active_months"].astype(float)
     active["unit"] = "個活躍月份"
+    active["total_hours"] = (active["total_ms"] / 3_600_000).round(1)
     active = safe_rename(active, name_col, artist_col)
     return active
 

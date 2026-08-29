@@ -65,6 +65,7 @@ class TestArtistFanOut:
         assert len(shared_artists) == 2, f"Expected 2 artist rows, got {len(shared_artists)}"
         artist_names = set(shared_artists["artist_name"])
         assert artist_names == {"Fixture Artist Alpha", "Fixture Artist Beta"}
+        assert set(shared_artists["role"]) == {"primary", "featured"}
 
     def test_fanout_only_includes_tracks_with_explicit_artist_credits(self, seed_conn):
         """load_plays_for_artists INNER JOINs track_artists — only tracks with

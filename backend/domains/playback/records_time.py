@@ -9,6 +9,7 @@ from backend.domains.playback.records_helpers import (
     safe_groupby_cols,
     safe_rename,
 )
+from backend.domains.playback.records_sorting import select_period_winners, sort_and_limit
 
 LATE_NIGHT_MONTHLY_MIN_PLAYS = 500
 LATE_NIGHT_QUARTERLY_MIN_PLAYS = 1500
@@ -19,16 +20,33 @@ def _entity_hourly_dominance(frame, group_col, name_col, artist_col, entity_type
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_hour"], group_col, name_col, artist_col)
-    hourly = frame.groupby(gb_cols).size().reset_index(name="plays")
+    hourly = (
+        frame.groupby(gb_cols)
+        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
     if hourly.empty:
         return pd.DataFrame()
-    idx = hourly.groupby("ts_hour")["plays"].idxmax()
-    best = hourly.loc[idx].sort_values("ts_hour").head(24).copy()
-    best["rank"] = range(1, len(best) + 1)
+    best = select_period_winners(
+        hourly,
+        "ts_hour",
+        "plays",
+        group_col,
+        secondary_column="total_ms",
+    )
+    best = sort_and_limit(
+        best,
+        ["ts_hour", group_col],
+        [True, True],
+        limit=24,
+    )
     best["entity_type"] = entity_type
     best["entity_id"] = best[group_col].astype(str)
     best["value"] = best["plays"].astype(float)
     best["unit"] = "次"
+    best["secondary_value"] = (best["total_ms"] / 3_600_000).round(1)
+    best["secondary_unit"] = "小时"
+    best["total_ms"] = best["total_ms"].astype(float)
     best["date"] = best["ts_hour"].apply(lambda h: f"{h}:00")
     best = safe_rename(best, name_col, artist_col)
     return best
@@ -41,16 +59,32 @@ def _entity_monthly_peak(frame, group_col, name_col, artist_col, entity_type):
     fm = frame.copy()
     fm["_ym"] = fm["ts_date"].astype(str).str[:7]
     gb_cols = safe_groupby_cols(["_ym"], group_col, name_col, artist_col)
-    monthly = fm.groupby(gb_cols).size().reset_index(name="plays")
+    monthly = (
+        fm.groupby(gb_cols)
+        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
     if monthly.empty:
         return pd.DataFrame()
-    idx = monthly.groupby("_ym")["plays"].idxmax()
-    best = monthly.loc[idx].sort_values("plays", ascending=False).head(TOP_RECORD_LIMIT).copy()
-    best["rank"] = range(1, len(best) + 1)
+    best = select_period_winners(
+        monthly,
+        "_ym",
+        "plays",
+        group_col,
+        secondary_column="total_ms",
+    )
+    best = sort_and_limit(
+        best,
+        ["plays", "total_ms", "_ym", group_col],
+        [False, False, False, True],
+    )
     best["entity_type"] = entity_type
     best["entity_id"] = best[group_col].astype(str)
     best["value"] = best["plays"].astype(float)
     best["unit"] = "次"
+    best["secondary_value"] = (best["total_ms"] / 3_600_000).round(1)
+    best["secondary_unit"] = "小时"
+    best["total_ms"] = best["total_ms"].astype(float)
     best["date"] = best["_ym"]
     best = safe_rename(best, name_col, artist_col)
     return best
@@ -61,16 +95,32 @@ def _entity_yearly_peak(frame, group_col, name_col, artist_col, entity_type):
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_year"], group_col, name_col, artist_col)
-    yearly = frame.groupby(gb_cols).size().reset_index(name="plays")
+    yearly = (
+        frame.groupby(gb_cols)
+        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
     if yearly.empty:
         return pd.DataFrame()
-    idx = yearly.groupby("ts_year")["plays"].idxmax()
-    best = yearly.loc[idx].sort_values("ts_year", ascending=False).copy()
-    best["rank"] = range(1, len(best) + 1)
+    best = select_period_winners(
+        yearly,
+        "ts_year",
+        "plays",
+        group_col,
+        secondary_column="total_ms",
+    )
+    best = sort_and_limit(
+        best,
+        ["ts_year", group_col],
+        [False, True],
+    )
     best["entity_type"] = entity_type
     best["entity_id"] = best[group_col].astype(str)
     best["value"] = best["plays"].astype(float)
     best["unit"] = "次"
+    best["secondary_value"] = (best["total_ms"] / 3_600_000).round(1)
+    best["secondary_unit"] = "小时"
+    best["total_ms"] = best["total_ms"].astype(float)
     best["date"] = best["ts_year"].astype(str)
     best = safe_rename(best, name_col, artist_col)
     return best
@@ -140,14 +190,23 @@ def _late_night_peak_day(event_frame):
     late = event_frame[event_frame["ts_hour"].between(0, 4)]
     if late.empty:
         return pd.DataFrame()
-    daily_total = event_frame.groupby("ts_date").size().reset_index(name="total_plays")
+    daily_total = (
+        event_frame.groupby("ts_date")
+        .agg(total_plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
     daily_late = late.groupby("ts_date").size().reset_index(name="late_plays")
     merged = daily_late.merge(daily_total, on="ts_date")
     merged = merged[merged["total_plays"] >= 20]
     if merged.empty:
         return pd.DataFrame()
     merged["late_ratio"] = merged["late_plays"] / merged["total_plays"]
-    best = merged.sort_values("late_ratio", ascending=False).head(TOP_RECORD_LIMIT)
+    merged = merged.sort_values(
+        ["late_ratio", "late_plays", "total_plays", "ts_date"],
+        ascending=[False, False, False, False],
+        kind="stable",
+    )
+    best = merged.head(TOP_RECORD_LIMIT)
     rows = []
     for _, row in best.iterrows():
         rows.append(
@@ -159,6 +218,8 @@ def _late_night_peak_day(event_frame):
                 "date": str(row["ts_date"]),
                 "secondary_value": float(row["late_plays"]),
                 "secondary_unit": "次深夜播放",
+                "total_plays": int(row["total_plays"]),
+                "total_ms": float(row["total_ms"]),
             }
         )
     return pd.DataFrame(rows) if rows else pd.DataFrame()
@@ -213,12 +274,26 @@ def _weekday_preference(event_frame):
     if event_frame.empty:
         return pd.DataFrame()
     dow_labels = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
-    dow = event_frame.groupby("ts_dow").size().reset_index(name="plays")
+    dow = (
+        event_frame.groupby("ts_dow")
+        .agg(
+            plays=("play_id", "count"),
+            total_ms=("ms_played", "sum"),
+            active_days=("ts_date", "nunique"),
+        )
+        .reset_index()
+    )
     dow["name"] = dow["ts_dow"].map(dow_labels)
-    dow["rank"] = range(1, len(dow) + 1)
     dow["value"] = dow["plays"].astype(float)
     dow["unit"] = "次"
-    return dow.sort_values("plays", ascending=False)
+    dow["avg_plays_per_active_day"] = dow["plays"] / dow["active_days"].clip(lower=1)
+    dow = sort_and_limit(
+        dow,
+        ["plays", "avg_plays_per_active_day", "ts_dow"],
+        [False, False, True],
+        limit=None,
+    )
+    return dow
 
 
 def _new_year_eve(event_frame):
@@ -258,17 +333,36 @@ def _new_year_eve(event_frame):
     for ny_year, grp in nye.groupby("_ny_year"):
         if len(grp) < 3:
             continue
-        top_track = grp.groupby("track_name").size().sort_values(ascending=False)
-        top_artist = grp.groupby("artist_name").size().sort_values(ascending=False)
+        top_track = (
+            grp.groupby("track_name")
+            .size()
+            .reset_index(name="count")
+            .sort_values(["count", "track_name"], ascending=[False, True], kind="stable")
+        )
+        top_artist = (
+            grp.groupby("artist_name")
+            .size()
+            .reset_index(name="count")
+            .sort_values(["count", "artist_name"], ascending=[False, True], kind="stable")
+        )
         results.append(
             {
-                "rank": len(results) + 1,
                 "name": ny_year,
                 "value": float(len(grp)),
                 "unit": "次跨年播放",
                 "date": ny_year,
-                "caption": f"Top: {top_track.index[0]} — {top_artist.index[0]}",
+                "secondary_value": float(grp["ms_played"].sum() / 3_600_000),
+                "secondary_unit": "小时",
+                "total_plays": int(len(grp)),
+                "total_ms": float(grp["ms_played"].sum()),
+                "caption": f"Top: {top_track.iloc[0]['track_name']} — {top_artist.iloc[0]['artist_name']}",
             }
         )
 
-    return pd.DataFrame(results).head(TOP_RECORD_LIMIT) if results else pd.DataFrame()
+    if not results:
+        return pd.DataFrame()
+    return sort_and_limit(
+        pd.DataFrame(results),
+        ["value", "total_ms", "date"],
+        [False, False, False],
+    )

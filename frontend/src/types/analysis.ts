@@ -457,6 +457,7 @@ export interface PlaybackRecordRow {
   start_date?: string | null
   end_date?: string | null
   total_plays?: number | null
+  total_ms?: number | null
   total_hours?: number | null
   unique_tracks?: number | null
   top_track_name?: string | null

@@ -5,10 +5,10 @@ from __future__ import annotations
 import pandas as pd
 
 from backend.domains.playback.records_helpers import (
-    TOP_RECORD_LIMIT,
     safe_groupby_cols,
     safe_rename,
 )
+from backend.domains.playback.records_sorting import select_period_winners, sort_and_limit
 
 # ── 最小樣本門檻 ──
 MIN_SAMPLE_PLAYS = 10
@@ -20,16 +20,32 @@ def _daily_binge(frame, group_col, name_col, artist_col, entity_type="track"):
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_date"], group_col, name_col, artist_col or name_col)
-    daily = frame.groupby(gb_cols).size().reset_index(name="plays")
+    daily = (
+        frame.groupby(gb_cols)
+        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
     if daily.empty:
         return pd.DataFrame()
-    idx = daily.groupby("ts_date")["plays"].idxmax()
-    best = daily.loc[idx].sort_values("plays", ascending=False).head(TOP_RECORD_LIMIT).copy()
-    best["rank"] = range(1, len(best) + 1)
+    best = select_period_winners(
+        daily,
+        "ts_date",
+        "plays",
+        group_col,
+        secondary_column="total_ms",
+    )
+    best = sort_and_limit(
+        best,
+        ["plays", "total_ms", "ts_date", group_col],
+        [False, False, False, True],
+    )
     best["entity_type"] = entity_type
     best["entity_id"] = best[group_col].astype(str)
     best["value"] = best["plays"].astype(float)
     best["unit"] = "次"
+    best["secondary_value"] = (best["total_ms"] / 3_600_000).round(1)
+    best["secondary_unit"] = "小时"
+    best["total_ms"] = best["total_ms"].astype(float)
     best["date"] = best["ts_date"].astype(str)
     best = safe_rename(best, name_col, artist_col)
     return best
@@ -40,16 +56,32 @@ def _daily_duration(frame, group_col, name_col, artist_col, entity_type="track")
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_date"], group_col, name_col, artist_col or name_col)
-    daily = frame.groupby(gb_cols)["ms_played"].sum().reset_index(name="total_ms")
+    daily = (
+        frame.groupby(gb_cols)
+        .agg(total_ms=("ms_played", "sum"), plays=("play_id", "count"))
+        .reset_index()
+    )
     if daily.empty:
         return pd.DataFrame()
-    idx = daily.groupby("ts_date")["total_ms"].idxmax()
-    best = daily.loc[idx].sort_values("total_ms", ascending=False).head(TOP_RECORD_LIMIT).copy()
-    best["rank"] = range(1, len(best) + 1)
+    best = select_period_winners(
+        daily,
+        "ts_date",
+        "total_ms",
+        group_col,
+        secondary_column="plays",
+    )
+    best = sort_and_limit(
+        best,
+        ["total_ms", "plays", "ts_date", group_col],
+        [False, False, False, True],
+    )
     best["entity_type"] = entity_type
     best["entity_id"] = best[group_col].astype(str)
     best["value"] = (best["total_ms"] / 3_600_000).round(1)
     best["unit"] = "小时"
+    best["secondary_value"] = best["plays"].astype(float)
+    best["secondary_unit"] = "次"
+    best["total_ms"] = best["total_ms"].astype(float)
     best["date"] = best["ts_date"].astype(str)
     best = safe_rename(best, name_col, artist_col)
     return best
@@ -75,7 +107,10 @@ def _consecutive_marathon(frame, group_col, name_col, artist_col, entity_type="t
         event_gap = df.groupby("_entity", sort=False)["_artist_event_id"].diff()
         df["_group"] = event_gap.ne(1).groupby(df["_entity"], sort=False).cumsum()
     else:
-        df = df.sort_values("ts").copy()
+        sequence_columns = ["ts"]
+        if "play_id" in df.columns:
+            sequence_columns.append("play_id")
+        df = df.sort_values(sequence_columns, kind="stable").copy()
         df["_group"] = (df["_entity"] != df["_entity"].shift(1)).cumsum()
 
     gb_cols = ["_entity", "_group"]
@@ -96,14 +131,25 @@ def _consecutive_marathon(frame, group_col, name_col, artist_col, entity_type="t
     )
     if runs.empty:
         return pd.DataFrame()
-    best = runs.sort_values("run_length", ascending=False).head(TOP_RECORD_LIMIT).copy()
-    best["rank"] = range(1, len(best) + 1)
+    runs["_stable_run_key"] = (
+        runs["_entity"].astype(str)
+        + "|"
+        + runs["start_ts"].astype(str)
+        + "|"
+        + runs["end_ts"].astype(str)
+    )
+    best = sort_and_limit(
+        runs,
+        ["run_length", "total_ms", "end_ts", "_stable_run_key"],
+        [False, False, False, True],
+    )
     best["entity_type"] = entity_type
     best["entity_id"] = best["_entity"]
     best["value"] = best["run_length"].astype(float)
     best["unit"] = "次連續播放"
     best["secondary_value"] = (best["total_ms"] / 3_600_000).round(1)
     best["secondary_unit"] = "小時"
+    best["total_ms"] = best["total_ms"].astype(float)
     best["start_date"] = best["start_ts"].astype(str)
     best["end_date"] = best["end_ts"].astype(str)
     best = safe_rename(best, name_col, artist_col)
@@ -134,8 +180,9 @@ def _top_daily_entity(frame, group_col, name_col, artist_col=None, prefix="track
         return {}
 
     counts = counts.sort_values(
-        ["ts_date", "entity_plays", "entity_ms", name_col],
+        ["ts_date", "entity_plays", "entity_ms", group_col],
         ascending=[True, False, False, True],
+        kind="stable",
     )
     best = counts.drop_duplicates("ts_date")
 
@@ -178,7 +225,7 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
         event_frame.groupby("ts_date")
         .agg(
             total_plays=("play_id", "count"),
-            total_hours=("ms_played", lambda s: round(float(s.sum()) / 3_600_000, 1)),
+            total_ms=("ms_played", "sum"),
         )
         .reset_index()
     )
@@ -189,8 +236,9 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
     daily["unique_tracks"] = daily["unique_tracks"].fillna(0).astype(int)
     if daily.empty:
         return pd.DataFrame()
+    daily["total_hours"] = (daily["total_ms"] / 3_600_000).round(1)
     daily["plays_rank"] = daily["total_plays"].rank(method="min", ascending=False).astype(int)
-    daily["hours_rank"] = daily["total_hours"].rank(method="min", ascending=False).astype(int)
+    daily["hours_rank"] = daily["total_ms"].rank(method="min", ascending=False).astype(int)
     plays_top_tied = bool(daily["plays_rank"].eq(1).sum() > 1)
     hours_top_tied = bool(daily["hours_rank"].eq(1).sum() > 1)
 
@@ -216,12 +264,20 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
 
     selected_dates = list(
         dict.fromkeys(
-            daily.sort_values("total_plays", ascending=False)
-            .head(TOP_RECORD_LIMIT)["ts_date"]
+            sort_and_limit(
+                daily,
+                ["total_plays", "total_ms", "ts_date"],
+                [False, False, False],
+                assign_rank=False,
+            )["ts_date"]
             .astype(str)
             .tolist()
-            + daily.sort_values("total_hours", ascending=False)
-            .head(TOP_RECORD_LIMIT)["ts_date"]
+            + sort_and_limit(
+                daily,
+                ["total_ms", "total_plays", "ts_date"],
+                [False, False, False],
+                assign_rank=False,
+            )["ts_date"]
             .astype(str)
             .tolist()
         )
@@ -247,6 +303,7 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
             "secondary_value": float(row["total_hours"]),
             "secondary_unit": "小時",
             "total_plays": int(row["total_plays"]),
+            "total_ms": float(row["total_ms"]),
             "total_hours": float(row["total_hours"]),
             "unique_tracks": int(row["unique_tracks"]),
             "rank_basis": "total_plays",

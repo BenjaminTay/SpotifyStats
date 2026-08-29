@@ -52,6 +52,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
 - [`plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：B1–B4、R1 及 6 个 Records 子页面（8 个后端记录模块、51 个列表）已完成范围验收；默认完整全栈门禁由既有耗时项继续跟踪
+- [`plans/2026-08-30-playback-records-correctness-and-ranking-plan.md`](plans/2026-08-30-playback-records-correctness-and-ranking-plan.md)：播放记录 5 个板块、20 个可见模块及 API-only 模块的统计正确性、完整候选集和稳定二级排序修复
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
 
 ## 已确认但仍有实现参考价值的设计

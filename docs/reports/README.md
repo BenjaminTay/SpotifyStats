@@ -8,6 +8,7 @@
 
 - [`2026-08-29-l2-track-album-presentation.md`](2026-08-29-l2-track-album-presentation.md)
 - [`2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](2026-08-29-billboard-records-consistency-and-ranking-hardening.md)
+- [`2026-08-30-playback-records-correctness-and-ranking.md`](2026-08-30-playback-records-correctness-and-ranking.md)
 - [`2026-08-25-music-detail-year-end-history.md`](2026-08-25-music-detail-year-end-history.md)
 - [`2026-08-24-home-detail-loading-performance-repair.md`](2026-08-24-home-detail-loading-performance-repair.md)
 - [`2026-08-23-incremental-import-final-acceptance.md`](2026-08-23-incremental-import-final-acceptance.md)

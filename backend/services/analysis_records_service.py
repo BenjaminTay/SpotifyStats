@@ -21,6 +21,10 @@ from backend.services.analysis_stats_service import PERIOD_LABELS, resolve_perio
 
 logger = logging.getLogger(__name__)
 
+# Bump this whenever record ranking/serialization semantics change so a
+# long-lived process cannot serve a pre-fix payload from its LRU cache.
+PLAYBACK_RECORDS_SORT_CONTRACT_VERSION = "2026-08-30-v2"
+
 
 def _load_reliable_album_release_dates(conn: sqlite3.Connection) -> pd.DataFrame:
     """Load unambiguous full-precision Spotify release dates for local albums."""
@@ -209,6 +213,12 @@ def _get_analysis_records_uncached(
             max_merge_gap_minutes=max_merge_gap_minutes,
         )
 
+    # Keep the complete standalone history for lifetime ordinal records before
+    # applying the requested display period.  Yearly Review supplies an
+    # already-scoped preloaded frame, so its existing annual semantics remain
+    # unchanged and it does not opt into this standalone lifetime snapshot.
+    lifetime_event_frame = None if preloaded_event_frame is not None else event_frame.copy()
+
     # Period filtering
     period_start, period_end = resolve_period_dates(period, start_date, end_date)
     if period_start or period_end:
@@ -286,6 +296,7 @@ def _get_analysis_records_uncached(
         artist_frame=artist_frame,
         merge_level=merge_level,
         conn=conn,
+        milestone_event_frame=lifetime_event_frame,
     )
 
     # Add cover URLs
@@ -390,6 +401,7 @@ def _get_analysis_records_cached(
     dynamic_threshold: bool,
     max_merge_gap_minutes: int | None,
     include_compilations: bool,
+    sort_contract_version: str = PLAYBACK_RECORDS_SORT_CONTRACT_VERSION,
 ) -> dict:
     """Cached wrapper for playback records computation."""
     conn = get_db()
@@ -437,6 +449,7 @@ def get_analysis_records(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
+        sort_contract_version=PLAYBACK_RECORDS_SORT_CONTRACT_VERSION,
     )
 
 

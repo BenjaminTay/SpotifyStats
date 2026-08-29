@@ -9,6 +9,7 @@ import sqlite3
 import pandas as pd
 
 from backend.domains.playback.records_helpers import TOP_RECORD_LIMIT, safe_groupby_cols
+from backend.domains.playback.records_sorting import sort_and_limit
 
 
 def _group_col_for(frame, entity_type):
@@ -83,13 +84,20 @@ def _same_name_diff_artist(track_frame, conn: sqlite3.Connection | None = None):
     """同名異曲，返回完整艺人列表及与其对齐的头像列表。"""
     if track_frame.empty:
         return pd.DataFrame()
-    same_name = (
-        track_frame.groupby("track_name")["artist_name"].nunique().reset_index(name="artist_count")
+    same_name = track_frame.groupby("track_name").agg(
+        artist_count=("artist_name", "nunique"),
     )
-    same_name = (
-        same_name[same_name["artist_count"] >= 2]
-        .sort_values("artist_count", ascending=False)
-        .head(TOP_RECORD_LIMIT)
+    if "play_id" in track_frame.columns:
+        same_name["total_plays"] = track_frame.groupby("track_name")["play_id"].count()
+    else:
+        same_name["total_plays"] = track_frame.groupby("track_name").size()
+    same_name = same_name.reset_index()
+    same_name = same_name[same_name["artist_count"] >= 2].copy()
+    same_name["_normalized_name"] = same_name["track_name"].astype(str).str.strip().str.casefold()
+    same_name = sort_and_limit(
+        same_name,
+        ["artist_count", "total_plays", "_normalized_name", "track_name"],
+        [False, False, True, True],
     )
     if same_name.empty:
         return pd.DataFrame()
@@ -112,14 +120,20 @@ def _same_name_diff_artist(track_frame, conn: sqlite3.Connection | None = None):
 
     rows: list[dict[str, object]] = []
     for _, sn in same_name.iterrows():
-        artist_counts = (
-            track_frame[track_frame["track_name"] == sn["track_name"]]
-            .groupby("artist_name")
-            .size()
-            .sort_values(ascending=False)
+        versions = track_frame[track_frame["track_name"] == sn["track_name"]]
+        artist_counts = versions.groupby("artist_name").size().reset_index(name="plays")
+        if "ms_played" in versions.columns:
+            durations = versions.groupby("artist_name")["ms_played"].sum()
+            artist_counts["total_ms"] = artist_counts["artist_name"].map(durations).fillna(0)
+        else:
+            artist_counts["total_ms"] = 0
+        artist_counts = artist_counts.sort_values(
+            ["plays", "total_ms", "artist_name"],
+            ascending=[False, False, True],
+            kind="stable",
         )
-        artists = [str(name) for name in artist_counts.index]
-        play_counts = [int(count) for count in artist_counts.tolist()]
+        artists = [str(name) for name in artist_counts["artist_name"].tolist()]
+        play_counts = [int(count) for count in artist_counts["plays"].tolist()]
         rows.append(
             {
                 "rank": len(rows) + 1,
@@ -185,7 +199,10 @@ def _no_repeat_streak(frame, group_col, entity_type):
     """最長不重複序列。"""
     if frame.empty:
         return pd.DataFrame()
-    df = frame.sort_values("ts").copy()
+    sequence_columns = ["ts"]
+    if "play_id" in frame.columns:
+        sequence_columns.append("play_id")
+    df = frame.sort_values(sequence_columns, kind="stable").copy()
     df["_entity"] = df[group_col].astype(str)
     seen = set()
     run_length = 0
@@ -235,8 +252,23 @@ def _album_full_replays(frame, conn, merge_level=2):
 
     song_col = "canonical_song_key" if "canonical_song_key" in frame.columns else "track_id"
 
+    working = frame.copy()
+    if "play_id" not in working.columns:
+        working["_play_marker"] = 1
+        play_column = "_play_marker"
+    else:
+        play_column = "play_id"
+    if "ms_played" not in working.columns:
+        working["_ms_marker"] = 0.0
+        ms_column = "_ms_marker"
+    else:
+        ms_column = "ms_played"
     song_group_cols = list(dict.fromkeys([album_id_col, album_name_col, "artist_name", song_col]))
-    per_song = frame.groupby(song_group_cols, dropna=False).size().reset_index(name="song_plays")
+    per_song = (
+        working.groupby(song_group_cols, dropna=False)
+        .agg(song_plays=(play_column, "count"), song_ms=(ms_column, "sum"))
+        .reset_index()
+    )
     if per_song.empty:
         return pd.DataFrame()
 
@@ -251,6 +283,7 @@ def _album_full_replays(frame, conn, merge_level=2):
         album_name = str(album_name)
         artist_name = str(artist_name)
         total_plays = int(songs["song_plays"].sum())
+        total_ms = float(songs["song_ms"].sum())
         total = None
         replay_songs = songs
         is_numeric_project = False
@@ -283,7 +316,9 @@ def _album_full_replays(frame, conn, merge_level=2):
                 "user_track_count": observed,
                 "total_tracks": int(total),
                 "total_plays": total_plays,
+                "total_ms": total_ms,
                 "full_replays": full_replays,
+                "entity_id": str(album_id),
             }
         )
 
@@ -291,16 +326,17 @@ def _album_full_replays(frame, conn, merge_level=2):
         return pd.DataFrame()
 
     df = pd.DataFrame(results)
-    df = df.sort_values(
-        ["full_replays", "total_plays", "user_track_count"],
-        ascending=[False, False, False],
-    ).head(TOP_RECORD_LIMIT)
-    df["rank"] = range(1, len(df) + 1)
+    df = sort_and_limit(
+        df,
+        ["full_replays", "total_plays", "total_ms", "entity_id"],
+        [False, False, False, True],
+    )
     df["entity_type"] = "album"
     df["value"] = df["full_replays"].astype(float)
     df["unit"] = "次完整回放"
     df["secondary_value"] = df["user_track_count"].astype(float)
     df["secondary_unit"] = df["total_tracks"].apply(lambda total: f"/ {int(total)} 首")
+    df["total_hours"] = (df["total_ms"] / 3_600_000).round(1)
     df["caption"] = df["total_plays"].apply(lambda plays: f"总播放 {int(plays)} 次")
     return df
 
@@ -537,9 +573,16 @@ def _feat_lover_track(event_frame):
 
     # Top feat tracks
     feat_tracks = (
-        ef[ef["_has_feat"]].groupby(["track_name", "artist_name"]).size().reset_index(name="count")
+        ef[ef["_has_feat"]]
+        .groupby(["track_name", "artist_name"])
+        .agg(count=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
     )
-    top_feat = feat_tracks.sort_values("count", ascending=False).head(TOP_RECORD_LIMIT)
+    top_feat = sort_and_limit(
+        feat_tracks,
+        ["count", "total_ms", "track_name", "artist_name"],
+        [False, False, True, True],
+    )
 
     rows = []
     for _, row in top_feat.iterrows():
@@ -550,6 +593,7 @@ def _feat_lover_track(event_frame):
                 "artist_name": row["artist_name"],
                 "value": float(row["count"]),
                 "unit": "次",
+                "total_ms": float(row["total_ms"]),
             }
         )
     # Add summary row
@@ -572,22 +616,35 @@ def _feat_lover_artist(artist_frame):
     """合作曲偏好：最常出現的合作藝人（按播放次數）。"""
     if artist_frame.empty or "track_name" not in artist_frame.columns:
         return pd.DataFrame()
+    if "role" not in artist_frame.columns:
+        # A role-less fan-out frame cannot distinguish the primary artist from
+        # the collaborator; fail closed instead of publishing a contaminated
+        # collaborator ranking.
+        return pd.DataFrame()
 
     # Detect feat tracks by track_name markers and group by artist
     af = artist_frame.copy()
     af["_has_feat"] = (
         af["track_name"].apply(_has_feat_marker) if "track_name" in af.columns else False
     )
-    feat_plays = af[af["_has_feat"]]
+    feat_plays = af[af["_has_feat"] & af["role"].eq("featured")]
     if feat_plays.empty:
         return pd.DataFrame()
 
-    top_artists = feat_plays.groupby("artist_name").size().reset_index(name="count")
-    top_artists = top_artists.sort_values("count", ascending=False).head(TOP_RECORD_LIMIT)
-    top_artists["rank"] = range(1, len(top_artists) + 1)
+    top_artists = (
+        feat_plays.groupby("artist_name")
+        .agg(count=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
+    top_artists = sort_and_limit(
+        top_artists,
+        ["count", "total_ms", "artist_name"],
+        [False, False, True],
+    )
     top_artists["name"] = top_artists["artist_name"]
     top_artists["value"] = top_artists["count"].astype(float)
     top_artists["unit"] = "次"
+    top_artists["total_hours"] = (top_artists["total_ms"] / 3_600_000).round(1)
     return top_artists
 
 
@@ -607,12 +664,20 @@ def _feat_lover_album(album_frame):
         "album_project_name" if "album_project_name" in feat_plays.columns else "album_name"
     )
     group_cols = list(dict.fromkeys([album_id_col, album_name_col, "artist_name"]))
-    result = feat_plays.groupby(group_cols, dropna=False).size().reset_index(name="count")
-    result = result.sort_values("count", ascending=False).head(TOP_RECORD_LIMIT).copy()
-    result["rank"] = range(1, len(result) + 1)
+    result = (
+        feat_plays.groupby(group_cols, dropna=False)
+        .agg(count=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
+    result = sort_and_limit(
+        result,
+        ["count", "total_ms", album_name_col, album_id_col],
+        [False, False, True, True],
+    )
     result["entity_type"] = "album"
     result["entity_id"] = result[album_id_col].astype(str)
     result["name"] = result[album_name_col].astype(str)
     result["value"] = result["count"].astype(float)
     result["unit"] = "次"
+    result["total_hours"] = (result["total_ms"] / 3_600_000).round(1)
     return result

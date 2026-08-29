@@ -17,7 +17,19 @@ export function LateNightTrajectoryCard({ trajectory }: { trajectory?: Trajector
     ? (trajectory?.monthly_min_plays ?? 500)
     : (trajectory?.quarterly_min_plays ?? 1500)
   const qualified = rows.filter((row) => row.qualified !== false && (row.total_plays ?? 0) >= threshold)
-  const best = [...qualified].sort((a, b) => b.value - a.value)[0]
+  const best = [...qualified].sort((a, b) => {
+    const ratio = (row: (typeof a)) => {
+      const total = row.total_plays ?? 0
+      return total > 0 ? (row.secondary_value ?? 0) / total : -1
+    }
+    const ratioDiff = ratio(b) - ratio(a)
+    if (ratioDiff !== 0) return ratioDiff
+    const lateDiff = (b.secondary_value ?? 0) - (a.secondary_value ?? 0)
+    if (lateDiff !== 0) return lateDiff
+    const totalDiff = (b.total_plays ?? 0) - (a.total_plays ?? 0)
+    if (totalDiff !== 0) return totalDiff
+    return String(b.name ?? '').localeCompare(String(a.name ?? ''))
+  })[0]
   const label = granularity === 'monthly' ? '月' : '季度'
 
   const option = useMemo(() => {

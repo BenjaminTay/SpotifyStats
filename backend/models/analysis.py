@@ -258,6 +258,7 @@ class PlaybackRecordRow(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     total_plays: int | None = None
+    total_ms: float | None = None
     total_hours: float | None = None
     unique_tracks: int | None = None
     top_track_name: str | None = None

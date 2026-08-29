@@ -7,10 +7,10 @@ from typing import Any
 import pandas as pd
 
 from backend.domains.playback.records_helpers import (
-    TOP_RECORD_LIMIT,
     safe_groupby_cols,
     safe_rename,
 )
+from backend.domains.playback.records_sorting import sort_and_limit
 
 
 def _group_col_for(frame, entity_type):
@@ -40,6 +40,7 @@ def _skip_storm(frame, group_col, name_col, artist_col, entity_type):
         .agg(
             total_plays=("play_id", "count"),
             fwd_plays=("reason_end", lambda x: (x == "fwdbtn").sum()),
+            total_ms=("ms_played", "sum"),
         )
         .reset_index()
     )
@@ -47,14 +48,18 @@ def _skip_storm(frame, group_col, name_col, artist_col, entity_type):
     if agg.empty:
         return pd.DataFrame()
     agg["fwd_rate"] = agg["fwd_plays"] / agg["total_plays"]
-    best = agg.sort_values("fwd_rate", ascending=False).head(TOP_RECORD_LIMIT).copy()
-    best["rank"] = range(1, len(best) + 1)
+    best = sort_and_limit(
+        agg,
+        ["fwd_rate", "total_plays", "fwd_plays", group_col],
+        [False, False, False, True],
+    )
     best["entity_type"] = entity_type
     best["entity_id"] = best[group_col].astype(str)
     best["value"] = (best["fwd_rate"] * 100).round(1)
     best["unit"] = "% 快進率"
     best["secondary_value"] = best["total_plays"].astype(float)
     best["secondary_unit"] = "次總播放"
+    best["total_hours"] = (best["total_ms"] / 3_600_000).round(1)
     best = safe_rename(best, name_col, artist_col)
     return best
 
@@ -75,7 +80,11 @@ def _shuffle_peak(event_frame):
     if daily.empty:
         return pd.DataFrame()
     daily["shuffle_rate"] = daily["shuffle_plays"] / daily["total_plays"]
-    best = daily.sort_values("shuffle_rate", ascending=False).head(TOP_RECORD_LIMIT)
+    best = sort_and_limit(
+        daily,
+        ["shuffle_rate", "shuffle_plays", "total_plays", "ts_date"],
+        [False, False, False, False],
+    )
     rows = []
     for _, row in best.iterrows():
         rows.append(
@@ -87,6 +96,7 @@ def _shuffle_peak(event_frame):
                 "date": str(row["ts_date"]),
                 "secondary_value": float(row["shuffle_plays"]),
                 "secondary_unit": "次隨機播放",
+                "total_plays": int(row["total_plays"]),
             }
         )
     return pd.DataFrame(rows) if rows else pd.DataFrame()
@@ -97,7 +107,12 @@ def _platform_reign(event_frame):
     if event_frame.empty or "platform" not in event_frame.columns:
         return pd.DataFrame()
     platform = event_frame.groupby("platform").size().reset_index(name="plays")
-    platform = platform.sort_values("plays", ascending=False)
+    platform = sort_and_limit(
+        platform,
+        ["plays", "platform"],
+        [False, True],
+        assign_rank=False,
+    )
     if platform.empty:
         return pd.DataFrame()
     total = platform["plays"].sum()
@@ -113,13 +128,27 @@ def _platform_switch_day(event_frame):
     """平台切換最頻繁的日期。"""
     if event_frame.empty or "platform" not in event_frame.columns:
         return pd.DataFrame()
-    df_sorted = event_frame.sort_values(["ts_date", "ts"])
+    sequence_columns = ["ts_date", "ts"]
+    if "play_id" in event_frame.columns:
+        sequence_columns.append("play_id")
+    df_sorted = event_frame.sort_values(sequence_columns, kind="stable")
     df_sorted["_prev_platform"] = df_sorted.groupby("ts_date")["platform"].shift(1)
     df_sorted["_switched"] = (
         (df_sorted["platform"] != df_sorted["_prev_platform"]) & df_sorted["_prev_platform"].notna()
     ).astype(int)
-    switches = df_sorted.groupby("ts_date")["_switched"].sum().reset_index(name="switch_count")
-    best = switches.sort_values("switch_count", ascending=False).head(TOP_RECORD_LIMIT)
+    switches = (
+        df_sorted.groupby("ts_date")
+        .agg(
+            switch_count=("_switched", "sum"),
+            total_plays=("_switched", "size"),
+        )
+        .reset_index()
+    )
+    best = sort_and_limit(
+        switches,
+        ["switch_count", "total_plays", "ts_date"],
+        [False, False, False],
+    )
     rows = []
     for _, row in best.iterrows():
         rows.append(
@@ -150,7 +179,12 @@ def _milestone_targets(total_plays: int) -> list[int]:
     return sorted(set(targets))
 
 
-def _playback_milestones(event_frame, target_year: int | None = None):
+def _playback_milestones(
+    event_frame,
+    target_year: int | None = None,
+    *,
+    scope: str = "lifetime",
+):
     """Return lifetime play milestones, optionally limited to one calendar year.
 
     ``event_frame`` must contain the complete valid-play history.  A custom
@@ -197,8 +231,8 @@ def _playback_milestones(event_frame, target_year: int | None = None):
                 "caption": f"第 {target:,} 次播放",
                 "total_plays": total_plays,
                 "lifetime_index": target,
-                "scope": "lifetime",
-                "rank_basis": "lifetime_play_index",
+                "scope": scope,
+                "rank_basis": f"{scope}_play_index",
             }
         )
     return pd.DataFrame(milestones) if milestones else pd.DataFrame()
@@ -210,6 +244,7 @@ def compute_behavior_records(
     track_frame: pd.DataFrame,
     album_frame: pd.DataFrame,
     artist_frame: pd.DataFrame,
+    milestone_event_frame: pd.DataFrame | None = None,
 ):
     """Populate behavior records."""
     for entity_type, frame in [
@@ -228,4 +263,6 @@ def compute_behavior_records(
     records["behavior_shuffle_peak"] = _shuffle_peak(event_frame)
     records["behavior_platform_reign"] = _platform_reign(event_frame)
     records["behavior_platform_switch_day"] = _platform_switch_day(event_frame)
-    records["behavior_playback_milestones"] = _playback_milestones(event_frame)
+    records["behavior_playback_milestones"] = _playback_milestones(
+        milestone_event_frame if milestone_event_frame is not None else event_frame
+    )

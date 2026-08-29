@@ -296,6 +296,26 @@ describe('播放记录 UI', () => {
     )
   })
 
+  it('单日总量按时长切换时使用未取整的毫秒值排序', () => {
+    const data = obsessionData()
+    data.daily_total_record = [
+      row('2026-01-01', 100, { date: '2026-01-01', total_plays: 100, total_hours: 0.1, total_ms: 180_000 }),
+      row('2026-01-02', 99, { date: '2026-01-02', total_plays: 99, total_hours: 0.1, total_ms: 181_000 }),
+    ]
+
+    render(
+      <MemoryRouter>
+        <ObsessionSection data={data} reigns={{ daily_champion: emptyFamily(), monthly_reign: emptyFamily(), yearly_reign: emptyFamily(), fastest_milestone: emptyFamily(), consecutive_champion_days: emptyFamily() }} behavior={{ skip_storm: emptyFamily(), shuffle_peak: [], platform_reign: [], platform_switch_day: [], playback_milestones: [] }} />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '按时长' }))
+    const list = screen.getByRole('region', { name: '单日总量记录排行榜' })
+    const items = within(list).getAllByRole('listitem')
+    expect(items[0]).toHaveTextContent('2026-01-02')
+    expect(items[1]).toHaveTextContent('2026-01-01')
+  })
+
   it('按当前榜单最大值绘制单日时长和马拉松双指标视觉条', () => {
     renderObsession()
     fireEvent.click(
@@ -440,6 +460,30 @@ describe('播放记录 UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '按季度' }))
     expect(screen.getByText('2026Q1 · 12.5%')).toBeInTheDocument()
     expect(screen.getByText('200 次深夜播放 / 1,600 次有效播放')).toBeInTheDocument()
+  })
+
+  it('深夜轨迹最高值按精确占比而非取整后的显示值裁决', () => {
+    const timeData: PlaybackTimePatternRecords = {
+      hourly_dominance: emptyFamily(),
+      monthly_peak: emptyFamily(),
+      yearly_peak: emptyFamily(),
+      late_night_peak_day: [],
+      weekday_preference: [],
+      late_night_trajectory: {
+        monthly_min_plays: 1,
+        quarterly_min_plays: 1,
+        monthly: [
+          row('2026-02', 33.3, { total_plays: 1000, secondary_value: 333, qualified: true }),
+          row('2026-01', 33.3, { total_plays: 3, secondary_value: 1, qualified: true }),
+        ],
+        quarterly: [],
+      },
+    }
+
+    renderTimePatterns(timeData)
+
+    expect(screen.getByText('2026-01 · 33.3%')).toBeInTheDocument()
+    expect(screen.getByText('1 次深夜播放 / 3 次有效播放')).toBeInTheDocument()
   })
 
   it('用专辑全碟回放替换完成度榜，并显示覆盖与总播放', () => {

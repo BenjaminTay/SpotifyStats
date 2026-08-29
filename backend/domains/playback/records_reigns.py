@@ -5,10 +5,10 @@ from __future__ import annotations
 import pandas as pd
 
 from backend.domains.playback.records_helpers import (
-    TOP_RECORD_LIMIT,
     safe_groupby_cols,
     safe_rename,
 )
+from backend.domains.playback.records_sorting import select_period_winners, sort_and_limit
 
 MILESTONE_THRESHOLDS = {"track": 50, "album": 100, "artist": 250}
 
@@ -18,26 +18,44 @@ def _daily_champion(frame, group_col, name_col, artist_col, entity_type="track")
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_date"], group_col, name_col, artist_col)
-    daily = frame.groupby(gb_cols).size().reset_index(name="plays")
+    daily = (
+        frame.groupby(gb_cols)
+        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
     if daily.empty:
         return pd.DataFrame()
-    idx = daily.groupby("ts_date")["plays"].idxmax()
-    champions = daily.loc[idx].copy()
+    champions = select_period_winners(
+        daily,
+        "ts_date",
+        "plays",
+        group_col,
+        secondary_column="total_ms",
+    )
 
     # Group by entity to count champion days
     ent_cols = safe_groupby_cols([], group_col, name_col, artist_col)
     counts = (
         champions.groupby(ent_cols)
-        .size()
-        .reset_index(name="champion_days")
-        .sort_values("champion_days", ascending=False)
-        .head(TOP_RECORD_LIMIT)
+        .agg(
+            champion_days=("ts_date", "count"),
+            winning_plays=("plays", "sum"),
+            winning_ms=("total_ms", "sum"),
+        )
+        .reset_index()
     )
-    counts["rank"] = range(1, len(counts) + 1)
+    counts = sort_and_limit(
+        counts,
+        ["champion_days", "winning_plays", "winning_ms", group_col],
+        [False, False, False, True],
+    )
     counts["entity_type"] = entity_type
     counts["entity_id"] = counts[group_col].astype(str)
     counts["value"] = counts["champion_days"].astype(float)
     counts["unit"] = "天冠軍"
+    counts["total_plays"] = counts["winning_plays"].astype(int)
+    counts["total_ms"] = counts["winning_ms"].astype(float)
+    counts["total_hours"] = (counts["winning_ms"] / 3_600_000).round(1)
     counts = safe_rename(counts, name_col, artist_col)
     return counts
 
@@ -49,25 +67,43 @@ def _monthly_reign(frame, group_col, name_col, artist_col, entity_type="track"):
     fm = frame.copy()
     fm["_ym"] = fm["ts_date"].astype(str).str[:7]
     gb_cols = safe_groupby_cols(["_ym"], group_col, name_col, artist_col)
-    monthly = fm.groupby(gb_cols).size().reset_index(name="plays")
+    monthly = (
+        fm.groupby(gb_cols)
+        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
     if monthly.empty:
         return pd.DataFrame()
-    idx = monthly.groupby("_ym")["plays"].idxmax()
-    champions = monthly.loc[idx].copy()
+    champions = select_period_winners(
+        monthly,
+        "_ym",
+        "plays",
+        group_col,
+        secondary_column="total_ms",
+    )
 
     ent_cols = safe_groupby_cols([], group_col, name_col, artist_col)
     counts = (
         champions.groupby(ent_cols)
-        .size()
-        .reset_index(name="month_champion")
-        .sort_values("month_champion", ascending=False)
-        .head(TOP_RECORD_LIMIT)
+        .agg(
+            month_champion=("_ym", "count"),
+            winning_plays=("plays", "sum"),
+            winning_ms=("total_ms", "sum"),
+        )
+        .reset_index()
     )
-    counts["rank"] = range(1, len(counts) + 1)
+    counts = sort_and_limit(
+        counts,
+        ["month_champion", "winning_plays", "winning_ms", group_col],
+        [False, False, False, True],
+    )
     counts["entity_type"] = entity_type
     counts["entity_id"] = counts[group_col].astype(str)
     counts["value"] = counts["month_champion"].astype(float)
     counts["unit"] = "月冠軍"
+    counts["total_plays"] = counts["winning_plays"].astype(int)
+    counts["total_ms"] = counts["winning_ms"].astype(float)
+    counts["total_hours"] = (counts["winning_ms"] / 3_600_000).round(1)
     counts = safe_rename(counts, name_col, artist_col)
     return counts
 
@@ -77,18 +113,32 @@ def _yearly_reign(frame, group_col, name_col, artist_col, entity_type="track"):
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_year"], group_col, name_col, artist_col)
-    yearly = frame.groupby(gb_cols).size().reset_index(name="plays")
+    yearly = (
+        frame.groupby(gb_cols)
+        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
     if yearly.empty:
         return pd.DataFrame()
-    idx = yearly.groupby("ts_year")["plays"].idxmax()
-    champions = (
-        yearly.loc[idx].sort_values("ts_year", ascending=False).head(TOP_RECORD_LIMIT).copy()
+    champions = select_period_winners(
+        yearly,
+        "ts_year",
+        "plays",
+        group_col,
+        secondary_column="total_ms",
     )
-    champions["rank"] = range(1, len(champions) + 1)
+    champions = sort_and_limit(
+        champions,
+        ["ts_year", "plays", "total_ms", group_col],
+        [True, False, False, True],
+    )
     champions["entity_type"] = entity_type
     champions["entity_id"] = champions[group_col].astype(str)
     champions["value"] = champions["plays"].astype(float)
     champions["unit"] = "次"
+    champions["total_plays"] = champions["plays"].astype(int)
+    champions["total_ms"] = champions["total_ms"].astype(float)
+    champions["total_hours"] = (champions["total_ms"] / 3_600_000).round(1)
     champions["date"] = champions["ts_year"].astype(str)
     champions = safe_rename(champions, name_col, artist_col)
     return champions
@@ -125,7 +175,12 @@ def _fastest_milestone(frame, group_col, name_col, artist_col, entity_type="trac
 
     results = []
     for entity_id, grp in frame.groupby(group_col):
-        grp_sorted = grp.sort_values("ts_date").copy()
+        sequence_columns = ["ts_date"]
+        if "ts" in grp.columns:
+            sequence_columns.append("ts")
+        if "play_id" in grp.columns:
+            sequence_columns.append("play_id")
+        grp_sorted = grp.sort_values(sequence_columns, kind="stable").copy()
         if entity_type == "album":
             if "album_release_date" not in grp_sorted.columns:
                 continue
@@ -170,8 +225,12 @@ def _fastest_milestone(frame, group_col, name_col, artist_col, entity_type="trac
 
     if not results:
         return pd.DataFrame()
-    df = pd.DataFrame(results).sort_values("days_to_milestone").head(TOP_RECORD_LIMIT)
-    df["rank"] = range(1, len(df) + 1)
+    df = pd.DataFrame(results)
+    df = sort_and_limit(
+        df,
+        ["days_to_milestone", "milestone_date", "first_date", "entity_id"],
+        [True, True, True, True],
+    )
     df["entity_type"] = entity_type
     df["value"] = df["days_to_milestone"].astype(float)
     df["unit"] = f"天達{int(df['milestone_target'].iloc[0])}次"
@@ -187,11 +246,20 @@ def _consecutive_champion_days(frame, group_col, name_col, artist_col, entity_ty
 
     # Get daily champion for each day
     gb_cols = safe_groupby_cols(["ts_date"], group_col, name_col, artist_col)
-    daily = frame.groupby(gb_cols).size().reset_index(name="plays")
+    daily = (
+        frame.groupby(gb_cols)
+        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        .reset_index()
+    )
     if daily.empty:
         return pd.DataFrame()
-    idx = daily.groupby("ts_date")["plays"].idxmax()
-    champions = daily.loc[idx].copy()
+    champions = select_period_winners(
+        daily,
+        "ts_date",
+        "plays",
+        group_col,
+        secondary_column="total_ms",
+    )
     champions["ts_date"] = pd.to_datetime(champions["ts_date"])
     champions = champions.sort_values("ts_date")
 
@@ -200,25 +268,32 @@ def _consecutive_champion_days(frame, group_col, name_col, artist_col, entity_ty
     for entity_id, grp in champions.groupby(group_col):
         if len(grp) < 2:
             continue
-        dates = sorted(grp["ts_date"].dt.date.tolist())
-        max_streak = 1
-        cur = 1
-        best_start = dates[0]
-        best_end = dates[0]
-        streak_start = dates[0]
+        grp = grp.sort_values("ts_date", kind="stable")
+        grp["_streak_group"] = grp["ts_date"].diff().dt.days.ne(1).cumsum()
+        candidates = []
+        for _, streak in grp.groupby("_streak_group", sort=False):
+            if len(streak) < 2:
+                continue
+            candidates.append(
+                {
+                    "streak_days": len(streak),
+                    "start_date": streak["ts_date"].iloc[0].date(),
+                    "end_date": streak["ts_date"].iloc[-1].date(),
+                    "total_plays": int(streak["plays"].sum()),
+                    "total_ms": float(streak["total_ms"].sum()),
+                }
+            )
 
-        for i in range(1, len(dates)):
-            if (dates[i] - dates[i - 1]).days == 1:
-                cur += 1
-                if cur > max_streak:
-                    max_streak = cur
-                    best_start = streak_start
-                    best_end = dates[i]
-            else:
-                cur = 1
-                streak_start = dates[i]
-
-        if max_streak >= 2:
+        if candidates:
+            best = max(
+                candidates,
+                key=lambda item: (
+                    item["streak_days"],
+                    item["total_plays"],
+                    item["total_ms"],
+                    item["end_date"],
+                ),
+            )
             name = str(grp[name_col].iloc[0]) if name_col in grp.columns else str(entity_id)
             artist = str(grp[artist_col].iloc[0]) if artist_col in grp.columns else ""
             results.append(
@@ -226,19 +301,25 @@ def _consecutive_champion_days(frame, group_col, name_col, artist_col, entity_ty
                     "entity_id": str(entity_id),
                     "name": name,
                     "artist_name": artist,
-                    "streak_days": max_streak,
-                    "start_date": str(best_start),
-                    "end_date": str(best_end),
+                    "streak_days": best["streak_days"],
+                    "start_date": str(best["start_date"]),
+                    "end_date": str(best["end_date"]),
+                    "total_plays": best["total_plays"],
+                    "total_ms": best["total_ms"],
                 }
             )
 
     if not results:
         return pd.DataFrame()
-    df = pd.DataFrame(results).sort_values("streak_days", ascending=False).head(TOP_RECORD_LIMIT)
-    df["rank"] = range(1, len(df) + 1)
+    df = sort_and_limit(
+        pd.DataFrame(results),
+        ["streak_days", "total_plays", "total_ms", "end_date", "entity_id"],
+        [False, False, False, False, True],
+    )
     df["entity_type"] = entity_type
     df["value"] = df["streak_days"].astype(float)
     df["unit"] = "天連續冠軍"
+    df["total_hours"] = (df["total_ms"] / 3_600_000).round(1)
     return df
 
 

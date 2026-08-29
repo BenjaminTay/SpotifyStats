@@ -2098,7 +2098,13 @@ def _load_plays_for_artists_cached(
         df = df.drop(columns=["artist_name"], errors="ignore")
         df = df.merge(
             track_artists_df[
-                ["representative_track_id", "artist_id", "raw_artist_id", "artist_name"]
+                [
+                    "representative_track_id",
+                    "artist_id",
+                    "raw_artist_id",
+                    "artist_name",
+                    "role",
+                ]
             ],
             on="representative_track_id",
             how="inner",

@@ -26,6 +26,7 @@ def compute_playback_records(
     artist_frame: pd.DataFrame,
     merge_level: int = 2,
     conn=None,
+    milestone_event_frame: pd.DataFrame | None = None,
 ):
     """Compute all playback records from entity frames.
 
@@ -57,6 +58,13 @@ def compute_playback_records(
         conn=conn,
         merge_level=merge_level,
     )
-    compute_behavior_records(records, event_frame, track_frame, album_frame, artist_frame)
+    compute_behavior_records(
+        records,
+        event_frame,
+        track_frame,
+        album_frame,
+        artist_frame,
+        milestone_event_frame=milestone_event_frame,
+    )
 
     return records

@@ -66,7 +66,9 @@ function DailyTotalRow({
   maxValue: number
 }) {
   const primaryValue =
-    sortMode === 'plays' ? (row.total_plays ?? row.value) : (row.total_hours ?? 0)
+    sortMode === 'plays'
+      ? (row.total_plays ?? row.value)
+      : (row.total_ms != null ? row.total_ms / 3_600_000 : (row.total_hours ?? 0))
   const primaryUnit = sortMode === 'plays' ? '次' : '小时'
   const progress = maxValue > 0 ? Math.min((primaryValue / maxValue) * 100, 100) : 0
 
@@ -183,7 +185,9 @@ export function DailyTotalLeaderboard({
   const start = safePage * PAGE_SIZE
   const pageRows = rows.slice(start, start + PAGE_SIZE)
   const metricValue = (row: PlaybackRecordRow) =>
-    sortMode === 'plays' ? (row.total_plays ?? row.value) : (row.total_hours ?? 0)
+    sortMode === 'plays'
+      ? (row.total_plays ?? row.value)
+      : (row.total_ms != null ? row.total_ms / 3_600_000 : (row.total_hours ?? 0))
   const maxValue = Math.max(0, ...rows.map(metricValue))
   const recordKey = '单日总量记录'
   const fullListOpen = searchParams.get('record') === recordKey
