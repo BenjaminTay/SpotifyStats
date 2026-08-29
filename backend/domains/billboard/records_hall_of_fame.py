@@ -5,6 +5,7 @@ import pandas as pd
 from backend.core.db import primary_artist_names_for_tracks
 from backend.domains.billboard.chart_compute import compute_power_scores
 from backend.domains.billboard.data_loader import _load_album_metadata
+from backend.domains.billboard.record_sorting import stable_record_sort
 
 
 def compute_hall_of_fame_records(
@@ -26,7 +27,13 @@ def compute_hall_of_fame_records(
     no1_weeks_map = track_summary[["track_id", "weeks_at_no1"]].drop_duplicates()
     power_df = power_df.merge(no1_weeks_map, on="track_id", how="left")
     power_df["weeks_at_no1"] = power_df["weeks_at_no1"].fillna(0).astype(int)
-    records["all_time_greatest"] = power_df.head(20)[
+    power_df = stable_record_sort(
+        power_df,
+        [("power_score", False)],
+        stable_columns=("track_id", "artist_name", "track_name"),
+        limit=20,
+    )
+    records["all_time_greatest"] = power_df[
         [
             "track_id",
             "track_name",
@@ -56,24 +63,36 @@ def compute_hall_of_fame_records(
                     "weeks_on_chart": top["weeks_on_chart"],
                 }
             )
-    records["year_end_no1"] = (
-        pd.DataFrame(ye_results).sort_values("year", ascending=False)
-        if ye_results
-        else pd.DataFrame()
+    records["year_end_no1"] = stable_record_sort(
+        pd.DataFrame(ye_results),
+        [("year", False)],
+        stable_columns=("track_id", "artist_name", "track_name"),
     )
 
     # ── 25-26. Album & Artist Power Ranking (专辑/艺人综合评分总榜) ──────
     if album_power_scores is not None and not album_power_scores.empty:
-        records["album_power_ranking"] = album_power_scores.head(20).rename(
-            columns={"power_score": "走势评分"}
-        )[["album_name", "artist_name", "peak_position", "weeks_on_chart", "走势评分"]]
+        ranked_albums = stable_record_sort(
+            album_power_scores,
+            [("power_score", False)],
+            stable_columns=("album_name", "artist_name"),
+            limit=20,
+        ).rename(columns={"power_score": "走势评分"})
+        records["album_power_ranking"] = ranked_albums[
+            ["album_name", "artist_name", "peak_position", "weeks_on_chart", "走势评分"]
+        ]
     else:
         records["album_power_ranking"] = pd.DataFrame()
 
     if artist_power_scores is not None and not artist_power_scores.empty:
-        records["artist_power_ranking"] = artist_power_scores.head(20).rename(
-            columns={"power_score": "走势评分"}
-        )[["artist_name", "peak_position", "weeks_on_chart", "走势评分"]]
+        ranked_artists = stable_record_sort(
+            artist_power_scores,
+            [("power_score", False)],
+            stable_columns=("artist_name",),
+            limit=20,
+        ).rename(columns={"power_score": "走势评分"})
+        records["artist_power_ranking"] = ranked_artists[
+            ["artist_name", "peak_position", "weeks_on_chart", "走势评分"]
+        ]
     else:
         records["artist_power_ranking"] = pd.DataFrame()
 
@@ -126,8 +145,8 @@ def compute_hall_of_fame_records(
                         "走势评分": top_d["power_score"],
                     }
                 )
-    records["decade_best"] = (
-        pd.DataFrame(decade_results).sort_values(["年代", "走势评分"], ascending=[True, False])
-        if decade_results
-        else pd.DataFrame()
+    records["decade_best"] = stable_record_sort(
+        pd.DataFrame(decade_results),
+        [("年代", True), ("走势评分", False), ("weeks_on_chart", False), ("peak", True)],
+        stable_columns=("track_id", "artist_name", "track_name"),
     )

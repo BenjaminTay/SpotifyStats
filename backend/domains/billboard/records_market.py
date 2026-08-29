@@ -2,6 +2,8 @@
 
 import pandas as pd
 
+from backend.domains.billboard.record_sorting import stable_record_sort
+
 
 def compute_market_records(records, weekly, weekly_album=None, weekly_artist=None):
     """Populate market records: week total plays, strongest week, closest/largest #1 vs #2, new entry ratio."""
@@ -46,7 +48,11 @@ def compute_market_records(records, weekly, weekly_album=None, weekly_artist=Non
             "no1_chart_artist_plays",
         ]
         week_total_plays = week_total_plays.merge(week_artist_no1, on="billboard_week", how="left")
-        week_total_plays = week_total_plays.sort_values("total_plays", ascending=False)
+        week_total_plays = stable_record_sort(
+            week_total_plays,
+            [("total_plays", False), ("tracks_count", False), ("billboard_week", False)],
+            stable_columns=("billboard_week",),
+        )
         week_total_plays.index = week_total_plays.index + 1
         week_total_plays["billboard_week"] = week_total_plays["billboard_week"].astype(str)
         records["week_total_plays"] = week_total_plays
@@ -70,7 +76,12 @@ def compute_market_records(records, weekly, weekly_album=None, weekly_artist=Non
         total_plays_by_week.columns = ["billboard_week", "week_total"]
         gaps = gaps.merge(total_plays_by_week, on="billboard_week", how="left")
         gaps["week_total"] = gaps["week_total"].fillna(0).astype(int)
-        closest = gaps.sort_values(["play_gap", "week_total"], ascending=[True, False]).iloc[0]
+        closest = stable_record_sort(
+            gaps,
+            [("play_gap", True), ("week_total", False), ("billboard_week", False)],
+            stable_columns=("no1_track", "no1_artist", "no2_track", "no2_artist"),
+            limit=1,
+        ).iloc[0]
         records["closest_no1_vs_no2"] = {
             "week": str(closest["billboard_week"]),
             "no1_track": closest["no1_track"],
@@ -82,7 +93,12 @@ def compute_market_records(records, weekly, weekly_album=None, weekly_artist=Non
             "gap": int(closest["play_gap"]),
             "gap_pct": float(closest["gap_pct"]),
         }
-        largest = gaps.sort_values(["play_gap", "week_total"], ascending=[False, False]).iloc[0]
+        largest = stable_record_sort(
+            gaps,
+            [("play_gap", False), ("week_total", False), ("billboard_week", False)],
+            stable_columns=("no1_track", "no1_artist", "no2_track", "no2_artist"),
+            limit=1,
+        ).iloc[0]
         records["largest_no1_vs_no2"] = {
             "week": str(largest["billboard_week"]),
             "no1_track": largest["no1_track"],
@@ -120,6 +136,8 @@ def compute_market_records(records, weekly, weekly_album=None, weekly_artist=Non
     week_totals.columns = ["billboard_week", "大盘播放"]
     new_ratio = new_ratio.merge(week_totals, on="billboard_week", how="left")
     new_ratio["大盘播放"] = new_ratio["大盘播放"].fillna(0).astype(int)
-    records["new_entry_ratio"] = new_ratio.sort_values(
-        ["新歌占比", "大盘播放"], ascending=[False, False]
+    records["new_entry_ratio"] = stable_record_sort(
+        new_ratio,
+        [("新歌占比", False), ("大盘播放", False), ("billboard_week", False)],
+        stable_columns=("billboard_week",),
     )

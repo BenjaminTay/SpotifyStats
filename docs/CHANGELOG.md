@@ -2,6 +2,13 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-30 — Billboard Records 全板块同值排序收口
+
+- 复核并统一 6 个 Records 子页面、8 个后端记录模块的业务二级排序；所有 51 个列表都先排序完整候选集，再应用 Top N，并追加实体稳定键。
+- 冠军名人堂拆分单曲与专辑候选集：单曲按“冠军单曲数 → 单曲冠军周数”降序，专辑按“冠军专辑数 → 专辑冠军周数”降序，专辑榜不再混入 0 张冠军专辑的艺人。
+- 修正双空冠响应的 `debut_artist` 字段契约，补充输入乱序、Top N 截止同值和冠军单曲/专辑同值二级指标回归测试。
+- 当前真实 API 的 `/api/billboard/records` 与 `/api/billboard/data` 各返回 51 个记录列表，固定参数和同一 revision 下排序巡检无违规；详细证据见 [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)。
+
 ## 2026-08-29 — L2 歌曲专辑归属与封面统一
 
 - 新增只读批量 TrackPresentation 解析器，将歌曲归属 Album Project、展示发行版与封面发行版拆开；标准曲优先原版录音室专辑，deluxe-only 显示豪华版，真正单曲封面独立优先。

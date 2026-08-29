@@ -3,6 +3,7 @@
 import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists, primary_artist_names_for_tracks
+from backend.domains.billboard.record_sorting import stable_record_sort
 
 
 def compute_movement_records(records, weekly, track_summary, weekly_album=None, weekly_artist=None):
@@ -30,8 +31,18 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
                 )
     if changes:
         ch_df = pd.DataFrame(changes)
-        records["biggest_jump"] = ch_df.nlargest(15, "变化")
-        records["biggest_drop"] = ch_df.nsmallest(15, "变化")
+        records["biggest_jump"] = stable_record_sort(
+            ch_df,
+            [("变化", False), ("本周排名", True), ("日期", False)],
+            stable_columns=("track_id", "artist_name", "track_name"),
+            limit=15,
+        )
+        records["biggest_drop"] = stable_record_sort(
+            ch_df,
+            [("变化", True), ("本周排名", False), ("日期", False)],
+            stable_columns=("track_id", "artist_name", "track_name"),
+            limit=15,
+        )
     else:
         records["biggest_jump"] = pd.DataFrame()
         records["biggest_drop"] = pd.DataFrame()
@@ -48,16 +59,19 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
         .reset_index(name="track_count")
     )
     if not album_weekly.empty:
-        best_alb = album_weekly.sort_values("track_count", ascending=False).iloc[0]
+        sorted_album_weekly = stable_record_sort(
+            album_weekly,
+            [("track_count", False), ("billboard_week", False)],
+            stable_columns=("album_name", "artist_name"),
+        )
+        best_alb = sorted_album_weekly.iloc[0]
         records["album_simul"] = {
             "album": best_alb["album_name"],
             "artist": best_alb["artist_name"],
             "week": best_alb["billboard_week"],
             "count": int(best_alb["track_count"]),
         }
-        records["album_simul_list"] = album_weekly.sort_values("track_count", ascending=False).head(
-            15
-        )
+        records["album_simul_list"] = sorted_album_weekly.head(15)
 
     top10_weekly = (
         fan_out_weekly_for_artists(weekly)[lambda frame: frame["rank"] <= 10]
@@ -67,7 +81,12 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
         .reset_index(name="track_count")
     )
     if not top10_weekly.empty:
-        best_top10 = top10_weekly.sort_values("track_count", ascending=False).iloc[0]
+        best_top10 = stable_record_sort(
+            top10_weekly,
+            [("track_count", False), ("billboard_week", False)],
+            stable_columns=("artist_name",),
+            limit=1,
+        ).iloc[0]
         records["most_top10_simul"] = {
             "artist": best_top10["artist_name"],
             "week": best_top10["billboard_week"],
@@ -78,7 +97,11 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
 
     week_strength = weekly.groupby("billboard_week")["play_count"].sum().reset_index()
     if not week_strength.empty:
-        best_week = week_strength.sort_values("play_count", ascending=False).iloc[0]
+        best_week = stable_record_sort(
+            week_strength,
+            [("play_count", False), ("billboard_week", False)],
+            limit=1,
+        ).iloc[0]
         records["strongest_week"] = {
             "week": best_week["billboard_week"],
             "play_count": int(best_week["play_count"]),
@@ -104,12 +127,19 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
         climb_counts.columns = ["track_id", "登顶周数"]
         to_no1 = to_no1.merge(climb_counts, on="track_id", how="left")
         to_no1["登顶周数"] = to_no1["登顶周数"].fillna(0).astype(int)
-        records["longest_to_no1"] = to_no1.nlargest(20, "登顶周数")[
-            ["track_id", "track_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
-        ]
-        records["fastest_to_no1"] = to_no1.nsmallest(20, "登顶周数")[
-            ["track_id", "track_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
-        ]
+        climb_sort_columns = [("登顶周数", False), ("first_week", True), ("first_peak_week", True)]
+        records["longest_to_no1"] = stable_record_sort(
+            to_no1,
+            climb_sort_columns,
+            stable_columns=("track_id", "artist_name", "track_name"),
+            limit=20,
+        )[["track_id", "track_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]]
+        records["fastest_to_no1"] = stable_record_sort(
+            to_no1,
+            [("登顶周数", True), ("first_week", True), ("first_peak_week", True)],
+            stable_columns=("track_id", "artist_name", "track_name"),
+            limit=20,
+        )[["track_id", "track_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]]
     else:
         records["longest_to_no1"] = pd.DataFrame()
         records["fastest_to_no1"] = pd.DataFrame()
@@ -156,12 +186,18 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
                 climb_counts_alb, on=["album_name", "artist_name"], how="left"
             )
             to_no1_alb["登顶周数"] = to_no1_alb["登顶周数"].fillna(0).astype(int)
-            records["longest_to_no1_album"] = to_no1_alb.nlargest(20, "登顶周数")[
-                ["album_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
-            ]
-            records["fastest_to_no1_album"] = to_no1_alb.nsmallest(20, "登顶周数")[
-                ["album_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]
-            ]
+            records["longest_to_no1_album"] = stable_record_sort(
+                to_no1_alb,
+                [("登顶周数", False), ("first_week", True), ("first_peak_week", True)],
+                stable_columns=("album_name", "artist_name"),
+                limit=20,
+            )[["album_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]]
+            records["fastest_to_no1_album"] = stable_record_sort(
+                to_no1_alb,
+                [("登顶周数", True), ("first_week", True), ("first_peak_week", True)],
+                stable_columns=("album_name", "artist_name"),
+                limit=20,
+            )[["album_name", "artist_name", "first_week", "first_peak_week", "登顶周数"]]
         else:
             records["longest_to_no1_album"] = pd.DataFrame()
             records["fastest_to_no1_album"] = pd.DataFrame()
@@ -205,12 +241,18 @@ def compute_movement_records(records, weekly, track_summary, weekly_album=None, 
             climb_counts_art.columns = ["artist_name", "登顶周数"]
             to_no1_art = to_no1_art.merge(climb_counts_art, on="artist_name", how="left")
             to_no1_art["登顶周数"] = to_no1_art["登顶周数"].fillna(0).astype(int)
-            records["longest_to_no1_artist"] = to_no1_art.nlargest(20, "登顶周数")[
-                ["artist_name", "first_week", "first_peak_week", "登顶周数"]
-            ]
-            records["fastest_to_no1_artist"] = to_no1_art.nsmallest(20, "登顶周数")[
-                ["artist_name", "first_week", "first_peak_week", "登顶周数"]
-            ]
+            records["longest_to_no1_artist"] = stable_record_sort(
+                to_no1_art,
+                [("登顶周数", False), ("first_week", True), ("first_peak_week", True)],
+                stable_columns=("artist_name",),
+                limit=20,
+            )[["artist_name", "first_week", "first_peak_week", "登顶周数"]]
+            records["fastest_to_no1_artist"] = stable_record_sort(
+                to_no1_art,
+                [("登顶周数", True), ("first_week", True), ("first_peak_week", True)],
+                stable_columns=("artist_name",),
+                limit=20,
+            )[["artist_name", "first_week", "first_peak_week", "登顶周数"]]
         else:
             records["longest_to_no1_artist"] = pd.DataFrame()
             records["fastest_to_no1_artist"] = pd.DataFrame()

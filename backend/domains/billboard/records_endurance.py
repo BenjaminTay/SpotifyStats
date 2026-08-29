@@ -2,6 +2,13 @@
 
 import pandas as pd
 
+from backend.domains.billboard.record_sorting import stable_record_sort
+
+
+def _rank(frame, sort_keys, stable_columns, columns=None):
+    ranked = stable_record_sort(frame, sort_keys, stable_columns=stable_columns, limit=20)
+    return ranked[columns] if columns else ranked
+
 
 def compute_endurance_records(
     records, weekly, track_summary, weekly_album=None, weekly_artist=None
@@ -19,14 +26,14 @@ def compute_endurance_records(
         no2_with_peak = at_no2.merge(
             track_summary[["track_id", "track_name", "artist_name", "peak_position"]], on="track_id"
         )
-        no2_no_no1 = (
-            no2_with_peak[no2_with_peak["peak_position"] > 1]
-            .sort_values("weeks_at_no2", ascending=False)
-            .head(20)
+        no2_no_no1 = no2_with_peak[no2_with_peak["peak_position"] > 1]
+        no2_no_no1 = _rank(
+            no2_no_no1,
+            [("weeks_at_no2", False), ("peak_position", True)],
+            ("track_id", "artist_name", "track_name"),
+            ["track_id", "track_name", "artist_name", "peak_position", "weeks_at_no2"],
         )
-        records["most_weeks_no2_no_no1"] = no2_no_no1[
-            ["track_id", "track_name", "artist_name", "peak_position", "weeks_at_no2"]
-        ]
+        records["most_weeks_no2_no_no1"] = no2_no_no1
     else:
         records["most_weeks_no2_no_no1"] = pd.DataFrame()
     # Album version
@@ -49,14 +56,14 @@ def compute_endurance_records(
             album_summary[["album_name", "artist_name", "peak_position"]],
             on=["album_name", "artist_name"],
         )
-        alb_no2_no_no1 = (
-            alb_no2_with_peak[alb_no2_with_peak["peak_position"] > 1]
-            .sort_values("weeks_at_no2", ascending=False)
-            .head(20)
+        alb_no2_no_no1 = alb_no2_with_peak[alb_no2_with_peak["peak_position"] > 1]
+        alb_no2_no_no1 = _rank(
+            alb_no2_no_no1,
+            [("weeks_at_no2", False), ("peak_position", True)],
+            ("album_name", "artist_name"),
+            ["album_name", "artist_name", "peak_position", "weeks_at_no2"],
         )
-        records["most_weeks_no2_no_no1_album"] = alb_no2_no_no1[
-            ["album_name", "artist_name", "peak_position", "weeks_at_no2"]
-        ]
+        records["most_weeks_no2_no_no1_album"] = alb_no2_no_no1
     else:
         records["most_weeks_no2_no_no1_album"] = pd.DataFrame()
 
@@ -74,14 +81,14 @@ def compute_endurance_records(
                 .reset_index()
             )
             art_no2_with_peak = art_at_no2.merge(art_peak, on="artist_name")
-            art_no2_no_no1 = (
-                art_no2_with_peak[art_no2_with_peak["peak_position"] > 1]
-                .sort_values("weeks_at_no2", ascending=False)
-                .head(20)
+            art_no2_no_no1 = art_no2_with_peak[art_no2_with_peak["peak_position"] > 1]
+            art_no2_no_no1 = _rank(
+                art_no2_no_no1,
+                [("weeks_at_no2", False), ("peak_position", True)],
+                ("artist_name",),
+                ["artist_name", "peak_position", "weeks_at_no2"],
             )
-            records["most_weeks_no2_no_no1_artist"] = art_no2_no_no1[
-                ["artist_name", "peak_position", "weeks_at_no2"]
-            ]
+            records["most_weeks_no2_no_no1_artist"] = art_no2_no_no1
         else:
             records["most_weeks_no2_no_no1_artist"] = pd.DataFrame()
     else:
@@ -105,10 +112,10 @@ def compute_endurance_records(
                     "在榜周数": len(wks),
                 }
             )
-    records["most_reentries"] = (
-        pd.DataFrame(reentries).sort_values("回榜次数", ascending=False).head(20)
-        if reentries
-        else pd.DataFrame()
+    records["most_reentries"] = _rank(
+        pd.DataFrame(reentries),
+        [("回榜次数", False), ("在榜周数", False)],
+        ("track_id", "artist_name", "track_name"),
     )
     # Album version
     if weekly_album is not None:
@@ -130,10 +137,10 @@ def compute_endurance_records(
                         "在榜周数": len(wks),
                     }
                 )
-        records["most_reentries_album"] = (
-            pd.DataFrame(album_reentries).sort_values("回榜次数", ascending=False).head(20)
-            if album_reentries
-            else pd.DataFrame()
+        records["most_reentries_album"] = _rank(
+            pd.DataFrame(album_reentries),
+            [("回榜次数", False), ("在榜周数", False)],
+            ("album_name", "artist_name"),
         )
     else:
         records["most_reentries_album"] = pd.DataFrame()
@@ -156,10 +163,10 @@ def compute_endurance_records(
                         "在榜周数": len(wks),
                     }
                 )
-        records["most_reentries_artist"] = (
-            pd.DataFrame(artist_reentries).sort_values("回榜次数", ascending=False).head(20)
-            if artist_reentries
-            else pd.DataFrame()
+        records["most_reentries_artist"] = _rank(
+            pd.DataFrame(artist_reentries),
+            [("回榜次数", False), ("在榜周数", False)],
+            ("artist_name",),
         )
     else:
         records["most_reentries_artist"] = pd.DataFrame()
@@ -204,8 +211,10 @@ def compute_endurance_records(
                 "结束周": best_end,
             }
         )
-    records["longest_consecutive_same_rank"] = (
-        pd.DataFrame(same_rank_streaks).sort_values("连续周数", ascending=False).head(20)
+    records["longest_consecutive_same_rank"] = _rank(
+        pd.DataFrame(same_rank_streaks),
+        [("连续周数", False), ("停留排名", True), ("起始周", True), ("结束周", False)],
+        ("track_id", "artist_name", "track_name"),
     )
     # Album version
     if weekly_album is not None:
@@ -249,8 +258,10 @@ def compute_endurance_records(
                     "结束周": be,
                 }
             )
-        records["longest_consecutive_same_rank_album"] = (
-            pd.DataFrame(alb_same_rank).sort_values("连续周数", ascending=False).head(20)
+        records["longest_consecutive_same_rank_album"] = _rank(
+            pd.DataFrame(alb_same_rank),
+            [("连续周数", False), ("停留排名", True), ("起始周", True), ("结束周", False)],
+            ("album_name", "artist_name"),
         )
     else:
         records["longest_consecutive_same_rank_album"] = pd.DataFrame()
@@ -295,8 +306,10 @@ def compute_endurance_records(
                     "结束周": be,
                 }
             )
-        records["longest_consecutive_same_rank_artist"] = (
-            pd.DataFrame(art_same_rank).sort_values("连续周数", ascending=False).head(20)
+        records["longest_consecutive_same_rank_artist"] = _rank(
+            pd.DataFrame(art_same_rank),
+            [("连续周数", False), ("停留排名", True), ("起始周", True), ("结束周", False)],
+            ("artist_name",),
         )
     else:
         records["longest_consecutive_same_rank_artist"] = pd.DataFrame()

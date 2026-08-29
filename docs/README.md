@@ -51,7 +51,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
-- [`plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：B1–B4、R1 已完成范围验收；默认完整全栈门禁由既有耗时项继续跟踪
+- [`plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：B1–B4、R1 及 6 个 Records 子页面（8 个后端记录模块、51 个列表）已完成范围验收；默认完整全栈门禁由既有耗时项继续跟踪
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
 
 ## 已确认但仍有实现参考价值的设计
@@ -66,7 +66,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
-- [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)：聚合 proof、Records parity/参数、稳定排序、播放排行 tie-breaker、真实库和响应式验收证据
+- [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)：聚合 proof、Records parity/参数、6 个子页面/8 个后端模块/51 个列表稳定排序、播放排行 tie-breaker、真实库和响应式验收证据
 - [`reports/2026-08-29-l2-track-album-presentation.md`](reports/2026-08-29-l2-track-album-presentation.md)：L2 歌曲专辑归属、独立封面选择、派生数据失效、真实库与响应式验收证据
 - [`reports/2026-08-27-spotify-track-l1-identity-migration.md`](reports/2026-08-27-spotify-track-l1-identity-migration.md)：canonical track 唯一归属、公共 L2/L3、真实库迁移和响应式验收证据（文件名为历史兼容）
 - [`reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md`](reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md)：设置重建状态、健康口径、只读预览、导入检查和响应式治理 UI 证据

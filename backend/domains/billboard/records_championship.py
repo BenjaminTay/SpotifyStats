@@ -3,23 +3,7 @@
 import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists
-from backend.domains.billboard.chart_ranking import _normalised_text_key
-
-
-def _stable_artist_metric_sort(
-    frame: pd.DataFrame,
-    metric: str,
-    *,
-    extra_columns: tuple[str, ...] = (),
-) -> pd.DataFrame:
-    result = frame.copy()
-    result["_stable_artist_name"] = result["artist_name"].map(_normalised_text_key)
-    result["_stable_artist_original"] = result["artist_name"].fillna("").astype(str)
-    columns = [metric, "_stable_artist_name", "_stable_artist_original", *extra_columns]
-    ascending = [False, True, True, *([True] * len(extra_columns))]
-    return result.sort_values(columns, ascending=ascending, kind="stable").drop(
-        columns=["_stable_artist_name", "_stable_artist_original"]
-    )
+from backend.domains.billboard.record_sorting import stable_record_sort
 
 
 def compute_championship_records(
@@ -38,8 +22,10 @@ def compute_championship_records(
         .reset_index(name="track_count")
     )
     if not artist_weekly.empty:
-        sorted_artist_weekly = _stable_artist_metric_sort(
-            artist_weekly, "track_count", extra_columns=("billboard_week",)
+        sorted_artist_weekly = stable_record_sort(
+            artist_weekly,
+            [("track_count", False), ("billboard_week", False)],
+            stable_columns=("artist_name",),
         )
         best_full = sorted_artist_weekly.iloc[0]
         records["artist_simul"] = {
@@ -54,8 +40,6 @@ def compute_championship_records(
         ["track_id", "artist_name"]
     ].drop_duplicates()
     artist_no1 = no1_tracks.groupby("artist_name").size().reset_index(name="冠单数")
-    artist_no1 = _stable_artist_metric_sort(artist_no1, "冠单数")
-    records["artist_most_no1"] = artist_no1.head(15)
 
     track_no1_weeks = (
         no1_tracks.merge(
@@ -67,41 +51,46 @@ def compute_championship_records(
         .sum()
         .rename(columns={"weeks_at_no1": "单曲冠军周数"})
     )
-    records["artist_most_no1"] = records["artist_most_no1"].merge(
-        track_no1_weeks, on="artist_name", how="left"
-    )
-    records["artist_most_no1"]["单曲冠军周数"] = (
-        records["artist_most_no1"]["单曲冠军周数"].fillna(0).astype(int)
+    artist_track_metrics = artist_no1.merge(track_no1_weeks, on="artist_name", how="left")
+    artist_track_metrics["单曲冠军周数"] = (
+        artist_track_metrics["单曲冠军周数"].fillna(0).astype(int)
     )
 
     if weekly_album is not None:
+        album_no1 = weekly_album[weekly_album["rank"] == 1]
         album_no1_cnt = (
-            weekly_album[weekly_album["rank"] == 1]
-            .groupby("artist_name")["album_name"]
-            .nunique()
-            .reset_index(name="冠军专辑数")
-        )
-        records["artist_most_no1"] = records["artist_most_no1"].merge(
-            album_no1_cnt, on="artist_name", how="left"
-        )
-        records["artist_most_no1"]["冠军专辑数"] = (
-            records["artist_most_no1"]["冠军专辑数"].fillna(0).astype(int)
+            album_no1.groupby("artist_name")["album_name"].nunique().reset_index(name="冠军专辑数")
         )
         album_no1_weeks = (
-            weekly_album[weekly_album["rank"] == 1]
-            .groupby("artist_name")["billboard_week"]
+            album_no1.groupby("artist_name")["billboard_week"]
             .nunique()
             .reset_index(name="专辑冠军周数")
         )
-        records["artist_most_no1"] = records["artist_most_no1"].merge(
-            album_no1_weeks, on="artist_name", how="left"
-        )
-        records["artist_most_no1"]["专辑冠军周数"] = (
-            records["artist_most_no1"]["专辑冠军周数"].fillna(0).astype(int)
-        )
+        artist_album_metrics = album_no1_cnt.merge(album_no1_weeks, on="artist_name", how="left")
     else:
-        records["artist_most_no1"]["冠军专辑数"] = 0
-        records["artist_most_no1"]["专辑冠军周数"] = 0
+        artist_album_metrics = pd.DataFrame(columns=["artist_name", "冠军专辑数", "专辑冠军周数"])
+
+    artist_metrics = artist_track_metrics.merge(artist_album_metrics, on="artist_name", how="outer")
+    for column in ("冠单数", "单曲冠军周数", "冠军专辑数", "专辑冠军周数"):
+        artist_metrics[column] = (
+            pd.to_numeric(artist_metrics[column], errors="coerce").fillna(0).astype(int)
+        )
+
+    artist_track_rows = artist_metrics[artist_metrics["冠单数"] > 0]
+    records["artist_most_no1"] = stable_record_sort(
+        artist_track_rows,
+        [("冠单数", False), ("单曲冠军周数", False)],
+        stable_columns=("artist_name",),
+        limit=15,
+    )
+
+    artist_album_rows = artist_metrics[artist_metrics["冠军专辑数"] > 0]
+    records["artist_most_no1_album"] = stable_record_sort(
+        artist_album_rows,
+        [("冠军专辑数", False), ("专辑冠军周数", False)],
+        stable_columns=("artist_name",),
+        limit=15,
+    )
 
     # ── 4. Return to #1 ────────────────────────────────────────────────
     no1_weeks = (
@@ -126,10 +115,10 @@ def compute_championship_records(
                             "间隔周数": gap // 7,
                         }
                     )
-    records["return_to_no1"] = (
-        pd.DataFrame(returns).sort_values("间隔周数", ascending=False)
-        if returns
-        else pd.DataFrame()
+    records["return_to_no1"] = stable_record_sort(
+        pd.DataFrame(returns),
+        [("间隔周数", False), ("回冠日期", False)],
+        stable_columns=("track_id", "artist_name", "track_name"),
     )
 
     if weekly_album is not None:
@@ -154,10 +143,10 @@ def compute_championship_records(
                                 "间隔周数": gap // 7,
                             }
                         )
-        records["return_to_no1_album"] = (
-            pd.DataFrame(album_returns).sort_values("间隔周数", ascending=False)
-            if album_returns
-            else pd.DataFrame()
+        records["return_to_no1_album"] = stable_record_sort(
+            pd.DataFrame(album_returns),
+            [("间隔周数", False), ("回冠日期", False)],
+            stable_columns=("album_name", "artist_name"),
         )
     else:
         records["return_to_no1_album"] = pd.DataFrame()
@@ -183,10 +172,10 @@ def compute_championship_records(
                                 "间隔周数": gap // 7,
                             }
                         )
-        records["return_to_no1_artist"] = (
-            pd.DataFrame(artist_returns).sort_values("间隔周数", ascending=False)
-            if artist_returns
-            else pd.DataFrame()
+        records["return_to_no1_artist"] = stable_record_sort(
+            pd.DataFrame(artist_returns),
+            [("间隔周数", False), ("回冠日期", False)],
+            stable_columns=("artist_name",),
         )
     else:
         records["return_to_no1_artist"] = pd.DataFrame()
@@ -196,9 +185,11 @@ def compute_championship_records(
         (track_summary["peak_position"] == 1)
         & (track_summary["first_week"] == track_summary["first_peak_week"])
     ].copy()
-    records["debut_no1"] = debut.sort_values("first_week")[
-        ["track_id", "track_name", "artist_name", "first_week", "weeks_at_no1", "weeks_on_chart"]
-    ]
+    records["debut_no1"] = stable_record_sort(
+        debut,
+        [("first_week", True)],
+        stable_columns=("track_id", "artist_name", "track_name"),
+    )[["track_id", "track_name", "artist_name", "first_week", "weeks_at_no1", "weeks_on_chart"]]
     if weekly_album is not None:
         album_first = (
             weekly_album.sort_values("billboard_week")
@@ -225,8 +216,11 @@ def compute_championship_records(
             album_no1_week_cnt, on=["album_name", "artist_name"], how="left"
         )
         album_debut_no1["weeks_at_no1"] = album_debut_no1["weeks_at_no1"].fillna(0).astype(int)
-        records["debut_no1_album"] = album_debut_no1.sort_values("billboard_week").rename(
-            columns={"billboard_week": "first_week"}
+        album_debut_no1 = album_debut_no1.rename(columns={"billboard_week": "first_week"})
+        records["debut_no1_album"] = stable_record_sort(
+            album_debut_no1,
+            [("first_week", True)],
+            stable_columns=("album_name", "artist_name"),
         )[["album_name", "artist_name", "first_week", "weeks_at_no1", "weeks_on_chart"]]
     else:
         records["debut_no1_album"] = pd.DataFrame()

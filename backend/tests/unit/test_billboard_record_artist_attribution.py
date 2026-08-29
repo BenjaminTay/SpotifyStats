@@ -113,6 +113,150 @@ def test_championship_counts_every_credited_artist_once():
     assert int(simul.loc[simul["artist_name"] == "Taylor Swift", "track_count"].max()) == 2
 
 
+def test_championship_hall_of_fame_uses_weeks_as_secondary_and_separate_album_universe():
+    weekly = pd.DataFrame(
+        [
+            {
+                "billboard_week": pd.Timestamp("2024-01-04"),
+                "track_id": 1,
+                "track_name": "Artist A One",
+                "artist_name": "Artist A",
+                "artist_names": ["Artist A"],
+                "rank": 1,
+            },
+            {
+                "billboard_week": pd.Timestamp("2024-01-11"),
+                "track_id": 2,
+                "track_name": "Artist A Two",
+                "artist_name": "Artist A",
+                "artist_names": ["Artist A"],
+                "rank": 1,
+            },
+            {
+                "billboard_week": pd.Timestamp("2024-01-04"),
+                "track_id": 3,
+                "track_name": "Artist B One",
+                "artist_name": "Artist B",
+                "artist_names": ["Artist B"],
+                "rank": 1,
+            },
+            {
+                "billboard_week": pd.Timestamp("2024-01-11"),
+                "track_id": 4,
+                "track_name": "Artist B Two",
+                "artist_name": "Artist B",
+                "artist_names": ["Artist B"],
+                "rank": 1,
+            },
+        ]
+    )
+    track_summary = pd.DataFrame(
+        [
+            {
+                "track_id": 1,
+                "track_name": "Artist A One",
+                "artist_name": "Artist A",
+                "artist_names": ["Artist A"],
+                "peak_position": 1,
+                "weeks_at_no1": 1,
+                "weeks_on_chart": 1,
+                "first_week": pd.Timestamp("2024-01-04"),
+                "first_peak_week": pd.Timestamp("2024-01-04"),
+            },
+            {
+                "track_id": 2,
+                "track_name": "Artist A Two",
+                "artist_name": "Artist A",
+                "artist_names": ["Artist A"],
+                "peak_position": 1,
+                "weeks_at_no1": 1,
+                "weeks_on_chart": 1,
+                "first_week": pd.Timestamp("2024-01-11"),
+                "first_peak_week": pd.Timestamp("2024-01-11"),
+            },
+            {
+                "track_id": 3,
+                "track_name": "Artist B One",
+                "artist_name": "Artist B",
+                "artist_names": ["Artist B"],
+                "peak_position": 1,
+                "weeks_at_no1": 1,
+                "weeks_on_chart": 1,
+                "first_week": pd.Timestamp("2024-01-04"),
+                "first_peak_week": pd.Timestamp("2024-01-04"),
+            },
+            {
+                "track_id": 4,
+                "track_name": "Artist B Two",
+                "artist_name": "Artist B",
+                "artist_names": ["Artist B"],
+                "peak_position": 1,
+                "weeks_at_no1": 2,
+                "weeks_on_chart": 2,
+                "first_week": pd.Timestamp("2024-01-11"),
+                "first_peak_week": pd.Timestamp("2024-01-11"),
+            },
+        ]
+    )
+    weekly_album = pd.DataFrame(
+        [
+            {
+                "billboard_week": pd.Timestamp("2024-01-04"),
+                "album_name": "A One",
+                "artist_name": "Artist A",
+                "rank": 1,
+            },
+            {
+                "billboard_week": pd.Timestamp("2024-01-11"),
+                "album_name": "A Two",
+                "artist_name": "Artist A",
+                "rank": 1,
+            },
+            {
+                "billboard_week": pd.Timestamp("2024-01-04"),
+                "album_name": "B One",
+                "artist_name": "Artist B",
+                "rank": 1,
+            },
+            {
+                "billboard_week": pd.Timestamp("2024-01-11"),
+                "album_name": "B One",
+                "artist_name": "Artist B",
+                "rank": 1,
+            },
+            {
+                "billboard_week": pd.Timestamp("2024-01-18"),
+                "album_name": "B Two",
+                "artist_name": "Artist B",
+                "rank": 1,
+            },
+            {
+                "billboard_week": pd.Timestamp("2024-01-04"),
+                "album_name": "Album Only",
+                "artist_name": "Album Only",
+                "rank": 1,
+            },
+            {
+                "billboard_week": pd.Timestamp("2024-01-11"),
+                "album_name": "Album Only",
+                "artist_name": "Album Only",
+                "rank": 1,
+            },
+        ]
+    )
+
+    records = {}
+    compute_championship_records(records, weekly, track_summary, weekly_album=weekly_album)
+
+    song_rows = records["artist_most_no1"]
+    assert song_rows["artist_name"].tolist() == ["Artist B", "Artist A"]
+    assert song_rows["单曲冠军周数"].tolist() == [3, 2]
+
+    album_rows = records["artist_most_no1_album"]
+    assert album_rows["artist_name"].tolist() == ["Artist B", "Artist A", "Album Only"]
+    assert album_rows["专辑冠军周数"].tolist() == [3, 2, 2]
+
+
 def test_championship_artist_lists_are_stable_under_input_permutation():
     expected = None
     for weekly in (_weekly_rows(), _weekly_rows().sample(frac=1, random_state=17)):
@@ -193,3 +337,29 @@ def test_triple_no1_uses_credited_track_artist_not_display_label():
 
     assert len(records["triple_no1"]) == 1
     assert records["triple_no1"].iloc[0]["艺人"] == "Taylor Swift"
+
+
+def test_double_debut_exposes_frontend_artist_contract_after_merge():
+    weekly = _weekly_rows().query("track_id == 1").iloc[[0]].copy()
+    weekly_album = pd.DataFrame(
+        [
+            {
+                "billboard_week": pd.Timestamp("2024-01-04"),
+                "album_name": "Album",
+                "artist_name": "Taylor Swift",
+                "rank": 1,
+            }
+        ]
+    )
+
+    records = {}
+    compute_quirky_records(records, weekly, weekly_album)
+
+    assert len(records["double_debut"]) == 1
+    assert records["double_debut"].columns.tolist() == [
+        "debut_track_id",
+        "debut_track",
+        "debut_artist",
+        "debut_week",
+        "debut_album",
+    ]

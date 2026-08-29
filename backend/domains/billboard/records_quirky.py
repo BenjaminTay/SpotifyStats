@@ -3,6 +3,7 @@
 import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists, primary_artist_names_for_tracks
+from backend.domains.billboard.record_sorting import stable_record_sort
 
 
 def compute_quirky_records(records, weekly, weekly_album=None, weekly_artist=None):
@@ -42,9 +43,20 @@ def compute_quirky_records(records, weekly, weekly_album=None, weekly_artist=Non
 
         double_debut = debut_tracks.merge(
             debut_albums, on=["debut_artist_key", "debut_week"], how="inner"
-        ).sort_values("debut_week", ascending=False)
+        )
+        double_debut = stable_record_sort(
+            double_debut,
+            [("debut_week", False)],
+            stable_columns=("debut_track_id", "debut_artist", "debut_album"),
+        )
         if not double_debut.empty:
+            double_debut["debut_artist"] = double_debut["debut_artist_x"].fillna(
+                double_debut["debut_artist_y"]
+            )
             double_debut["debut_week"] = double_debut["debut_week"].astype(str)
+            double_debut = double_debut[
+                ["debut_track_id", "debut_track", "debut_artist", "debut_week", "debut_album"]
+            ]
         records["double_debut"] = double_debut
     else:
         records["double_debut"] = pd.DataFrame()
@@ -71,6 +83,10 @@ def compute_quirky_records(records, weekly, weekly_album=None, weekly_artist=Non
             }
         )
         triple["billboard_week"] = triple["billboard_week"].astype(str)
-        records["triple_no1"] = triple.sort_values("billboard_week", ascending=False)
+        records["triple_no1"] = stable_record_sort(
+            triple,
+            [("billboard_week", False)],
+            stable_columns=("track_id", "艺人", "歌曲", "专辑"),
+        )
     else:
         records["triple_no1"] = pd.DataFrame()

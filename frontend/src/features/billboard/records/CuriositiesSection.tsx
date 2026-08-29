@@ -27,6 +27,14 @@ import {
 
 type DebutSortMode = 'date' | 'market'
 
+function compareTextAsc(a: unknown, b: unknown) {
+  return String(a ?? '').localeCompare(String(b ?? ''))
+}
+
+function compareIdAsc(a: unknown, b: unknown) {
+  return Number(a ?? 0) - Number(b ?? 0)
+}
+
 type MobileAchievement = {
   chartLabel: '单曲榜' | '专辑榜' | '艺人榜'
   name: string
@@ -140,7 +148,15 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
       const cmp = debutSort.mode === 'date'
         ? a.debut_week.localeCompare(b.debut_week)
         : (weekPlays.get(a.debut_week) ?? 0) - (weekPlays.get(b.debut_week) ?? 0)
-      return debutSort.desc ? -cmp : cmp
+      if (cmp !== 0) return debutSort.desc ? -cmp : cmp
+      const secondary = debutSort.mode === 'date'
+        ? (weekPlays.get(b.debut_week) ?? 0) - (weekPlays.get(a.debut_week) ?? 0)
+        : b.debut_week.localeCompare(a.debut_week)
+      if (secondary !== 0) return secondary
+      return compareIdAsc(a.debut_track_id, b.debut_track_id)
+        || compareTextAsc(a.debut_artist, b.debut_artist)
+        || compareTextAsc(a.debut_album, b.debut_album)
+        || compareTextAsc(a.debut_track, b.debut_track)
     })
   }, [rec.double_debut, debutSort, weekPlays])
 
@@ -156,21 +172,48 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
       const cmp = tripleSort.mode === 'date'
         ? a.billboard_week.localeCompare(b.billboard_week)
         : (weekPlays.get(a.billboard_week) ?? 0) - (weekPlays.get(b.billboard_week) ?? 0)
-      return tripleSort.desc ? -cmp : cmp
+      if (cmp !== 0) return tripleSort.desc ? -cmp : cmp
+      const secondary = tripleSort.mode === 'date'
+        ? (weekPlays.get(b.billboard_week) ?? 0) - (weekPlays.get(a.billboard_week) ?? 0)
+        : b.billboard_week.localeCompare(a.billboard_week)
+      if (secondary !== 0) return secondary
+      return compareIdAsc(a.track_id, b.track_id)
+        || compareTextAsc(a['艺人'], b['艺人'])
+        || compareTextAsc(a['歌曲'], b['歌曲'])
+        || compareTextAsc(a['专辑'], b['专辑'])
     })
   }, [rec.triple_no1, tripleSort, weekPlays])
 
-  const oneHitWonders = useMemo(() => artistTrackCounts.filter(a => a.total_tracks === 1 && a.top1 >= 1).sort((a, b) => b.weeks_at_no1 - a.weeks_at_no1), [artistTrackCounts])
-  const prolificArtists = useMemo(() => [...artistTrackCounts].sort((a, b) => b.total_tracks - a.total_tracks).slice(0, 20), [artistTrackCounts])
+  const oneHitWonders = useMemo(() => artistTrackCounts.filter(a => a.total_tracks === 1 && a.top1 >= 1).sort((a, b) => {
+    return b.weeks_at_no1 - a.weeks_at_no1
+      || b.total_weeks - a.total_weeks
+      || b.top1 - a.top1
+      || compareTextAsc(a.artist_name, b.artist_name)
+  }), [artistTrackCounts])
+  const prolificArtists = useMemo(() => [...artistTrackCounts].sort((a, b) => {
+    return b.total_tracks - a.total_tracks
+      || b.top1 - a.top1
+      || b.total_weeks - a.total_weeks
+      || compareTextAsc(a.artist_name, b.artist_name)
+  }).slice(0, 20), [artistTrackCounts])
   const sameNameDiffArtist = useMemo(() => {
     const groups = new Map<string, TrackSummary[]>()
     for (const t of trackSummary) { const name = t.track_name.toLowerCase(); if (!groups.has(name)) groups.set(name, []); groups.get(name)!.push(t) }
-    return Array.from(groups.values()).filter(g => { const artists = new Set(g.map(t => t.artist_name)); return artists.size >= 2 }).sort((a, b) => b.length - a.length).slice(0, 10)
+    return Array.from(groups.values())
+      .filter(g => { const artists = new Set(g.map(t => t.artist_name)); return artists.size >= 2 })
+      .sort((a, b) => b.length - a.length || compareTextAsc(a[0]?.track_name, b[0]?.track_name))
+      .slice(0, 10)
+      .map(group => [...group].sort((a, b) => {
+        return (a.peak_position ?? Number.POSITIVE_INFINITY) - (b.peak_position ?? Number.POSITIVE_INFINITY)
+          || a.first_week.localeCompare(b.first_week)
+          || compareTextAsc(a.artist_name, b.artist_name)
+          || compareIdAsc(a.track_id, b.track_id)
+      }))
   }, [trackSummary])
-  const oldestTrack = useMemo(() => [...trackSummary].filter(t => t.first_week).sort((a, b) => a.first_week.localeCompare(b.first_week))[0] ?? null, [trackSummary])
-  const newestTrack = useMemo(() => [...trackSummary].filter(t => t.first_week).sort((a, b) => b.first_week.localeCompare(a.first_week))[0] ?? null, [trackSummary])
-  const longestName = useMemo(() => [...trackSummary].sort((a, b) => b.track_name.length - a.track_name.length)[0] ?? null, [trackSummary])
-  const shortestName = useMemo(() => [...trackSummary].sort((a, b) => a.track_name.length - b.track_name.length)[0] ?? null, [trackSummary])
+  const oldestTrack = useMemo(() => [...trackSummary].filter(t => t.first_week).sort((a, b) => a.first_week.localeCompare(b.first_week) || compareIdAsc(a.track_id, b.track_id) || compareTextAsc(a.artist_name, b.artist_name))[0] ?? null, [trackSummary])
+  const newestTrack = useMemo(() => [...trackSummary].filter(t => t.first_week).sort((a, b) => b.first_week.localeCompare(a.first_week) || compareIdAsc(a.track_id, b.track_id) || compareTextAsc(a.artist_name, b.artist_name))[0] ?? null, [trackSummary])
+  const longestName = useMemo(() => [...trackSummary].sort((a, b) => b.track_name.length - a.track_name.length || compareTextAsc(a.track_name, b.track_name) || compareIdAsc(a.track_id, b.track_id))[0] ?? null, [trackSummary])
+  const shortestName = useMemo(() => [...trackSummary].sort((a, b) => a.track_name.length - b.track_name.length || compareTextAsc(a.track_name, b.track_name) || compareIdAsc(a.track_id, b.track_id))[0] ?? null, [trackSummary])
 
   return (
     <div>

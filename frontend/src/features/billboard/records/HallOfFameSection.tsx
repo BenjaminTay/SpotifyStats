@@ -22,6 +22,18 @@ import {
   ValueBar,
 } from './RecordsPrimitives'
 
+function compareDecadeRecord(a: DecadeBestRecord, b: DecadeBestRecord) {
+  const scoreDiff = (b['走势评分'] ?? 0) - (a['走势评分'] ?? 0)
+  if (scoreDiff !== 0) return scoreDiff
+  const weeksDiff = (b.weeks_on_chart ?? 0) - (a.weeks_on_chart ?? 0)
+  if (weeksDiff !== 0) return weeksDiff
+  const peakDiff = (a.peak ?? Number.POSITIVE_INFINITY) - (b.peak ?? Number.POSITIVE_INFINITY)
+  if (peakDiff !== 0) return peakDiff
+  const idDiff = Number(a.track_id ?? 0) - Number(b.track_id ?? 0)
+  if (idDiff !== 0) return idDiff
+  return String(a.track_name ?? '').localeCompare(String(b.track_name ?? '')) || String(a.artist_name ?? '').localeCompare(String(b.artist_name ?? ''))
+}
+
 function DecadeBestCard({ covers, decadeGroups }: { covers: CoverMaps; decadeGroups: Map<string, DecadeBestRecord[]> }) {
   useChineseTextVersion()
   const decades = useMemo(() => Array.from(decadeGroups.keys()).sort(), [decadeGroups])
@@ -42,7 +54,7 @@ function DecadeBestCard({ covers, decadeGroups }: { covers: CoverMaps; decadeGro
     container.scrollTo({ left: Math.max(0, left), behavior: 'smooth' })
   }, [activeDecade])
 
-  const tracks = decadeGroups.get(activeDecade) ?? []
+  const tracks = [...(decadeGroups.get(activeDecade) ?? [])].sort(compareDecadeRecord)
 
   return (
     <RecordCard title="年代之王 · Decade Best" toggle={

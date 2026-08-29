@@ -1,9 +1,9 @@
 # Billboard Records 一致性与排行稳定性修复规划
 
 > 创建日期：2026-08-29
-> 状态：B1–B4、R1 已实施并完成范围验收；默认完整全栈门禁未运行，由既有门禁耗时开放项继续跟踪
+> 状态：IMPLEMENTED；B1–B4、R1 及 6 个 Records 子页面（8 个后端记录模块、51 个列表）已完成范围验收 PASS；默认完整全栈门禁未运行，由既有门禁耗时开放项继续跟踪
 > 适用范围：Billboard 预聚合有效性、Records 完整/分段接口一致性、Records 过滤参数传播、Billboard 记录与详情稳定排序、播放排行同次数排序
-> 本地提交：`0b23c4425c1635d4f3dc36f5ccd29e0758d1749f`，尚未 push
+> 本地提交：既有一致性修复为 `0b23c4425c1635d4f3dc36f5ccd29e0758d1749f`；本次全板块排序补充随当前提交完成，尚未 push
 > 部署状态：未生产部署；业务修复提交 `0b23c442` 的默认完整全栈门禁未运行
 > 关联台账：[`../issues/2026-08-27-issue-register.md`](../issues/2026-08-27-issue-register.md)
 > 当前规则：[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
@@ -17,6 +17,8 @@
 - B2：完整与 staged Records 共用 track enrichment/Power Score 输入 helper；L2/L3 × dynamic/fixed 四个 endpoint contract 均断言 `data.records == records.records`。
 - B3：Records 页面改用完整 `BillboardContextParams`，query key、请求和 preload 复用同一对象，并在分析设置加载完成前关闭查询。
 - B4/R1：Records、艺人/专辑详情与播放排行追加稳定实体键；播放次数榜明确以时长为第二排序键，播放时长榜保留次数为第二键。
+- 2026-08-30 排序收口：6 个 Records 子页面、8 个后端记录模块共 51 个列表统一补齐业务二级/后续排序；冠军单曲和冠军专辑分别使用对应冠周作为同值二级指标，并在完整候选集排序后再截取 Top N。
+- 冠军圣殿的单曲、专辑名人堂使用独立候选集，专辑榜只保留 `冠军专辑数 > 0` 的艺人；双空冠响应统一输出 `debut_artist` 字段。
 - 主库派生聚合已在 Online Backup 和数据库副本验收后按当前设置重建；原始 `plays` 指纹未变，`agg_config.param_hash=222fbd0a3bcca38b`，track-credit/track-identity revision 分别为 35/5。
 - 范围门禁通过：后端 unit 1,421 passed/2 skipped、contract 396 passed、前端 76 files/598 tests、前端 build、真实数据库副本四变体 API 及 desktop/390px 浏览器验收。默认完整全栈门禁未重复运行，由 `SS-2026-08-24-004` 继续跟踪，不影响本项统计与排序结论。
 
@@ -38,7 +40,7 @@
 | B1 | role-only 曲目署名发布生成的 `agg_config.param_hash` 未包含当前 `track_identity_revision`，也未同步完整聚合依赖 proof；当前 hash 与读取路径期望不一致，预聚合安全回退到 raw 计算 | 结果当前正确，但冷请求约 48–54 秒，并产生 CPU、超时和 readiness 误判风险 | P0 |
 | B2 | [`chart_staged_cache.py`](../../backend/domains/billboard/chart_staged_cache.py) 在 featured artist 展示名 enrichment 之前计算 track Power Score；完整 [`chart_compute.py`](../../backend/domains/billboard/chart_compute.py) 顺序相反 | `/billboard/data.records` 与 `/billboard/records.records` 的一条合作曲目 `artist_name` 不一致；指标未受影响 | P1 |
 | B3 | [`RecordsPage.tsx`](../../frontend/src/pages/RecordsPage.tsx) 只向 `useBillboard()` 传 `merge_level`，其他参数依赖服务端设置和 API 默认值；艺人详情使用完整 `buildBillboardContextParams()` | 当前 Taylor 在 dynamic/fixed 下均为 34，但其他实体或非默认参数可能再次跨页漂移 | P0 |
-| B4 | `artist_most_no1`、艺人详情冠军/上榜歌曲等可见列表只声明主要指标排序，没有统一的最终稳定实体键 | 同值条目可能在重建、输入乱序或分页边界上交换位置；计数事实不变 | P1 |
+| B4 | 6 个 Records 子页面、8 个后端记录模块的 51 个可见列表中，部分列表只声明主要指标排序，没有统一的业务二级指标和最终稳定实体键 | 同值条目可能在重建、输入乱序或 Top N 截止边界上交换位置；计数事实不变但用户顺序不稳定 | P1 |
 | R1 | [`chart_rows()`](../../backend/services/analysis_stats_service.py) 对 `metric=plays` 使用 `plays DESC, plays DESC` | 用户看到的同次数顺序没有时长或稳定键保证；与 Billboard 周榜规则不同 | P1，独立工作流 |
 
 Taylor Swift 当前四变体基线必须保留：L2/L3 × dynamic/fixed 下，Records、`artist_track_counts.top1`、艺人详情 `info.top1`、详情冠军曲与周榜有效署名均为 34；稳定 `track_id` 集合差集为空，301 首上榜歌曲逐行指标差异为 0。
@@ -134,9 +136,10 @@ bb_week_start_hour
 |---|---|
 | 播放排行，`metric=plays` | `plays DESC → hours DESC → stable_entity_key ASC → normalized_name ASC` |
 | 播放排行，`metric=hours` | 保持 `hours DESC → plays DESC`，追加同一稳定实体键和名称 |
-| `artist_most_no1` | `冠单数 DESC → normalized canonical artist name ASC`；其他冠军周/专辑字段保持展示指标，不暗中改变“最多冠单”的主语义 |
+| 冠军名人堂（单曲） | `冠单数 DESC → 单曲冠军周数 DESC → normalized canonical artist name ASC`；候选集只含 `冠单数 > 0` |
+| 冠军名人堂（专辑） | `冠军专辑数 DESC → 专辑冠军周数 DESC → normalized canonical artist name ASC`；候选集只含 `冠军专辑数 > 0` |
 | 艺人详情歌曲 | 保持 `peak_position ASC → weeks_on_chart DESC`，追加 `track_id ASC → normalized track name ASC` |
-| 其他 Records 可见列表 | 保留现有业务键，统一追加该实体稳定 ID；无 ID 时使用 canonical normalized name tuple |
+| 其他 Records 可见列表 | 保留各自业务主/次排序，统一追加该实体稳定 ID；无 ID 时使用 canonical normalized name tuple；完整候选集排序后再截断 |
 
 `stable_entity_key` 按结果粒度生成：歌曲优先 canonical `track_id`；专辑优先当前 project/release 稳定键，缺失时使用 normalized `(artist_name, album_name)`；艺人优先 canonical artist ID，当前结果帧没有 ID 时使用 normalized canonical artist name。不得使用 DataFrame 当前 index 或输入位置作为稳定键。
 
@@ -213,18 +216,18 @@ bb_week_start_hour
 涉及文件：
 
 - [`backend/domains/billboard/records_championship.py`](../../backend/domains/billboard/records_championship.py)
-- [`backend/domains/billboard/details.py`](../../backend/domains/billboard/details.py)
-- 其他返回可见 Records 列表的 `records_*.py`
-- [`backend/services/analysis_stats_service.py`](../../backend/services/analysis_stats_service.py)
+- [`backend/domains/billboard/records_longevity.py`](../../backend/domains/billboard/records_longevity.py)、[`records_endurance.py`](../../backend/domains/billboard/records_endurance.py)、[`records_movement.py`](../../backend/domains/billboard/records_movement.py)、[`records_hall_of_fame.py`](../../backend/domains/billboard/records_hall_of_fame.py)、[`records_quirky.py`](../../backend/domains/billboard/records_quirky.py)、[`records_market.py`](../../backend/domains/billboard/records_market.py)、[`records_self_replacement_blocker.py`](../../backend/domains/billboard/records_self_replacement_blocker.py)
+- [`backend/domains/billboard/record_sorting.py`](../../backend/domains/billboard/record_sorting.py)
+- [`backend/services/analysis_stats_service.py`](../../backend/services/analysis_stats_service.py) 与对应前端 Records 组件
 - 对应 unit/integration tests
 
 实施内容：
 
-1. 提取或复用 normalized stable sort key，逐个审计 Records 返回列表，不修改中间集合的冠军判定。
-2. 对 `artist_most_no1` 在 `head(15)` 之前完成完整稳定排序，避免 cutoff tie 依赖 groupby 输入顺序。
-3. 艺人详情歌曲在现有 `peak/weeks` 后追加 `track_id/name`，专辑详情同类列表采用对应稳定实体键。
-4. `chart_rows()` 按实体构造稳定键；plays 排行使用 `plays/hours/stable key/name`，hours 排行使用 `hours/plays/stable key/name`。
-5. 使用同一 fixture 的多次随机乱序输入断言输出完全一致，并覆盖 offset/limit 跨越同分组的分页场景。
+1. 提取统一的 `stable_record_sort()`，逐个审计 6 个 Records 子页面、8 个后端记录模块的 51 个列表，不修改中间集合的冠军判定。
+2. 对冠军单曲、冠军专辑在 cutoff 前完成独立候选集的完整稳定排序，分别使用单曲/专辑冠军周作为二级指标，避免 0 张冠军专辑的艺人占据专辑榜。
+3. 为持久、耐力、移动、名人堂、奇趣和大盘列表补齐业务二级/后续排序；同值最终使用稳定实体键，输入乱序不改变结果。
+4. 前端冠军圣殿、名人堂、奇趣纪录的本地排序切换复用相同的二级和稳定键规则；双空冠数据保持 `debut_artist` API 契约。
+5. 使用同一 fixture 的多次随机乱序输入断言输出完全一致，并覆盖 Top N 截止同值场景；播放排行继续覆盖 offset/limit 跨越同分组的分页场景。
 
 退出门禁：真实 API 的同次数样本按时长降序；Billboard 周榜排序测试保持原样通过；Records/详情的实体集合和指标均无变化。
 
@@ -290,13 +293,14 @@ sh scripts/fullstack_verification_check.sh --backend-url http://127.0.0.1:8000 -
 
 ## 7. 完成定义
 
-只有同时满足以下条件，才将本规划标记为已实施：
+代码和功能范围已满足以下实施条件；默认完整全栈门禁仍作为独立开放项跟踪：
 
 - B1–B4、R1 的失败测试先红后绿，并有对应源码与 contract 证据。
 - 当前真实数据库副本的聚合 proof 有效且真实命中，role-only 路径未改写聚合事实行。
 - `/data.records` 与 `/records.records` 同参数完全一致。
 - Records 与详情四变体的稳定实体集合、计数和指标一致，Taylor Swift 保持 34/34。
 - 播放排行同次数按时长降序，所有实体和分页顺序在乱序输入下稳定。
+- 6 个 Records 子页面、8 个后端记录模块共 51 个列表均有业务二级/后续排序；冠军单曲/专辑名人堂分别按对应冠周排序，专辑候选集不含 0 张冠军专辑行。
 - desktop/390px 浏览器验收通过，未出现参数串缓存或加载回归。
-- 文档审计、目标测试、前后端构建及适用的全栈门禁均有明确状态。
+- 文档审计、目标测试、前后端构建及适用的全栈门禁均有明确状态；本轮默认完整门禁未运行，状态为独立 `PARTIAL`。
 - 问题台账 `SS-2026-08-27-001` 和本计划状态只在证据齐全后更新；未完成阶段不得提前标记 resolved。

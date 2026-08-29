@@ -24,6 +24,7 @@ import type {
   ReturnToNo1Record,
   SelfReplacementAlbumRecord,
   SelfReplacementRecord,
+  ArtistMostNo1Record,
 } from '@/types/billboard'
 import type { CoverMaps } from './recordsData'
 import {
@@ -41,6 +42,66 @@ import {
   type EntityType,
 } from './RecordsPrimitives'
 
+function compareTextAsc(a: unknown, b: unknown) {
+  return String(a ?? '').localeCompare(String(b ?? ''))
+}
+
+function compareIdAsc(a: unknown, b: unknown) {
+  return Number(a ?? 0) - Number(b ?? 0)
+}
+
+function compareBlockerStable(a: {
+  ['阻挡数']: number
+  ['走势评分']?: number
+  [key: string]: unknown
+}, b: {
+  ['阻挡数']: number
+  ['走势评分']?: number
+  [key: string]: unknown
+}, entityKeys: string[]) {
+  const countDiff = (b['阻挡数'] ?? 0) - (a['阻挡数'] ?? 0)
+  if (countDiff !== 0) return countDiff
+  const scoreDiff = (b['走势评分'] ?? 0) - (a['走势评分'] ?? 0)
+  if (scoreDiff !== 0) return scoreDiff
+  for (const key of entityKeys) {
+    const diff = key.endsWith('_id')
+      ? compareIdAsc(a[key], b[key])
+      : compareTextAsc(a[key], b[key])
+    if (diff !== 0) return diff
+  }
+  return compareIdAsc(a.track_id, b.track_id)
+}
+
+function compareDebutStable<T extends {
+  first_week: string
+  weeks_at_no1?: number
+  weeks_on_chart: number
+  track_id?: number
+  track_name?: string
+  album_name?: string
+  artist_name: string
+}>(a: T, b: T, mode: 'date' | 'no1weeks' | 'chartweeks', desc: boolean) {
+  let primary = 0
+  if (mode === 'date') primary = a.first_week.localeCompare(b.first_week)
+  else if (mode === 'no1weeks') primary = (a.weeks_at_no1 ?? 0) - (b.weeks_at_no1 ?? 0)
+  else primary = a.weeks_on_chart - b.weeks_on_chart
+  if (primary !== 0) return desc ? -primary : primary
+
+  const secondary = mode === 'date'
+    ? (b.weeks_at_no1 ?? 0) - (a.weeks_at_no1 ?? 0)
+    : b.weeks_on_chart - a.weeks_on_chart
+  if (secondary !== 0) return secondary
+  if (mode !== 'chartweeks') {
+    const chartWeeksDiff = b.weeks_on_chart - a.weeks_on_chart
+    if (chartWeeksDiff !== 0) return chartWeeksDiff
+  }
+  const dateDiff = a.first_week.localeCompare(b.first_week)
+  if (dateDiff !== 0) return dateDiff
+  const idDiff = compareIdAsc(a.track_id, b.track_id)
+  if (idDiff !== 0) return idDiff
+  return compareTextAsc(a.track_name ?? a.album_name, b.track_name ?? b.album_name) || compareTextAsc(a.artist_name, b.artist_name)
+}
+
 export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; covers: CoverMaps }) {
   useChineseTextVersion()
   const [no1Type, setNo1Type] = useState<EntityType>('track')
@@ -52,22 +113,19 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
 
   const blockerKingSorted = useMemo(() => {
     return [...(rec.blocker_king as BlockerKingRecord[])].sort((a, b) => {
-      if (b['阻挡数'] !== a['阻挡数']) return b['阻挡数'] - a['阻挡数']
-      return (b['走势评分'] ?? 0) - (a['走势评分'] ?? 0)
+      return compareBlockerStable(a, b, ['track_id', 'artist_name', 'track_name'])
     })
   }, [rec.blocker_king])
 
   const blockerKingAlbumSorted = useMemo(() => {
     return [...(rec.blocker_king_album as BlockerKingAlbumRecord[])].sort((a, b) => {
-      if (b['阻挡数'] !== a['阻挡数']) return b['阻挡数'] - a['阻挡数']
-      return (b['走势评分'] ?? 0) - (a['走势评分'] ?? 0)
+      return compareBlockerStable(a, b, ['album_name', 'artist_name'])
     })
   }, [rec.blocker_king_album])
 
   const blockerKingArtistSorted = useMemo(() => {
     return [...(rec.blocker_king_artist as BlockerKingArtistRecord[])].sort((a, b) => {
-      if (b['阻挡数'] !== a['阻挡数']) return b['阻挡数'] - a['阻挡数']
-      return (b['走势评分'] ?? 0) - (a['走势评分'] ?? 0)
+      return compareBlockerStable(a, b, ['artist_name'])
     })
   }, [rec.blocker_king_artist])
 
@@ -80,36 +138,33 @@ export function ChampionshipSection({ rec, covers }: { rec: BillboardRecords; co
 
   const debutTrackSorted = useMemo(() => {
     const rows = [...(rec.debut_no1 as DebutNo1Record[])]
-    return rows.sort((a, b) => {
-      let cmp = 0
-      if (debutSort.mode === 'date') cmp = a.first_week.localeCompare(b.first_week)
-      else if (debutSort.mode === 'no1weeks') cmp = (a.weeks_at_no1 ?? 0) - (b.weeks_at_no1 ?? 0)
-      else cmp = a.weeks_on_chart - b.weeks_on_chart
-      return debutSort.desc ? -cmp : cmp
-    })
+    return rows.sort((a, b) => compareDebutStable(a, b, debutSort.mode, debutSort.desc))
   }, [rec.debut_no1, debutSort])
 
   const debutAlbumSorted = useMemo(() => {
     const rows = [...(rec.debut_no1_album as DebutNo1AlbumRecord[])]
-    return rows.sort((a, b) => {
-      let cmp = 0
-      if (debutSort.mode === 'date') cmp = a.first_week.localeCompare(b.first_week)
-      else if (debutSort.mode === 'no1weeks') cmp = (a.weeks_at_no1 ?? 0) - (b.weeks_at_no1 ?? 0)
-      else cmp = a.weeks_on_chart - b.weeks_on_chart
-      return debutSort.desc ? -cmp : cmp
-    })
+    return rows.sort((a, b) => compareDebutStable(a, b, debutSort.mode, debutSort.desc))
   }, [rec.debut_no1_album, debutSort])
 
   // 冠单名人堂 toggle: sort by 冠单数 or 冠军专辑数
   const no1Sorted = useMemo(() => {
-    if (no1Type === 'album') return [...rec.artist_most_no1].sort((a, b) => (b['冠军专辑数'] ?? 0) - (a['冠军专辑数'] ?? 0))
-    return rec.artist_most_no1
-  }, [no1Type, rec.artist_most_no1])
+    const rows = no1Type === 'album' ? (rec.artist_most_no1_album ?? rec.artist_most_no1) : rec.artist_most_no1
+    const primary = no1Type === 'album' ? '冠军专辑数' : '冠单数'
+    const secondary = no1Type === 'album' ? '专辑冠军周数' : '单曲冠军周数'
+    return [...rows].sort((a: ArtistMostNo1Record, b: ArtistMostNo1Record) => {
+      const primaryDiff = (b[primary] ?? 0) - (a[primary] ?? 0)
+      if (primaryDiff !== 0) return primaryDiff
+      const secondaryDiff = (b[secondary] ?? 0) - (a[secondary] ?? 0)
+      if (secondaryDiff !== 0) return secondaryDiff
+      return String(a.artist_name).localeCompare(String(b.artist_name))
+    })
+  }, [no1Type, rec.artist_most_no1, rec.artist_most_no1_album])
 
   const no1MaxSongs = Math.max(...rec.artist_most_no1.map(r => r['冠单数'] ?? 0), 1)
-  const no1MaxAlbums = Math.max(...rec.artist_most_no1.map(r => r['冠军专辑数'] ?? 0), 1)
+  const no1AlbumRows = rec.artist_most_no1_album ?? rec.artist_most_no1
+  const no1MaxAlbums = Math.max(...no1AlbumRows.map(r => r['冠军专辑数'] ?? 0), 1)
   const no1MaxSongWeeks = Math.max(...rec.artist_most_no1.map(r => r['单曲冠军周数'] ?? 0), 1)
-  const no1MaxAlbumWeeks = Math.max(...rec.artist_most_no1.map(r => r['专辑冠军周数'] ?? 0), 1)
+  const no1MaxAlbumWeeks = Math.max(...no1AlbumRows.map(r => r['专辑冠军周数'] ?? 0), 1)
   const debutTrackMaxNo1Weeks = Math.max(...debutTrackSorted.map(r => r.weeks_at_no1 ?? 0), 1)
   const debutAlbumMaxNo1Weeks = Math.max(...debutAlbumSorted.map(r => r.weeks_at_no1 ?? 0), 1)
   const debutTrackMaxChartWeeks = Math.max(...debutTrackSorted.map(r => r.weeks_on_chart ?? 0), 1)

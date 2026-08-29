@@ -4,7 +4,7 @@
 > 状态：PASS（本修复范围）；默认完整全栈门禁未运行，由既有耗时开放项继续跟踪
 > 实施基线：detached HEAD `c21ad22841dcc98b3ce7fa20c9306d4830a1da15`
 > 本地提交：`0b23c4425c1635d4f3dc36f5ccd29e0758d1749f`
-> 仓库状态：已在本地 `main` 提交，尚未 push；业务修复提交完成后工作树干净
+> 仓库状态：原一致性修复已在本地 `main` 提交为 `0b23c442`；2026-08-30 全板块排序补充随当前提交收口，尚未 push
 > 部署状态：未将 `0b23c442` 部署到生产；验收期间未用修复代码替换主 checkout 正在运行的服务
 > 关联规划：[`../plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](../plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)
 
@@ -135,3 +135,31 @@ contract 完整轮退出码为 0；pytest 临时数据库清理后出现一次�
 - 未运行默认完整 `fullstack_verification_check.sh`。该门禁已有独立 `SS-2026-08-24-004` 耗时开放项；本轮已完成后端全量 unit/contract、前端全量测试/build、真实数据库副本、主库 proof 和真实浏览器验收，因此本修复范围判定 PASS，整站默认门禁状态不据此改变。
 - 修复已在本地 `main` 提交为 `0b23c442`，尚未 push，也未部署到生产。验收期间未用修复代码替换主 checkout 正在运行的服务；主库派生事实已刷新，后续部署代码时仍需按常规流程重启后端以清空旧进程内缓存。
 - 如需数据回滚，可在停止写入后使用上述 Online Backup 恢复；排序与参数传播只需回退对应代码，不需要恢复原始事实表。
+
+## 6. 2026-08-30 Records 全板块排序补充
+
+### 6.1 修复范围
+
+- 新增统一的 `stable_record_sort()`，覆盖 6 个 Records 子页面、8 个后端记录模块，共 51 个列表；业务排序完成后才应用列表上限，最终用稳定实体键裁决同值行。
+- 冠军名人堂拆分单曲和专辑候选集。单曲排序为“冠军单曲数 DESC → 单曲冠军周数 DESC”，专辑排序为“冠军专辑数 DESC → 专辑冠军周数 DESC”；专辑候选集过滤 `冠军专辑数 > 0`，不再让无冠军专辑的艺人以 0 张进入该榜。
+- 其他 Records 列表分别补齐周数、日期、Peak、走势评分、播放差额、实体数量等业务二级/后续指标；前端冠军圣殿、名人堂、奇趣纪录的本地排序切换与后端保持同一 fallback。双空冠 payload 统一为 `debut_artist`，不再泄漏 merge 后的 `_x/_y` 字段。
+
+完整排序表和缺失值/稳定键边界见当前规则的 [`R39.1`](../reference/playback-stats-rules.md)。本补充不改变 Billboard 周榜既有的 `play_count DESC → total_ms DESC → 稳定实体键` 规则，也不改变冠军事实、实体集合或原始播放数据。
+
+### 6.2 真实 API 全板块巡检
+
+在固定 `min_ms=30000`、仅音乐、连续播放合并、5 分钟 gap、L2/L3、dynamic true/false、周五 12:00 周边界、`30/20/20` Top N、无年度范围且不含精选集的参数和同一 revision 下：
+
+| 接口 | Records 列表数 | 排序违规 | `/data.records` 与 `/records.records` |
+|---|---:|---:|---|
+| `/api/billboard/records` | 51 | 0 | 与兼容接口相等 |
+| `/api/billboard/data` | 51 | 0 | 与主接口相等 |
+
+冠军专辑名人堂真实结果前五为 Taylor Swift `12/96`、Michael Wong `7/25`、Olivia Rodrigo `3/21`、Ariana Grande `3/8`、Kacey Musgraves `3/6`（冠军专辑数/专辑冠军周数）；不存在以 0 张冠军专辑进入该列表的尾部行。双空冠返回字段为 `debut_album`、`debut_artist`、`debut_track`、`debut_track_id`、`debut_week`。
+
+### 6.3 补充验证
+
+- 后端 unit：`1,425 passed`；Billboard 相关 contract：`58 passed`。
+- 前端：`76 files / 598 tests passed`，生产构建通过。
+- 真实浏览器：Desktop 六个 Records 页签无错误；390px 下六个页签均无错误/空态，冠军专辑卡片显示 `12 张冠军专辑` 与 `冠周 96`，页面宽度无横向溢出。
+- 默认完整 `fullstack_verification_check.sh` 仍未在本次 HEAD 运行，继续作为 `SS-2026-08-24-004` 的独立 `PARTIAL` 尾项；本报告结论仅覆盖本修复范围。

@@ -2,8 +2,8 @@
 
 > 状态：持续维护
 > 首次建立：2026-08-27
-> 最后核验：2026-08-29
-> 最近核验基线（2026-08-29，文档同步前）：本地业务代码 `main` 位于 `0b23c442`，当时工作树干净，比 `origin/main` 领先 7 个提交；这些业务提交均尚未 push，也没有对应生产部署证据。后续纯文档提交不得反向表述为业务代码已发布。
+> 最后核验：2026-08-30
+> 最近核验基线（2026-08-30，文档同步前）：本地业务代码包含已提交的 `0b23c442` 与本次待提交的 Records 全板块排序补充；所有业务提交均尚未 push，也没有对应生产部署证据。后续纯文档提交不得反向表述为业务代码已发布。
 
 ## 当前开放与未闭环事项
 
@@ -37,6 +37,12 @@ billboard_week ASC → play_count DESC → total_ms DESC → 稳定 ID ASC → �
 
 > 注：Billboard All-time/Power Score 是另一套累计评分排名，不能简单套用“周榜播放次数 + 时长”的解释；如要核对该页面，应单独记录其评分与 tie-breaker。
 
+### Billboard Records：所有同值列表使用业务二级键
+
+2026-08-30 复核了 `/api/billboard/records` 和 `/api/billboard/data` 的 6 个 Records 子页面、8 个后端记录模块、共 51 个列表。冠军圣殿的冠军名人堂已拆成独立的单曲/专辑候选集：单曲按“冠军单曲数 DESC → 单曲冠军周数 DESC”，专辑按“冠军专辑数 DESC → 专辑冠军周数 DESC”，只有对应数量大于 0 的艺人进入榜单。其他记录列表也按各自的日期、周数、Peak、走势评分、播放差额或实体数量等业务指标补齐二级/后续排序，最后使用稳定实体键；完整规则见 [`playback-stats-rules.md`](../reference/playback-stats-rules.md) 的 R39.1。
+
+排序实现会先对完整候选集排序再截断 Top N，因此 cutoff 同值行不会因为 groupby、缓存重建或输入行顺序变化而交换。固定参数和同一 revision 下，两个 Records 接口各 51 个列表的排序巡检均为 0 个违规；这次补充仍不改变 Billboard 周榜的播放次数/总时长排序规则。
+
 ## 已确认解决或不再作为开放问题
 
 以下事项有后续交付证据，因此不应从旧提问清单中再次当作“未解决”提出：
@@ -44,7 +50,7 @@ billboard_week ASC → play_count DESC → total_ms DESC → 稳定 ID ASC → �
 - `SS-2026-08-27-001`：播放排行同次数排序已解决。播放次数榜现在按 `plays DESC → hours DESC → stable entity key → normalized name`，播放时长榜保留 `hours DESC → plays DESC` 后追加稳定键；歌曲、专辑、艺人及跨同分分页的乱序输入测试通过，真实 180 次样本为 11.9h 在 8.6h 前。该修复没有修改 Billboard 周榜规则。见 [`2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)。
 - `SS-2026-08-26-002`：设置重建状态、导入健康口径、只读治理预览和导入前比较语义已解决。功能范围、真实主库只读探针、Desktop/390px 浏览器、完整 unit/contract 和前端回归已通过，修复提交为 `62f48299`；后续 descendant `dc7055a7` 又通过默认完整全栈门禁。业务修复提交 `0b23c442` 未重新运行默认完整门禁，且审计时的 7 个本地业务提交均未 push；历史数据实际清理仍是独立授权事项。见 [`交付报告`](../reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md)。
 - `SS-2026-06-23-006`：播放记录历史规划与当前实现的文档核对已完成。当前 `/api/analysis/records`、路由容器、TanStack Query、5 个栏目和 20 个模块均已存在，并有 Phase 5、移动端与播放记录专项验收；历史规划已补“最终实现差异”并归档。早期 6 栏方案和未采用 P2 只用于回溯，不自动成为当前缺陷或待办。见 [`归档规划`](../archive/06-productization-closeout/2026-06-23-playback-records-plan.md)。
-- `SS-2026-08-10-003`：Billboard 冠军圣殿与艺人详情的冠军单曲数不一致已解决。2026-08-29 的实施与验收基线为 detached HEAD `c21ad22841dcc98b3ce7fa20c9306d4830a1da15`，最终修复已在本地提交为 `0b23c442`；schema 63、同一主库和不变 revision 下，固定 `min_ms=30000`、仅音乐、连续播放合并、5 分钟间隔、周五 12:00 周边界、`30/20/20` 榜单规模、无年度范围及不含精选集，并覆盖 L2/L3 × dynamic/fixed 四个变体；Taylor Swift 在 Records、`artist_track_counts.top1`、艺人详情 `info.top1`、详情冠军曲和周榜有效署名中的结果均为 34，稳定 `track_id` 集合差集为空，301 首上榜歌曲逐行指标差异为 0。覆盖边缘开放周 `2026-08-21` 未发布。同期发现的聚合 proof、staged 接口展示名、参数传播和稳定排序问题也已修复；`0b23c442` 尚未 push、未部署，默认完整全栈门禁未在该 HEAD 上运行。见 [`交付报告`](../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)。
+- `SS-2026-08-10-003`：Billboard 冠军圣殿与艺人详情的冠军单曲数不一致已解决。2026-08-29 的实施与验收基线为 detached HEAD `c21ad22841dcc98b3ce7fa20c9306d4830a1da15`，最终修复已在本地提交为 `0b23c442`；schema 63、同一主库和不变 revision 下，固定 `min_ms=30000`、仅音乐、连续播放合并、5 分钟间隔、周五 12:00 周边界、`30/20/20` 榜单规模、无年度范围及不含精选集，并覆盖 L2/L3 × dynamic/fixed 四个变体；Taylor Swift 在 Records、`artist_track_counts.top1`、艺人详情 `info.top1`、详情冠军曲和周榜有效署名中的结果均为 34，稳定 `track_id` 集合差集为空，301 首上榜歌曲逐行指标差异为 0。覆盖边缘开放周 `2026-08-21` 未发布。2026-08-30 又完成全部 51 个 Records 列表的二级排序和冠军专辑独立候选集收口；`0b23c442` 与本次补充均尚未 push、未部署，默认完整全栈门禁未在本次 HEAD 上运行。见 [`交付报告`](../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)。
 - 年度总结的 `Manchild/1000`、重复“今年听歌最多的一天”、首次发现和跨章节分母/身份语义问题，已在 [`2026-08-24-yearly-review-semantic-correction.md`](../reports/2026-08-24-yearly-review-semantic-correction.md) 标记为年度修复范围 Pass。
 - Billboard 周榜同次数排序本身不是随机行为；当前代码和稳定排序单测已经覆盖单曲、专辑、艺人及输入顺序打乱场景。见 [`test_billboard_stable_ranking.py`](../../backend/tests/unit/test_billboard_stable_ranking.py)。
 - 音乐详情加载、专辑/艺人子榜错误空态、专辑发行日期版本消歧、艺人专辑排行日期聚合、Billboard 艺人预聚合逻辑事件粒度和搜索候选/统计解耦，都已有对应交付报告或回归证据；后续若再次出现症状，应按当前代码和真实数据重新复核，不直接复用旧结论。
@@ -58,4 +64,5 @@ billboard_week ASC → play_count DESC → total_ms DESC → 稳定 ID ASC → �
 | 2026-08-29 | 完成 Billboard B1–B4 与独立播放排行 R1 的实现、完整 backend unit/contract、frontend test/build、真实库副本/主库 proof 和响应式验收；默认完整全栈门禁未在 `0b23c442` 上运行。将 `SS-2026-08-27-001` 更新为已解决。 |
 | 2026-08-29 | 为 Billboard 次要一致性问题和独立播放排行 tie-breaker 建立分阶段修复规划。 |
 | 2026-08-29 | 将 `SS-2026-08-10-003` 更新为已解决：在实施基线、真实数据库、固定参数与同一 revision 下完成 Records/艺人详情四变体的稳定实体 ID 集合、计数、排序和逐行指标对账，Taylor Swift 均为 34，差集为空。 |
+| 2026-08-30 | 复核 6 个 Records 子页面、8 个后端记录模块的全部 51 个列表，补齐业务二级/后续指标和稳定实体键；冠军专辑候选集只保留 `冠军专辑数 > 0` 的艺人，并同步更新当前规则、计划与交付报告。 |
 | 2026-08-27 | 首次建立台账；登记历史未闭环项；确认播放排行同次数不按时长排序；确认 Billboard 周榜按 `total_ms` 作为第二排序。 |

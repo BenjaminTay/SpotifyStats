@@ -1,6 +1,6 @@
 # 播放统计与版本合并规则：最新版
 
-> 创建日期：2026-06-18；最近修订：2026-08-15
+> 创建日期：2026-06-18；最近修订：2026-08-30
 > 状态：规则源文件，作为后续实现与验收依据
 > 来源：整合 [`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md)、[`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md)，以及后续对歌曲/专辑多版本语义的确认。
 
@@ -728,6 +728,25 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 - `track_power_rank` / `album_power_rank` 只在当前完整同类总榜实体集合中对正值使用 competition rank（并列共享最小名次）；零贡献显示 0，派生排名为 `null`。
 - 表内搜索、分页和列显示偏好只是客户端展示控制，不得改变 Power Score、上述聚合值或任何原始/派生排名。
 
+#### R39.1 Records 记录板块稳定排序
+
+`/api/billboard/records` 与兼容的 `/api/billboard/data` 记录列表必须在同一统计上下文中使用相同的排序契约。每个记录板块先对完整候选集排序，再应用 Top N；不能先截断再对同值行排序，也不能使用 DataFrame 的输入顺序或当前 index 作为裁决依据。缺失的次级指标按“缺失值置后”处理，不得把缺失事实擅自解释成真实的 0。
+
+所有业务排序键相同的行，都必须继续使用实体稳定键作为最终裁决：歌曲优先 canonical `track_id`，专辑使用 album project/release 与 canonical artist 的稳定组合，艺人使用 canonical artist ID/name；文本键按规范化文本、原文顺序比较。前端为排序切换做本地重排时，必须保留同一组稳定键。
+
+当前 6 个 Records 子页面（对应 8 个后端记录计算模块）的二级及后续排序如下（`DESC` 为高值在前，`ASC` 为低值或较早日期在前）：
+
+| Records 家族 | 业务排序（主 → 次 → 后续） |
+|---|---|
+| 冠军圣殿 | 同时上榜：曲目数 DESC → 榜单周 DESC；冠军名人堂（单曲）：冠军单曲数 DESC → 单曲冠军周数 DESC；冠军名人堂（专辑）：冠军专辑数 DESC → 专辑冠军周数 DESC；回归冠军：间隔周数 DESC → 回冠日期 DESC；空降冠军：空降周 ASC；冠军传承：接力周 DESC；阻挡王：阻挡数 DESC → 走势评分 DESC。 |
+| 持久传奇 | 最长在榜：在榜周数 DESC → Peak ASC → 冠军周数 DESC → 首次上榜 ASC；无 Top 5：在榜周数 DESC → Peak ASC → 首次上榜 ASC；最长连续在榜：连续周数 DESC → 起始周 ASC → 结束周 DESC；艺人生涯跨度：跨度天数 DESC → 上榜歌曲数 DESC → 最近上榜 DESC → 首次上榜 ASC；夺冠后最快出榜：巅峰后周数 ASC → 末次上榜 DESC → 首次夺冠周 DESC；最多亚军但未夺冠：亚军周数 DESC → Peak ASC；最多回榜：回榜次数 DESC → 在榜周数 DESC；同一排名最长停留：连续周数 DESC → 停留排名 ASC → 起始周 ASC → 结束周 DESC。 |
+| 爆发时刻 | 最大上升：变化 DESC → 本周排名 ASC → 日期 DESC；最大下跌：变化 ASC → 本周排名 DESC → 日期 DESC；同专辑/Top 10 同时上榜：曲目数 DESC → 榜单周 DESC；最强周：大盘播放 DESC → 榜单周 DESC；最长/最快登顶：登顶周数分别 DESC/ASC，再按首次上榜、首次夺冠周 ASC。 |
+| 名人堂 | 歌曲/专辑/艺人走势总榜：走势评分 DESC；年度冠军：年份 DESC；年代之王：年代 ASC → 走势评分 DESC → 在榜周数 DESC → Peak ASC。 |
+| 奇趣纪录 | 双空冠/三榜制霸：榜单周 DESC；一击即中/多曲艺人：冠军周数、在榜周数等业务指标 DESC，再按稳定艺人键；同名分组：组内数量 DESC → 规范化名称 ASC → 艺人/曲目稳定键；最早/最近上榜和最长/最短曲名：日期或长度为主，名称与稳定实体键为后续裁决。前端可切换日期或市场播放量，但切换后仍沿用实体稳定键。 |
+| 每周大盘 | 周大盘：总播放 DESC → 曲目数 DESC → 榜单周 DESC；最激烈/最悬殊竞争：播放差额分别 ASC/DESC → 周总播放 DESC → 榜单周 DESC；新歌占比：新歌占比 DESC → 大盘播放 DESC → 榜单周 DESC。 |
+
+冠军名人堂的单曲与专辑是两个独立候选集：单曲榜只保留冠军单曲数大于 0 的艺人，专辑榜只保留冠军专辑数大于 0 的艺人。因此，某艺人没有冠军专辑时不会以“0 张冠军专辑”占据专辑名人堂名次；它仍可在单曲榜中出现。排序规则只影响同值行的先后，不改变冠军事实、实体集合或周榜的 `play_count DESC → total_ms DESC → 稳定实体键` 规则。
+
 ### 年度总结 V2 消费契约
 
 Desktop/Compact 与 Phone 的 `/yearly-review` 共用确定性 `YearlyReviewV2` 数据契约，但分别使用完整杂志年鉴与“口袋音乐年鉴”presentation；页面只提供这一套自有年度总结，不再提供“官方 Wrapped”页签。Phone/Desktop 必须互斥挂载。`/api/wrapped-hub`、官方导入表和读取服务仅作只读兼容冻结，不进入年度总结消费链路。
@@ -896,6 +915,8 @@ GUTS (spilled) / 2024-03-22
 ---
 
 ## 17. Implementation Status
+
+截至 2026-08-30，Billboard Records 的 6 个家族共 51 个列表已使用完整候选集排序、业务二级/后续指标和稳定实体键；冠军单曲/专辑名人堂分别按对应冠周排序，专辑名人堂只接受冠军专辑数大于 0 的艺人。实现与真实 API/浏览器验收证据见 [`docs/reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)。
 
 截至 2026-08-17，album statistics 已在 analysis charts、leaderboards、Billboard album charts 和 album detail pages 使用 album project 语义；歌曲、专辑、艺人详情统计已统一采用实体范围时长帧和逻辑播放加权版本拆分。
 

@@ -3,6 +3,7 @@
 import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists
+from backend.domains.billboard.record_sorting import stable_record_sort
 
 
 def compute_self_replacement_blocker_records(
@@ -48,10 +49,10 @@ def compute_self_replacement_blocker_records(
                     "新冠单": curr["track_name"],
                 }
             )
-    records["self_replacement_no1"] = (
-        pd.DataFrame(replacements).sort_values("周次", ascending=False)
-        if replacements
-        else pd.DataFrame()
+    records["self_replacement_no1"] = stable_record_sort(
+        pd.DataFrame(replacements),
+        [("周次", False)],
+        stable_columns=("新冠单_id", "艺人", "前冠单_id", "新冠单"),
     )
     # Album version
     if weekly_album is not None:
@@ -78,10 +79,10 @@ def compute_self_replacement_blocker_records(
                         "新冠专": curr["album_name"],
                     }
                 )
-        records["self_replacement_no1_album"] = (
-            pd.DataFrame(alb_replacements).sort_values("周次", ascending=False)
-            if alb_replacements
-            else pd.DataFrame()
+        records["self_replacement_no1_album"] = stable_record_sort(
+            pd.DataFrame(alb_replacements),
+            [("周次", False)],
+            stable_columns=("新冠专", "艺人", "前冠专"),
         )
     else:
         records["self_replacement_no1_album"] = pd.DataFrame()
@@ -103,7 +104,6 @@ def compute_self_replacement_blocker_records(
             merged_block_true.groupby("track_id_no1")
             .agg(阻挡数=("track_id_no2", "nunique"))
             .reset_index()
-            .sort_values("阻挡数", ascending=False)
         )
         blocker = blocker.merge(
             track_summary[["track_id", "track_name", "artist_name"]],
@@ -111,23 +111,27 @@ def compute_self_replacement_blocker_records(
             right_on="track_id",
             how="left",
         )
-        records["blocker_king"] = blocker.head(20)[
-            ["track_id", "track_name", "artist_name", "阻挡数"]
-        ]
         # Merge power scores for secondary sort
         if track_power_scores is not None:
-            records["blocker_king"] = records["blocker_king"].merge(
+            blocker = blocker.merge(
                 track_power_scores[["track_id", "power_score"]].rename(
                     columns={"power_score": "走势评分"}
                 ),
                 on="track_id",
                 how="left",
             )
-            records["blocker_king"]["走势评分"] = (
-                records["blocker_king"]["走势评分"].fillna(0).astype(int)
-            )
+            blocker["走势评分"] = blocker["走势评分"].fillna(0).astype(int)
         else:
-            records["blocker_king"]["走势评分"] = 0
+            blocker["走势评分"] = 0
+        blocker = stable_record_sort(
+            blocker,
+            [("阻挡数", False), ("走势评分", False)],
+            stable_columns=("track_id", "artist_name", "track_name"),
+            limit=20,
+        )
+        records["blocker_king"] = blocker[
+            ["track_id", "track_name", "artist_name", "阻挡数", "走势评分"]
+        ]
         # Blocked tracks detail: for each #1 track, list the #2 tracks it blocked
         blocked_detail = (
             merged_block_true.groupby("track_id_no1")
@@ -178,28 +182,34 @@ def compute_self_replacement_blocker_records(
                     alb_merged_true.groupby(["album_name_no1", "artist_name_no1"])
                     .agg(阻挡数=("album_name_no2", "nunique"))
                     .reset_index()
-                    .sort_values("阻挡数", ascending=False)
                 )
-                records["blocker_king_album"] = alb_blocker.head(20).rename(
+                alb_blocker = alb_blocker.rename(
                     columns={
                         "album_name_no1": "album_name",
                         "artist_name_no1": "artist_name",
                     }
-                )[["album_name", "artist_name", "阻挡数"]]
+                )
                 # Merge album power scores for secondary sort
                 if album_power_scores is not None:
-                    records["blocker_king_album"] = records["blocker_king_album"].merge(
+                    alb_blocker = alb_blocker.merge(
                         album_power_scores[["album_name", "artist_name", "power_score"]].rename(
                             columns={"power_score": "走势评分"}
                         ),
                         on=["album_name", "artist_name"],
                         how="left",
                     )
-                    records["blocker_king_album"]["走势评分"] = (
-                        records["blocker_king_album"]["走势评分"].fillna(0).astype(int)
-                    )
+                    alb_blocker["走势评分"] = alb_blocker["走势评分"].fillna(0).astype(int)
                 else:
-                    records["blocker_king_album"]["走势评分"] = 0
+                    alb_blocker["走势评分"] = 0
+                alb_blocker = stable_record_sort(
+                    alb_blocker,
+                    [("阻挡数", False), ("走势评分", False)],
+                    stable_columns=("album_name", "artist_name"),
+                    limit=20,
+                )
+                records["blocker_king_album"] = alb_blocker[
+                    ["album_name", "artist_name", "阻挡数", "走势评分"]
+                ]
                 # Blocked albums detail (string key: "album||artist")
                 alb_blocked_detail = {}
                 for (aname, aname_artist), grp in alb_merged_true.groupby(
@@ -246,24 +256,26 @@ def compute_self_replacement_blocker_records(
                     art_merged_true.groupby("artist_name_no1")
                     .agg(阻挡数=("artist_name_no2", "nunique"))
                     .reset_index()
-                    .sort_values("阻挡数", ascending=False)
                 )
-                records["blocker_king_artist"] = art_blocker.head(20).rename(
-                    columns={"artist_name_no1": "artist_name"}
-                )[["artist_name", "阻挡数"]]
+                art_blocker = art_blocker.rename(columns={"artist_name_no1": "artist_name"})
                 if artist_power_scores is not None:
-                    records["blocker_king_artist"] = records["blocker_king_artist"].merge(
+                    art_blocker = art_blocker.merge(
                         artist_power_scores[["artist_name", "power_score"]].rename(
                             columns={"power_score": "走势评分"}
                         ),
                         on="artist_name",
                         how="left",
                     )
-                    records["blocker_king_artist"]["走势评分"] = (
-                        records["blocker_king_artist"]["走势评分"].fillna(0).astype(int)
-                    )
+                    art_blocker["走势评分"] = art_blocker["走势评分"].fillna(0).astype(int)
                 else:
-                    records["blocker_king_artist"]["走势评分"] = 0
+                    art_blocker["走势评分"] = 0
+                art_blocker = stable_record_sort(
+                    art_blocker,
+                    [("阻挡数", False), ("走势评分", False)],
+                    stable_columns=("artist_name",),
+                    limit=20,
+                )
+                records["blocker_king_artist"] = art_blocker[["artist_name", "阻挡数", "走势评分"]]
                 art_blocked_detail = {}
                 for aname, grp in art_merged_true.groupby("artist_name_no1"):
                     art_blocked_detail[aname] = [

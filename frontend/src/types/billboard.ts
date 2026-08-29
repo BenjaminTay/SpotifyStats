@@ -330,6 +330,7 @@ export interface BillboardYearEndResponse {
 export interface BillboardRecords {
   [key: string]: any
   artist_most_no1: ArtistMostNo1Record[]
+  artist_most_no1_album?: ArtistMostNo1Record[]
   debut_no1: DebutNo1Record[]
   debut_no1_album: DebutNo1AlbumRecord[]
   return_to_no1: ReturnToNo1Record[]
