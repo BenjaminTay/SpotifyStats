@@ -267,7 +267,6 @@ def get_top_tracks(
         )
     if df.empty:
         return []
-    cover_map = _track_cover_urls(conn, df["track_id"])
     top = (
         df.groupby(["track_id", "track_name", "artist_name"])
         .size()
@@ -275,6 +274,10 @@ def get_top_tracks(
         .head(n)
         .reset_index(name="plays")
     )
+    # TrackPresentation may inspect album-project membership and release catalogs;
+    # resolve only the rows that survive the top-N aggregation, not every track in
+    # the lifetime playback frame used by /dashboard/full.
+    cover_map = _track_cover_urls(conn, top["track_id"])
     return [
         {
             "track_id": int(r.track_id),

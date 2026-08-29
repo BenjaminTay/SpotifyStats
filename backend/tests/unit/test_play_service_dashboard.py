@@ -44,6 +44,49 @@ def test_get_random_track_reuses_preloaded_dataframe(monkeypatch):
     }
 
 
+def test_get_top_tracks_resolves_covers_only_for_top_n(monkeypatch):
+    from backend.services import play_service
+
+    df = pd.DataFrame(
+        [
+            {
+                "play_id": play_id,
+                "track_id": track_id,
+                "track_name": f"Track {track_id}",
+                "artist_name": "Artist",
+            }
+            for play_id, track_id in enumerate([10, 10, 10, 20, 20, 30], start=1)
+        ]
+    )
+    resolved_ids: list[int] = []
+
+    def resolve_covers(_conn, track_ids):
+        resolved_ids.extend(int(value) for value in track_ids)
+        return {10: "/covers/albums/10.jpg"}
+
+    monkeypatch.setattr(play_service, "_track_cover_urls", resolve_covers)
+
+    result = play_service.get_top_tracks(
+        conn=None,
+        min_ms=30_000,
+        music_only=True,
+        merge_enabled=True,
+        n=1,
+        df=df,
+    )
+
+    assert resolved_ids == [10]
+    assert result == [
+        {
+            "track_id": 10,
+            "track_name": "Track 10",
+            "artist_name": "Artist",
+            "plays": 3,
+            "cover_url": "/covers/albums/10.jpg",
+        }
+    ]
+
+
 def test_late_night_top_tracks_filters_early_hours(monkeypatch):
     from backend.services import play_service
 
