@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from backend.core.access_surface import is_public_readonly
 from backend.dependencies import BillboardFilters, MergeConfig, PlayFilters, get_conn
+from backend.domains.metadata.track_presentation import resolve_track_presentations
 from backend.domains.music_search.context import build_music_search_filter_context
 from backend.domains.music_search.contracts import parse_music_search_entity_key
 from backend.domains.music_search.index import get_music_search_index_state
@@ -187,6 +188,7 @@ class TrackIdentityEntry(BaseModel):
     artist_name: str | None = None
     album_name: str | None = None
     cover_url: str | None = None
+    album_attribution: dict | None = None
     source_record_count: int
     metadata_conflict: bool
 
@@ -460,7 +462,7 @@ def _track_identity_entries(
              ORDER BY li.l1_id""",
         params,
     ).fetchall()
-    return [
+    items = [
         {
             "l1_id": int(row["l1_id"]),
             "canonical_track_id": int(row["l1_id"]),
@@ -478,11 +480,25 @@ def _track_identity_entries(
                 if row["album_id"] is not None
                 else None
             ),
+            "album_attribution": None,
             "source_record_count": int(row["source_record_count"]),
             "metadata_conflict": bool(row["metadata_conflict"]),
         }
         for row in rows
     ]
+    presentations = resolve_track_presentations(
+        conn,
+        [item["canonical_track_id"] for item in items],
+        merge_level=2,
+    )
+    for item in items:
+        presentation = presentations.get(item["canonical_track_id"])
+        if presentation is None:
+            continue
+        item["album_name"] = presentation.display_album_name or item["album_name"]
+        item["cover_url"] = presentation.cover_url or item["cover_url"]
+        item["album_attribution"] = presentation.payload()
+    return items
 
 
 def _track_identity_entry(conn: Connection, canonical_track_id: int) -> dict:

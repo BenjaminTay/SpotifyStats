@@ -17,6 +17,8 @@ L2 同录音版本现在共享一份结构化 `TrackPresentation` 结果，专�
 
 统一解析结果已接入歌曲详情、音乐查找与其派生文档、Billboard 曲目投影、播放排行、记录发现、年度总结和相关公共播放卡片。专辑项目重建会递增独立 revision；搜索 generation 的 filter context 同时包含该 revision 与 presentation policy version，避免旧 generation 静默复用旧归属或旧封面。
 
+2026-08-30 补充收口轻量歌曲 identity：`/api/music/tracks/{canonical_track_id}` 与 legacy identity 现在也批量消费同一 TrackPresentation，并返回结构化 `album_attribution`；`/sources` 仍保留实际来源语义。真实库复核 `Opalite` 为原版 album 1894 归属、单曲 album 2313 封面，`The Fate of Ophelia` 为原版 album 1894 归属、单曲 album 2031 封面，均与搜索和统计详情一致。
+
 迁移 64 增加 album project revision 状态，迁移 65 为结构化搜索文档增加 presentation 字段。真实数据库已完成迁移，并通过 shadow generation 原子发布新搜索派生数据。
 
 ## 真实数据证据

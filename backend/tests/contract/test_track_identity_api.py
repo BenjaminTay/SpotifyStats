@@ -31,6 +31,34 @@ def test_canonical_identity_and_sources_are_explicit(client, use_seed_db: str) -
     assert all(item["evidence_types"] for item in sources.json())
 
 
+def test_canonical_identity_uses_shared_album_presentation(client, use_seed_db: str) -> None:
+    conn = sqlite3.connect(use_seed_db)
+    try:
+        # Keep the representative Track on the LP while the same recording also
+        # has an explicit single association.  The identity endpoint must not
+        # infer its artwork directly from the representative Track album.
+        conn.execute("UPDATE tracks SET album_id=921 WHERE track_id=920")
+        conn.commit()
+    finally:
+        conn.close()
+
+    identity = client.get("/api/music/tracks/920")
+
+    assert identity.status_code == 200
+    payload = identity.json()
+    assert payload["album_name"] == "Fixture Future LP"
+    assert payload["cover_url"] == "/covers/albums/920.jpg"
+    assert payload["album_attribution"]["display_album_id"] == 921
+    assert payload["album_attribution"]["display_album_name"] == "Fixture Future LP"
+    assert payload["album_attribution"]["cover_album_id"] == 920
+    assert payload["album_attribution"]["cover_source"] == "single"
+
+    sources = client.get("/api/music/tracks/920/sources")
+    assert sources.status_code == 200
+    assert sources.json()[0]["album_name"] == "Fixture Future LP"
+    assert sources.json()[0]["cover_url"] == "/covers/albums/921.jpg"
+
+
 def test_legacy_track_resolution_returns_the_same_track_id(client, use_seed_db: str) -> None:
     conn = sqlite3.connect(use_seed_db)
     try:
@@ -63,6 +91,7 @@ def test_legacy_track_resolution_returns_the_same_track_id(client, use_seed_db: 
     payload = response.json()
     assert payload["resolution"] == "unique"
     assert [item["l1_id"] for item in payload["items"]] == [track_id]
+    assert payload["items"][0]["album_attribution"]["canonical_track_id"] == track_id
 
 
 def test_public_canonical_merge_and_split_are_retired(client, use_seed_db: str) -> None:

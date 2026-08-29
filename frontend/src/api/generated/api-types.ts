@@ -10825,6 +10825,10 @@ export interface components {
             album_name?: string | null;
             /** Cover Url */
             cover_url?: string | null;
+            /** Album Attribution */
+            album_attribution?: {
+                [key: string]: unknown;
+            } | null;
             /** Source Record Count */
             source_record_count: number;
             /** Metadata Conflict */

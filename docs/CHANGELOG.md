@@ -2,6 +2,11 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-30 — 歌曲 identity 专辑展示一致性收口
+
+- `/api/music/tracks/{canonical_track_id}` 及 legacy identity 路由改为批量消费统一 TrackPresentation，不再从代表 Track 的 `album_id` 推导专辑和封面；响应同步增加结构化 `album_attribution`，OpenAPI 快照与前端生成类型已更新。
+- 来源列表继续展示实际来源专辑和封面。真实库中 `Opalite` 与 `The Fate of Ophelia` 的 identity、搜索和统计详情现分别统一为原版专辑归属加单曲 2313 / 2031 封面；完整 contract 403 项通过。
+
 ## 2026-08-30 — Billboard Records 全板块同值排序收口
 
 - 复核并统一 6 个 Records 子页面、8 个后端记录模块的业务二级排序；所有 51 个列表都先排序完整候选集，再应用 Top N，并追加实体稳定键。
