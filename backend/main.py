@@ -167,7 +167,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+# Billboard history responses can be several megabytes.  Starlette defaults to
+# gzip level 9, whose marginal size saving is not worth the repeated hot-path
+# CPU cost for interactive API responses.
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
 app.add_middleware(
     CORSMiddleware,
