@@ -4,8 +4,8 @@
 > 状态：PASS（本修复范围）；默认完整全栈门禁未运行，由既有耗时开放项继续跟踪
 > 实施基线：detached HEAD `c21ad22841dcc98b3ce7fa20c9306d4830a1da15`
 > 本地提交：`0b23c4425c1635d4f3dc36f5ccd29e0758d1749f`
-> 仓库状态：原一致性修复已在本地 `main` 提交为 `0b23c442`；2026-08-30 全板块排序补充随当前提交收口，尚未 push
-> 部署状态：未将 `0b23c442` 部署到生产；验收期间未用修复代码替换主 checkout 正在运行的服务
+> 仓库状态：原一致性修复已在本地 `main` 提交为 `0b23c442`；2026-08-30 全板块排序补充已提交为 `46fc7afa93210a74d29eec05a37d1c8f39c01269`，尚未 push
+> 部署状态：未将 `0b23c442` 或 `46fc7afa` 部署到生产；验收期间未用修复代码替换主 checkout 正在运行的服务
 > 关联规划：[`../plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](../plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)
 
 ## 1. 最终结论

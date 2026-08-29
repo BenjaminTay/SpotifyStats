@@ -3,8 +3,8 @@
 > 创建日期：2026-08-29
 > 状态：IMPLEMENTED；B1–B4、R1 及 6 个 Records 子页面（8 个后端记录模块、51 个列表）已完成范围验收 PASS；默认完整全栈门禁未运行，由既有门禁耗时开放项继续跟踪
 > 适用范围：Billboard 预聚合有效性、Records 完整/分段接口一致性、Records 过滤参数传播、Billboard 记录与详情稳定排序、播放排行同次数排序
-> 本地提交：既有一致性修复为 `0b23c4425c1635d4f3dc36f5ccd29e0758d1749f`；本次全板块排序补充随当前提交完成，尚未 push
-> 部署状态：未生产部署；业务修复提交 `0b23c442` 的默认完整全栈门禁未运行
+> 本地提交：既有一致性修复为 `0b23c4425c1635d4f3dc36f5ccd29e0758d1749f`；本次全板块排序补充已提交为 `46fc7afa93210a74d29eec05a37d1c8f39c01269`，尚未 push
+> 部署状态：未生产部署；本次提交 `46fc7afa` 的默认完整全栈门禁未运行
 > 关联台账：[`../issues/2026-08-27-issue-register.md`](../issues/2026-08-27-issue-register.md)
 > 当前规则：[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
 > 交付证据：[`../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)
