@@ -10760,6 +10760,10 @@ export interface components {
             artist_names?: string[] | null;
             /** Cover Url */
             cover_url?: string | null;
+            /** Album Attribution */
+            album_attribution?: {
+                [key: string]: unknown;
+            } | null;
             /** Meta */
             meta?: {
                 [key: string]: unknown;

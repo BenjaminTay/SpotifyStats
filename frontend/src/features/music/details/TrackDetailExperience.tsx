@@ -134,9 +134,9 @@ export function TrackDetailExperience() {
                         {index < artists.length - 1 ? ' · ' : ''}
                       </span>
                     ))}
-                    meta={data.meta?.spotify_album_name ? (
-                      <Link to={`/music/albums/${encodeURIComponent(data.meta.spotify_album_name)}?artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}`}>
-                        {displayName(data.meta.spotify_album_name)}
+                    meta={(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name) ? (
+                      <Link to={`/music/albums/${encodeURIComponent(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name ?? '')}?artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}`}>
+                        {displayName(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name ?? '')}
                       </Link>
                     ) : undefined}
                     facts={[

@@ -24,6 +24,10 @@ from backend.domains.metadata.track_identity import (
     TRACK_IDENTITY_POLICY_VERSION,
     get_track_identity_revision,
 )
+from backend.domains.metadata.track_presentation import (
+    TRACK_PRESENTATION_POLICY_VERSION,
+    resolve_track_presentations,
+)
 from backend.domains.music_search.contracts import make_music_search_entity_key
 from backend.domains.music_search.normalization import (
     SEARCH_NORMALIZATION_VERSION,
@@ -31,6 +35,7 @@ from backend.domains.music_search.normalization import (
     normalize_search_text,
 )
 from backend.domains.music_search.revisions import get_music_search_revision_state
+from backend.domains.playback.album_projects import get_album_project_revision
 
 INDEX_SCHEMA_VERSION = "music_search_candidate_index_v4_l1"
 
@@ -86,6 +91,8 @@ def music_search_source_revision(conn: sqlite3.Connection) -> str:
         "track_credit_revision": get_track_credit_revision(conn),
         "track_identity_revision": get_track_identity_revision(conn),
         "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
+        "album_project_revision": get_album_project_revision(conn),
+        "track_presentation_policy": TRACK_PRESENTATION_POLICY_VERSION,
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -251,6 +258,10 @@ def _document(
     artist_id: int | None = None,
     album_name: str | None = None,
     artist_name: str | None = None,
+    membership_role: str | None = None,
+    cover_album_id: int | None = None,
+    cover_source: str | None = None,
+    presentation_status: str | None = None,
     merge_level: int = 0,
 ) -> dict[str, Any]:
     alias_text = " · ".join(dict.fromkeys(aliases or []))
@@ -279,6 +290,10 @@ def _document(
         "artist_id": artist_id,
         "album_name": album_name,
         "artist_name": artist_name,
+        "membership_role": membership_role,
+        "cover_album_id": cover_album_id,
+        "cover_source": cover_source,
+        "presentation_status": presentation_status,
     }
 
 
@@ -619,6 +634,11 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
             )
             members_by_entity[entity_id].append(row)
             group_names[entity_id] = group_name
+        presentations = resolve_track_presentations(
+            conn,
+            members_by_entity.keys(),
+            merge_level=merge_level,
+        )
         for entity_id, member_rows in sorted(members_by_entity.items()):
             row = track_rows_by_id.get(entity_id, member_rows[0])
             track_id = int(row["track_id"])
@@ -638,7 +658,21 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 fallback_artist = artist_rows.get(raw_artist_id, {}).get("artist_name")
                 display_artist = resolution.display_name if resolution else fallback_artist
                 credit_names = [str(display_artist)] if display_artist else []
-            album_name = str(row["album_name"]) if row["album_name"] else None
+            presentation = presentations.get(entity_id)
+            album_name = (
+                presentation.display_album_name
+                if presentation is not None
+                else str(row["album_name"])
+                if row["album_name"]
+                else None
+            )
+            album_id = (
+                presentation.display_album_id
+                if presentation is not None
+                else int(row["album_id"])
+                if row["album_id"]
+                else None
+            )
             secondary = " · ".join([*credit_names, *([album_name] if album_name else [])])
             label = group_names[entity_id]
             aliases = [
@@ -655,15 +689,32 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                     aliases=aliases,
                     popularity=0,
                     href=f"/music/tracks/{entity_id}",
-                    cover_url=_cover_url(
-                        "albums", int(row["album_id"]) if row["album_id"] else None
+                    cover_url=(
+                        presentation.cover_url
+                        if presentation is not None
+                        else _cover_url("albums", album_id)
                     ),
                     track_id=entity_id,
-                    album_id=int(row["album_id"]) if row["album_id"] else None,
+                    album_id=album_id,
+                    album_project_id=(
+                        presentation.album_project_id if presentation is not None else None
+                    ),
                     artist_id=primary_artist_id,
                     album_name=album_name,
                     artist_name=credit_names[0] if credit_names else None,
                     merge_level=merge_level,
+                    membership_role=(
+                        presentation.membership_role if presentation is not None else None
+                    ),
+                    cover_album_id=(
+                        presentation.cover_album_id if presentation is not None else album_id
+                    ),
+                    cover_source=(
+                        presentation.cover_source if presentation is not None else "fallback"
+                    ),
+                    presentation_status=(
+                        presentation.resolution_status if presentation is not None else "fallback"
+                    ),
                 )
             )
 
@@ -772,7 +823,20 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
     return documents
 
 
+def _ensure_track_presentation_document_columns(conn: sqlite3.Connection) -> None:
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_documents)")}
+    for name, sql_type in (
+        ("membership_role", "TEXT"),
+        ("cover_album_id", "INTEGER"),
+        ("cover_source", "TEXT"),
+        ("presentation_status", "TEXT"),
+    ):
+        if name not in columns:
+            conn.execute(f"ALTER TABLE music_search_documents ADD COLUMN {name} {sql_type}")
+
+
 def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
+    _ensure_track_presentation_document_columns(conn)
     runtime = inspect_search_index_runtime(conn)
     generation_id = (
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:12]
@@ -830,6 +894,10 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
             "artist_id",
             "album_name",
             "artist_name",
+            "membership_role",
+            "cover_album_id",
+            "cover_source",
+            "presentation_status",
         )
         rows = [(generation_id, *(item[column] for column in columns[1:])) for item in documents]
         ngram_rows = sorted(

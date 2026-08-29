@@ -10,7 +10,6 @@ from backend.core.db import load_plays, load_plays_for_artists
 from backend.services.play_service import (
     _album_cover_lookup,
     _artist_cover_lookup,
-    _track_cover_urls,
     get_dashboard_summary,
     get_hourly_dist,
     get_monthly_trend,
@@ -110,7 +109,6 @@ def _listening_summary(df: pd.DataFrame, hourly: list[dict]) -> dict:
 
 
 def _top_tracks(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
-    cover_map = _track_cover_urls(conn, df["track_id"])
     top = (
         df.groupby(["track_id", "track_name", "artist_name"])
         .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
@@ -118,6 +116,9 @@ def _top_tracks(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
         .head(5)
         .reset_index()
     )
+    from backend.domains.metadata.track_presentation import resolve_track_presentations
+
+    presentations = resolve_track_presentations(conn, top["track_id"], merge_level=2)
     return [
         {
             "track_id": int(r.track_id),
@@ -125,7 +126,16 @@ def _top_tracks(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
             "artist_name": r.artist_name,
             "plays": int(r.plays),
             "hours": round(float(r.hours), 1),
-            "cover_url": cover_map.get(int(r.track_id)),
+            "album_name": (
+                presentations[int(r.track_id)].display_album_name
+                if int(r.track_id) in presentations
+                else None
+            ),
+            "cover_url": (
+                presentations[int(r.track_id)].cover_url
+                if int(r.track_id) in presentations
+                else None
+            ),
         }
         for r in top.itertuples(index=False)
     ]

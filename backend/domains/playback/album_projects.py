@@ -98,12 +98,46 @@ CREATE INDEX IF NOT EXISTS idx_album_projects_artist ON album_projects(artist_id
 CREATE INDEX IF NOT EXISTS idx_album_projects_primary_album ON album_projects(primary_album_id);
 CREATE INDEX IF NOT EXISTS idx_album_project_albums_album ON album_project_albums(album_id);
 CREATE INDEX IF NOT EXISTS idx_album_project_tracks_track ON album_project_tracks(track_id);
+
 """
 
 
 def ensure_album_project_schema(conn: sqlite3.Connection) -> None:
     """Create album project tables if the current DB predates this feature."""
     conn.executescript(_ALBUM_PROJECT_SCHEMA)
+
+
+def get_album_project_revision(conn: sqlite3.Connection) -> int:
+    """Return the O(1) presentation-governance revision."""
+    try:
+        row = conn.execute(
+            "SELECT current_revision FROM album_project_revision_state WHERE state_id=1"
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return 0
+    return int(row[0] or 0) if row is not None else 0
+
+
+def _ensure_album_project_revision_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """CREATE TABLE IF NOT EXISTS album_project_revision_state (
+               state_id INTEGER PRIMARY KEY CHECK(state_id = 1),
+               current_revision INTEGER NOT NULL DEFAULT 0,
+               updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+           );
+           INSERT OR IGNORE INTO album_project_revision_state(state_id, current_revision)
+           VALUES (1, 0);"""
+    )
+
+
+def _bump_album_project_revision(conn: sqlite3.Connection) -> int:
+    conn.execute(
+        """UPDATE album_project_revision_state
+              SET current_revision=current_revision+1,
+                  updated_at=CURRENT_TIMESTAMP
+            WHERE state_id=1"""
+    )
+    return get_album_project_revision(conn)
 
 
 def ensure_album_projects(conn: sqlite3.Connection) -> None:
@@ -117,13 +151,16 @@ def ensure_album_projects(conn: sqlite3.Connection) -> None:
 
 def bootstrap_album_projects(conn: sqlite3.Connection) -> None:
     """Populate album project tables without deleting user-maintained rows."""
+    _ensure_album_project_revision_schema(conn)
     _populate_album_projects(conn)
+    _bump_album_project_revision(conn)
     conn.commit()
 
 
 def rebuild_album_projects(conn: sqlite3.Connection) -> None:
     """Rebuild inferred projects without changing stable semantic identities."""
     ensure_album_project_schema(conn)
+    _ensure_album_project_revision_schema(conn)
     conn.execute("SAVEPOINT rebuild_album_projects")
     try:
         # Membership is derived state. Clear it first so reused project IDs do not
@@ -157,6 +194,7 @@ def rebuild_album_projects(conn: sqlite3.Connection) -> None:
             "DELETE FROM album_projects WHERE project_id = ? AND is_manual = 0",
             ((project_id,) for project_id in stale_project_ids),
         )
+        _bump_album_project_revision(conn)
         conn.execute("RELEASE SAVEPOINT rebuild_album_projects")
     except Exception:
         conn.execute("ROLLBACK TO SAVEPOINT rebuild_album_projects")
@@ -185,6 +223,7 @@ def rebuild_album_projects_for_impact(
     """
 
     ensure_album_project_schema(conn)
+    _ensure_album_project_revision_schema(conn)
     if not impact_scope_exact:
         return _fallback_album_project_rebuild(conn, "impact_scope_inexact")
     if has_deletions:
@@ -245,6 +284,7 @@ def rebuild_album_projects_for_impact(
             "DELETE FROM album_projects WHERE project_id = ? AND is_manual = 0",
             ((project_id,) for project_id in stale_project_ids),
         )
+        _bump_album_project_revision(conn)
         conn.execute("RELEASE SAVEPOINT rebuild_album_projects_for_impact")
     except Exception:
         conn.execute("ROLLBACK TO SAVEPOINT rebuild_album_projects_for_impact")

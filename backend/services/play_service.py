@@ -57,10 +57,17 @@ def _cover_url(image_path, image_url, cover_type: str, entity_id) -> str | None:
     return None
 
 
-def _track_cover_urls(conn: sqlite3.Connection, track_ids) -> dict[int, str | None]:
+def _track_cover_urls(
+    conn: sqlite3.Connection, track_ids, merge_level: int = 2
+) -> dict[int, str | None]:
     ids = [int(v) for v in pd.Series(track_ids).dropna().unique().tolist()]
     if not ids:
         return {}
+    if merge_level > 1:
+        from backend.domains.metadata.track_presentation import resolve_track_presentations
+
+        presentations = resolve_track_presentations(conn, ids, merge_level=merge_level)
+        return {track_id: item.cover_url for track_id, item in presentations.items()}
     placeholders = ",".join("?" for _ in ids)
     has_l1 = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
@@ -569,7 +576,6 @@ def get_leaderboard(
         )
     if df.empty:
         return {"time_label": "", "total_records": 0, "rows": []}
-    track_cover_map = _track_cover_urls(conn, df["track_id"]) if "track_id" in df.columns else {}
     artist_cover_map = _artist_cover_lookup(conn)
     album_cover_map = _album_cover_lookup(conn)
 
@@ -674,13 +680,24 @@ def get_leaderboard(
     agg = agg.sort_values(sort_col, ascending=False).head(top_n).reset_index(drop=True)
 
     rows = []
+    track_presentations = {}
+    if entity == "track" and not agg.empty:
+        from backend.domains.metadata.track_presentation import resolve_track_presentations
+
+        track_presentations = resolve_track_presentations(
+            conn, agg["track_id"], merge_level=merge_level
+        )
     for i, r in enumerate(agg.itertuples(index=False)):
         row = {"rank": i + 1, "plays": int(r.plays), "hours": round(float(r.hours), 1)}
         if entity == "track":
             row["track_id"] = int(r.track_id)
             row["track_name"] = r.track_name
             row["artist_name"] = r.artist_name
-            row["cover_url"] = track_cover_map.get(int(r.track_id))
+            presentation = track_presentations.get(int(r.track_id))
+            row["album_name"] = (
+                presentation.display_album_name if presentation is not None else None
+            )
+            row["cover_url"] = presentation.cover_url if presentation is not None else None
         elif entity == "artist":
             row["artist_name"] = r.artist_name
             row["unique_tracks"] = int(r.unique_tracks)

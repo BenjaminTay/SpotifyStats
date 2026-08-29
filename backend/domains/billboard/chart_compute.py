@@ -141,7 +141,9 @@ def _compute_billboard_data_cached(
     )
 
     # ── Enrich with cover URLs ───────────────────────────────────────
-    weekly, weekly_album, weekly_artist = _add_cover_urls(weekly, weekly_album, weekly_artist)
+    weekly, weekly_album, weekly_artist = _add_cover_urls(
+        weekly, weekly_album, weekly_artist, merge_level=merge_level
+    )
 
     # ── Convert to JSON-safe format ────────────────────────────────────
     date_cols_week = ["billboard_week", "first_week", "last_week", "first_peak_week"]

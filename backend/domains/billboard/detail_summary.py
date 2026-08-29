@@ -133,6 +133,27 @@ def _track_meta(conn: sqlite3.Connection, track_id: int) -> dict | None:
     return meta or None
 
 
+def _document_track_attribution(conn: sqlite3.Connection, document: sqlite3.Row) -> dict[str, Any]:
+    project_name = None
+    if document["album_project_id"] is not None:
+        row = conn.execute(
+            "SELECT canonical_name FROM album_projects WHERE project_id=?",
+            (document["album_project_id"],),
+        ).fetchone()
+        project_name = str(row[0]) if row is not None else None
+    return {
+        "album_project_id": document["album_project_id"],
+        "album_project_name": project_name,
+        "display_album_id": document["album_id"],
+        "display_album_name": document["album_name"],
+        "membership_role": document["membership_role"],
+        "cover_album_id": document["cover_album_id"],
+        "cover_url": document["cover_url"],
+        "cover_source": document["cover_source"] or "fallback",
+        "resolution_status": document["presentation_status"] or "fallback",
+    }
+
+
 def _album_meta(
     conn: sqlite3.Connection,
     album_name: str,
@@ -351,6 +372,7 @@ def build_track_detail_summary(args: tuple) -> dict | None:
             "artist_names": artist_names,
             "primary_artist_name": primary,
             "cover_url": document["cover_url"],
+            "album_attribution": _document_track_attribution(conn, document),
             "meta": _track_meta(conn, track_id),
             "summary": summary,
             "history": [],

@@ -3481,6 +3481,39 @@ def migrate_063(conn: sqlite3.Connection):
     )
 
 
+@migration(64, "album_project_revision_state")
+def migrate_064(conn: sqlite3.Connection):
+    """Add an O(1) revision for Album Project and track-presentation changes."""
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS album_project_revision_state (
+            state_id INTEGER PRIMARY KEY CHECK(state_id = 1),
+            current_revision INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT OR IGNORE INTO album_project_revision_state(state_id, current_revision)
+        VALUES (1, 0);
+        """
+    )
+
+
+@migration(65, "music_search_track_presentation_fields")
+def migrate_065(conn: sqlite3.Connection):
+    """Persist structured track ownership and artwork provenance in generations."""
+
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_documents)")}
+    additions = {
+        "membership_role": "TEXT",
+        "cover_album_id": "INTEGER",
+        "cover_source": "TEXT",
+        "presentation_status": "TEXT",
+    }
+    for name, sql_type in additions.items():
+        if name not in columns:
+            conn.execute(f"ALTER TABLE music_search_documents ADD COLUMN {name} {sql_type}")
+
+
 def _ensure_migrations_table(conn: sqlite3.Connection):
     conn.execute(
         """CREATE TABLE IF NOT EXISTS schema_migrations (

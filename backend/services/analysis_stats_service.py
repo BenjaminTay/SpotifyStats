@@ -15,7 +15,6 @@ from backend.domains.metadata.genre_display_taxonomy import build_consumer_taste
 from backend.services.play_service import (
     _album_cover_lookup,
     _artist_cover_lookup,
-    _track_cover_urls,
 )
 
 PERIOD_LABELS = {
@@ -131,21 +130,6 @@ def _album_identity_lookup(conn: sqlite3.Connection) -> pd.DataFrame:
            LEFT JOIN artists ar ON ar.artist_id = al.artist_id""",
         conn,
     )
-
-
-def _track_album_name_lookup(conn: sqlite3.Connection, track_ids) -> dict[int, str]:
-    ids = [int(v) for v in pd.Series(track_ids).dropna().unique().tolist()]
-    if not ids:
-        return {}
-    placeholders = ",".join("?" * len(ids))
-    rows = conn.execute(
-        f"""SELECT t.track_id, al.album_name
-              FROM tracks t
-              LEFT JOIN albums al ON al.album_id = t.album_id
-             WHERE t.track_id IN ({placeholders})""",
-        ids,
-    ).fetchall()
-    return {int(row["track_id"]): row["album_name"] for row in rows if row["album_name"]}
 
 
 def _album_container_ids(df: pd.DataFrame) -> pd.Series:
@@ -531,9 +515,22 @@ def _behavior_summary(df: pd.DataFrame) -> dict:
 def recent_plays(conn: sqlite3.Connection, df: pd.DataFrame, limit: int = 50) -> list[dict]:
     if df.empty:
         return []
-    cover_map = _track_cover_urls(conn, df["track_id"])
+    container_ids = _album_container_ids(df)
+    album_ids = [int(value) for value in container_ids.dropna().unique()]
+    album_map = {}
+    if album_ids:
+        placeholders = ",".join("?" for _ in album_ids)
+        album_map = {
+            int(row["album_id"]): str(row["album_name"])
+            for row in conn.execute(
+                f"SELECT album_id, album_name FROM albums WHERE album_id IN ({placeholders})",
+                album_ids,
+            ).fetchall()
+        }
     names_map = get_track_artist_names_map()
-    rows = df.sort_values("ts", ascending=False).head(limit)
+    rows = df.copy()
+    rows["presentation_source_album_id"] = container_ids
+    rows = rows.sort_values("ts", ascending=False).head(limit)
     result = []
     for r in rows.itertuples(index=False):
         track_id = int(r.track_id) if pd.notna(r.track_id) else None
@@ -542,6 +539,12 @@ def recent_plays(conn: sqlite3.Connection, df: pd.DataFrame, limit: int = 50) ->
             int(representative_value)
             if representative_value is not None and pd.notna(representative_value)
             else track_id
+        )
+        source_album_value = getattr(r, "presentation_source_album_id", None)
+        source_album_id = (
+            int(source_album_value)
+            if source_album_value is not None and pd.notna(source_album_value)
+            else None
         )
         entry = {
             "play_id": int(r.play_id),
@@ -552,11 +555,13 @@ def recent_plays(conn: sqlite3.Connection, df: pd.DataFrame, limit: int = 50) ->
             "representative_track_id": representative_track_id,
             "track_name": r.track_name,
             "artist_name": r.artist_name,
-            "album_name": getattr(r, "album_name", None),
+            "album_name": album_map.get(source_album_id),
             "ms_played": int(r.ms_played),
             "hours": round(float(r.ms_played) / 3_600_000, 3),
             "platform": r.platform,
-            "cover_url": cover_map.get(track_id) if track_id is not None else None,
+            "cover_url": (
+                f"/covers/albums/{source_album_id}.jpg" if source_album_id is not None else None
+            ),
         }
         if track_id is not None and track_id in names_map:
             entry["artist_names"] = names_map[track_id]
@@ -858,16 +863,15 @@ def chart_rows(
     total = int(len(agg))
     sliced = agg.iloc[offset : offset + limit] if limit is not None else agg.iloc[offset:]
 
-    track_covers = (
-        _track_cover_urls(conn, sliced["track_id"])
-        if entity == "track" and not sliced.empty
-        else {}
-    )
-    track_album_names = (
-        _track_album_name_lookup(conn, sliced["track_id"])
-        if entity == "track" and conn is not None and not sliced.empty
-        else {}
-    )
+    track_presentations = {}
+    if entity == "track" and conn is not None and not sliced.empty:
+        from backend.domains.metadata.track_presentation import resolve_track_presentations
+
+        track_presentations = resolve_track_presentations(
+            conn,
+            sliced["track_id"],
+            merge_level=merge_level,
+        )
     album_covers = _album_cover_lookup(conn) if entity == "album" else {}
     artist_covers = _artist_cover_lookup(conn) if entity == "artist" else {}
     active_days = max(
@@ -894,17 +898,21 @@ def chart_rows(
         }
         if entity == "track":
             tid = int(r["track_id"])
-            album_name = r.get("album_name", "")
+            presentation = track_presentations.get(tid)
+            album_name = (
+                presentation.display_album_name
+                if presentation is not None
+                else r.get("album_name", "")
+            )
             if pd.isna(album_name):
                 album_name = ""
-            album_name = str(album_name) if album_name else track_album_names.get(tid, "")
             row.update(
                 {
                     "track_id": tid,
                     "track_name": r["track_name"],
                     "artist_name": r["artist_name"],
                     "album_name": album_name,
-                    "cover_url": track_covers.get(tid),
+                    "cover_url": presentation.cover_url if presentation is not None else None,
                 }
             )
             if tid in track_names_map:
@@ -1085,7 +1093,9 @@ def _build_analysis_charts(
 
 def entity_cover(conn: sqlite3.Connection, entity: str, row: dict) -> str | None:
     if entity == "track" and row.get("track_id") is not None:
-        return _track_cover_urls(conn, [row["track_id"]]).get(int(row["track_id"]))
+        from backend.domains.metadata.track_presentation import resolve_track_presentation
+
+        return resolve_track_presentation(conn, int(row["track_id"]), merge_level=2).cover_url
     if entity == "album":
         return _album_cover_lookup(conn).get((row.get("album_name"), row.get("artist_name")))
     if entity == "artist":
@@ -1137,7 +1147,7 @@ def get_global_plays(
         FROM plays p
         LEFT JOIN tracks t ON p.track_id = t.track_id
         LEFT JOIN artists a ON t.artist_id = a.artist_id
-        LEFT JOIN albums al ON t.album_id = al.album_id
+        LEFT JOIN albums al ON al.album_id=COALESCE(p.source_album_id, t.album_id)
     """
 
     count_sql = f"SELECT COUNT(*) {base_from} WHERE {where_clause}"
@@ -1145,7 +1155,7 @@ def get_global_plays(
 
     select_sql = f"""
         SELECT p.play_id, p.ts, p.ts_date, p.track_id, t.track_name,
-               a.artist_name, al.album_name, p.ms_played, p.platform
+               a.artist_name, al.album_id, al.album_name, p.ms_played, p.platform
         {base_from}
         WHERE {where_clause}
         ORDER BY p.ts DESC
@@ -1153,8 +1163,6 @@ def get_global_plays(
     """
     rows = conn.execute(select_sql, params + [limit, offset]).fetchall()
 
-    track_ids = [int(r["track_id"]) for r in rows if r["track_id"] is not None]
-    cover_map = _track_cover_urls(conn, track_ids) if track_ids else {}
     from backend.core.db import get_raw_track_artist_names_map
 
     names_map = get_raw_track_artist_names_map()
@@ -1173,7 +1181,9 @@ def get_global_plays(
             "ms_played": int(r["ms_played"]),
             "hours": round(float(r["ms_played"]) / 3_600_000, 3),
             "platform": r["platform"] or "",
-            "cover_url": cover_map.get(tid) if tid is not None else None,
+            "cover_url": (
+                f"/covers/albums/{int(r['album_id'])}.jpg" if r["album_id"] is not None else None
+            ),
         }
         if tid is not None and tid in names_map:
             entry["artist_names"] = names_map[tid]

@@ -39,7 +39,6 @@ from backend.services.analysis_stats_service import (
 from backend.services.play_service import (
     _album_cover_lookup,
     _artist_cover_lookup,
-    _track_cover_urls,
 )
 
 
@@ -358,6 +357,9 @@ def _build_track_stats(
     ).fetchone()
     if info is None:
         return {"found": False}
+    from backend.domains.metadata.track_presentation import resolve_track_presentation
+
+    presentation = resolve_track_presentation(conn, primary_track_id, merge_level=merge_level)
     representative_track_id = int(info["representative_track_id"])
     primary_artist = info["artist_name"]
     all_artists = get_track_artist_names_map()
@@ -376,8 +378,9 @@ def _build_track_stats(
                 "track_name": info["track_name"],
                 "artist_name": display_artist,
                 "artist_names": artist_names,
-                "album_name": info["album_name"],
-                "cover_url": _track_cover_urls(conn, [primary_track_id]).get(primary_track_id),
+                "album_name": presentation.display_album_name or info["album_name"],
+                "cover_url": presentation.cover_url,
+                "album_attribution": presentation.payload(),
             },
             "first_played": str(entity_all["ts"].min()),
             "last_played": str(entity_all["ts"].max()),
@@ -1088,12 +1091,34 @@ def get_entity_plays(
         )
         df = df[mask]
 
+    fallback_column = "track_album_id" if "track_album_id" in df.columns else "album_id"
+    source_ids = (
+        pd.to_numeric(df["source_album_id"], errors="coerce")
+        if "source_album_id" in df.columns
+        else pd.Series(pd.NA, index=df.index, dtype="Float64")
+    )
+    fallback_ids = (
+        pd.to_numeric(df[fallback_column], errors="coerce")
+        if fallback_column in df.columns
+        else pd.Series(pd.NA, index=df.index, dtype="Float64")
+    )
+    df = df.copy()
+    df["presentation_source_album_id"] = source_ids.fillna(fallback_ids).astype("Int64")
     df = df.sort_values("ts", ascending=False)
     total = int(len(df))
     page = df.iloc[offset : offset + limit]
 
-    track_ids = [int(v) for v in page["track_id"].dropna().unique().tolist()]
-    cover_map = _track_cover_urls(conn, track_ids) if track_ids else {}
+    album_ids = [int(v) for v in page["presentation_source_album_id"].dropna().unique()]
+    album_map = {}
+    if album_ids:
+        placeholders = ",".join("?" for _ in album_ids)
+        album_map = {
+            int(row["album_id"]): str(row["album_name"])
+            for row in conn.execute(
+                f"SELECT album_id, album_name FROM albums WHERE album_id IN ({placeholders})",
+                album_ids,
+            ).fetchall()
+        }
     from backend.core.db import get_track_artist_names_map
 
     names_map = get_track_artist_names_map()
@@ -1107,6 +1132,12 @@ def get_entity_plays(
             if representative_value is not None and pd.notna(representative_value)
             else tid
         )
+        source_album_value = getattr(r, "presentation_source_album_id", None)
+        source_album_id = (
+            int(source_album_value)
+            if source_album_value is not None and pd.notna(source_album_value)
+            else None
+        )
         entry = {
             "play_id": int(r.play_id),
             "ts": str(r.ts),
@@ -1116,11 +1147,13 @@ def get_entity_plays(
             "representative_track_id": representative_track_id,
             "track_name": "" if pd.isna(r.track_name) else r.track_name,
             "artist_name": "" if pd.isna(r.artist_name) else r.artist_name,
-            "album_name": None if pd.isna(r.album_name) else r.album_name,
+            "album_name": album_map.get(source_album_id),
             "ms_played": int(r.ms_played),
             "hours": round(float(r.ms_played) / 3_600_000, 3),
             "platform": "" if pd.isna(r.platform) else r.platform,
-            "cover_url": cover_map.get(tid) if tid is not None else None,
+            "cover_url": (
+                f"/covers/albums/{source_album_id}.jpg" if source_album_id is not None else None
+            ),
         }
         if tid is not None and tid in names_map:
             entry["artist_names"] = names_map[tid]
@@ -1227,8 +1260,10 @@ def _is_primary_connection(conn: sqlite3.Connection) -> bool:
     return bool(path) and os.path.realpath(path) == os.path.realpath(DB_PATH)
 
 
-def _entity_stats_revision_state(conn: sqlite3.Connection) -> tuple[int, int, int, int, int]:
+def _entity_stats_revision_state(conn: sqlite3.Connection) -> tuple[Any, ...]:
     from backend.domains.metadata.track_identity import get_track_identity_revision
+    from backend.domains.metadata.track_presentation import TRACK_PRESENTATION_POLICY_VERSION
+    from backend.domains.playback.album_projects import get_album_project_revision
 
     state = get_music_search_revision_state(conn)
     return (
@@ -1237,6 +1272,8 @@ def _entity_stats_revision_state(conn: sqlite3.Connection) -> tuple[int, int, in
         state.settings_revision,
         state.candidate_revision,
         get_track_identity_revision(conn),
+        get_album_project_revision(conn),
+        TRACK_PRESENTATION_POLICY_VERSION,
     )
 
 

@@ -15,7 +15,9 @@ from backend.domains.metadata.track_identity import (
     TRACK_IDENTITY_POLICY_VERSION,
     get_track_identity_revision,
 )
+from backend.domains.metadata.track_presentation import TRACK_PRESENTATION_POLICY_VERSION
 from backend.domains.music_search.revisions import get_music_search_revision_state
+from backend.domains.playback.album_projects import get_album_project_revision
 
 MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v8_canonical_track"
 # Compatibility name used by existing reports and API terminology.
@@ -53,6 +55,8 @@ class MusicSearchFilterContext:
     semantic_base_key: str
     filter_fingerprint: str
     source_revision: str
+    album_project_revision: int = 0
+    track_presentation_policy: str = TRACK_PRESENTATION_POLICY_VERSION
 
     def filter_values(self) -> dict[str, Any]:
         return asdict(self)
@@ -196,6 +200,8 @@ def build_music_search_filter_context(
         "track_credit_revision": get_track_credit_revision(conn),
         "track_identity_revision": get_track_identity_revision(conn),
         "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
+        "album_project_revision": get_album_project_revision(conn),
+        "track_presentation_policy": TRACK_PRESENTATION_POLICY_VERSION,
     }
     semantic_values = {
         key: value
@@ -225,6 +231,8 @@ def build_music_search_filter_context(
             "credits": values["track_credit_revision"],
             "track_identity": values["track_identity_revision"],
             "track_identity_policy": values["track_identity_policy"],
+            "album_project_revision": values["album_project_revision"],
+            "track_presentation_policy": values["track_presentation_policy"],
         },
         20,
     )

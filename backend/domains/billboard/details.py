@@ -17,6 +17,7 @@ from backend.domains.billboard.chart_compute import compute_billboard_data
 from backend.domains.metadata.album_detail_meta import resolve_album_detail_meta
 from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
+from backend.domains.metadata.track_presentation import resolve_track_presentation
 
 
 def _stable_detail_track_sort(
@@ -285,6 +286,18 @@ def _get_track_spotify_meta(track_id, merge_level=2, weighted_frame=None):
 
     conn.close()
     return meta if meta else None
+
+
+def _get_track_presentation_fields(track_id: int, merge_level: int) -> dict:
+    conn = get_db(readonly=True)
+    try:
+        presentation = resolve_track_presentation(conn, track_id, merge_level=merge_level)
+        return {
+            "cover_url": presentation.cover_url,
+            "album_attribution": presentation.payload(),
+        }
+    finally:
+        conn.close()
 
 
 def _classify_recording_kind(track_name: str) -> str | None:
@@ -1104,6 +1117,7 @@ def get_track_history(
         if not stats.get("found"):
             return {"found": False, "meta": None}
         entity = stats["entity"]
+        presentation_fields = _get_track_presentation_fields(track_id, merge_level)
         return {
             "found": True,
             "chart_status": "not_charted",
@@ -1116,7 +1130,8 @@ def get_track_history(
             "primary_artist_name": _track_primary_artist_name(
                 int(entity["track_id"]), str(entity["artist_name"])
             ),
-            "cover_url": entity.get("cover_url"),
+            "cover_url": presentation_fields["cover_url"] or entity.get("cover_url"),
+            "album_attribution": presentation_fields["album_attribution"],
             "meta": _get_track_spotify_meta(track_id, merge_level, detail_weighted_frame),
             "summary": None,
             "history": [],
@@ -1151,6 +1166,7 @@ def get_track_history(
     artist_names = all_artists.get(track_id, [primary_artist])
     display_artist = ", ".join(artist_names) if len(artist_names) > 1 else primary_artist
 
+    presentation_fields = _get_track_presentation_fields(track_id, merge_level)
     return {
         "found": True,
         "chart_status": "charted",
@@ -1160,7 +1176,9 @@ def get_track_history(
         "artist_name": display_artist,
         "artist_names": artist_names,
         "primary_artist_name": _track_primary_artist_name(track_id, primary_artist),
-        "cover_url": cover_url if pd.notna(cover_url) else None,
+        "cover_url": presentation_fields["cover_url"]
+        or (cover_url if pd.notna(cover_url) else None),
+        "album_attribution": presentation_fields["album_attribution"],
         "meta": _get_track_spotify_meta(track_id, merge_level, detail_weighted_frame),
         "summary": {
             "peak_position": int(info.get("peak_position", 0)),

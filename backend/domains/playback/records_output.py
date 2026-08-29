@@ -69,19 +69,13 @@ def _add_cover_urls_to_records(records: dict) -> None:
                     track_ids_set.add(numeric_id)
 
     if track_ids_set:
-        placeholders = ",".join("?" for _ in track_ids_set)
-        rows = conn.execute(
-            f"""SELECT t.track_id, al.album_id, al.image_path, al.image_url
-                FROM tracks t
-                LEFT JOIN albums al ON t.album_id = al.album_id
-                WHERE t.track_id IN ({placeholders})""",
-            list(track_ids_set),
-        ).fetchall()
+        from backend.domains.metadata.track_presentation import resolve_track_presentations
+
         track_cover_map = {
-            r["track_id"]: _build_url(r["image_path"], r["image_url"], "albums", r["album_id"])
-            if r["album_id"]
-            else None
-            for r in rows
+            track_id: presentation.cover_url
+            for track_id, presentation in resolve_track_presentations(
+                conn, track_ids_set, merge_level=2
+            ).items()
         }
 
         def _track_cover_for_entity_id(entity_id):
@@ -117,9 +111,15 @@ def _add_cover_urls_to_records(records: dict) -> None:
     ).fetchall()
     track_name_cover_map = {}
     track_name_id_map = {}
+    from backend.domains.metadata.track_presentation import resolve_track_presentations
+
+    presentations = resolve_track_presentations(
+        conn, [int(row["track_id"]) for row in track_name_rows], merge_level=2
+    )
     for r in track_name_rows:
         key = (r["track_name"], r["artist_name"])
-        url = _build_url(r["image_path"], r["image_url"], "albums", r["album_id"])
+        presentation = presentations.get(int(r["track_id"]))
+        url = presentation.cover_url if presentation is not None else None
         if url or key not in track_name_cover_map:
             track_name_cover_map[key] = url
             track_name_id_map[key] = str(r["track_id"])

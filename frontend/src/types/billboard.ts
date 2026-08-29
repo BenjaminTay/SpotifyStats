@@ -913,6 +913,17 @@ export interface TrackDetailResponse extends DetailYearEndFields {
   artist_names?: string[]
   primary_artist_name?: string
   cover_url: string | null
+  album_attribution?: {
+    album_project_id: number | null
+    album_project_name: string | null
+    display_album_id: number | null
+    display_album_name: string | null
+    membership_role: string | null
+    cover_album_id: number | null
+    cover_url: string | null
+    cover_source: string
+    resolution_status: string
+  } | null
   meta: TrackSpotifyMeta | null
   summary: {
     peak_position: number

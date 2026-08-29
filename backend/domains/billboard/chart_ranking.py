@@ -158,7 +158,7 @@ def _apply_track_groups(df: pd.DataFrame, merge_level: int = 2) -> None:
             ].astype(int)
             df.loc[mask, "track_name"] = df.loc[mask, "_track_agg_name"]
             if "album_name" in df.columns:
-                _canonicalize_album_name(df, mask, conn)
+                _canonicalize_album_name(df, mask, conn, merge_level)
             df.drop(
                 columns=[
                     "_track_agg_l1_id",
@@ -190,40 +190,31 @@ def _apply_track_groups(df: pd.DataFrame, merge_level: int = 2) -> None:
         # Canonicalize album_name to primary track's album for merged rows.
         # This prevents cross-album splits in downstream groupby aggregations.
         if "album_name" in df.columns:
-            _canonicalize_album_name(df, mask, conn)
+            _canonicalize_album_name(df, mask, conn, merge_level)
 
         df.drop(columns=["_track_agg_id", "_track_agg_name"], inplace=True)
     finally:
         conn.close()
 
 
-def _canonicalize_album_name(df, mask, conn):
-    """For rows mapped to a track group, set album_name to the
-    primary track's album so all versions share the same album.
-    """
-    mapping_column = (
-        "_representative_track_agg_id"
-        if "_representative_track_agg_id" in df.columns
-        else "_track_agg_id"
+def _canonicalize_album_name(df, mask, conn, merge_level):
+    """Apply the shared track-presentation album instead of representative metadata."""
+    from backend.domains.metadata.track_presentation import resolve_track_presentations
+
+    identity_column = "_track_agg_l1_id" if "_track_agg_l1_id" in df.columns else "_track_agg_id"
+    canonical_ids = df.loc[mask, identity_column].dropna().astype(int).unique()
+    presentations = resolve_track_presentations(
+        conn,
+        canonical_ids,
+        merge_level=merge_level,
     )
-    primary_ids = df.loc[mask, mapping_column].dropna().astype(int).unique()
-    if len(primary_ids) == 0:
-        return
-
-    placeholders = ",".join("?" for _ in primary_ids)
-    rows = conn.execute(
-        f"""SELECT tg.primary_track_id, a.album_name
-            FROM track_groups tg
-            JOIN tracks t ON tg.primary_track_id = t.track_id
-            JOIN albums a ON t.album_id = a.album_id
-            WHERE tg.primary_track_id IN ({placeholders})""",
-        tuple(int(g) for g in primary_ids),
-    ).fetchall()
-
-    album_map = {row[0]: row[1] for row in rows}
-    # Map the representative local track row to canonical album metadata.
+    album_map = {
+        track_id: presentation.display_album_name
+        for track_id, presentation in presentations.items()
+        if presentation.display_album_name
+    }
     df.loc[mask, "album_name"] = (
-        df.loc[mask, mapping_column].map(album_map).fillna(df.loc[mask, "album_name"])
+        df.loc[mask, identity_column].map(album_map).fillna(df.loc[mask, "album_name"])
     )
 
 

@@ -24,7 +24,7 @@ def _enrich_records_artist_names(records: dict) -> None:
             )
 
 
-def _add_cover_urls(weekly, weekly_album, weekly_artist):
+def _add_cover_urls(weekly, weekly_album, weekly_artist, merge_level: int = 2):
     """为三个周榜 DataFrame 添加 cover_url 列。
 
     cover_url 统一指向智能封面端点 /covers/{type}/{id}.jpg：
@@ -42,6 +42,12 @@ def _add_cover_urls(weekly, weekly_album, weekly_artist):
     # ── 曲目榜：track_id → album_id → albums ─────────────────────────
     if not weekly.empty and "track_id" in weekly.columns:
         track_ids = weekly["track_id"].unique().tolist()
+        from backend.domains.metadata.track_presentation import resolve_track_presentations
+
+        presentations = resolve_track_presentations(conn, track_ids, merge_level=merge_level)
+        cover_map = {
+            track_id: presentation.cover_url for track_id, presentation in presentations.items()
+        }
         placeholders = ",".join("?" for _ in track_ids)
         has_l1 = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_identities'"
@@ -64,12 +70,13 @@ def _add_cover_urls(weekly, weekly_album, weekly_artist):
                     WHERE t.track_id IN ({placeholders})""",
                 track_ids,
             ).fetchall()
-        cover_map = {
-            r["track_id"]: _build_url(r["image_path"], r["image_url"], "albums", r["album_id"])
-            if r["album_id"]
-            else None
-            for r in rows
-        }
+        for r in rows:
+            if cover_map.get(r["track_id"]) is None:
+                cover_map[r["track_id"]] = (
+                    _build_url(r["image_path"], r["image_url"], "albums", r["album_id"])
+                    if r["album_id"]
+                    else None
+                )
         weekly = weekly.copy()
         weekly["cover_url"] = weekly["track_id"].map(cover_map)
 

@@ -70,35 +70,19 @@ def _get_album_cover(conn: sqlite3.Connection, album_name: str) -> str:
 
 
 def _get_track_cover(conn: sqlite3.Connection, track_name: str, artist_name: str) -> str:
-    """Get album cover for a track — go through spotify_track_meta to spotify_album_meta.
-
-    tracks.spotify_album_id is not reliably populated; the canonical path is
-    tracks.spotify_track_uri → spotify_track_meta.spotify_track_id
-     → spotify_track_meta.spotify_album_id → spotify_album_meta.image_url.
-    Falls back to the albums dimension table when spotify_album_meta has no image.
-    """
+    """Resolve the shared L2 presentation artwork for a named track."""
     row = conn.execute(
-        "SELECT m.image_url "
+        "SELECT t.track_id "
         "FROM tracks t "
         "JOIN artists a ON t.artist_id = a.artist_id "
-        "JOIN spotify_track_meta stm "
-        "  ON t.spotify_track_id = stm.spotify_track_id "
-        "JOIN spotify_album_meta m ON stm.spotify_album_id = m.spotify_album_id "
-        "WHERE t.track_name = ? AND a.artist_name = ? LIMIT 1",
+        "WHERE t.track_name = ? AND a.artist_name = ? ORDER BY t.track_id LIMIT 1",
         (track_name, artist_name),
     ).fetchone()
-    if row and row[0]:
-        return row[0]
-    # fallback: use the dimension albums table (has image_url from ensure_schema)
-    row2 = conn.execute(
-        "SELECT al.image_url "
-        "FROM tracks t "
-        "JOIN artists a ON t.artist_id = a.artist_id "
-        "JOIN albums al ON t.album_id = al.album_id "
-        "WHERE t.track_name = ? AND a.artist_name = ? LIMIT 1",
-        (track_name, artist_name),
-    ).fetchone()
-    return (row2[0] or "") if row2 else ""
+    if row is None:
+        return ""
+    from backend.domains.metadata.track_presentation import resolve_track_presentation
+
+    return resolve_track_presentation(conn, int(row[0]), merge_level=2).cover_url or ""
 
 
 def _batch_query(conn: sqlite3.Connection, sql_template: str, items: list, batch_size: int = 500):

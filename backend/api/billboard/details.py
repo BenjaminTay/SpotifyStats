@@ -54,6 +54,7 @@ class TrackHistoryResponse(BaseModel):
     artist_name: str | None = None
     artist_names: list[str] | None = None
     cover_url: str | None = None
+    album_attribution: dict | None = None
     meta: dict | None = None
     summary: dict | None = None
     history: list[dict] | None = None

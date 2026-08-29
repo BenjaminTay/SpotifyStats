@@ -86,7 +86,7 @@ def _track_result(
         track_id=int(track_id),
         album_name=str(album_name) if album_name else None,
         artist_name=str(artist_name) if artist_name else None,
-        cover_url=_cover_url("albums", candidate.get("album_id")),
+        cover_url=candidate.get("cover_url") or _cover_url("albums", candidate.get("album_id")),
         chart=chart,
     )
 
@@ -577,7 +577,26 @@ def search_music_entities(
             )
         rows = []
         with measure_search_phase(timing, f"assemble_{kind}"):
-            for candidate in resolved.get("candidates", []):
+            candidates = list(resolved.get("candidates", []))
+            if kind == "track" and candidates:
+                from backend.domains.metadata.track_presentation import (
+                    resolve_track_presentations,
+                )
+
+                presentations = resolve_track_presentations(
+                    conn,
+                    [candidate["track_id"] for candidate in candidates],
+                    merge_level=merge_level,
+                )
+                candidates = [dict(candidate) for candidate in candidates]
+                for candidate in candidates:
+                    presentation = presentations.get(int(candidate["track_id"]))
+                    if presentation is None:
+                        continue
+                    candidate["album_id"] = presentation.display_album_id
+                    candidate["album_name"] = presentation.display_album_name
+                    candidate["cover_url"] = presentation.cover_url
+            for candidate in candidates:
                 metrics = (
                     _filtered_metrics(
                         conn,
