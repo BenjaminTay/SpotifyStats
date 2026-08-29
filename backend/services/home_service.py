@@ -26,6 +26,7 @@ from backend.models.yearly_review import YearlyReviewFilterContext
 from backend.services.yearly_review_service import database_revision, yearly_review_cache_state
 
 _HOME_SNAPSHOT_DIR = Path(DB_PATH).parent / "cache" / "home-overview"
+_HOME_FACTS_VERSION = "home-facts-v3"
 logger = logging.getLogger(__name__)
 _rebuild_guard = threading.Lock()
 _rebuild_paths: set[Path] = set()
@@ -58,7 +59,7 @@ def _lkg_snapshot_path(context: YearlyReviewFilterContext) -> Path:
     digest = hashlib.sha256(
         json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    return _HOME_SNAPSHOT_DIR / f"lkg-{digest}.json"
+    return _HOME_SNAPSHOT_DIR / f"lkg-{_HOME_FACTS_VERSION}-{digest}.json"
 
 
 def _read_snapshot(path: Path) -> dict | None:
@@ -215,7 +216,7 @@ def get_home_overview(conn: Connection, context: YearlyReviewFilterContext) -> H
         payload = _get_home_overview_cached(
             context.model_dump_json(),
             database_revision(),
-            "home-facts-v2",
+            _HOME_FACTS_VERSION,
             latest_snapshot_revision(billboard_key),
             yearly_review_cache_state(context),
         )

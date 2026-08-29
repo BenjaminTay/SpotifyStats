@@ -92,6 +92,7 @@ class HomeChartChampion(BaseModel):
     rank: Literal[1] = 1
     plays: int = Field(ge=0)
     hours: float = Field(ge=0)
+    movement: Literal["new", "re", "up", "down", "same"]
     previous_rank: int | None = Field(default=None, ge=1)
     rank_change: int | None = None
 
@@ -120,7 +121,7 @@ class HomeRediscovery(BaseModel):
 
 
 class HomeOverviewResponse(BaseModel):
-    schema_version: Literal["home_overview_v1"] = "home_overview_v1"
+    schema_version: Literal["home_overview_v2"] = "home_overview_v2"
     generated_at: str
     cache_state: Literal["fresh", "warming", "stale"] = "fresh"
     filter_fingerprint: str

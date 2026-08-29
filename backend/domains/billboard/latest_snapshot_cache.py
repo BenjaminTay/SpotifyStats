@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from copy import deepcopy
 from threading import RLock
 from typing import Any
 
@@ -63,6 +64,9 @@ def store_latest_snapshot(key: tuple[Any, ...], payload: dict[str, Any]) -> None
             row for row in payload.get("weekly_artist", []) if row.get("billboard_week") in selected
         ],
     }
+    movement = payload.get("home_billboard_movement")
+    if isinstance(movement, dict):
+        snapshot["home_billboard_movement"] = deepcopy(movement)
     with _lock:
         _snapshots[key] = snapshot
         _revision += 1
@@ -95,7 +99,12 @@ def store_latest_snapshot_for_locals(
         "include_compilations",
         "merge_enabled",
     )
-    store_latest_snapshot_for_args(tuple(values[name] for name in names), payload)
+    snapshot_payload = dict(payload)
+    filtered = values.get("df_filtered")
+    movement = getattr(filtered, "attrs", {}).get("home_billboard_movement")
+    if isinstance(movement, dict):
+        snapshot_payload["home_billboard_movement"] = movement
+    store_latest_snapshot_for_args(tuple(values[name] for name in names), snapshot_payload)
     return payload
 
 
@@ -106,12 +115,15 @@ def get_latest_snapshot_if_cached(key: tuple[Any, ...]) -> dict[str, Any] | None
         if value is None:
             return None
         _snapshots.move_to_end(key)
-        return {
+        result = {
             "meta": {"all_weeks_desc": list(value["meta"]["all_weeks_desc"])},
             "weekly": [dict(row) for row in value["weekly"]],
             "weekly_album": [dict(row) for row in value["weekly_album"]],
             "weekly_artist": [dict(row) for row in value["weekly_artist"]],
         }
+        if "home_billboard_movement" in value:
+            result["home_billboard_movement"] = deepcopy(value["home_billboard_movement"])
+        return result
 
 
 def clear_latest_snapshots() -> None:

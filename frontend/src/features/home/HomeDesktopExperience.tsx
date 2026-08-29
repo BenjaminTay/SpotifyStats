@@ -107,9 +107,11 @@ function RecentChapter({ data }: { data: HomeOverviewResponse }) {
 }
 
 function movementLabel(champion: HomeChartChampion): string {
-  if (champion.previous_rank === null) return '新入榜'
-  if (!champion.rank_change) return '排名持平'
-  return champion.rank_change > 0 ? `↑ ${champion.rank_change}` : `↓ ${Math.abs(champion.rank_change)}`
+  if (champion.movement === 'new') return '新入榜'
+  if (champion.movement === 're') return '重回榜'
+  if (champion.movement === 'same') return '排名持平'
+  if (champion.movement === 'up') return `↑ ${champion.rank_change ?? 0}`
+  return `↓ ${Math.abs(champion.rank_change ?? 0)}`
 }
 
 function ChartChampion({ label, champion }: { label: string; champion: HomeChartChampion | null }) {

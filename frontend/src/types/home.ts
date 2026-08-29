@@ -1,6 +1,7 @@
 export type HomeState = 'ready' | 'limited' | 'empty'
 export type HomeFreshness = 'recent' | 'aging' | 'old' | 'unknown'
 export type HomeEntityType = 'track' | 'album' | 'artist'
+export type HomeChartMovement = 'new' | 're' | 'up' | 'down' | 'same'
 
 export interface HomeEntityRef {
   entity_type: HomeEntityType
@@ -84,6 +85,7 @@ export interface HomeChartChampion {
   rank: number
   plays: number
   hours: number
+  movement: HomeChartMovement
   previous_rank: number | null
   rank_change: number | null
 }
@@ -112,7 +114,7 @@ export interface HomeRediscoveryTrack {
 }
 
 export interface HomeOverviewResponse {
-  schema_version: 'home_overview_v1' | string
+  schema_version: 'home_overview_v2' | string
   generated_at: string
   cache_state?: 'fresh' | 'warming' | 'stale'
   filter_fingerprint: string

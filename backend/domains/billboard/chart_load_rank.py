@@ -7,6 +7,7 @@ from functools import lru_cache
 import pandas as pd
 
 from backend.core.cache import singleflight
+from backend.domains.billboard.chart_movement import build_home_billboard_movement
 from backend.domains.billboard.chart_ranking import (
     _add_running_metrics,
     compute_album_weekly_rankings,
@@ -296,6 +297,20 @@ def _load_and_rank_uncached(
         df_artists = _filter_billboard_years(df_artists, year_start, year_end)
         df_artists = keep_complete_billboard_weeks(df_artists, open_week=open_week)
         weekly_artist = compute_artist_weekly_rankings(df_artists, bb_artist_top_n)
+
+    # The rankers already retain every week's published Top N.  Use that
+    # bounded history for RE detection without turning the cold chart path
+    # into an all-candidates ranking pass.
+    home_billboard_movement = build_home_billboard_movement(
+        weekly,
+        weekly_album,
+        weekly_artist,
+        all_weeks_desc,
+        bb_top_n=bb_top_n,
+        bb_album_top_n=bb_album_top_n,
+        bb_artist_top_n=bb_artist_top_n,
+    )
+    df_filtered.attrs["home_billboard_movement"] = home_billboard_movement
 
     weekly_album, weekly_artist = _attach_charting_entity_counts(
         weekly, weekly_album, weekly_artist, merge_level=merge_level

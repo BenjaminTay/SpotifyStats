@@ -23,7 +23,7 @@ const track = {
 }
 
 const data: HomeOverviewResponse = {
-  schema_version: 'home_overview_v1',
+  schema_version: 'home_overview_v2',
   generated_at: '2026-08-13T10:00:00+08:00',
   filter_fingerprint: 'filters-v1',
   state: 'ready',
@@ -53,9 +53,9 @@ const data: HomeOverviewResponse = {
   },
   billboard: {
     state: 'ready', week: '2026-08-07',
-    track: { entity: track, rank: 1, plays: 12, hours: .8, previous_rank: 3, rank_change: 2 },
-    album: { entity: { ...track, entity_type: 'album', name: '示例专辑' }, rank: 1, plays: 30, hours: 2, previous_rank: null, rank_change: null },
-    artist: { entity: { ...track, entity_type: 'artist', name: '示例艺人', artist_name: null }, rank: 1, plays: 45, hours: 3, previous_rank: 1, rank_change: 0 },
+    track: { entity: track, rank: 1, plays: 12, hours: .8, movement: 'up', previous_rank: 3, rank_change: 2 },
+    album: { entity: { ...track, entity_type: 'album', name: '示例专辑' }, rank: 1, plays: 30, hours: 2, movement: 'new', previous_rank: null, rank_change: null },
+    artist: { entity: { ...track, entity_type: 'artist', name: '示例艺人', artist_name: null }, rank: 1, plays: 45, hours: 3, movement: 're', previous_rank: null, rank_change: null },
   },
   yearly_review: { state: 'ready', year: 2026, headline: '这一年的声音与轨迹', statement: '八章个人音乐年鉴。', entity: track },
   rediscovery: { entity: track, last_played: '2025-06-01', total_plays: 46, days_since_last_play: 435 },
@@ -94,6 +94,8 @@ describe('正式首页 V1', () => {
 
     expect(screen.getByText('最近，你重新回到了《久违的歌》')).toBeInTheDocument()
     expect(screen.getByText('最新个人 Billboard')).toBeInTheDocument()
+    expect(screen.getByText('重回榜 · 45 次播放')).toBeInTheDocument()
+    expect(screen.getByText('新入榜 · 30 次播放')).toBeInTheDocument()
     expect(screen.getByText('长期记忆')).toBeInTheDocument()
     expect(screen.getByText('截至 2026.08.10 的最近 4 周')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /查看最近播放/ })).toHaveAttribute('href', pinnedRecentRoute)
@@ -116,6 +118,7 @@ describe('正式首页 V1', () => {
     expect(screen.getByRole('link', { name: /完整播放分析/ })).toHaveAttribute('href', pinnedRecentRoute)
     expect(document.querySelector('[data-home-presentation="phone"]')).toBeInTheDocument()
     expect(document.querySelector('[data-home-presentation="desktop"]')).not.toBeInTheDocument()
+    expect(screen.getByText('RE')).toBeInTheDocument()
   })
 
   it('uses a real import route and never invents empty-state metrics', () => {

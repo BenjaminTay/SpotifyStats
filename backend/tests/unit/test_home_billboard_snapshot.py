@@ -29,6 +29,9 @@ def test_latest_snapshot_requires_an_exact_key_and_keeps_only_two_weeks():
         ],
         "weekly_album": [],
         "weekly_artist": [],
+        "home_billboard_movement": {
+            "artist": {"movement": "re", "previous_rank": None, "rank_change": None}
+        },
     }
 
     store_latest_snapshot(key, payload)
@@ -40,6 +43,7 @@ def test_latest_snapshot_requires_an_exact_key_and_keeps_only_two_weeks():
         "2026-08-07",
         "2026-07-31",
     ]
+    assert snapshot["home_billboard_movement"]["artist"]["movement"] == "re"
     assert (
         get_latest_snapshot_if_cached(snapshot_key(dynamic_threshold=True, bb_week_start_hour=0))
         is None
@@ -93,6 +97,10 @@ def test_weekly_staged_computation_populates_the_home_snapshot(monkeypatch):
     weekly = pd.DataFrame(
         [{"billboard_week": week, "rank": 1, "track_id": 7, "track_name": "冠军"}]
     )
+    filtered = pd.DataFrame([{"play_id": 1}])
+    filtered.attrs["home_billboard_movement"] = {
+        "artist": {"movement": "re", "previous_rank": None, "rank_change": None}
+    }
     monkeypatch.setattr(
         chart_staged_cache,
         "_load_and_rank",
@@ -102,7 +110,7 @@ def test_weekly_staged_computation_populates_the_home_snapshot(monkeypatch):
             pd.DataFrame(),
             [week],
             [week],
-            pd.DataFrame([{"play_id": 1}]),
+            filtered,
             {},
         ),
     )
@@ -115,3 +123,4 @@ def test_weekly_staged_computation_populates_the_home_snapshot(monkeypatch):
     assert snapshot is not None
     assert snapshot["meta"]["all_weeks_desc"] == ["2026-08-07"]
     assert snapshot["weekly"][0]["track_id"] == 7
+    assert snapshot["home_billboard_movement"]["artist"]["movement"] == "re"

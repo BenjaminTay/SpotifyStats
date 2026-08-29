@@ -88,6 +88,8 @@ def test_revision_miss_serves_last_good_while_exact_snapshot_rebuilds(monkeypatc
     monkeypatch.setattr(home_service, "build_home_overview", fake_build)
     home_service._get_home_overview_cached.cache_clear()
 
+    assert home_service._lkg_snapshot_path(context).name.startswith("lkg-home-facts-v3-")
+
     first = home_service._get_home_overview_cached("{}", "rev-1", "facts", 1, "yearly")
     home_service._get_home_overview_cached.cache_clear()
     stale = home_service._get_home_overview_cached("{}", "rev-2", "facts", 1, "yearly")

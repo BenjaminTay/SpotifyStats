@@ -25,7 +25,7 @@ def test_home_overview_response_uses_complete_filter_context(client):
     assert response.status_code == 200, response.text
     payload = response.json()
 
-    assert payload["schema_version"] == "home_overview_v1"
+    assert payload["schema_version"] == "home_overview_v2"
     assert payload["filter_fingerprint"]
     assert payload["state"] in {"ready", "limited", "empty"}
     coverage = payload["coverage"]
@@ -34,6 +34,10 @@ def test_home_overview_response_uses_complete_filter_context(client):
     if payload["state"] != "empty":
         assert payload["recent"]["period"]["end_date"] == coverage["latest_effective_play_date"]
         assert payload["billboard"]["state"] in {"ready", "unavailable"}
+        for entity in ("track", "album", "artist"):
+            champion = payload["billboard"][entity]
+            if champion is not None:
+                assert champion["movement"] in {"new", "re", "up", "down", "same"}
         assert payload["yearly_review"]["state"] in {
             "ready",
             "not_generated",

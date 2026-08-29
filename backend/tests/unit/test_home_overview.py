@@ -80,7 +80,34 @@ def test_billboard_champion_uses_project_identity_and_previous_rank():
     assert result["entity"]["entity_id"] == 91
     assert result["previous_rank"] == 4
     assert result["rank_change"] == 3
+    assert result["movement"] == "up"
     assert result["hours"] == 1.0
+
+
+def test_billboard_champion_uses_snapshot_reentry_movement_when_previous_row_is_outside_top_n():
+    rows = [
+        {
+            "billboard_week": "2026-08-14",
+            "artist_id": 159,
+            "artist_name": "Phoebe Bridgers",
+            "rank": 1,
+            "play_count": 33,
+            "total_ms": 6_541_917,
+        }
+    ]
+
+    result = overview._champion(
+        rows,
+        "2026-08-14",
+        "2026-08-07",
+        "artist",
+        {"movement": "re", "previous_rank": None, "rank_change": None},
+    )
+
+    assert result["entity"]["entity_id"] == 159
+    assert result["movement"] == "re"
+    assert result["previous_rank"] is None
+    assert result["rank_change"] is None
 
 
 def test_empty_state_preserves_raw_source_freshness(monkeypatch):

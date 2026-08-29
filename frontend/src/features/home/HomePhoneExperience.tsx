@@ -23,9 +23,11 @@ function PhoneEntityLeader({ label, metric }: { label: string; metric: HomeEntit
 }
 
 function phoneMovement(champion: HomeChartChampion): string {
-  if (champion.previous_rank === null) return 'NEW'
-  if (!champion.rank_change) return '—'
-  return champion.rank_change > 0 ? `↑${champion.rank_change}` : `↓${Math.abs(champion.rank_change)}`
+  if (champion.movement === 'new') return 'NEW'
+  if (champion.movement === 're') return 'RE'
+  if (champion.movement === 'same') return '—'
+  if (champion.movement === 'up') return `↑${champion.rank_change ?? 0}`
+  return `↓${Math.abs(champion.rank_change ?? 0)}`
 }
 
 function PhoneChartChampion({ label, champion }: { label: string; champion: HomeChartChampion | null }) {

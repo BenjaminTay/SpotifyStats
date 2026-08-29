@@ -426,6 +426,7 @@ def _champion(
     latest_week: str,
     previous_week: str | None,
     entity_type: str,
+    movement: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     row = next(
         (
@@ -464,13 +465,32 @@ def _champion(
         None,
     )
     previous_rank = int(prior["rank"]) if prior else None
+    rank_change = previous_rank - 1 if previous_rank else None
+    movement_type = None
+    if isinstance(movement, dict) and movement.get("movement") in {
+        "new",
+        "re",
+        "up",
+        "down",
+        "same",
+    }:
+        movement_type = str(movement["movement"])
+        raw_previous_rank = movement.get("previous_rank")
+        previous_rank = int(raw_previous_rank) if raw_previous_rank is not None else None
+        raw_rank_change = movement.get("rank_change")
+        rank_change = int(raw_rank_change) if raw_rank_change is not None else None
+    elif previous_rank is not None:
+        movement_type = "up" if rank_change and rank_change > 0 else "same"
+    else:
+        movement_type = "new"
     return {
         "entity": entity,
         "rank": 1,
         "plays": int(row.get("play_count", 0)),
         "hours": _round_hours(row.get("total_ms", 0)),
         "previous_rank": previous_rank,
-        "rank_change": previous_rank - 1 if previous_rank else None,
+        "rank_change": rank_change,
+        "movement": movement_type,
     }
 
 
@@ -506,12 +526,19 @@ def _billboard(context: YearlyReviewFilterContext) -> dict[str, Any]:
             raise ValueError("no chart weeks")
         latest = weeks[0]
         previous = weeks[1] if len(weeks) > 1 else None
+        movement = data.get("home_billboard_movement")
+        if not isinstance(movement, dict):
+            movement = {}
         return {
             "state": "ready",
             "week": latest,
-            "track": _champion(data["weekly"], latest, previous, "track"),
-            "album": _champion(data["weekly_album"], latest, previous, "album"),
-            "artist": _champion(data["weekly_artist"], latest, previous, "artist"),
+            "track": _champion(data["weekly"], latest, previous, "track", movement.get("track")),
+            "album": _champion(
+                data["weekly_album"], latest, previous, "album", movement.get("album")
+            ),
+            "artist": _champion(
+                data["weekly_artist"], latest, previous, "artist", movement.get("artist")
+            ),
         }
     except Exception:
         return {"state": "unavailable", "week": None, "track": None, "album": None, "artist": None}
@@ -639,7 +666,7 @@ def build_home_overview(
     if df.empty:
         has_source = latest_source is not None
         return {
-            "schema_version": "home_overview_v1",
+            "schema_version": "home_overview_v2",
             "generated_at": generated_at,
             "filter_fingerprint": context.filter_fingerprint,
             "state": "limited" if has_source else "empty",
@@ -723,7 +750,7 @@ def build_home_overview(
     )
     recent, current, previous, _raw_current = _recent_payload(conn, df, artist_df, context)
     return {
-        "schema_version": "home_overview_v1",
+        "schema_version": "home_overview_v2",
         "generated_at": generated_at,
         "filter_fingerprint": context.filter_fingerprint,
         "state": "ready" if recent["comparison_available"] else "limited",
