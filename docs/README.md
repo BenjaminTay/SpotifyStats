@@ -32,18 +32,27 @@
 - [`reference/data-import-and-health.md`](reference/data-import-and-health.md)：导入前检查、导入后健康报告和数据库边界
 - [`reference/fullstack-verification.md`](reference/fullstack-verification.md)：完整/局部门禁、阶段状态、耗时报告和证据边界
 
+## 状态口径
+
+当前文档不得用一个“已完成”同时代替实现、验证、提交和部署。计划、报告和问题台账按需要分别记录：
+
+- 实现状态：`PLANNED`、`IN_PROGRESS`、`IMPLEMENTED`；
+- 验证状态：`NOT_RUN`、`PARTIAL`、`PASS（注明范围）`；
+- 仓库状态：`UNCOMMITTED` 或 `COMMITTED <sha>`；
+- 远端状态：`UNPUSHED` 或 `PUSHED <branch/sha>`；
+- 部署状态：`NOT_DEPLOYED` 或 `DEPLOYED <environment/sha>`；
+- 文档状态：`CURRENT`、`DOC_REVIEW`、`SUPERSEDED`；
+- 外部条件：真机、OAuth、生产环境、低干扰计时窗口等另行列出。
+
+issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG`；只有实现、测试及必要的真实数据、浏览器或外部证据闭环后才能标 `RESOLVED`。局部测试、历史报告和本地提交均不自动代表当前 HEAD 的整站 Pass、已 push 或已部署。
+
 ## 当前进行中的计划
 
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
-- [`plans/2026-06-23-playback-records-plan.md`](plans/2026-06-23-playback-records-plan.md)：播放记录方案，需继续核对计划与当前实现的差异
-- [`plans/2026-06-29-ai-agent-harness-quality-roadmap.md`](plans/2026-06-29-ai-agent-harness-quality-roadmap.md)：AI Agent Harness 持续质量路线
-- [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA、远程部署、真机验收和 Capacitor 决策
-- [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)：音乐查找候选索引、统计快照和生产复用方向
-- [`plans/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md`](plans/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md)：搜索 LKG 零停机、影子 generation 原子切换、任务竞态与署名增量维护方案
+- [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
 - [`plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：B1–B4、R1 已完成范围验收；默认完整全栈门禁由既有耗时项继续跟踪
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
-- [`plans/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md`](plans/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md)：Phase 0–5 已完成范围验收，保留默认完整全栈门禁待运行状态
 
 ## 已确认但仍有实现参考价值的设计
 
@@ -79,6 +88,11 @@
 - [`archive/06-productization-closeout/`](archive/06-productization-closeout/)：最近一次产品化收口阶段
 - [`archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md`](archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md)：已完成的串流增量导入 Phase A–E 规划与实施记录
 - [`archive/06-productization-closeout/2026-08-27-spotify-track-identity-l1-migration-plan.md`](archive/06-productization-closeout/2026-08-27-spotify-track-identity-l1-migration-plan.md)：已被最终 canonical track / L2 / L3 方案取代的早期 Spotify-L1 规划
+- [`archive/06-productization-closeout/2026-06-23-playback-records-plan.md`](archive/06-productization-closeout/2026-06-23-playback-records-plan.md)：播放记录早期 6 栏规划与当前 5 栏/20 模块实现差异
+- [`archive/06-productization-closeout/2026-06-29-ai-agent-harness-quality-roadmap.md`](archive/06-productization-closeout/2026-06-29-ai-agent-harness-quality-roadmap.md)：已落地的 evidence-driven Agent harness 历史实施路线
+- [`archive/06-productization-closeout/2026-08-16-music-search-direction-realignment.md`](archive/06-productization-closeout/2026-08-16-music-search-direction-realignment.md)：由后续零停机方案和当前 reference 接管的搜索方向文档
+- [`archive/06-productization-closeout/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md`](archive/06-productization-closeout/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md)：Settings 重建与数据治理已完成计划
+- [`archive/06-productization-closeout/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md`](archive/06-productization-closeout/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md)：搜索 LKG、任务竞态与署名增量已完成计划
 - [`archive/01-streamlit-mvp/`](archive/01-streamlit-mvp/) 至 [`archive/05-yearly-report-genre/`](archive/05-yearly-report-genre/)：早期开发阶段
 
 ## 文档维护规则

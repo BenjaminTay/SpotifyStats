@@ -1,10 +1,12 @@
 # 设置重建状态与数据导入治理完整修复方案
 
-> 状态：Phase 0–5 已实施并完成范围验收；默认完整全栈门禁待运行
+> 状态：`IMPLEMENTED / PASS（功能范围）`；后续 descendant 默认完整全栈门禁已通过，本文已归档
 > 实施日期：2026-08-27
 > 创建日期：2026-08-26
 > 适用范围：设置页统计重建、数据导入前检查、导入后健康治理
-> 当前规则入口：[`../reference/data-import-and-health.md`](../reference/data-import-and-health.md)、[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
+> 当前规则入口：[`../../reference/data-import-and-health.md`](../../reference/data-import-and-health.md)、[`../../reference/playback-stats-rules.md`](../../reference/playback-stats-rules.md)
+> 本地提交：`62f48299cb4c0995c30b80ecb1e91932daa9b93f`，尚未 push、未获得对应生产部署证据
+> 后续门禁：descendant `dc7055a7e97b01474022af04624497d4b2ee6064` 通过默认完整全栈门禁；后续业务代码提交 `0b23c442` 未重跑整站门禁
 
 ## 1. 结论
 

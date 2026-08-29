@@ -2,6 +2,12 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-29 — 文档状态口径与完成计划归档
+
+- 文档地图和报告索引开始分别记录实现、验证、commit、push、部署、文档状态与外部条件，局部测试、本地提交和历史报告不再被合并描述为“已发布”或当前整站 Pass。
+- 同步 Billboard `0b23c442`、Settings `62f48299` 与搜索零停机 `dc7055a7` 的本地提交、未 push 和未生产部署状态；保留各自真实数据库、浏览器及全栈门禁的原始范围边界。
+- 播放记录历史规划已补当前 5 栏/20 模块差异；AI harness、搜索方向、Settings 和搜索零停机已完成或被取代的计划移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。当前 `plans/` 只保留 PWA/Capacitor 外部条件、全栈耗时目标和 Billboard 当前 HEAD 门禁尾项。
+
 ## 2026-08-29 — Billboard Records 一致性与播放排行稳定排序
 
 - Billboard 全量、分区、曲目署名和艺人身份发布统一使用完整 semantic proof；聚合 hash 纳入 track identity revision，旧 proof 不兼容时安全回退全量重建，不再把失配聚合标为 ready。
@@ -222,7 +228,7 @@
 - 真实副本首次升级只重建 45,269 个候选文档和 188,673 条 n-gram，4.62 秒、峰值 RSS
   318.984MiB；六个统计变体全部 0ms 复用。第二次维护 0.41 秒，40 个混合查询样本 P95 26.467ms。
 - 完整方向、阶段状态和生产证据见
-  [`plans/2026-08-16-music-search-direction-realignment.md`](plans/2026-08-16-music-search-direction-realignment.md)。
+  [`archive/06-productization-closeout/2026-08-16-music-search-direction-realignment.md`](archive/06-productization-closeout/2026-08-16-music-search-direction-realignment.md)。
 
 ## 2026-08-16 — 音乐查找候选索引、精确快照与交互重构
 

@@ -10,7 +10,7 @@
 > 取代边界：保留旧方案的入口归属、详情深链、统计一致性和“不在播放排行重复放搜索框”等产品决策；取代“每次搜索同步计算过滤后播放统计与完整 Billboard payload”的性能实现
 > 交付证据：`../../reports/2026-08-16-music-search-optimization-delivery.md`
 > 修复计划：`2026-08-16-music-search-remediation-plan.md`
-> 后续方向：`../../plans/2026-08-16-music-search-direction-realignment.md`（候选/统计身份解耦、发布续建、简繁与有限模糊匹配）
+> 后续方向：`2026-08-16-music-search-direction-realignment.md`（候选/统计身份解耦、发布续建、简繁与有限模糊匹配）
 
 2026-08-16 后续实现已将随机索引 generation 从统计 fingerprint 移除，并以确定性
 `candidate_index_version` 单独治理候选索引。真实副本首次只重建候选索引 4.62 秒，六个统计变体
@@ -1117,7 +1117,7 @@ cd frontend && npm run build
 - [x] remediation plan 的阻断项已修复并由新证据证明，不再提前声明 Pass
 
 后续方向已按
-[`2026-08-16-music-search-direction-realignment.md`](../../plans/2026-08-16-music-search-direction-realignment.md)
+[`2026-08-16-music-search-direction-realignment.md`](2026-08-16-music-search-direction-realignment.md)
 完成：候选版本与统计 fingerprint 解耦，简繁、短 CJK 和有限模糊匹配已上线；镜像改经私有 CAS
 Artifact 将缺失 blob 续传到现有服务器，再由服务器推送 TCR。一次性旧库统计引导后，正常 production
 workflow `31977767545` 首次成功；最终 workflow `31979057642` 在 9 分 57 秒内完成，搜索预检精确

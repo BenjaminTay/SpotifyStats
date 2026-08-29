@@ -1,9 +1,22 @@
 # 播放记录（Playback Records）完整规划
 
 > 创建日期：2026-06-23  
-> 状态：待核对；本文是历史规划，需以当前 `/analysis/records` 实现和交付证据重新确认
+> 状态：`SUPERSEDED`；核心产品已实现并完成历史验收，本文保留早期方案与未采用想法，不再代表当前栏目清单
 > 目标位置：`/analysis/records`  
 > 关联规则：`docs/reference/playback-stats-rules.md`、`docs/archive/02-react-productization/playback-stats/2026-06-18-album-project.md`、`docs/reports/2026-06-22-phase5-delivery-report.md`
+
+## 0. 最终实现差异（2026-08-29 核对）
+
+当前产品已经具备 `/api/analysis/records`、`/analysis/records` 路由容器、TanStack Query 数据链、按栏目懒加载、Desktop/Phone presentation、长列表与移动端验收。当前信息架构以 `frontend/src/features/analysis/records/recordsArchitecture.ts` 为准，共 5 个栏目、20 个模块，而不是本文早期推荐的 6 个 section。
+
+| 早期规划 | 当前实现与处理 |
+|---|---|
+| 狂热时刻、时间密码、个人王朝、长线陪伴、探索发现、行为奇观共 6 栏 | 收敛为高光时刻、个人王朝、长线陪伴、时间习惯、探索与品味共 5 栏 |
+| 行为奇观单独成栏 | 播放里程碑等稳定能力并入高光时刻；Shuffle、平台、离线等旧候选没有整体成为当前栏目 |
+| P0/P1/P2 是实施优先级 | 当前 20 个模块是已实现产品清单；未采用的 P2 只保留为历史想法，不自动成为缺陷或待办 |
+| 规划阶段的组件与 response shape | 当前 API、类型、组件拆分和筛选参数以源码、OpenAPI 与当前测试为准 |
+
+历史证据包括 `bb70bf08`（新增 `/analysis/records`）、`720c9da6`（播放记录修复与打磨）、Phase 5 交付报告，以及 2026-08-06 移动端/PWA 报告中的播放记录补充验收。本文已在完成差异核对后归档；后续新增记录能力应另建当前计划，不继续在本文件勾选。
 
 ## 1. 模块定位
 

@@ -12,7 +12,7 @@ Pass。远程生产运行状态仍只以对应 commit SHA 的 GitHub Actions pro
 
 > 后续实现状态：本文记录的两阶段搜索、六变体统计事实和历史性能证据继续有效；其中“每个新 SHA
 > 都执行完整六变体 one-shot”的发布策略已被
-> `docs/plans/2026-08-16-music-search-direction-realignment.md` 取代。当前本地实现以 migration 35/36
+> `docs/archive/06-productization-closeout/2026-08-16-music-search-direction-realignment.md` 取代。当前本地实现以 migration 35/36
 > 拆分确定性候选版本与统计 fingerprint，并加入可续建发布、简繁、短 CJK 与有限模糊匹配。镜像
 > 发布已改为私有 CAS Artifact → 缺失 blob 续传 → 服务器侧 TCR push/pull；一次性旧库统计引导后，
 > production workflow `31977767545` 首次成功，最终 workflow `31979057642` 已发布 SHA

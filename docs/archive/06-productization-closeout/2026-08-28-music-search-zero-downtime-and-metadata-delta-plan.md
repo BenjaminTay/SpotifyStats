@@ -1,15 +1,17 @@
 # 音乐查找零停机、上一可用版本与元数据增量维护完整修复方案
 
 > 创建日期：2026-08-28
-> 状态：已实施并验证；候选/统计 LKG、原子切换、任务竞态、署名增量与公开边界已完成，验收证据见对应交付报告
+> 状态：`IMPLEMENTED / PASS（本地完整范围）`；候选/统计 LKG、原子切换、任务竞态、署名增量与公开边界已完成，本文已归档
 > 适用范围：Masthead Quick Open、`/music/search`、候选索引、精确统计快照、曲目署名与艺人身份维护、后台任务队列
 > 现行方向：[`2026-08-16-music-search-direction-realignment.md`](2026-08-16-music-search-direction-realignment.md)
-> 当前规则：[`../reference/music-metadata-management.md`](../reference/music-metadata-management.md)、[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
+> 当前规则：[`../../reference/music-metadata-management.md`](../../reference/music-metadata-management.md)、[`../../reference/playback-stats-rules.md`](../../reference/playback-stats-rules.md)
+> 本地提交：`dc7055a7e97b01474022af04624497d4b2ee6064`，尚未 push
+> 部署状态：未生产部署；Pass 限定为本地代码、真实数据库副本、真实浏览器和默认完整全栈门禁
 
 > 2026-08-28 实施补充：原计划 migration 60–62 按设计落地；为完整实现 4.4 的即时撤销展示边界，
 > 追加 migration 63 `music_search_entity_deny_overlay`。历史 snapshot lineage 不足时，曲目署名增量会
 > 明确回退 shared-full，不以放松证明条件换取表面命中。完整结果见
-> [`../reports/2026-08-28-music-search-zero-downtime-and-credit-delta.md`](../reports/2026-08-28-music-search-zero-downtime-and-credit-delta.md)。
+> [`../../reports/2026-08-28-music-search-zero-downtime-and-credit-delta.md`](../../reports/2026-08-28-music-search-zero-downtime-and-credit-delta.md)。
 
 ## 0. 决策摘要
 

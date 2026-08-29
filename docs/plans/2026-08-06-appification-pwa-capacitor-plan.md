@@ -1,6 +1,6 @@
 # SpotifyStats App 化路线：PWA → 安全部署 → Capacitor
 
-> 状态：部分完成；PWA、私人管理入口和公共只读展示入口已完成，等待双入口手机真机安装验收，Capacitor 尚未决策<br>
+> 状态：`PARTIAL / EXTERNAL`；PWA Phase A、私网 HTTPS 服务器基线与双运行面工程已有带日期交付证据，当前外部可用性、双平台真机、OAuth、异机备份和分发决策尚未闭环，Capacitor 未实施<br>
 > 日期：2026-08-06<br>
 > 前置阶段：[`2026-08-05-mobile-web-design-and-implementation-plan.md`](../archive/06-productization-closeout/2026-08-05-mobile-web-design-and-implementation-plan.md)
 
@@ -80,10 +80,23 @@ PWA 安装并不会自动让手机访问 Mac 上的 SQLite。必须先在以下�
 
 ## 7. 决策门
 
-进入 Phase B 前需要用户确认部署形态；进入 Capacitor 前必须满足：
+进入 Phase B 前需要用户确认部署形态；进入 Capacitor 前必须区分“已有历史交付证据”“当前外部状态需复核”和“尚未完成条件”。
 
-- [ ] 有稳定 HTTPS 域名和远程 API。
-- [ ] API 鉴权、持久化与备份已验证。
-- [ ] iPhone/Android PWA 真机验收通过。
-- [ ] Spotify OAuth 真实回跳通过。
-- [ ] 明确是否需要 App Store / Android 安装包分发。
+### 7.1 已有带日期交付证据
+
+- [x] PWA Phase A 的 Manifest、Service Worker、安装说明和安全离线页已通过本地生产预览与浏览器验收。
+- [x] 2026-08-13 已验证私网 HTTPS、远程 API、tailnet 身份边界、服务器持久化目录、SQLite Online Backup、健康检查和回滚基线。
+- [x] 2026-08-13 已验证 full/showcase/dual 双运行面工程与 public-readonly fail-closed；这不代表公共外部入口当前仍开启。
+
+### 7.2 当前外部状态需重新确认
+
+- [ ] 重新确认当前私网 HTTPS 域名、服务器服务和远程 API 仍在线；旧报告只代表当时状态。
+- [ ] 补齐加密异机备份；服务器内每日备份不能替代异机备份。
+
+### 7.3 进入 Capacitor 前尚未完成
+
+- [ ] iPhone Safari 与 Android Chrome PWA 真机安装、standalone、安全区、软键盘和返回链路验收通过。
+- [ ] Spotify OAuth 从真实 PWA/HTTPS 入口发起并成功回跳。
+- [ ] 明确是否需要 App Store / Android 安装包分发及相应签名、隐私和删除说明。
+
+在上述条件完成前，状态保持 `PARTIAL / EXTERNAL`，不得描述为“App 化完成”或“Capacitor 已交付”。

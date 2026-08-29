@@ -1,8 +1,9 @@
-# AI Agent Harness Quality Roadmap Implementation Plan
+# AI Agent Harness Quality Roadmap Implementation Plan（历史实施规划）
 
-> 状态：持续维护路线；已完成部分以当前代码、测试和交付报告为准
+> 状态：`SUPERSEDED`；核心 harness 已实现并完成定向、golden 和真实问答验证，本文的未勾选步骤仅保留历史实施顺序
+> 当前边界：更广泛的语言/曲风证据与完整真实问题矩阵继续按当前 issue、测试和交付报告治理，不以本文件旧 checkbox 表示进度
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 历史执行说明：下文曾建议用 subagent-driven 流程逐项实施。该说明不再是当前仓库指令，所有 `- [ ]` 保留为历史文本，不应解读为功能尚未开发。
 
 **Goal:** Upgrade the current read-only AI chat Agent from a single-pass tool runner into a evidence-driven analysis harness that can answer broad listening-data questions with stable, inspectable quality.
 
@@ -24,6 +25,22 @@ The current V2 implementation already has:
 - AI chat task flow in `frontend/src/features/ai-insights/ChatInterface.tsx`.
 
 The quality gap is the harness, not the model. The model can reason well when it receives the right evidence. The harness must therefore make evidence complete, normalized, compact, validated, and visible.
+
+## Final Implementation Status
+
+截至当前代码，本文核心目标均已有实现和回归入口：
+
+| 能力 | 当前证据 |
+|---|---|
+| Typed evidence cards / builders | `backend/domains/ai_agent/evidence.py`、`evidence_builders.py` 及对应单元测试 |
+| Question intent / entity resolver / comparison | `question_intent.py`、`entity_resolver.py`、`compare_entities` 工具与回归测试 |
+| Coverage follow-up / answer critic | `coverage_review.py`、`answer_critic.py`、Agent service 集成与 contract tests |
+| 前端 evidence cards | `frontend/src/features/ai-tasks/AIEvidenceCards.tsx`、`AIResultShell.tsx` 及 Vitest |
+| Golden harness | `backend/tests/fixtures/ai_agent_golden_questions.json`、`scripts/evaluate_ai_agent_harness.py` |
+
+核心实施提交从 `d4214cb0`、`a49f67e8`、`87eed387`、`6f72b497`、`c49eb93f`、`3453bee6`、`75c1a141`、`b706ca49`、`6bcbde1f` 到文档收口 `46800399`。2026-07-03 报告记录定向回归、golden 和真实浏览器问答通过；更广泛完整矩阵曾有 1 个语言证据问题为 Partial，因此不能把核心 harness 完成扩大为所有自然语言问题均已完全验证。
+
+本文作为原始实施计划归档。后续质量扩展应建立短小、可复核的当前路线或 issue，而不是机械补勾已经演进的旧步骤。
 
 ## Success Criteria
 
