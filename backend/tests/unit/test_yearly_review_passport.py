@@ -117,6 +117,52 @@ def test_no_baseline_never_invents_default_percentage() -> None:
     assert "listening_time_change" not in {headline.headline_id for headline in headlines}
 
 
+def test_partial_baseline_keeps_annual_values_but_compares_common_period() -> None:
+    coverage = YearlyReviewCoverage(
+        status="complete",
+        play=YearlyPlayCoverage(
+            status="complete",
+            observed_start="2023-01-01",
+            observed_end="2023-12-31",
+        ),
+        billboard=YearlyBillboardCoverage(status="complete", source_status="complete"),
+        comparison=YearlyComparisonCoverage(
+            baseline_year=2022,
+            mode="common_period",
+            current_start="2023-07-01",
+            current_end="2023-12-31",
+            baseline_start="2022-07-01",
+            baseline_end="2022-12-31",
+            comparable=True,
+        ),
+        taste=YearlyTasteCoverage(),
+    )
+    current = _stats(100)
+    current["summary"].update({"total_plays": 1000, "active_days": 360})
+    comparison_current = _stats(54.4)
+    comparison_current["summary"].update({"total_plays": 90, "active_days": 184})
+    baseline = _stats(40.4)
+    baseline["summary"].update({"total_plays": 60, "active_days": 184})
+
+    passport, headlines = build_passport_and_headlines(
+        2023,
+        coverage,
+        current,
+        baseline_stats=baseline,
+        comparison_current_stats=comparison_current,
+    )
+
+    metrics = {metric.key: metric for metric in passport.metrics}
+    assert metrics["total_plays"].value == 1000
+    assert metrics["total_plays"].comparison_current_value == 90
+    assert metrics["total_plays"].comparison_value == 60
+    assert metrics["total_plays"].comparison_label == "比去年同期"
+    assert metrics["total_plays"].observed_start == "2023-07-01"
+    assert metrics["total_plays"].comparison_start == "2022-07-01"
+    assert headlines[0].headline_id == "listening_time_change"
+    assert headlines[0].primary_metric.value == 34.7
+
+
 def test_failed_ranking_does_not_replace_nonempty_raw_counts_with_zero() -> None:
     passport, _ = build_passport_and_headlines(
         2025,

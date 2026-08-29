@@ -16,6 +16,7 @@ from backend.services.analysis_stats_service import (
     _cumulative_trend,
     _daily_metrics,
     _daily_trend,
+    _duration_frame,
     _hourly_distribution,
     _month_distribution,
     _summary,
@@ -51,10 +52,22 @@ def _ensure_month(frame: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def _monthly_distribution(frame: pd.DataFrame) -> list[dict[str, Any]]:
-    base = {int(row["month"]): dict(row) for row in _month_distribution(frame)}
+def _monthly_distribution(
+    frame: pd.DataFrame,
+    *,
+    duration_frame: pd.DataFrame | None = None,
+) -> list[dict[str, Any]]:
+    base = {
+        int(row["month"]): dict(row)
+        for row in _month_distribution(frame, duration_frame=duration_frame)
+    }
     active_days = (
-        frame.groupby("ts_month")["ts_date"].nunique().to_dict() if not frame.empty else {}
+        (duration_frame if duration_frame is not None else frame)
+        .groupby("ts_month")["ts_date"]
+        .nunique()
+        .to_dict()
+        if not frame.empty
+        else {}
     )
     return [
         {
@@ -177,4 +190,65 @@ def build_yearly_stats(
         "taste_profile": build_consumer_taste_profile(conn, annual),
         "release_era_profile": build_release_era_distribution(conn, annual),
         "taste_slices": _taste_slices(conn, annual),
+    }
+
+
+def build_yearly_comparison_stats(
+    year: int,
+    *,
+    event_frame: pd.DataFrame,
+) -> dict[str, Any]:
+    """Build only the time-series facts consumed by annual comparisons.
+
+    Comparison windows can be narrower than the report year.  Keeping this
+    adapter free of metadata/taste builders avoids duplicating the expensive
+    annual report work merely to calculate a comparable baseline.
+    """
+    annual = _ensure_month(_annual_frame(event_frame, year))
+    if {"track_id", "album_name", "artist_name", "ts_date", "ms_played"}.issubset(annual.columns):
+        # Reuse one duration expansion across all comparison facts.  The
+        # previous implementation expanded the same timeline independently
+        # for summary, hourly, and monthly values.
+        duration_frame = _duration_frame(annual, granularity="hour")
+        summary = _summary(annual, duration_frame=duration_frame)
+        hourly_distribution = _hourly_distribution(
+            annual,
+            duration_frame=duration_frame,
+        )
+        monthly_distribution = _monthly_distribution(
+            annual,
+            duration_frame=duration_frame,
+        )
+    else:
+        summary = {
+            "total_plays": int(len(annual)),
+            "total_hours": round(
+                float(annual["ms_played"].sum()) / 3_600_000
+                if "ms_played" in annual.columns
+                else 0.0,
+                1,
+            ),
+            "unique_tracks": int(annual["track_id"].nunique())
+            if "track_id" in annual.columns
+            else 0,
+            "unique_albums": int(annual["album_name"].dropna().nunique())
+            if "album_name" in annual.columns
+            else 0,
+            "unique_artists": int(annual["artist_name"].dropna().nunique())
+            if "artist_name" in annual.columns
+            else 0,
+            "active_days": int(annual["ts_date"].nunique()) if "ts_date" in annual.columns else 0,
+        }
+        hourly_distribution = (
+            _hourly_distribution(annual)
+            if "ts_hour" in annual.columns
+            else [{"hour": hour, "plays": 0, "hours": 0.0} for hour in range(24)]
+        )
+        monthly_distribution = _monthly_distribution(annual)
+    return {
+        "year": year,
+        "empty": annual.empty,
+        "summary": summary,
+        "hourly_distribution": hourly_distribution,
+        "monthly_distribution": monthly_distribution,
     }

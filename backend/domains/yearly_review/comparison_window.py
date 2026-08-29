@@ -26,6 +26,13 @@ def previous_year_date(value: str | date) -> str:
     return date(target_year, current.month, day).isoformat()
 
 
+def next_year_date(value: str | date) -> str:
+    current = date.fromisoformat(value) if isinstance(value, str) else value
+    target_year = current.year + 1
+    day = min(current.day, calendar.monthrange(target_year, current.month)[1])
+    return date(target_year, current.month, day).isoformat()
+
+
 def filter_date_range(frame: pd.DataFrame, start: str, end: str) -> pd.DataFrame:
     if frame.empty or "ts_date" not in frame.columns:
         return frame.copy()
@@ -39,6 +46,8 @@ def aligned_comparison_frames(
     report_year: int,
     observed_start: str,
     observed_end: str,
+    baseline_start: str | None = None,
+    baseline_end: str | None = None,
 ) -> AlignedComparisonFrames:
     current_start = observed_start
     current_end = observed_end
@@ -46,8 +55,8 @@ def aligned_comparison_frames(
         f"{report_year:04d}-"
     ):
         raise ValueError("observed comparison bounds must belong to the report year")
-    baseline_start = previous_year_date(current_start)
-    baseline_end = previous_year_date(current_end)
+    baseline_start = baseline_start or previous_year_date(current_start)
+    baseline_end = baseline_end or previous_year_date(current_end)
     return AlignedComparisonFrames(
         current=filter_date_range(frame, current_start, current_end),
         baseline=filter_date_range(frame, baseline_start, baseline_end),

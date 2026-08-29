@@ -195,6 +195,8 @@
 .mobile-yearly-v2-kpi em.is-up { color: #7ed09d; }
 .mobile-yearly-v2-kpi em.is-down { color: #ed8375; }
 .mobile-yearly-v2-kpi em.is-flat { color: rgba(245, 238, 225, .62); }
+.mobile-yearly-v2-comparison-window { margin: 12px 0 0; padding: 0 4px; color: rgba(245, 238, 225, .55); font: 500 9px/1.55 var(--font-sans); letter-spacing: .02em; }
+.mobile-yearly-v2-comparison-window span { display: block; margin-bottom: 3px; color: var(--annual-mobile-gold); font-size: 8px; font-weight: 750; letter-spacing: .12em; }
 
 .mobile-yearly-v2-chapter-nav {
   position: sticky;

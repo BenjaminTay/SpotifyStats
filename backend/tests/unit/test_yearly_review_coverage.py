@@ -135,9 +135,61 @@ def test_comparison_requires_prior_year_aligned_window() -> None:
     )
 
     assert comparable.comparable is True
+    assert comparable.mode == "same_period"
+    assert comparable.current_start == "2026-01-01"
+    assert comparable.baseline_start == "2025-01-01"
     assert comparable.aligned_end == "2025-04-15"
     assert unavailable.comparable is False
     assert unavailable.reason == "baseline_unavailable"
+
+
+def test_comparison_falls_back_to_largest_common_period_for_partial_first_year() -> None:
+    current = build_play_coverage(
+        _frame("2023-01-01", "2023-12-31"),
+        year=2023,
+        today=date(2026, 8, 30),
+    )
+    baseline = build_play_coverage(
+        _frame("2022-07-01", "2022-12-31"),
+        year=2022,
+        today=date(2026, 8, 30),
+    )
+
+    result = build_comparison_coverage(
+        report_year=2023,
+        current=current,
+        baseline=baseline,
+    )
+
+    assert result.comparable is True
+    assert result.mode == "common_period"
+    assert result.current_start == "2023-07-01"
+    assert result.current_end == "2023-12-31"
+    assert result.baseline_start == "2022-07-01"
+    assert result.baseline_end == "2022-12-31"
+
+
+def test_comparison_rejects_common_period_shorter_than_minimum() -> None:
+    current = build_play_coverage(
+        _frame("2023-01-01", "2023-06-01"),
+        year=2023,
+        today=date(2026, 8, 30),
+    )
+    baseline = build_play_coverage(
+        _frame("2022-05-01", "2022-06-01"),
+        year=2022,
+        today=date(2026, 8, 30),
+    )
+
+    result = build_comparison_coverage(
+        report_year=2023,
+        current=current,
+        baseline=baseline,
+    )
+
+    assert result.comparable is False
+    assert result.mode == "unavailable"
+    assert result.reason == "no_sufficient_common_period"
 
 
 def test_taste_coverage_applies_frozen_thresholds_and_keeps_unknown() -> None:

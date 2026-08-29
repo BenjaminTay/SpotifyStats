@@ -32,6 +32,7 @@
 
 ### 音乐档案与年度总结
 
+- [`2026-08-30-yearly-review-common-period-comparison.md`](2026-08-30-yearly-review-common-period-comparison.md)
 - [`2026-08-24-yearly-review-semantic-correction.md`](2026-08-24-yearly-review-semantic-correction.md)
 - [`2026-08-13-account-archive-phase-0-delivery.md`](2026-08-13-account-archive-phase-0-delivery.md)
 - [`2026-08-13-account-archive-journey-cohorts-delivery.md`](2026-08-13-account-archive-journey-cohorts-delivery.md)

@@ -84,6 +84,7 @@ def build_listening_life(
     coverage: YearlyReviewCoverage,
     *,
     baseline_stats: Mapping[str, Any] | None = None,
+    comparison_current_stats: Mapping[str, Any] | None = None,
     play_rankings: Mapping[str, Any] | None = None,
     event_frame: pd.DataFrame | None = None,
     history_frame: pd.DataFrame | None = None,
@@ -98,7 +99,7 @@ def build_listening_life(
 
     complete = coverage.status == "complete"
     period = "全年" if complete else "今年截至目前"
-    comparison_copy = "去年" if complete else "去年同期"
+    comparison_copy = "去年" if coverage.comparison.mode == "full_year" else "去年同期"
     metrics: list[YearlyMetric] = []
     observations: list[YearlyHeadline] = []
     hours = _hour_totals(stats)
@@ -145,8 +146,17 @@ def build_listening_life(
 
     late_night_plays = sum(hours.get(hour, 0) for hour in range(0, 6))
     late_night_pct = round(late_night_plays / total_plays * 100, 1)
+    comparison_current_late_pct = None
     baseline_late_pct = None
     if baseline_stats:
+        comparison_stats = comparison_current_stats or stats
+        comparison_hours = _hour_totals(comparison_stats)
+        comparison_total = int(dict(comparison_stats.get("summary", {})).get("total_plays", 0))
+        if comparison_total:
+            comparison_current_late_pct = round(
+                sum(comparison_hours.get(hour, 0) for hour in range(0, 6)) / comparison_total * 100,
+                1,
+            )
         baseline_hours = _hour_totals(baseline_stats)
         baseline_total = int(dict(baseline_stats.get("summary", {})).get("total_plays", 0))
         if baseline_total:
@@ -160,6 +170,7 @@ def build_listening_life(
             label="深夜播放占比",
             value=late_night_pct,
             unit="%",
+            comparison_current_value=comparison_current_late_pct,
             comparison_value=baseline_late_pct,
             comparison_label=comparison_copy if baseline_late_pct is not None else None,
         ),
@@ -168,11 +179,16 @@ def build_listening_life(
     metrics.extend(late_metrics)
     statement = f"凌晨 0–6 点一共播放 {late_night_plays:,} 次，占{period}的 {late_night_pct:.1f}%。"
     if baseline_late_pct is not None:
+        comparable_late_pct = (
+            comparison_current_late_pct
+            if comparison_current_late_pct is not None
+            else late_night_pct
+        )
         direction = (
             "更多"
-            if late_night_pct > baseline_late_pct
+            if comparable_late_pct > baseline_late_pct
             else "更少"
-            if late_night_pct < baseline_late_pct
+            if comparable_late_pct < baseline_late_pct
             else "一样多"
         )
         statement += f" 比{comparison_copy}{direction}。"

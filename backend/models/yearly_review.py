@@ -14,6 +14,7 @@ YearlyReportStatus = Literal[
     "insufficient",
     "empty",
 ]
+YearlyComparisonMode = Literal["full_year", "same_period", "common_period", "unavailable"]
 ImportCoverageStatus = Literal["verified_complete", "verified_partial", "unknown"]
 InternalGapStatus = Literal["verified_complete", "verified_gaps", "unknown"]
 TasteCoverageLevel = Literal["core", "secondary", "insufficient", "unavailable"]
@@ -85,6 +86,11 @@ class YearlyBillboardCoverage(BaseModel):
 
 class YearlyComparisonCoverage(BaseModel):
     baseline_year: int | None = None
+    mode: YearlyComparisonMode = "unavailable"
+    current_start: str | None = None
+    current_end: str | None = None
+    baseline_start: str | None = None
+    baseline_end: str | None = None
     aligned_start: str | None = None
     aligned_end: str | None = None
     comparable: bool = False
@@ -128,6 +134,7 @@ class YearlyMetric(BaseModel):
     label: str
     value: int | float | str
     unit: str | None = None
+    comparison_current_value: int | float | None = None
     comparison_value: int | float | None = None
     comparison_label: str | None = None
     observed_start: str | None = None
@@ -341,7 +348,7 @@ class YearlyAppendix(BaseModel):
 
 
 class YearlyMethodology(BaseModel):
-    content_version: str = "yearly_review_v2_14"
+    content_version: str = "yearly_review_v2_16"
     relationship_policy_version: str = "relationship_policy_v2"
     highlight_policy_version: str = "highlight_policy_v3"
     season_stage_policy_version: str = "season_stage_v2"
@@ -404,7 +411,7 @@ class YearlyReviewGenerationResponse(BaseModel):
 
 
 class YearlyReviewRecordsPage(BaseModel):
-    content_version: str = "yearly_review_v2_14"
+    content_version: str = "yearly_review_v2_16"
     year: int = Field(ge=2000)
     filter_fingerprint: str
     page: int = Field(ge=1)

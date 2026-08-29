@@ -1,4 +1,4 @@
-import { STATUS_COPY, formatMetricComparison } from '@/features/yearly-review/yearlyReviewData'
+import { STATUS_COPY, formatComparisonWindow, formatMetricComparison } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 export function PassportChapter({ report }: { report: YearlyReviewResponse }) {
@@ -8,6 +8,7 @@ export function PassportChapter({ report }: { report: YearlyReviewResponse }) {
   const periodLabel = passport.observed_end
     ? `截至 ${passport.observed_end.replaceAll('-', '.')}`
     : `${report.year}`
+  const comparisonWindow = formatComparisonWindow(report.coverage.comparison)
 
   return (
     <section className="yearly-v2-cover" aria-labelledby="yearly-v2-cover-title">
@@ -46,6 +47,11 @@ export function PassportChapter({ report }: { report: YearlyReviewResponse }) {
           )
         })}
       </div>
+      {comparisonWindow && (
+        <p className="yearly-v2-comparison-window">
+          <span>同期参照</span>{comparisonWindow}
+        </p>
+      )}
     </section>
   )
 }

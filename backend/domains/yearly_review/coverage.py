@@ -141,13 +141,25 @@ def _previous_year_date(value: date, baseline_year: int) -> date:
     return date(baseline_year, value.month, day)
 
 
+def _next_year_date(value: date, current_year: int) -> date:
+    day = min(value.day, calendar.monthrange(current_year, value.month)[1])
+    return date(current_year, value.month, day)
+
+
 def build_comparison_coverage(
     *,
     report_year: int,
     current: YearlyPlayCoverage,
     baseline: YearlyPlayCoverage | None,
 ) -> YearlyComparisonCoverage:
-    """Check whether the prior year covers the same observed calendar window."""
+    """Resolve the largest trustworthy calendar window shared by both years.
+
+    A complete current year may have a partial first year in the local archive.
+    In that case, comparing the full current year with the partial baseline would
+    mix different observation lengths.  We first keep the historical exact
+    aligned-window behavior, then fall back to the largest common period when it
+    is at least the minimum report length.
+    """
     baseline_year = report_year - 1
     if baseline is None or baseline.status == "empty":
         return YearlyComparisonCoverage(
@@ -183,13 +195,55 @@ def build_comparison_coverage(
 
     baseline_start = date.fromisoformat(baseline.observed_start)
     baseline_end = date.fromisoformat(baseline.observed_end)
-    comparable = baseline_start <= aligned_start and baseline_end >= aligned_end
+    aligned_covered = baseline_start <= aligned_start and baseline_end >= aligned_end
+    if aligned_covered:
+        mode = (
+            "full_year"
+            if current.status == "complete" and baseline.status == "complete"
+            else "same_period"
+        )
+        return YearlyComparisonCoverage(
+            baseline_year=baseline_year,
+            mode=mode,
+            current_start=current_start.isoformat(),
+            current_end=current_end.isoformat(),
+            baseline_start=aligned_start.isoformat(),
+            baseline_end=aligned_end.isoformat(),
+            aligned_start=aligned_start.isoformat(),
+            aligned_end=aligned_end.isoformat(),
+            comparable=True,
+        )
+
+    # Map the partial baseline interval into the current year and intersect it
+    # with the current observed interval.  This gives a same-length, same-month
+    # comparison without treating missing historical months as zero playback.
+    baseline_start_in_current = _next_year_date(baseline_start, report_year)
+    baseline_end_in_current = _next_year_date(baseline_end, report_year)
+    common_current_start = max(current_start, baseline_start_in_current)
+    common_current_end = min(current_end, baseline_end_in_current)
+    common_days = (common_current_end - common_current_start).days + 1
+    if common_current_start > common_current_end or common_days < MIN_REPORT_DAYS:
+        return YearlyComparisonCoverage(
+            baseline_year=baseline_year,
+            mode="unavailable",
+            aligned_start=aligned_start.isoformat(),
+            aligned_end=aligned_end.isoformat(),
+            comparable=False,
+            reason="no_sufficient_common_period",
+        )
+
+    common_baseline_start = _previous_year_date(common_current_start, baseline_year)
+    common_baseline_end = _previous_year_date(common_current_end, baseline_year)
     return YearlyComparisonCoverage(
         baseline_year=baseline_year,
-        aligned_start=aligned_start.isoformat(),
-        aligned_end=aligned_end.isoformat(),
-        comparable=comparable,
-        reason=None if comparable else "baseline_does_not_cover_aligned_period",
+        mode="common_period",
+        current_start=common_current_start.isoformat(),
+        current_end=common_current_end.isoformat(),
+        baseline_start=common_baseline_start.isoformat(),
+        baseline_end=common_baseline_end.isoformat(),
+        aligned_start=common_baseline_start.isoformat(),
+        aligned_end=common_baseline_end.isoformat(),
+        comparable=True,
     )
 
 

@@ -185,12 +185,24 @@ def test_orchestrator_passes_only_aligned_ytd_baseline_to_comparison_consumers(
         stats["summary"]["total_hours"] = float(event_frame["ms_played"].sum())
         return stats
 
+    def fake_comparison(year, *, event_frame):
+        captured[f"comparison_{year}"] = int(event_frame["ms_played"].sum())
+        return {
+            **_stats(year),
+            "summary": {
+                **_stats(year)["summary"],
+                "total_plays": len(event_frame),
+                "total_hours": float(event_frame["ms_played"].sum()),
+            },
+        }
+
     monkeypatch.setattr(
         orchestrator,
         "_build_entity_frames",
         lambda *_args, **_kwargs: (frame.copy(), frame.copy(), frame.copy()),
     )
     monkeypatch.setattr(orchestrator, "build_yearly_stats", fake_stats)
+    monkeypatch.setattr(orchestrator, "build_yearly_comparison_stats", fake_comparison)
     monkeypatch.setattr(
         orchestrator,
         "build_play_rankings",
@@ -211,7 +223,7 @@ def test_orchestrator_passes_only_aligned_ytd_baseline_to_comparison_consumers(
 
     assert result.report.coverage.comparison.comparable is True
     assert result.report.coverage.comparison.aligned_end == "2025-07-24"
-    assert captured["stats_2025"] == 7
+    assert captured["comparison_2025"] == 7
     hours = next(metric for metric in result.report.passport.metrics if metric.key == "total_hours")
     assert hours.comparison_value == 7.0
 

@@ -29,6 +29,7 @@ export interface YearlyMetric {
   label: string
   value: number | string
   unit: string | null
+  comparison_current_value?: number | null
   comparison_value: number | null
   comparison_label: string | null
   observed_start?: string | null
@@ -92,6 +93,11 @@ export interface YearlyReviewCoverage {
   }
   comparison: {
     baseline_year: number | null
+    mode?: 'full_year' | 'same_period' | 'common_period' | 'unavailable'
+    current_start?: string | null
+    current_end?: string | null
+    baseline_start?: string | null
+    baseline_end?: string | null
     aligned_start: string | null
     aligned_end: string | null
     comparable: boolean

@@ -8,7 +8,7 @@ import passportChapterSource from '../features/yearly-review/passport/PassportCh
 import primitivesSource from '../features/yearly-review/YearlyReviewPrimitives.tsx?raw'
 import statesSource from '../features/yearly-review/YearlyReviewStates.tsx?raw'
 import pageSource from '../pages/YearlyReviewPage.tsx?raw'
-import { buildYearlyReviewParams, displayYearlyText, formatMetric, formatMetricComparison, yearlyReviewFilterKey } from '../features/yearly-review/yearlyReviewData'
+import { buildYearlyReviewParams, displayYearlyText, formatComparisonWindow, formatMetric, formatMetricComparison, yearlyReviewFilterKey } from '../features/yearly-review/yearlyReviewData'
 import type { AnalysisFilters } from '../types/analysis'
 
 const filters: AnalysisFilters = {
@@ -53,6 +53,31 @@ describe('Yearly Review V2 desktop contract', () => {
       text: '10.0%',
       ariaLabel: '比去年低 10.0%',
     })
+    expect(formatMetricComparison({
+      key: 'plays',
+      label: '年度播放',
+      value: 1000,
+      unit: '次',
+      comparison_current_value: 90,
+      comparison_value: 60,
+      comparison_label: '比去年同期',
+    })).toEqual({
+      direction: 'up',
+      text: '50.0%',
+      ariaLabel: '比去年同期高 50.0%',
+    })
+    expect(formatComparisonWindow({
+      mode: 'common_period',
+      comparable: true,
+      current_start: '2023-07-01',
+      current_end: '2023-12-31',
+      baseline_start: '2022-07-01',
+      baseline_end: '2022-12-31',
+      baseline_year: 2022,
+      aligned_start: '2022-07-01',
+      aligned_end: '2022-12-31',
+      reason: null,
+    })).toBe('2023.07.01–2023.12.31 对比 2022.07.01–2022.12.31')
   })
 
   it('applies the global Chinese display preference to annual copy', async () => {
@@ -121,6 +146,7 @@ describe('Yearly Review V2 desktop contract', () => {
   it('renders comparisons and artwork across the passport and complete charts', () => {
     expect(passportChapterSource).toContain('formatMetricComparison(metric)')
     expect(passportChapterSource).toContain("comparison.direction === 'up' ? '↑'")
+    expect(passportChapterSource).toContain('formatComparisonWindow(report.coverage.comparison)')
     expect(passportChapterSource).not.toContain('report.headlines')
     expect(appendixChapterSource).toContain('<EntityMediaLink')
     expect(appendixChapterSource).not.toContain("'months'")

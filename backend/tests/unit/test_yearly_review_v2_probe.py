@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 import pytest
 
 from scripts.yearly_review_v2_probe import (
+    _comparison_issues,
     _consumer_issues,
     _editorial_issues,
     _identity_issues,
@@ -228,3 +230,33 @@ def test_semantic_probe_accepts_aligned_partial_month_window() -> None:
     }
 
     assert _semantic_issues(payload) == []
+
+
+def test_comparison_probe_requires_one_same_length_passport_window() -> None:
+    payload: dict[str, Any] = {
+        "coverage": {
+            "comparison": {
+                "comparable": True,
+                "mode": "common_period",
+                "current_start": "2023-07-01",
+                "current_end": "2023-12-31",
+                "baseline_start": "2022-07-01",
+                "baseline_end": "2022-12-31",
+            }
+        },
+        "passport": {
+            "metrics": [
+                {
+                    "key": "total_plays",
+                    "comparison_current_value": 90,
+                    "comparison_value": 60,
+                }
+            ]
+        },
+    }
+
+    assert _comparison_issues(2023, payload) == []
+    payload["passport"]["metrics"][0].pop("comparison_current_value")
+    assert "passport_comparison_current_value_missing:total_plays" in _comparison_issues(
+        2023, payload
+    )

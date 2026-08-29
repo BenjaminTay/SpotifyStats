@@ -248,21 +248,61 @@ def build_play_ranking_counts(
     event_frame: pd.DataFrame,
     entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
 ) -> dict[str, int]:
-    """Count canonical entities without materializing a second set of top lists."""
+    """Count canonical entities without materializing a second set of top lists.
+
+    This path feeds the comparison values in the yearly passport.  Calling
+    ``chart_rows`` here would rebuild weighted duration frames and album
+    project aggregates for every entity, even though the passport only needs
+    cardinalities.  The entity frames already carry the same canonical keys
+    used by the annual ranking builder, so a unique-count pass is both exact
+    and substantially cheaper.
+    """
     if event_frame.empty:
         return {entity: 0 for entity in PLAY_RANKING_LIMITS}
-    _, _, artist_frame = entity_frames
-    sources = {"track": event_frame, "album": event_frame, "artist": artist_frame}
-    counts: dict[str, int] = {}
-    for entity, source in sources.items():
-        total, _ = chart_rows(
+    track_frame, _album_frame, artist_frame = entity_frames
+
+    def unique_count(frame: pd.DataFrame, *columns: str) -> int:
+        for column in columns:
+            if column in frame.columns:
+                return int(frame[column].dropna().nunique())
+        return 0
+
+    if context.merge_level <= 1:
+        # At L1 the public album chart still applies album-type eligibility
+        # and source-album container resolution inside ``chart_rows``.
+        album_count, _ = chart_rows(
             conn,
-            source,
-            entity,
+            event_frame,
+            "album",
             "plays",
             limit=1,
             merge_level=context.merge_level,
             include_compilations=context.include_compilations,
         )
-        counts[entity] = int(total)
-    return counts
+    else:
+        # The entity frame is intentionally row-level and may contain several
+        # project memberships for one event.  Reuse the canonical project
+        # aggregation used by the public album chart so the passport count
+        # cannot exceed the annual chart's available_count.
+        from backend.domains.playback.album_projects import compute_album_project_plays
+
+        album_rows = compute_album_project_plays(
+            event_frame,
+            conn,
+            merge_level=context.merge_level,
+            include_compilations=context.include_compilations,
+            billboard_mode=False,
+        )
+        album_count = int(
+            album_rows[
+                pd.to_numeric(album_rows["play_count"], errors="coerce").fillna(0) > 0
+            ].shape[0]
+            if "play_count" in album_rows.columns
+            else 0
+        )
+
+    return {
+        "track": unique_count(track_frame, "canonical_track_id", "track_id"),
+        "album": int(album_count),
+        "artist": unique_count(artist_frame, "artist_name"),
+    }

@@ -36,7 +36,9 @@ def build_methodology(
     elif coverage.status == "observed_range":
         caveats.append("本报告只描述已观察到的日期范围，不代表完整自然年。")
     if not coverage.comparison.comparable:
-        caveats.append("上一年缺少完整同期数据，因此不展示年度同比。")
+        caveats.append("上一年没有足够长的共同观察区间，因此不展示年度同比。")
+    elif coverage.comparison.mode == "common_period":
+        caveats.append("年度比较使用两年共同的观察区间；年度总量仍按各自完整观察范围展示。")
     if coverage.billboard.status in {"year_to_date", "observed_range"}:
         caveats.append("个人 Billboard 仅覆盖当前已观察榜周，年榜结论属于阶段结果。")
     if coverage.billboard.has_internal_gaps:
@@ -98,8 +100,12 @@ def build_methodology(
         "comparison_periods": {
             "current_start": play.observed_start,
             "current_end": play.observed_end,
-            "baseline_start": coverage.comparison.aligned_start,
-            "baseline_end": coverage.comparison.aligned_end,
+            "comparison_mode": coverage.comparison.mode,
+            "comparison_current_start": coverage.comparison.current_start,
+            "comparison_current_end": coverage.comparison.current_end,
+            "baseline_start": coverage.comparison.baseline_start
+            or coverage.comparison.aligned_start,
+            "baseline_end": coverage.comparison.baseline_end or coverage.comparison.aligned_end,
         },
         "entity_grains": {
             "规范曲目": "按当前曲目归并级别统计，同一录音或作品版本可被合并。",

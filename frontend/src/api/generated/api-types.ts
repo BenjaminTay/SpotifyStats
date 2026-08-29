@@ -11380,6 +11380,20 @@ export interface components {
         YearlyComparisonCoverage: {
             /** Baseline Year */
             baseline_year?: number | null;
+            /**
+             * Mode
+             * @default unavailable
+             * @enum {string}
+             */
+            mode: "full_year" | "same_period" | "common_period" | "unavailable";
+            /** Current Start */
+            current_start?: string | null;
+            /** Current End */
+            current_end?: string | null;
+            /** Baseline Start */
+            baseline_start?: string | null;
+            /** Baseline End */
+            baseline_end?: string | null;
             /** Aligned Start */
             aligned_start?: string | null;
             /** Aligned End */
@@ -11540,7 +11554,7 @@ export interface components {
         YearlyMethodology: {
             /**
              * Content Version
-             * @default yearly_review_v2_14
+             * @default yearly_review_v2_16
              */
             content_version: string;
             /**
@@ -11593,6 +11607,8 @@ export interface components {
             value: number | string;
             /** Unit */
             unit?: string | null;
+            /** Comparison Current Value */
+            comparison_current_value?: number | null;
             /** Comparison Value */
             comparison_value?: number | null;
             /** Comparison Label */
@@ -11863,7 +11879,7 @@ export interface components {
         YearlyReviewRecordsPage: {
             /**
              * Content Version
-             * @default yearly_review_v2_14
+             * @default yearly_review_v2_16
              */
             content_version: string;
             /** Year */

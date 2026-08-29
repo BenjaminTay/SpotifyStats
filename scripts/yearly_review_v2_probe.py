@@ -33,7 +33,7 @@ from backend.services.yearly_review_service import (  # noqa: E402
     get_yearly_review_records,
 )
 
-PROBE_VERSION = "yearly_review_v2_probe_v6"
+PROBE_VERSION = "yearly_review_v2_probe_v7"
 
 CONSUMER_BANNED_COPY = (
     "统计口径",
@@ -327,6 +327,56 @@ def _semantic_issues(payload: dict[str, Any]) -> list[str]:
     return issues
 
 
+def _comparison_issues(year: int, payload: dict[str, Any]) -> list[str]:
+    """Check that every exposed annual comparison uses one explicit window."""
+    issues: list[str] = []
+    comparison = (payload.get("coverage") or {}).get("comparison") or {}
+    if not comparison.get("comparable"):
+        return issues
+
+    window_values = [
+        comparison.get("current_start"),
+        comparison.get("current_end"),
+        comparison.get("baseline_start"),
+        comparison.get("baseline_end"),
+    ]
+    if not all(window_values):
+        issues.append("comparison_window_missing")
+    else:
+        current_days = (
+            date.fromisoformat(str(window_values[1]))
+            - date.fromisoformat(str(window_values[0]))
+        ).days + 1
+        baseline_days = (
+            date.fromisoformat(str(window_values[3]))
+            - date.fromisoformat(str(window_values[2]))
+        ).days + 1
+        if current_days != baseline_days:
+            issues.append(
+                f"comparison_window_length_mismatch:current={current_days}:baseline={baseline_days}"
+            )
+
+    for metric in (payload.get("passport") or {}).get("metrics", []):
+        if metric.get("comparison_value") is None:
+            issues.append(f"passport_comparison_value_missing:{metric.get('key')}")
+        if metric.get("comparison_current_value") is None:
+            issues.append(f"passport_comparison_current_value_missing:{metric.get('key')}")
+
+    if year == 2023:
+        expected = {
+            "mode": "common_period",
+            "current_start": "2023-07-01",
+            "current_end": "2023-12-31",
+            "baseline_start": "2022-07-01",
+            "baseline_end": "2022-12-31",
+        }
+        for key, value in expected.items():
+            if comparison.get(key) != value:
+                issues.append(f"2023_comparison_{key}_mismatch:{comparison.get(key)}")
+
+    return issues
+
+
 def probe_year(
     year: int,
     context,
@@ -372,9 +422,11 @@ def probe_year(
     issues.extend(_editorial_issues(payload))
     issues.extend(_consumer_issues(payload))
     issues.extend(_semantic_issues(payload))
+    issues.extend(_comparison_issues(year, payload))
     return {
         "year": year,
         "status": report.status,
+        "comparison": payload["coverage"]["comparison"],
         "filter_fingerprint": context.filter_fingerprint,
         "content_version": report.methodology.content_version,
         "cold_ms": round(cold_ms, 2),

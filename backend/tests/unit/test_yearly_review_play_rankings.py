@@ -130,3 +130,31 @@ def test_empty_year_has_stable_empty_contract() -> None:
     assert result["empty"] is True
     assert result["charts"]["track"]["by_plays"] == []
     assert result["charts"]["album"]["available_count"] == 0
+
+
+def test_comparison_counts_use_canonical_album_project_aggregation(monkeypatch) -> None:
+    events = _events().query("ts_year == 2025").copy()
+    track_frame = events.assign(canonical_track_id=events["track_id"])
+    album_frame = events.assign(album_project_id=[101.0, 202.0])
+    artist_frame = events.assign(artist_name=["Artist", "Featured"])
+
+    def fake_album_projects(*_args, **_kwargs):
+        return pd.DataFrame(
+            {
+                "album_project_id": [101],
+                "play_count": [2],
+            }
+        )
+
+    monkeypatch.setattr(
+        "backend.domains.playback.album_projects.compute_album_project_plays",
+        fake_album_projects,
+    )
+    result = play_rankings.build_play_ranking_counts(
+        sqlite3.connect(":memory:"),
+        _context(),
+        event_frame=events,
+        entity_frames=(track_frame, album_frame, artist_frame),
+    )
+
+    assert result == {"track": 1, "album": 1, "artist": 2}

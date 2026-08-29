@@ -124,6 +124,20 @@ def test_empty_year_keeps_all_buckets_and_slices(monkeypatch) -> None:
     }
 
 
+def test_comparison_stats_only_builds_time_facts() -> None:
+    result = stats_adapter.build_yearly_comparison_stats(
+        2025,
+        event_frame=_frame(),
+    )
+
+    assert result["summary"]["total_plays"] == 4
+    assert result["summary"]["total_hours"] == 4.0
+    assert len(result["hourly_distribution"]) == 24
+    assert len(result["monthly_distribution"]) == 12
+    assert "taste_profile" not in result
+    assert "taste_slices" not in result
+
+
 def test_release_era_distribution_preserves_unknown_time(monkeypatch) -> None:
     frame = pd.DataFrame(
         [

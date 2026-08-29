@@ -33,3 +33,38 @@ def test_methodology_discloses_unknown_coverage_ytd_and_distribution_only() -> N
     assert "不展示年度同比" in text
     assert "没有两个完整的可比品味阶段" in text
     assert all("section_unavailable" not in item for item in result["limitations"])
+
+
+def test_methodology_discloses_common_period_comparison() -> None:
+    coverage = YearlyReviewCoverage(
+        status="complete",
+        play=YearlyPlayCoverage(
+            status="complete",
+            observed_start="2023-01-01",
+            observed_end="2023-12-31",
+        ),
+        billboard=YearlyBillboardCoverage(status="complete", source_status="complete"),
+        comparison=YearlyComparisonCoverage(
+            baseline_year=2022,
+            mode="common_period",
+            current_start="2023-07-01",
+            current_end="2023-12-31",
+            baseline_start="2022-07-01",
+            baseline_end="2022-12-31",
+            comparable=True,
+        ),
+        taste=YearlyTasteCoverage(),
+    )
+
+    result = build_methodology(coverage, YearlyTasteComparison())
+
+    assert any("共同的观察区间" in item for item in result["coverage_caveats"])
+    assert result["comparison_periods"] == {
+        "current_start": "2023-01-01",
+        "current_end": "2023-12-31",
+        "comparison_mode": "common_period",
+        "comparison_current_start": "2023-07-01",
+        "comparison_current_end": "2023-12-31",
+        "baseline_start": "2022-07-01",
+        "baseline_end": "2022-12-31",
+    }

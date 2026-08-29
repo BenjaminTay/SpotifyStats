@@ -28,6 +28,20 @@ def _change(current: Any, baseline: Any) -> float | None:
     return round((current_value - baseline_value) / baseline_value * 100, 1)
 
 
+def _comparison_label(coverage: YearlyReviewCoverage) -> str:
+    return "比去年" if coverage.comparison.mode == "full_year" else "比去年同期"
+
+
+def _comparison_window_kwargs(coverage: YearlyReviewCoverage) -> dict[str, str | None]:
+    comparison = coverage.comparison
+    return {
+        "observed_start": comparison.current_start,
+        "observed_end": comparison.current_end,
+        "comparison_start": comparison.baseline_start or comparison.aligned_start,
+        "comparison_end": comparison.baseline_end or comparison.aligned_end,
+    }
+
+
 def _leader_ref(row: Mapping[str, Any] | None, entity_type: str) -> YearlyEntityRef | None:
     if not row:
         return None
@@ -66,13 +80,20 @@ def build_passport_and_headlines(
     stats: Mapping[str, Any],
     *,
     baseline_stats: Mapping[str, Any] | None = None,
+    comparison_current_stats: Mapping[str, Any] | None = None,
     play_rankings: Mapping[str, Any] | None = None,
+    comparison_current_entity_counts: Mapping[str, int] | None = None,
     baseline_entity_counts: Mapping[str, int] | None = None,
 ) -> tuple[YearlyReportPassport, list[YearlyHeadline]]:
     """Build the report scope card and at most three evidence-backed headlines."""
     summary = dict(stats.get("summary", {}))
+    comparison_current_summary = dict((comparison_current_stats or stats).get("summary", {}))
     baseline_summary = dict((baseline_stats or {}).get("summary", {}))
-    comparable = coverage.comparison.comparable and bool(baseline_stats)
+    comparable = (
+        coverage.comparison.comparable
+        and bool(baseline_stats)
+        and bool(comparison_current_stats or stats)
+    )
     rankings_authoritative = bool(play_rankings) and (play_rankings or {}).get("empty") is not True
     charts = dict((play_rankings or {}).get("charts", {}))
     entity_specs = {
@@ -81,11 +102,17 @@ def build_passport_and_headlines(
         "unique_artists": ("artist", "年度播放艺人", "位"),
     }
     current_values = dict(summary)
+    comparison_current_values: dict[str, Any] = dict(comparison_current_summary)
     baseline_values: dict[str, Any] = dict(baseline_summary)
     for key, (entity, _, _) in entity_specs.items():
         available = dict(charts.get(entity, {})).get("available_count")
         if rankings_authoritative and available is not None:
             current_values[key] = int(available)
+        if (
+            comparison_current_entity_counts is not None
+            and entity in comparison_current_entity_counts
+        ):
+            comparison_current_values[key] = int(comparison_current_entity_counts[entity])
         if baseline_entity_counts is not None and entity in baseline_entity_counts:
             baseline_values[key] = int(baseline_entity_counts[entity])
         else:
@@ -102,16 +129,16 @@ def build_passport_and_headlines(
             label=label,
             value=current_values.get(key, 0),
             unit=unit,
+            comparison_current_value=(
+                comparison_current_values.get(key)
+                if comparable and key in comparison_current_values
+                else None
+            ),
             comparison_value=(
                 baseline_values.get(key) if comparable and key in baseline_values else None
             ),
-            comparison_label=(
-                "比去年"
-                if comparable and coverage.status == "complete"
-                else "比去年同期"
-                if comparable
-                else None
-            ),
+            comparison_label=(_comparison_label(coverage) if comparable else None),
+            **(_comparison_window_kwargs(coverage) if comparable else {}),
         )
         for key, label, unit in definitions
     ]
@@ -132,13 +159,15 @@ def build_passport_and_headlines(
     )
 
     candidates: list[tuple[int, str, YearlyHeadline]] = []
-    hours_change = _change(summary.get("total_hours"), baseline_summary.get("total_hours"))
+    hours_change = _change(
+        comparison_current_summary.get("total_hours"), baseline_summary.get("total_hours")
+    )
     if comparable and hours_change is not None:
-        current_hours = float(summary.get("total_hours") or 0)
+        current_hours = float(comparison_current_summary.get("total_hours") or 0)
         baseline_hours = float(baseline_summary.get("total_hours") or 0)
         absolute_change = round(abs(current_hours - baseline_hours), 1)
         direction = "多" if hours_change >= 0 else "少"
-        comparison_copy = "比去年" if coverage.status == "complete" else "比去年同期"
+        comparison_copy = _comparison_label(coverage)
         candidates.append(
             (
                 100 + int(abs(hours_change)),
@@ -156,8 +185,10 @@ def build_passport_and_headlines(
                         label="播放时长变化",
                         value=hours_change,
                         unit="%",
+                        comparison_current_value=current_hours,
                         comparison_value=_number(baseline_summary.get("total_hours")),
                         comparison_label=comparison_copy,
+                        **_comparison_window_kwargs(coverage),
                     ),
                     source_refs=["stats.summary.total_hours", "coverage.comparison"],
                 ),

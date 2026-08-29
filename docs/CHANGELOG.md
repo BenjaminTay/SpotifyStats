@@ -2,6 +2,13 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-30 — 年度总结补齐 2023 同期比较
+
+- 年度比较新增共同区间解析：上一年不是完整年度时，取两年映射后的最大共同日历区间；2023 年因此使用 2023-07-01 至 12-31 对比 2022-07-01 至 12-31，不再把缺失的 2022 上半年当作零播放。
+- Passport 六项指标保留完整年度主值，并分别携带可比区间的当前值、基线值、比较模式和两侧日期；Desktop 与 Phone banner 显示“比去年同期”及参照区间。
+- 内容版本升级到 `yearly_review_v2_16`，probe 升级到 v7；新增共同区间、短区间拒绝、窗口等长、前后端字段及 canonical album project 计数回归测试。
+- 真实 2023 结果已验证为 `common_period`，当前区间 8,968 次 / 544.2 小时 / 184 天，基线区间 6,753 次 / 403.7 小时 / 184 天；完整重算性能仍受当前工作树中独立 Billboard movement 改动影响，详见专项报告。
+
 ## 2026-08-30 — 歌曲 identity 专辑展示一致性收口
 
 - `/api/music/tracks/{canonical_track_id}` 及 legacy identity 路由改为批量消费统一 TrackPresentation，不再从代表 Track 的 `album_id` 推导专辑和封面；响应同步增加结构化 `album_attribution`，OpenAPI 快照与前端生成类型已更新。

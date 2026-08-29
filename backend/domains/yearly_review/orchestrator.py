@@ -40,7 +40,10 @@ from backend.domains.yearly_review.playback_records_adapter import (
 from backend.domains.yearly_review.records import select_yearly_records
 from backend.domains.yearly_review.relationships import build_relationships
 from backend.domains.yearly_review.season import build_season
-from backend.domains.yearly_review.stats_adapter import build_yearly_stats
+from backend.domains.yearly_review.stats_adapter import (
+    build_yearly_comparison_stats,
+    build_yearly_stats,
+)
 from backend.domains.yearly_review.taste_migration import (
     build_taste_drivers,
     build_taste_migration,
@@ -255,19 +258,31 @@ def build_yearly_review_artifact(
     aligned = None
     if (
         comparison_coverage.comparable
-        and play_coverage.observed_start
-        and play_coverage.observed_end
+        and comparison_coverage.current_start
+        and comparison_coverage.current_end
+        and comparison_coverage.baseline_start
+        and comparison_coverage.baseline_end
     ):
         aligned = aligned_comparison_frames(
             event_frame,
             report_year=year,
-            observed_start=play_coverage.observed_start,
-            observed_end=play_coverage.observed_end,
+            observed_start=comparison_coverage.current_start,
+            observed_end=comparison_coverage.current_end,
+            baseline_start=comparison_coverage.baseline_start,
+            baseline_end=comparison_coverage.baseline_end,
         )
     baseline_events = aligned.baseline if aligned is not None else baseline_year_events.iloc[0:0]
     baseline_stats = (
-        build_yearly_stats(conn, year - 1, context, event_frame=baseline_events)
+        build_yearly_comparison_stats(year - 1, event_frame=baseline_events)
         if not baseline_events.empty
+        else None
+    )
+    comparison_current_events = aligned.current if aligned is not None else annual_events.iloc[0:0]
+    comparison_current_stats = (
+        stats
+        if aligned is not None and comparison_current_events.equals(annual_events)
+        else build_yearly_comparison_stats(year, event_frame=comparison_current_events)
+        if not comparison_current_events.empty
         else None
     )
 
@@ -308,11 +323,33 @@ def build_yearly_review_artifact(
         taste=taste_coverage,
     )
 
+    comparison_current_entity_counts: Mapping[str, int] | None = None
     baseline_entity_counts: Mapping[str, int] | None = None
     if aligned is not None and not baseline_events.empty:
+        comparison_current_entity_frames = tuple(
+            filter_date_range(frame, aligned.current_start, aligned.current_end)
+            for frame in entity_frames
+        )
         baseline_entity_frames = tuple(
             filter_date_range(frame, aligned.baseline_start, aligned.baseline_end)
             for frame in entity_frames
+        )
+        comparison_current_entity_counts = cast(
+            Mapping[str, int],
+            _safe_section(
+                "comparison_current_entity_counts",
+                lambda: build_play_ranking_counts(
+                    conn,
+                    context,
+                    event_frame=aligned.current,
+                    entity_frames=cast(
+                        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
+                        comparison_current_entity_frames,
+                    ),
+                ),
+                dict,
+                limitations,
+            ),
         )
         baseline_entity_counts = cast(
             Mapping[str, int],
@@ -336,7 +373,9 @@ def build_yearly_review_artifact(
         coverage,
         stats,
         baseline_stats=baseline_stats,
+        comparison_current_stats=comparison_current_stats,
         play_rankings=play_rankings,
+        comparison_current_entity_counts=comparison_current_entity_counts,
         baseline_entity_counts=baseline_entity_counts,
     )
     playback_records: dict[str, Any] = (
@@ -405,6 +444,7 @@ def build_yearly_review_artifact(
             stats,
             coverage,
             baseline_stats=baseline_stats,
+            comparison_current_stats=comparison_current_stats,
             play_rankings=play_rankings,
             event_frame=annual_events,
             history_frame=event_frame,
