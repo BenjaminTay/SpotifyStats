@@ -808,6 +808,16 @@ def _aggregate_l2_rounds(rounds: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _apply(args: argparse.Namespace) -> dict[str, Any]:
+    """Apply governance without leaking the selected database into the process."""
+
+    original_db_path = db_mod.DB_PATH
+    try:
+        return _apply_with_db_path(args)
+    finally:
+        db_mod.DB_PATH = original_db_path
+
+
+def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
     db_path = args.db_path.resolve()
     backup_dir = (args.backup_dir or (PROJECT_ROOT / "data" / "backups")).resolve()
     backup_path = _online_backup(db_path, backup_dir)

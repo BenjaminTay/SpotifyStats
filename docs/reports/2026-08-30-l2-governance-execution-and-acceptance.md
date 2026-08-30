@@ -1,38 +1,41 @@
 # L2 自动归并治理执行与验收报告
 
-> 状态：Pass（实现、真实数据库迁移、派生重建、真实 API/浏览器验收和默认完整全栈门禁均已完成）。证据日期：2026-08-30。
+> 状态：Pass。规则收口、代码实现、克隆演练、真实数据库治理、派生重建、真实 API、双视口浏览器和默认完整全栈门禁均已完成。证据日期：2026-08-30。
 > 当前规则：[`../reference/music-metadata-management.md`](../reference/music-metadata-management.md)、[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
 
-## 1. 最终规则
+## 1. 最终口径
 
-本轮把 L1、L2、L3 的边界收口为：
-
-| 层级 | 身份语义 | 自动处理边界 |
+| 层级 | 身份语义 | 本轮边界 |
 | --- | --- | --- |
-| L1 | 稳定的本地 canonical track；原始播放和 provider 来源完整保留 | 不因曲名或艺人相似而自动合并；只审计可能误收的多个 Spotify ID |
-| L2 | 曲名归一后一致且有效主艺人集合一致的同一首歌 | 默认机器归并，不要求 ISRC、时长、专辑或版本标签一致；同名同艺人即同一首歌 |
-| L3 | 同一作品的不同演绎、录音、重录、现场、Acoustic、Remix 等 | 只在 composition 关系存在时进一步合并；本轮不凭标题相似自动推断 |
+| L1 | 稳定 provider owner | 不做歌曲版本或专辑项目合并；只安全收口已证明属于同一 owner 的 relink/历史投影，并清理零播放、无外部身份的兼容壳 |
+| L2 | 同一首歌的 recording 口径 | canonical primary artist 与语义规范化标题相同默认机器归并；无需人工逐条审核 |
+| L3 | 同一作品的 composition 口径 | Acoustic、Live、Remix、Taylor's Version 等跨录音关系只在 composition 关系存在时进一步归并 |
 
-专辑 L2 使用 Album Project：标准版、豪华版、Acoustic Collection、Long Pond 等只要共享正式主体曲目，就属于同一专辑项目；这不等于把其中原版与 Acoustic 单曲在歌曲 L2 合并。精选集候选继续冻结，不在规则未定时自动写入。
+L2 的“同艺人 + 同歌名”仍是主规则。标题规范化会合并简繁、大小写、等价标点、Explicit/Clean、Bonus、Remaster 等发行标签，但保留 Acoustic、Live、Remix、Radio Edit、Demo、Instrumental、Taylor's Version、Original/Single/Album Version、Extended、Sped Up/Slowed 等录音语义。
+
+为了让机器处理更多对象且避免制造明显错组，自动决策使用 `accepted/rejected/pending` 三态：普通同艺人同语义标题直接 accepted；通用短标题在 ISRC 不相交且时长差至少 10 秒时 rejected；Soundtrack 等来源语境与无语境标题只有共享 ISRC 且时长兼容才 accepted；双方均无播放、外部 ID 和来源事实时 pending。rejected/pending 都不建活动组，不会形成新的人工审核队列。
+
+专辑 L2 使用 Album Project。标准版、豪华版、Acoustic Collection、Long Pond 等只要满足正式主体曲目与发行证据，就可属于同一专辑项目；这不会把其中 Acoustic/Long Pond 单曲在歌曲 L2 与原版录音合并。精选集产品策略仍冻结，自动任务不改变 compilation membership 或榜单资格。
 
 ## 2. 实施内容
 
-- schema 66/67 增加 L2 归一、机器候选、治理运行和 Album Project 自动归并所需结构。
-- L2 机器任务按归一曲名和有效主艺人集合建立 recording 组，写入稳定证据、来源和 revision；重复运行保持幂等。
-- Album Project 自动任务按正式主体曲目成员关系归并版本专辑，同时保留 source album 用于来源解释。
-- L1 增加只读风险审计和安全分拆边界；有多 ISRC、明显时长冲突、版本词或视频证据的对象进入人工复核，不在基础身份层冒进修改。
-- 治理 CLI 支持计划、应用、运行记录、审计摘要和派生数据刷新。
-- 歌曲详情当前消费链改用稳定 L1 owner 路由，再按请求的 L2/L3 展开成员，避免 legacy source ID 歧义返回 409。
-- Billboard 记录页共享连续周数与稳定 Top 20 排序实现，恢复项目架构行数门禁而不改变排名语义。
-- 浏览器 route smoke 为动态详情提供 45 秒等待；确定性冷构建页面最多等待 360 秒并在内容就绪后立即结束。默认 5 秒导航等待保持不变。
+- 标题策略升级为 `nfkc_t2s_title_semantic_source_v3`，L2 身份策略升级为 `canonical_artist_title_v2`。
+- L2 规划器支持三态候选、无序 pair 幂等、人工 `force_separate/force_merge` 优先级、非 canonical 成员清理和旧候选状态收敛。
+- L1 自动治理只处理同 canonical artist、共享 ISRC、时长差不超过 2 秒且语义兼容的安全目标；不会凭标题创建新 L1。零播放且无外部身份的 shadow identity 标为 superseded。
+- 治理执行器在同一关系事务内最多运行两轮 L1 → L2，第三轮只读检查收敛；track revision 只发布一次。执行前后校验原始表 hash、identity/group/FK/integrity 不变量。
+- 运行头先于关系事务持久化；成功和失败均保留 run 状态，每个变更写入 before/after/evidence。治理 CLI 结束后无论成功或失败都恢复原 `DB_PATH`，不会污染后续任务或测试进程。
+- Album Project 在关系变更后强制重建 membership；四套 L2/L3 × 动态阈值开关的音乐查找 snapshot 和四套 Year-End 投影必须同事务 ready，失败时不激活半套派生数据。
+- 公开 `/music/tracks/{track_id}` 与 Billboard 详情优先使用同 ID 的活动 L1 owner；仅在不存在稳定 owner 时回退历史 source link，避免代表 track ID 因历史 fan-out 被误报 409。
 
-## 3. 真实数据库执行
+## 3. 克隆演练与真实数据库执行
 
-正式本地库治理运行 ID：`c355222e-e798-4ca5-86e5-edceb31dc7aa`。执行前使用 SQLite Online Backup 保存：
+正式执行前在一次性克隆库完成两轮演练：L1 共 2,721 个操作，L2 第一轮变化、第二轮稳定，第三轮收敛检查为 L1 操作 0、L2 `changed=false`；track revision 只增加 1，原始事实 hash 不变，`foreign_key_check=0`、`integrity_check=ok`。同一克隆再次 dry-run 保持无变化。
 
-`data/backups/spotify_stats_20260830T061334Z_before-l2-governance.db`
+正式本地库治理运行 ID：`3b4b395b-2895-41f3-8d9d-156eb0d3a4c1`。执行前使用 SQLite Online Backup 保存：
 
-数据库迁移到 schema 67，`integrity_check=ok`，`foreign_key_check=0`。原始事实未被治理任务改写：
+`data/backups/spotify_stats_20260830T122202Z_before-l2-governance.db`
+
+数据库 schema 为 67，治理结果为 `applied`，共记录 3,448 个审计事件。原始事实表在治理后及最终验收时均保持以下值：
 
 | 原始表 | 行数 | SHA-256 |
 | --- | ---: | --- |
@@ -40,76 +43,79 @@
 | `tracks` | 9,549 | `c8add4d665b193f495760d791d2136dbbd1f3df4e4a94c54a2ed8db5329f5593` |
 | `track_artists` | 9,983 | `6cfbaf91359011d726211c9be73ea382d3d85fbf854a4974b67503821dfcc879` |
 
-执行结果：
+关系层执行结果：
 
-- L2 发现 87 个确定性候选组；创建 85 个、更新 1 个、另 1 个既有人工组保持有效，共新增 171 条成员关系，阻断 0。
-- 当前共有 86 个机器组和 1 个人工组；86 组大小为 2，“纯妹妹”组大小为 3。成员重叠 0、少于 2 个成员的活动组 0。
-- Album Project 发现 23 个候选组，共归并 64 张专辑，创建 release group 829–851；重复 dry-run 后候选为 0。
-- L1 审计发现 817 个可能存在基础身份风险的 owner；143 个涉及多 ISRC、64 个有时长冲突、136 个有版本词、113 个有视频证据。全部进入复核，安全自动分拆为 0。
-- 精选集候选固定为 26 个，仅保留调查结果，未自动归并。
+- L1 共执行 2,721 个安全 shadow/relink 收口操作；817 个多外部 ID 风险 owner 保留为审计集合，安全自动分拆为 0，没有冒险改写基础 owner。
+- L2 最终有 41 个活动 recording group：40 个机器组、1 个人工组；本轮更新 40 组、归档 46 个错误自动组、移除 92 条成员关系，没有创建低证据组。
+- 当前候选账本为 accepted 43、pending 3、rejected 583。账本包含历史 pair 状态，因此 accepted 数不等于活动组数。
+- 活动组成员重叠 0、少于两个成员 0、无效 primary 0；active group 非 canonical 成员、pending 非 canonical 引用、identity/source/external owner orphan 均为 0。
+- Album Project 本轮无新的 catalog merge 候选，但因 L1/L2 关系变化强制重建 membership；track revision `6 → 7`，album project revision `1 → 2`。
+- 正式库执行后再次 dry-run：L1 操作 0、L2 创建/更新/归档均为 0、Album Project 新候选 0，证明幂等。
 
-## 4. 代表性数据复核
+## 4. 真实数据复核
 
-- “纯妹妹”L2 组 `5846` 包含 Track `4546/5107/5732`；任一成员进入详情均聚合为 30 次、1.6 小时和 30 条播放明细。
-- “手心的薔薇”L2 组 `5874` 包含 Track `852/4309`，聚合为 87 次。
-- `The Life of a Showgirl` Album Project `41476` 包含 2 张专辑、33 首项目曲目；统计为 1,663 次、97.4 小时、30 首唯一曲目。
-- `folklore` Album Project `41478` 包含 3 张专辑、34 首项目曲目，包含 `The Long Pond Studio Sessions`。
-- Wicked 的 album `1356/1357/1483/1484/1485/1489/1490` 已归入同一 project `42213`。
-- `Bad Boy`、`Hounds of Love`、`Emancipation`、`Star`、`Superman` 的大小写差异发行已归并。
-- 原版与 Acoustic/Long Pond 单曲在 L2 仍然不同：Track `4454/4461`、`4451/4463`、`cardigan` 的 `93/127` 均未建立 recording 组。
+保留的正确 L2 归并：
 
-## 5. 派生数据与 API
+- “纯妹妹”组 `5846`：`4546/5107/5732`，代表 `4546`；真实 API 和页面均为 30 次、1.6 小时，播放明细保留三个来源版本。
+- “手心的薔薇”组 `5874`：`852/4309`，代表 `4309`；聚合 87 次。
+- “For Good”组 `5924`：`3559/4266`，代表 `3559`；聚合 99 次。
 
-L2 治理完成后 revision 为 6，Album Project revision 为 1。四套精确音乐查找快照均已 ready/current，每套 7,870 个实体：
+已拆开的代表性误合并：
 
-- 动态阈值 L2：`4413500b…`
-- 动态阈值 L3：`8a6bed00…`
-- 固定阈值 L2：`6a86599d…`
-- 固定阈值 L3：`05bedf07…`
+| 对象 | 修复后结果 |
+| --- | --- |
+| `the lakes - bonus track` `310` / 原版 `1095` | L2 分开；分别 54 次与 1 次 |
+| `Thriller` `2405` / `Single Version` `4176` | L2 分开；分别 1 次与 1 次 |
+| `Loverboy - Original Version` `3070` / 基础版 `3736` | L2 分开；分别 11 次与 1 次 |
+| `INTRO` `2613` / `Intro` `2876` | L2 分开；分别 11 次与 5 次 |
+| `City Of Stars - From ... Soundtrack` `3832` | 不再保留无证据单成员活动组；自身 7 次 |
 
-四套年度投影均 ready，每套覆盖 5 年、550 行。固定完整过滤参数下，API overview 为 66,419 次、4,196.1 小时；L2/L3 曲目榜分别有 5,712 个实体，专辑榜分别有 1,171 个实体。
+专辑项目结果：
 
-当前数据库没有 composition 组，因此 L2 与 L3 榜单 JSON 暂时逐字节相同。这只是当前数据状态，不代表规则语义相同；未来建立 L3 composition 关系后，L3 才会比 L2 进一步聚合。
+- `The Life of a Showgirl` project `41476` 包含原版和 `+ Acoustic Collection` 两张发行、33 首项目曲目；真实 L2 API 为 1,663 次、97.4 小时、30 首唯一曲目。
+- `folklore` project `41478` 包含原版及两张 `The Long Pond Studio Sessions` 发行、34 首项目曲目；真实 L2 API 为 1,305 次、82.8 小时、34 首唯一曲目。
+- Album Project 会共同统计额外录音，但歌曲 L2 仍保留各 recording key，符合“Long Pond 可进专辑项目、Acoustic 不在歌曲 L2 吞掉原版”的产品边界。
 
-治理任务幂等复验：87 个 L2 组全部为 `unchanged`，Album Project 新候选 0，L1 自动操作 0，精选集仍冻结为 26 个候选。
+## 5. 派生数据、API 与浏览器
 
-## 6. 浏览器与功能验收
+四套精确快照均为 ready/current，每套 7,874 个 entity context；四套 Year-End 投影各 550 行、覆盖 5 年：
 
-真实浏览器已在 Desktop 1440×1000 和 Phone 390×844 验证“纯妹妹”详情；三个成员版本均出现在 30 条播放明细中，控制台 0 error，移动端无横向溢出。`The Life of a Showgirl` 项目详情及曲目请求返回 200。
+| merge level | 动态阈值 | snapshot key |
+| ---: | :---: | --- |
+| 2 | 关 | `9618c0280cda437d5a780c61c8f99b44cb7da205635e5f038a765c3e4cb4b1b2` |
+| 2 | 开 | `eab66be3ab3a576340844de7b862dc43e75ccc4b609cc849853d46e5313640a2` |
+| 3 | 关 | `1db21501a7931a7178675ef70b2547b5d51eb84e4a2e5ff525753b4136823184` |
+| 3 | 开 | `d529ba81e13477f283a72584e96bd2715d003787849e0c37038cd111d95a8de2` |
 
-本地截图不提交个人音乐信息：
+当前真实库没有活动 composition group，因此当前 L2 与 L3 结果暂时相同；这是数据状态，不代表层级语义相同。
 
-- `output/playwright/l2-pure-desktop.png`
-- `output/playwright/l2-pure-mobile-390.png`
-- `output/playwright/l2-showgirl-mobile-390.png`
+真实浏览器额外验收：
 
-## 7. 自动化验证
+- Desktop 1440×1000 与 Phone 390×844 打开 `/music/tracks/4546` 均展示 30 次，三个来源版本均出现在明细中。
+- 390px 下 `clientWidth=390`、`scrollWidth=390`，控制台 error 0。
+- `/music/tracks/2405` 展示 Thriller 自身 1 次，不再混入 Single Version；控制台 error 0。
+- 截图和快照只保存在本地 `output/playwright/l2-governance-final/`，不提交个人音乐数据。
 
-已通过：
+## 6. 自动化验收
 
-- 后端 unit：1,442 passed。
-- 后端 contract：403 passed。
-- 后端完整套件：2,382 passed，4 个既有环境/弃用 warning。
+- L2/L1/治理编排定向回归：160 passed；代表 ID 解析定向契约：11 passed；执行器路径隔离相关回归：23 passed。
+- 后端 unit：1,474 passed；contract：403 passed。
 - 前端 Vitest：607 passed；TypeScript 与 Vite production build passed。
-- L2 详情链路定向前端测试：32 passed。
-- Billboard 记录计算定向回归：40 passed。
-- 文档审计、pre-commit 和 `git diff --check` passed。
-- 浏览器 route 矩阵：55/55，另有 30 个五档代表视口组合；桌面、移动、图表交互与长列表 passed。
-- 控件清单覆盖 2,366 个控件、447 个主要触控目标，未命名、小尺寸和布局违规均为 0。
-- Chromium、Firefox、WebKit 兼容性 passed。
+- 文档审计和全文件 pre-commit passed。
+- 默认完整全栈矩阵：**Pass**，总耗时 3,114,396ms。
+  - quality 53,940ms
+  - backend 1,012,705ms：2,415 passed
+  - API 914,942ms：smoke 138/138、边界 112/112、OpenAPI 206 operations 无遗漏，热端点 P95 全部低于 500ms
+  - browser routes 726,002ms：54 个 desktop/mobile 组合和 30 个五档代表视口全部通过，console/page error、warning、横向溢出均为 0
+  - browser interactions 95,356ms：桌面、移动、图表交互全部通过
+  - browser inventory 94,341ms：2,141 个控件、418 个主要触控目标，违规 0；7 个长列表场景通过
+  - browser compatibility 216,831ms：Chromium、Firefox、WebKit 全部通过
 
-较早一次默认门禁中，quality、backend 和 API 阶段通过，browser routes 仅有冷构建内容标记超时；当时所有失败页面均为控制台 0 error、page error 0、横向溢出 0。缓存就绪后的 route 矩阵为 55/55，后续 interactions、inventory 和 compatibility 阶段也全部通过。为使冷启动门禁本身稳定，动态页面等待扩展到 45 秒。
+## 7. 边界、回滚与 Git
 
-随后一次冷启动复跑因 smoke 等待策略已经更新、对应源码契约仍断言旧的 12 秒值而在 backend 阶段失败（2,381 passed、1 failed）。契约同步到 45 秒后单独通过 13/13。
-
-复跑进一步揭示年榜并非单纯页面等待不足：冷请求实测 254.906 秒后返回 200，热请求约 20ms，而通用前端 API 超时为 30 秒，页面会提前停在 408 错误。年榜 query 因此使用 300 秒专用请求上限，其他 API 仍保持 30 秒；慢页面 smoke 上限为 360 秒且每秒轮询、内容就绪即退出。全新后端进程下，年榜桌面冷构建与随后移动端热命中均通过，控制台、page error 和横向溢出为 0。该兜底恢复冷启动可用性，但约 255 秒的年榜首次构建性能仍是后续独立优化项。
-
-最终默认完整全栈门禁为 **Pass**，总耗时 2,711,072ms。七个必需阶段全部通过：quality 67,281ms、backend 989,359ms、API 760,722ms、browser routes 529,480ms、browser interactions 91,385ms、browser inventory 78,907ms、browser compatibility 193,755ms。API smoke 138/138、边界 112/112、OpenAPI 206 个 operation 和 97 项参数义务均无未登记项；所有热端点 P95 低于 500ms。
-
-## 8. 边界、回滚与 Git 状态
-
-- L1 的 817 个风险对象不是本轮遗留错误数量，而是需要额外证据才能安全分拆的审计集合；本轮不会为了减少人工审核而破坏基础身份。
-- L2 已按“归一曲名一致 + 有效主艺人一致”机器化；人工只处理 L1 身份冲突、精选集策略和 L3 作品关系等无法由当前确定性证据安全决定的问题。
-- 回滚优先恢复治理前 Online Backup；搜索和年度投影属于可重建派生数据。
-- 核心实现已本地提交为 `9e2f4405 feat: 自动化 L2 曲目与专辑项目归并`。
-- 本报告和最终验收收口作为独立大阶段本地提交；未 push、未部署。
+- 817 个 L1 风险 owner 是待更多 provider 证据的审计集合，不等于 817 个已确认错误；本轮没有为了降低人工量而冒险分拆。
+- 精选集策略和 L3 composition 关系仍是明确未自动推断的产品边界，不影响本轮 L2 修复完成状态。
+- 回滚优先恢复本报告记录的 Online Backup；搜索 snapshot 和 Year-End 投影是可重建派生数据。
+- 核心收紧提交：`7a0ec623 fix: 收紧 L2 自动归并与治理发布门禁`。
+- 代表详情解析提交：`7e91e8e5 fix: 修复 L2 代表曲目详情解析`。
+- 本轮只在本地提交，未 push、未部署；真实数据库和 backup 不进入 Git。

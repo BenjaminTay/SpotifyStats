@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.core import db as db_mod
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 from backend.domains.music_search.year_end_projection import (
     YEAR_END_PROJECTION_BUILDER_VERSION,
@@ -492,9 +493,11 @@ def test_apply_commits_auditable_header_preserves_raw_and_bumps_revision_once(
         lambda *_a, **_k: _ready_report(),
     )
 
+    original_db_path = db_mod.DB_PATH
     report = governance._apply(_args(path, tmp_path / "backups"))
 
     assert report["governance_status"] == "applied"
+    assert db_mod.DB_PATH == original_db_path
     assert calls == {"l1_bump": [False], "l2_bump": [False, False]}
     assert report["track_identity_revision"] == {"before": 5, "after": 6, "delta": 1}
     assert report["relation_validation"]["raw_facts_preserved"] is True
@@ -532,8 +535,10 @@ def test_relation_failure_rolls_back_changes_but_keeps_failed_run_header(
         lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("planned failure")),
     )
 
+    original_db_path = db_mod.DB_PATH
     with pytest.raises(RuntimeError, match="planned failure"):
         governance._apply(_args(path, tmp_path / "backups"))
+    assert db_mod.DB_PATH == original_db_path
 
     conn = sqlite3.connect(path)
     try:
