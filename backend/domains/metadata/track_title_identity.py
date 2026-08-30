@@ -2,10 +2,10 @@
 
 L2 answers the product question "is this the same song recording?".  The
 canonical artist is resolved elsewhere; this module turns the visible title
-into a stable base title plus semantic recording tags.  Packaging labels such
-as remaster, clean/explicit, bonus-track and soundtrack source text disappear
-from the L2 key.  Alternate recordings keep a tag and therefore remain
-separate until L3.
+into a stable base title plus semantic recording tags. Packaging labels such
+as remaster, clean/explicit and bonus-track disappear from the L2 key.
+Soundtrack source text is retained separately as an evidence gate. Alternate
+recordings keep a tag and therefore remain separate until L3.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from functools import lru_cache
 
 from opencc import OpenCC
 
-L2_TITLE_IDENTITY_POLICY_VERSION = "nfkc_t2s_title_semantic_suffix_v2"
+L2_TITLE_IDENTITY_POLICY_VERSION = "nfkc_t2s_title_semantic_source_v3"
 
 _PUNCTUATION_TRANSLATION = str.maketrans(
     {
@@ -59,6 +59,30 @@ _SEMANTIC_TAG_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(r"(?:radio\s+(?:edit|version)|电台版|電台版)", re.IGNORECASE),
     ),
     (
+        "original_version",
+        re.compile(r"(?:\boriginal\s+version\b|原版|原始版)", re.IGNORECASE),
+    ),
+    (
+        "single_version",
+        re.compile(r"(?:\bsingle\s+version\b|单曲版|單曲版)", re.IGNORECASE),
+    ),
+    (
+        "album_version",
+        re.compile(r"(?:\balbum\s+version\b|专辑版|專輯版)", re.IGNORECASE),
+    ),
+    (
+        "extended",
+        re.compile(r"(?:\bextended(?:\s+(?:version|mix|edit))?\b|加长版|加長版)", re.IGNORECASE),
+    ),
+    (
+        "sped_up",
+        re.compile(r"(?:\bsped[ -]?up(?:\s+version)?\b|加速版)", re.IGNORECASE),
+    ),
+    (
+        "slowed",
+        re.compile(r"(?:\bslowed(?:\s+(?:down|version))?\b|慢速版|减速版|減速版)", re.IGNORECASE),
+    ),
+    (
         "acoustic",
         re.compile(r"(?:acoustic|unplugged|不插电|不插電|原声版|原聲版)", re.IGNORECASE),
     ),
@@ -93,10 +117,15 @@ _PACKAGING_PATTERNS = (
     re.compile(r"(?:重制|重製)(?:版)?", re.IGNORECASE),
     re.compile(r"\b(?:clean|explicit)(?:\s+version)?\b", re.IGNORECASE),
     re.compile(r"\bbonus\s+track(?:\s+version)?\b", re.IGNORECASE),
-    re.compile(r"\b(?:album|single|original)\s+version\b", re.IGNORECASE),
-    re.compile(r"\bfrom\s+.+?(?:soundtrack|motion\s+picture|series|film)\b", re.IGNORECASE),
-    re.compile(r"\bmusic\s+from\s+.+", re.IGNORECASE),
     re.compile(r"^(?:19|20)\d{2}\s*版$", re.IGNORECASE),
+)
+
+_SOURCE_CONTEXT_PATTERNS = (
+    re.compile(
+        r"\bfrom\s+.+?(?:soundtrack|motion\s+picture|series|film)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bmusic\s+from\s+.+", re.IGNORECASE),
 )
 
 _TRAILING_PACKAGING_PATTERNS = (
@@ -120,11 +149,12 @@ _DELIMITED_SUFFIX = re.compile(r"\s+(?:-|:)\s+(.+?)\s*$")
 
 @dataclass(frozen=True)
 class L2TrackTitleIdentity:
-    """Stable L2 title components; ``original`` remains presentation-only."""
+    """Stable L2 title components without changing presentation metadata."""
 
     original: str
     base_title: str
     semantic_version_tags: tuple[str, ...]
+    source_context_tags: tuple[str, ...]
     policy_version: str = L2_TITLE_IDENTITY_POLICY_VERSION
 
     @property
@@ -161,6 +191,13 @@ def _is_packaging_fragment(fragment: str) -> bool:
     return bool(text) and any(pattern.search(text) for pattern in _PACKAGING_PATTERNS)
 
 
+def _source_context(fragment: str) -> tuple[str, ...]:
+    text = fragment.strip().strip("()[] ")
+    if not text or not any(pattern.search(text) for pattern in _SOURCE_CONTEXT_PATTERNS):
+        return ()
+    return (_canonical_base_title(text),)
+
+
 def _canonical_base_title(value: str) -> str:
     # NFKC/casefold removes presentation-only differences. Diacritics remain:
     # they can be meaningful parts of an actual title and are not mere case.
@@ -181,6 +218,7 @@ def normalize_l2_track_title(name: str) -> L2TrackTitleIdentity:
     original = name
     text = _prepare_text(name)
     tags: set[str] = set()
+    source_contexts: set[str] = set()
 
     changed = True
     while text and changed:
@@ -193,6 +231,12 @@ def normalize_l2_track_title(name: str) -> L2TrackTitleIdentity:
             fragment_tags = _semantic_tags(fragment)
             if fragment_tags:
                 tags.update(fragment_tags)
+                text = text[: match.start()].strip()
+                changed = True
+                break
+            fragment_source_contexts = _source_context(fragment)
+            if fragment_source_contexts:
+                source_contexts.update(fragment_source_contexts)
                 text = text[: match.start()].strip()
                 changed = True
                 break
@@ -221,4 +265,5 @@ def normalize_l2_track_title(name: str) -> L2TrackTitleIdentity:
         original=original,
         base_title=base_title,
         semantic_version_tags=tuple(sorted(tags)),
+        source_context_tags=tuple(sorted(source_contexts)),
     )

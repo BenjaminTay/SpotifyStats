@@ -689,6 +689,61 @@ def test_statistics_revision_drift_rebuilds_only_statistics(
     assert report["snapshot_set"]["revalidated"] is False
 
 
+def test_atomic_snapshot_set_uses_shared_builder_with_legacy_playback_lineage(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    maintenance.rebuild_music_search_index(conn)
+    conn.execute(
+        """CREATE TABLE playback_import_state(
+               state_id INTEGER PRIMARY KEY,
+               active_generation_id TEXT
+           )"""
+    )
+    conn.execute("INSERT INTO playback_import_state VALUES (1, NULL)")
+    captured: dict[str, object] = {}
+
+    def build_atomic(_conn, contexts, **kwargs):
+        captured.update(kwargs)
+        return _built_snapshot_set_report(contexts)
+
+    monkeypatch.setattr(
+        maintenance,
+        "build_shared_full_music_search_snapshot_set",
+        build_atomic,
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "build_music_search_snapshot_set",
+        lambda *_args, **_kwargs: pytest.fail("atomic governance used sequential publisher"),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "ensure_year_end_projection_set",
+        lambda _conn, contexts: {
+            "status": "ready",
+            "ready_count": 4,
+            "failed_count": 0,
+            "variants": [
+                {"status": "ready", "snapshot_key": context.filter_fingerprint}
+                for context in contexts
+            ],
+        },
+    )
+
+    report = maintenance.rebuild_current_music_search_derived_data(
+        conn,
+        atomic_snapshot_set=True,
+    )
+
+    assert report["status"] == "ready"
+    assert captured == {
+        "source_generation_id": "",
+        "require_complete_weekly_ledger": True,
+        "publish_year_end": True,
+    }
+
+
 def test_shared_frame_failure_falls_back_to_full_snapshot_set(monkeypatch) -> None:
     conn = _conn()
     _seed_ready_candidate_and_statistics(conn)

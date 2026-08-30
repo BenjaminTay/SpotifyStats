@@ -8,7 +8,14 @@ from typing import Any
 import pandas as pd
 import pytest
 
-from backend.core.migrations import migrate_032, migrate_034, migrate_035, migrate_042, migrate_061
+from backend.core.migrations import (
+    migrate_032,
+    migrate_034,
+    migrate_035,
+    migrate_042,
+    migrate_046,
+    migrate_061,
+)
 from backend.domains.music_search.context import (
     MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
@@ -429,6 +436,135 @@ def test_shared_publish_rechecks_dependency_under_write_lock(monkeypatch) -> Non
             dependency_digest="dependency-g2",
         )
 
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM music_search_snapshot_meta WHERE status='ready'"
+        ).fetchone()[0]
+        == 0
+    )
+
+
+def test_shared_publish_supports_legacy_lineage_and_activates_year_end_atomically(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    migrate_042(conn)
+    migrate_046(conn)
+    migrate_061(conn)
+    conn.execute("UPDATE playback_import_state SET active_generation_id=NULL WHERE state_id=1")
+    contexts = _shared_contexts(conn)
+    snapshot_module.prepare_music_search_snapshot_set(conn, contexts)
+    rows_by_fingerprint = {
+        context.filter_fingerprint: [
+            (
+                "track:1",
+                2,
+                2000,
+                1,
+                1,
+                1,
+                0,
+                1.0,
+                1,
+                "2026-01-02",
+                "2026-01-02",
+                "2026-01-02",
+            )
+        ]
+        for context in contexts
+    }
+    weekly_by_fingerprint = {
+        context.filter_fingerprint: [
+            (
+                "track",
+                "2026-01-02",
+                "track:1",
+                1,
+                2,
+                2000,
+                '{"artist_name":"Artist","entity_id":1,"track_name":"Track"}',
+            )
+        ]
+        for context in contexts
+    }
+    monkeypatch.setattr(
+        snapshot_module,
+        "music_search_snapshot_dependency_digest",
+        lambda _conn: "legacy-dependency",
+    )
+
+    snapshot_module._publish_shared_full_snapshot_set(
+        conn,
+        contexts,
+        rows_by_fingerprint,
+        weekly_by_fingerprint,
+        source_generation_id="",
+        candidate_generation_id="g1",
+        semantic_base_key=contexts[0].semantic_base_key,
+        source_dataset_digest=None,
+        dependency_digest="legacy-dependency",
+        publish_year_end=True,
+    )
+
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM music_search_snapshot_variant_state WHERE maintenance_status='ready'"
+        ).fetchone()[0]
+        == 4
+    )
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM music_search_year_end_projection_state WHERE status='ready'"
+        ).fetchone()[0]
+        == 4
+    )
+    assert conn.execute("SELECT COUNT(*) FROM music_search_year_end_meta").fetchone()[0] == 4
+
+
+def test_shared_year_end_failure_does_not_activate_any_variant(monkeypatch) -> None:
+    conn = _conn()
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    migrate_042(conn)
+    migrate_046(conn)
+    migrate_061(conn)
+    conn.execute("UPDATE playback_import_state SET active_generation_id=NULL WHERE state_id=1")
+    contexts = _shared_contexts(conn)
+    snapshot_module.prepare_music_search_snapshot_set(conn, contexts)
+    monkeypatch.setattr(
+        snapshot_module,
+        "music_search_snapshot_dependency_digest",
+        lambda _conn: "legacy-dependency",
+    )
+    conn.execute(
+        """CREATE TRIGGER fail_atomic_year_end
+           BEFORE INSERT ON music_search_year_end_projection_state
+           BEGIN SELECT RAISE(ABORT, 'projection fixture failure'); END"""
+    )
+    conn.commit()
+
+    with pytest.raises(sqlite3.IntegrityError, match="projection fixture failure"):
+        snapshot_module._publish_shared_full_snapshot_set(
+            conn,
+            contexts,
+            {context.filter_fingerprint: [] for context in contexts},
+            {context.filter_fingerprint: [] for context in contexts},
+            source_generation_id="",
+            candidate_generation_id="g1",
+            semantic_base_key=contexts[0].semantic_base_key,
+            source_dataset_digest=None,
+            dependency_digest="legacy-dependency",
+            publish_year_end=True,
+        )
+
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM music_search_snapshot_variant_state WHERE active_snapshot_key IS NOT NULL"
+        ).fetchone()[0]
+        == 0
+    )
     assert (
         conn.execute(
             "SELECT COUNT(*) FROM music_search_snapshot_meta WHERE status='ready'"

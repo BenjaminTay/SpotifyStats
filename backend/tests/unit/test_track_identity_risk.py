@@ -4,6 +4,10 @@ import sqlite3
 
 import pytest
 
+from backend.domains.metadata.track_identity import (
+    refresh_play_source_links,
+    synchronize_track_identity_projection,
+)
 from backend.domains.metadata.track_identity_risk import (
     L1IdentitySplitPlanError,
     apply_split_plan,
@@ -24,6 +28,12 @@ def _database() -> sqlite3.Connection:
             track_name TEXT NOT NULL,
             artist_id INTEGER,
             spotify_track_id TEXT
+        );
+        CREATE TABLE track_artists(
+            track_id INTEGER NOT NULL,
+            artist_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            PRIMARY KEY(track_id, artist_id, role)
         );
         CREATE TABLE plays(
             play_id INTEGER PRIMARY KEY,
@@ -111,10 +121,13 @@ def _database() -> sqlite3.Connection:
         INSERT INTO tracks VALUES (6, 'Uncertain', 1, 'uncertain-b');
         INSERT INTO tracks VALUES (7, 'Video Song', 1, 'video-a');
         INSERT INTO tracks VALUES (8, 'Video Song', 1, 'video-b');
+        INSERT INTO track_artists
+        SELECT track_id, artist_id, 'primary' FROM tracks;
 
         INSERT INTO track_l1_identities(l1_id, fallback_track_id, representative_track_id)
         VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3), (4, 4, 4),
                (5, 5, 5), (6, 6, 6), (7, 7, 7), (8, 8, 8);
+        UPDATE track_l1_identities SET identity_status='superseded' WHERE l1_id IN (4, 6);
 
         INSERT INTO track_l1_external_ids(provider, external_track_id, l1_id, is_primary)
         VALUES ('spotify', 'base-id', 1, 1), ('spotify', 'remaster-id', 1, 0),
@@ -163,6 +176,30 @@ def _owner(plan: dict, l1_id: int) -> dict:
     return next(item for item in plan["owners"] if item["l1_id"] == l1_id)
 
 
+def _add_governance_tables(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE track_groups(
+            group_id INTEGER PRIMARY KEY,
+            scope TEXT NOT NULL,
+            group_status TEXT NOT NULL,
+            primary_l1_id INTEGER
+        );
+        CREATE TABLE track_group_l1_members(
+            group_id INTEGER NOT NULL,
+            l1_id INTEGER NOT NULL,
+            PRIMARY KEY(group_id, l1_id)
+        );
+        CREATE TABLE track_group_candidates(
+            candidate_id INTEGER PRIMARY KEY,
+            original_l1_id INTEGER NOT NULL,
+            candidate_l1_id INTEGER NOT NULL,
+            status TEXT NOT NULL
+        );
+        """
+    )
+
+
 def test_audit_classifies_keep_split_and_review_without_writes() -> None:
     conn = _database()
     before_changes = conn.total_changes
@@ -182,6 +219,11 @@ def test_audit_classifies_keep_split_and_review_without_writes() -> None:
         "split_l1_count": 1,
         "review_l1_count": 2,
         "auto_split_operation_count": 1,
+        "existing_target_split_operation_count": 1,
+        "created_target_split_operation_count": 0,
+        "shadow_identity_candidate_count": 0,
+        "auto_supersede_operation_count": 0,
+        "blocked_shadow_identity_count": 0,
         "multiple_isrc_l1_count": 2,
         "duration_conflict_l1_count": 1,
         "version_conflict_l1_count": 1,
@@ -197,6 +239,10 @@ def test_batch_apply_requires_transaction_and_preserves_raw_plays() -> None:
     conn = _database()
     plan = build_l1_external_identity_risk_plan(conn)
     before_plays = conn.execute("SELECT * FROM plays ORDER BY play_id").fetchall()
+    before_tracks = conn.execute("SELECT * FROM tracks ORDER BY track_id").fetchall()
+    before_track_artists = conn.execute(
+        "SELECT * FROM track_artists ORDER BY track_id, artist_id, role"
+    ).fetchall()
 
     with pytest.raises(L1IdentitySplitPlanError, match="begin a transaction"):
         apply_split_plan(conn, plan["confirmation_token"])
@@ -220,6 +266,11 @@ def test_batch_apply_requires_transaction_and_preserves_raw_plays() -> None:
         == 2
     )
     assert conn.execute("SELECT * FROM plays ORDER BY play_id").fetchall() == before_plays
+    assert conn.execute("SELECT * FROM tracks ORDER BY track_id").fetchall() == before_tracks
+    assert (
+        conn.execute("SELECT * FROM track_artists ORDER BY track_id, artist_id, role").fetchall()
+        == before_track_artists
+    )
     assert (
         conn.execute(
             "SELECT current_revision FROM track_identity_state WHERE state_id=1"
@@ -262,7 +313,43 @@ def test_simulation_uses_memory_copy_and_rejects_stale_token() -> None:
         simulate_split_plan(conn, plan["confirmation_token"])
 
 
-def test_missing_unique_existing_target_blocks_automatic_split() -> None:
+def test_simulation_accepts_preexisting_health_debt_when_plan_does_not_worsen_it() -> None:
+    conn = _database()
+    conn.execute("UPDATE track_l1_identities SET representative_track_id=NULL WHERE l1_id=8")
+    conn.commit()
+    plan = build_l1_external_identity_risk_plan(conn)
+
+    simulation = simulate_split_plan(conn, plan["confirmation_token"])
+
+    assert simulation["status"] == "pass"
+    assert simulation["preexisting_identity_health"]["representative_missing_count"] == 1
+    assert simulation["identity_health"]["representative_missing_count"] == 0
+    assert simulation["health_regressions"] == {}
+
+
+def test_apply_can_defer_revision_bump_to_outer_governance_transaction() -> None:
+    conn = _database()
+    plan = build_l1_external_identity_risk_plan(conn)
+
+    conn.execute("BEGIN")
+    result = apply_split_plan(
+        conn,
+        plan["confirmation_token"],
+        bump_revision=False,
+    )
+
+    assert result["semantic_changed"] is True
+    assert result["revision_bumped"] is False
+    assert (
+        conn.execute(
+            "SELECT current_revision FROM track_identity_state WHERE state_id=1"
+        ).fetchone()[0]
+        == 7
+    )
+    conn.rollback()
+
+
+def test_missing_identity_is_created_for_one_distinct_existing_track() -> None:
     conn = _database()
     conn.execute("DELETE FROM track_l1_identities WHERE l1_id=2")
     conn.commit()
@@ -273,7 +360,209 @@ def test_missing_unique_existing_target_blocks_automatic_split() -> None:
     remaster = next(
         item for item in owner["external_ids"] if item["spotify_track_id"] == "remaster-id"
     )
-    assert owner["recommendation"] == "review"
+    assert owner["recommendation"] == "split"
+    assert remaster["recommendation"] == "split"
+    assert remaster["creation_target_track_ids"] == [2]
+    assert plan["operations"][0]["operation"] == "create_provider_l1_and_reassign"
+
+    before_tracks = conn.execute("SELECT * FROM tracks ORDER BY track_id").fetchall()
+    conn.execute("BEGIN")
+    result = apply_split_plan(conn, plan["confirmation_token"])
+    conn.commit()
+
+    assert result["created_target_l1_ids"] == [2]
+    assert (
+        conn.execute("SELECT identity_status FROM track_l1_identities WHERE l1_id=2").fetchone()[0]
+        == "active"
+    )
+    assert (
+        conn.execute(
+            "SELECT track_id FROM spotify_track_owners WHERE spotify_track_id='remaster-id'"
+        ).fetchone()[0]
+        == 2
+    )
+    assert conn.execute("SELECT * FROM tracks ORDER BY track_id").fetchall() == before_tracks
+    assert build_l1_external_identity_risk_plan(conn)["operations"] == []
+
+
+def test_shared_isrc_duration_and_semantics_find_existing_owner_without_projection() -> None:
+    conn = _database()
+    conn.executescript(
+        """
+        DELETE FROM track_l1_identities WHERE l1_id=2;
+        UPDATE tracks SET spotify_track_id=NULL WHERE track_id=2;
+        UPDATE plays SET track_id=1 WHERE spotify_track_id_at_play='remaster-id';
+        INSERT INTO tracks VALUES (9, 'Song - 2018 Remastered', 1, 'target-id');
+        INSERT INTO track_l1_identities(l1_id, fallback_track_id, representative_track_id)
+        VALUES (9, 9, 9);
+        INSERT INTO track_l1_external_ids(provider, external_track_id, l1_id, is_primary)
+        VALUES ('spotify', 'target-id', 9, 1);
+        INSERT INTO spotify_track_owners(spotify_track_id, track_id)
+        VALUES ('target-id', 9);
+        INSERT INTO track_l1_source_links(l1_id, track_id, evidence_type)
+        VALUES (9, 9, 'track_projection');
+        INSERT INTO spotify_track_meta(
+            spotify_track_id, track_name, duration_ms, explicit, isrc, spotify_album_id
+        ) VALUES ('target-id', 'Song - 2018 Remastered', 114500, 0, 'ISRC-REMASTER', 'album-b');
+        """
+    )
+    conn.commit()
+
+    plan = build_l1_external_identity_risk_plan(conn)
+    remaster = next(
+        item
+        for item in _owner(plan, 1)["external_ids"]
+        if item["spotify_track_id"] == "remaster-id"
+    )
+
+    assert remaster["eligible_target_l1_ids"] == [9]
+    assert remaster["target_resolution"] == "shared_isrc_duration_semantics"
+    assert remaster["recommendation"] == "split"
+    operation = next(
+        item for item in plan["operations"] if item.get("external_track_id") == "remaster-id"
+    )
+    assert operation["operation"] == "reassign_external_identity"
+    assert operation["target_l1_id"] == 9
+
+
+def test_strong_conflict_without_distinct_track_owner_remains_explicitly_blocked() -> None:
+    conn = _database()
+    conn.executescript(
+        """
+        DELETE FROM track_l1_identities WHERE l1_id=2;
+        UPDATE tracks SET spotify_track_id=NULL WHERE track_id=2;
+        UPDATE plays SET track_id=1 WHERE spotify_track_id_at_play='remaster-id';
+        """
+    )
+    conn.commit()
+
+    plan = build_l1_external_identity_risk_plan(conn)
+    remaster = next(
+        item
+        for item in _owner(plan, 1)["external_ids"]
+        if item["spotify_track_id"] == "remaster-id"
+    )
+
     assert remaster["recommendation"] == "review"
-    assert remaster["blockers"] == ["missing_unique_existing_target_l1"]
-    assert plan["operations"] == []
+    assert remaster["creation_target_track_ids"] == []
+    assert "provider_identity_requires_distinct_track_owner" in remaster["blockers"]
+    assert not any(item.get("external_track_id") == "remaster-id" for item in plan["operations"])
+
+
+def test_zero_evidence_projection_shadow_is_superseded_and_stays_superseded() -> None:
+    conn = _database()
+    conn.executescript(
+        """
+        INSERT INTO tracks VALUES (9, 'Song', 1, 'base-id');
+        INSERT INTO track_l1_identities(l1_id, fallback_track_id, representative_track_id)
+        VALUES (9, 9, 9);
+        INSERT INTO track_l1_source_links(l1_id, track_id, evidence_type)
+        VALUES (1, 9, 'track_projection'), (9, 9, 'track_projection');
+        """
+    )
+    conn.commit()
+
+    plan = build_l1_external_identity_risk_plan(conn)
+    shadow = next(item for item in plan["shadow_identities"] if item["l1_id"] == 9)
+    assert shadow == {
+        "l1_id": 9,
+        "track_id": 9,
+        "target_l1_ids": [1],
+        "recommendation": "supersede",
+        "blockers": [],
+    }
+
+    before_tracks = conn.execute("SELECT * FROM tracks ORDER BY track_id").fetchall()
+    conn.execute("BEGIN")
+    result = apply_split_plan(conn, plan["confirmation_token"])
+    conn.commit()
+    assert result["superseded_shadow_l1_ids"] == [9]
+    assert (
+        conn.execute("SELECT identity_status FROM track_l1_identities WHERE l1_id=9").fetchone()[0]
+        == "superseded"
+    )
+    assert conn.execute("SELECT * FROM tracks ORDER BY track_id").fetchall() == before_tracks
+
+    refresh_play_source_links(conn)
+    assert (
+        conn.execute("SELECT identity_status FROM track_l1_identities WHERE l1_id=9").fetchone()[0]
+        == "superseded"
+    )
+    synchronize_track_identity_projection(conn)
+    assert (
+        conn.execute("SELECT identity_status FROM track_l1_identities WHERE l1_id=9").fetchone()[0]
+        == "superseded"
+    )
+    assert build_l1_external_identity_risk_plan(conn)["operations"] == []
+
+
+def test_historical_group_and_rejected_candidate_do_not_block_shadow_cleanup() -> None:
+    conn = _database()
+    _add_governance_tables(conn)
+    conn.executescript(
+        """
+        INSERT INTO tracks VALUES
+            (9, 'Song', 1, 'base-id'),
+            (10, 'Song', 1, 'base-id'),
+            (11, 'Song', 1, 'base-id'),
+            (12, 'Song', 1, 'base-id');
+        INSERT INTO track_artists VALUES
+            (9, 1, 'primary'), (10, 1, 'primary'),
+            (11, 1, 'primary'), (12, 1, 'primary');
+        INSERT INTO track_l1_identities(l1_id, fallback_track_id, representative_track_id)
+        VALUES (9, 9, 9), (10, 10, 10), (11, 11, 11), (12, 12, 12);
+        INSERT INTO track_l1_source_links(l1_id, track_id, evidence_type) VALUES
+            (1, 9, 'track_projection'), (9, 9, 'track_projection'),
+            (1, 10, 'track_projection'), (10, 10, 'track_projection'),
+            (1, 11, 'track_projection'), (11, 11, 'track_projection'),
+            (1, 12, 'track_projection'), (12, 12, 'track_projection');
+        INSERT INTO track_groups VALUES
+            (1, 'recording', 'archived', 9),
+            (2, 'recording', 'active', 10);
+        INSERT INTO track_group_l1_members VALUES (1, 9), (2, 10);
+        INSERT INTO track_group_candidates VALUES
+            (1, 9, 1, 'rejected'),
+            (2, 11, 1, 'pending'),
+            (3, 12, 1, 'accepted');
+        """
+    )
+    conn.commit()
+
+    plan = build_l1_external_identity_risk_plan(conn)
+    shadows = {item["l1_id"]: item for item in plan["shadow_identities"]}
+
+    assert shadows[9]["recommendation"] == "supersede"
+    assert shadows[9]["blockers"] == []
+    assert shadows[10]["blockers"] == ["active_group_reference"]
+    assert shadows[11]["blockers"] == ["unresolved_group_candidate_reference"]
+    assert shadows[12]["blockers"] == ["unresolved_group_candidate_reference"]
+
+    before_raw = {
+        table: conn.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
+        for table in ("plays", "tracks", "track_artists")
+    }
+    conn.execute("BEGIN")
+    result = apply_split_plan(conn, plan["confirmation_token"])
+    conn.commit()
+
+    assert 9 in result["superseded_shadow_l1_ids"]
+    assert (
+        conn.execute("SELECT identity_status FROM track_l1_identities WHERE l1_id=9").fetchone()[0]
+        == "superseded"
+    )
+    assert (
+        conn.execute("SELECT group_status FROM track_groups WHERE group_id=1").fetchone()[0]
+        == "archived"
+    )
+    assert (
+        conn.execute("SELECT 1 FROM track_group_l1_members WHERE group_id=1 AND l1_id=9").fetchone()
+        is not None
+    )
+    assert (
+        conn.execute("SELECT status FROM track_group_candidates WHERE candidate_id=1").fetchone()[0]
+        == "rejected"
+    )
+    assert {
+        table: conn.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
+        for table in ("plays", "tracks", "track_artists")
+    } == before_raw

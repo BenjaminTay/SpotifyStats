@@ -21,7 +21,19 @@ from backend.domains.metadata.track_title_identity import (
     normalize_l2_track_title,
 )
 
-L2_AUTO_MERGE_POLICY_VERSION = f"canonical_artist_title_v1:{L2_TITLE_IDENTITY_POLICY_VERSION}"
+L2_AUTO_MERGE_POLICY_VERSION = f"canonical_artist_title_v2:{L2_TITLE_IDENTITY_POLICY_VERSION}"
+
+_GENERIC_TITLE_KEYS = frozenset(
+    {
+        "intro",
+        "interlude",
+        "overture",
+        "outro",
+        "prelude",
+        "prologue",
+        "epilogue",
+    }
+)
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
@@ -41,8 +53,11 @@ class _TrackNode:
     artist_ids: tuple[int, ...]
     normalized_title: str
     semantic_version_tags: tuple[str, ...]
+    source_context_tags: tuple[str, ...]
     play_count: int
+    external_id_count: int
     isrc_durations: tuple[tuple[str, int | None], ...]
+    is_noncanonical_alias: bool
 
     @property
     def title_key(self) -> tuple[tuple[int, ...], str, tuple[str, ...]]:
@@ -101,7 +116,41 @@ def _canonical_artist_signatures(
     return result
 
 
-def _load_nodes(conn: sqlite3.Connection) -> dict[int, _TrackNode]:
+def _load_noncanonical_l1_ids(conn: sqlite3.Connection) -> set[int]:
+    if not _table_exists(conn, "spotify_track_owners"):
+        return set()
+    return {
+        int(row["l1_id"])
+        for row in conn.execute(
+            """SELECT identities.l1_id
+                 FROM track_l1_identities identities
+                WHERE NOT EXISTS (
+                          SELECT 1 FROM spotify_track_owners self_owner
+                           WHERE self_owner.track_id=identities.l1_id
+                      )
+                  AND (
+                      EXISTS (
+                          SELECT 1
+                            FROM tracks source
+                            JOIN spotify_track_owners raw_owner
+                              ON raw_owner.spotify_track_id=source.spotify_track_id
+                           WHERE source.track_id=identities.l1_id
+                             AND raw_owner.track_id!=identities.l1_id
+                      )
+                      OR EXISTS (
+                          SELECT 1 FROM track_l1_source_links alias_link
+                           WHERE alias_link.track_id=identities.l1_id
+                             AND alias_link.l1_id!=identities.l1_id
+                      )
+                  )"""
+        ).fetchall()
+    }
+
+
+def _load_nodes(
+    conn: sqlite3.Connection, noncanonical_l1_ids: set[int] | None = None
+) -> dict[int, _TrackNode]:
+    noncanonical_l1_ids = noncanonical_l1_ids or set()
     rows = conn.execute(
         """SELECT li.l1_id, li.representative_track_id, t.track_name,
                   COALESCE(SUM(CASE WHEN links.evidence_type='play_at_time'
@@ -116,6 +165,16 @@ def _load_nodes(conn: sqlite3.Connection) -> dict[int, _TrackNode]:
     representative_ids = [int(row["representative_track_id"]) for row in rows]
     artist_signatures = _canonical_artist_signatures(conn, representative_ids)
     metadata: dict[int, list[tuple[str, int | None]]] = defaultdict(list)
+    external_id_counts: dict[int, int] = {}
+    if _table_exists(conn, "track_l1_external_ids"):
+        external_id_counts = {
+            int(row["l1_id"]): int(row["external_id_count"])
+            for row in conn.execute(
+                """SELECT l1_id, COUNT(*) AS external_id_count
+                     FROM track_l1_external_ids
+                    GROUP BY l1_id"""
+            ).fetchall()
+        }
     if _table_exists(conn, "track_l1_external_ids") and _table_exists(conn, "spotify_track_meta"):
         for row in conn.execute(
             """SELECT external.l1_id, UPPER(TRIM(meta.isrc)) AS isrc,
@@ -148,8 +207,11 @@ def _load_nodes(conn: sqlite3.Connection) -> dict[int, _TrackNode]:
             artist_ids=artist_ids,
             normalized_title=title.base_title,
             semantic_version_tags=title.semantic_version_tags,
+            source_context_tags=title.source_context_tags,
             play_count=int(row["play_count"] or 0),
+            external_id_count=external_id_counts.get(l1_id, 0),
             isrc_durations=tuple(metadata.get(l1_id, ())),
+            is_noncanonical_alias=l1_id in noncanonical_l1_ids,
         )
     return nodes
 
@@ -217,6 +279,34 @@ def _active_recording_groups(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return list(grouped.values())
 
 
+def _noncanonical_candidate_rows(
+    conn: sqlite3.Connection, noncanonical_l1_ids: set[int]
+) -> list[dict[str, Any]]:
+    if not noncanonical_l1_ids or not _table_exists(conn, "track_group_candidates"):
+        return []
+    placeholders = ",".join("?" for _value in noncanonical_l1_ids)
+    values = sorted(noncanonical_l1_ids)
+    rows = conn.execute(
+        f"""SELECT original_l1_id, candidate_l1_id, status, evidence_json
+              FROM track_group_candidates
+             WHERE scope='recording'
+               AND (original_l1_id IN ({placeholders})
+                    OR candidate_l1_id IN ({placeholders}))
+             ORDER BY MIN(original_l1_id, candidate_l1_id),
+                      MAX(original_l1_id, candidate_l1_id)""",
+        (*values, *values),
+    ).fetchall()
+    return [
+        {
+            "left_l1_id": min(int(row["original_l1_id"]), int(row["candidate_l1_id"])),
+            "right_l1_id": max(int(row["original_l1_id"]), int(row["candidate_l1_id"])),
+            "status": str(row["status"]),
+            "evidence_json": str(row["evidence_json"]),
+        }
+        for row in rows
+    ]
+
+
 def _durations_compatible(left: int | None, right: int | None) -> bool:
     if left is None or right is None or left <= 0 or right <= 0:
         return False
@@ -238,6 +328,65 @@ def _shared_isrc_evidence(left: _TrackNode, right: _TrackNode) -> list[str]:
     return sorted(set(matches))
 
 
+def _has_disjoint_isrcs(left: _TrackNode, right: _TrackNode) -> bool:
+    left_isrcs = {isrc for isrc, _duration in left.isrc_durations}
+    right_isrcs = {isrc for isrc, _duration in right.isrc_durations}
+    return bool(left_isrcs and right_isrcs and left_isrcs.isdisjoint(right_isrcs))
+
+
+def _has_strong_duration_conflict(left: _TrackNode, right: _TrackNode) -> bool:
+    left_durations = [duration for _isrc, duration in left.isrc_durations if duration]
+    right_durations = [duration for _isrc, duration in right.isrc_durations if duration]
+    if not left_durations or not right_durations:
+        return False
+    return (
+        min(
+            abs(left_duration - right_duration)
+            for left_duration in left_durations
+            for right_duration in right_durations
+        )
+        >= 10_000
+    )
+
+
+def _has_internal_identity_conflict(node: _TrackNode) -> bool:
+    isrcs = {isrc for isrc, _duration in node.isrc_durations}
+    durations = [duration for _isrc, duration in node.isrc_durations if duration]
+    return len(isrcs) >= 2 and len(durations) >= 2 and max(durations) - min(durations) >= 10_000
+
+
+def _automatic_pair_decision(left: _TrackNode, right: _TrackNode) -> tuple[str, str] | None:
+    """Return a title-level decision before inferred edges are connected."""
+
+    if left.artist_ids != right.artist_ids or left.normalized_title != right.normalized_title:
+        return None
+    if left.is_noncanonical_alias or right.is_noncanonical_alias:
+        return "rejected", "noncanonical_identity_requires_owner_repair"
+    if left.semantic_version_tags != right.semantic_version_tags:
+        return "rejected", "semantic_version_conflict"
+    if left.source_context_tags or right.source_context_tags:
+        if not _shared_isrc_evidence(left, right):
+            return "pending", "source_context_requires_strong_evidence"
+    if (
+        left.play_count == 0
+        and right.play_count == 0
+        and left.external_id_count == 0
+        and right.external_id_count == 0
+    ):
+        return "pending", "unsubstantiated_zero_evidence_pair"
+    if left.normalized_title in _GENERIC_TITLE_KEYS and (
+        _has_internal_identity_conflict(left) or _has_internal_identity_conflict(right)
+    ):
+        return "rejected", "generic_title_internal_identity_conflict"
+    if (
+        left.normalized_title in _GENERIC_TITLE_KEYS
+        and _has_disjoint_isrcs(left, right)
+        and _has_strong_duration_conflict(left, right)
+    ):
+        return "rejected", "generic_title_recording_conflict"
+    return None
+
+
 def _choose_primary(component: set[int], nodes: dict[int, _TrackNode]) -> int:
     return min(component, key=lambda value: (-nodes[value].play_count, value))
 
@@ -247,6 +396,8 @@ def _state_digest(
     groups: list[dict[str, Any]],
     force_separate: set[tuple[int, int]],
     force_merge: list[tuple[int, int]],
+    noncanonical_l1_ids: set[int],
+    noncanonical_candidate_rows: list[dict[str, Any]],
 ) -> str:
     payload = {
         "nodes": [
@@ -257,14 +408,19 @@ def _state_digest(
                 "artist_ids": node.artist_ids,
                 "normalized_title": node.normalized_title,
                 "semantic_version_tags": node.semantic_version_tags,
+                "source_context_tags": node.source_context_tags,
                 "play_count": node.play_count,
+                "external_id_count": node.external_id_count,
                 "isrc_durations": node.isrc_durations,
+                "is_noncanonical_alias": node.is_noncanonical_alias,
             }
             for node in nodes.values()
         ],
         "groups": groups,
         "force_separate": sorted(force_separate),
         "force_merge": sorted(force_merge),
+        "noncanonical_l1_ids": sorted(noncanonical_l1_ids),
+        "noncanonical_candidate_rows": noncanonical_candidate_rows,
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
@@ -330,8 +486,10 @@ def _assign_existing_targets(desired: list[dict[str, Any]], groups: list[dict[st
 def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
     """Build a complete, read-only reconciliation plan for recording groups."""
 
-    nodes = _load_nodes(conn)
+    noncanonical_l1_ids = _load_noncanonical_l1_ids(conn)
+    nodes = _load_nodes(conn, noncanonical_l1_ids)
     groups = _active_recording_groups(conn)
+    noncanonical_candidate_rows = _noncanonical_candidate_rows(conn, noncanonical_l1_ids)
     force_separate, force_merge = _load_overrides(conn)
     node_ids = sorted(nodes)
     dsu = _DisjointSets(node_ids, force_separate)
@@ -356,6 +514,7 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
                     "right_l1_id": max(left, right),
                     "evidence_type": evidence_type,
                     "reason": "composition_parent_conflict",
+                    "status": "rejected",
                 }
             )
             return
@@ -375,6 +534,7 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
                     "right_l1_id": max(left, right),
                     "evidence_type": evidence_type,
                     "reason": "force_separate",
+                    "status": "rejected",
                 }
             )
 
@@ -392,16 +552,83 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
         for member in members[1:]:
             add_edge(anchor, member, "existing_manual_group", 1.0)
 
+    # Version differences, weak source-title wrappers and high-confidence
+    # generic-title collisions must not be bypassed through a third inferred
+    # title edge. Explicit force-merge and existing manual groups were already
+    # connected above and therefore remain authoritative.
+    automatic_decisions: dict[tuple[int, int], tuple[str, str]] = {}
+    for left, right in sorted(force_separate):
+        automatic_decisions[(left, right)] = ("rejected", "force_separate")
+        if not any(
+            edge["left_l1_id"] == left
+            and edge["right_l1_id"] == right
+            and edge["reason"] == "force_separate"
+            for edge in blocked_edges
+        ):
+            blocked_edges.append(
+                {
+                    "left_l1_id": left,
+                    "right_l1_id": right,
+                    "evidence_type": "force_separate",
+                    "reason": "force_separate",
+                    "status": "rejected",
+                }
+            )
+    for candidate in noncanonical_candidate_rows:
+        pair = (int(candidate["left_l1_id"]), int(candidate["right_l1_id"]))
+        left, right = pair
+        if pair in automatic_decisions:
+            continue
+        if left in nodes and right in nodes and dsu.find(left) == dsu.find(right):
+            continue
+        decision = ("rejected", "noncanonical_identity_requires_owner_repair")
+        automatic_decisions[pair] = decision
+        if left in nodes and right in nodes:
+            dsu.cannot_link.add(pair)
+        blocked_edges.append(
+            {
+                "left_l1_id": left,
+                "right_l1_id": right,
+                "evidence_type": "noncanonical_candidate_reconciliation",
+                "reason": decision[1],
+                "status": decision[0],
+            }
+        )
+    by_base_title: dict[tuple[tuple[int, ...], str], list[int]] = defaultdict(list)
+    for node in nodes.values():
+        by_base_title[(node.artist_ids, node.normalized_title)].append(node.l1_id)
+    for members in by_base_title.values():
+        for left, right in itertools.combinations(sorted(set(members)), 2):
+            if (left, right) in automatic_decisions:
+                continue
+            decision = _automatic_pair_decision(nodes[left], nodes[right])
+            if decision is None or dsu.find(left) == dsu.find(right):
+                continue
+            automatic_decisions[(left, right)] = decision
+            dsu.cannot_link.add((left, right))
+            status, reason = decision
+            blocked_edges.append(
+                {
+                    "left_l1_id": left,
+                    "right_l1_id": right,
+                    "evidence_type": "canonical_artist_normalized_title",
+                    "reason": reason,
+                    "status": status,
+                }
+            )
+
     by_title: dict[tuple[tuple[int, ...], str, tuple[str, ...]], list[int]] = defaultdict(list)
     for node in nodes.values():
         by_title[node.title_key].append(node.l1_id)
     for members in by_title.values():
         if len(members) < 2:
             continue
-        anchor = min(members)
-        for member in sorted(members):
-            if member != anchor:
-                add_edge(anchor, member, "canonical_artist_normalized_title", 1.0)
+        for left, right in itertools.combinations(sorted(set(members)), 2):
+            if (left, right) in automatic_decisions:
+                continue
+            if nodes[left].source_context_tags or nodes[right].source_context_tags:
+                continue
+            add_edge(left, right, "canonical_artist_normalized_title", 1.0)
 
     # ISRC is a fallback for spelling/source-title differences, not an
     # unconditional identity.  Artist, semantic version and duration still
@@ -412,6 +639,24 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
             by_isrc[(node.artist_ids, isrc, node.semantic_version_tags)].append(node.l1_id)
     for (_artists, isrc, _tags), members in by_isrc.items():
         for left, right in itertools.combinations(sorted(set(members)), 2):
+            pair = (left, right)
+            if nodes[left].is_noncanonical_alias or nodes[right].is_noncanonical_alias:
+                if pair not in automatic_decisions and dsu.find(left) != dsu.find(right):
+                    automatic_decisions[pair] = (
+                        "rejected",
+                        "noncanonical_identity_requires_owner_repair",
+                    )
+                    dsu.cannot_link.add(pair)
+                    blocked_edges.append(
+                        {
+                            "left_l1_id": left,
+                            "right_l1_id": right,
+                            "evidence_type": "same_isrc_compatible_duration",
+                            "reason": "noncanonical_identity_requires_owner_repair",
+                            "status": "rejected",
+                        }
+                    )
+                continue
             if isrc in _shared_isrc_evidence(nodes[left], nodes[right]):
                 add_edge(left, right, "same_isrc_compatible_duration", 0.99)
 
@@ -447,7 +692,14 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
         int(group["group_id"]) for group in groups if int(group["group_id"]) not in target_ids
     )
     changed = bool(archived_group_ids or any(item["action"] != "unchanged" for item in desired))
-    state_digest = _state_digest(nodes, groups, force_separate, force_merge)
+    state_digest = _state_digest(
+        nodes,
+        groups,
+        force_separate,
+        force_merge,
+        noncanonical_l1_ids,
+        noncanonical_candidate_rows,
+    )
     revision_row = (
         conn.execute(
             "SELECT current_revision FROM track_identity_state WHERE state_id=1"
@@ -455,6 +707,10 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
         if _table_exists(conn, "track_identity_state")
         else None
     )
+    blocked_status_counts = {
+        status: sum(edge.get("status", "rejected") == status for edge in blocked_edges)
+        for status in ("pending", "rejected")
+    }
     return {
         "policy_version": L2_AUTO_MERGE_POLICY_VERSION,
         "state_digest": state_digest,
@@ -468,6 +724,23 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
         "groups_to_archive": len(archived_group_ids),
         "archived_group_ids": archived_group_ids,
         "force_separate_pairs": [list(pair) for pair in sorted(force_separate)],
+        "edge_status_counts": {
+            "accepted": len(accepted_edges),
+            **blocked_status_counts,
+        },
+        "strong_internal_identity_conflict_node_count": sum(
+            _has_internal_identity_conflict(node) for node in nodes.values()
+        ),
+        "noncanonical_identity_node_count": sum(
+            node.is_noncanonical_alias for node in nodes.values()
+        ),
+        "noncanonical_candidate_rejection_count": sum(
+            edge.get("reason") == "noncanonical_identity_requires_owner_repair"
+            for edge in blocked_edges
+        ),
+        "unsubstantiated_zero_evidence_pair_count": sum(
+            edge.get("reason") == "unsubstantiated_zero_evidence_pair" for edge in blocked_edges
+        ),
         "accepted_edges": accepted_edges,
         "blocked_edges": blocked_edges,
         "groups": desired,
@@ -476,34 +749,87 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
 
 def _upsert_candidate_evidence(
     conn: sqlite3.Connection, plan: dict[str, Any], group_by_member: dict[int, int]
-) -> None:
+) -> int:
     if not _table_exists(conn, "track_group_candidates"):
-        return
+        return 0
+    decisions: dict[tuple[int, int], tuple[int, str, float, dict[str, Any]]] = {}
+
     for edge in plan["accepted_edges"]:
         left = int(edge["left_l1_id"])
         right = int(edge["right_l1_id"])
         if group_by_member.get(left) != group_by_member.get(right):
             continue
-        evidence = json.dumps(
+        evidence_type = str(edge["evidence_type"])
+        priority = {
+            "force_merge": 100,
+            "existing_manual_group": 90,
+            "same_isrc_compatible_duration": 80,
+            "canonical_artist_normalized_title": 70,
+        }.get(evidence_type, 60)
+        decisions[(left, right)] = (
+            priority,
+            "accepted",
+            float(edge["confidence"]),
+            {
+                "policy_version": plan["policy_version"],
+                "evidence_type": evidence_type,
+                "automatic": evidence_type not in {"force_merge", "existing_manual_group"},
+            },
+        )
+
+    for edge in plan["blocked_edges"]:
+        left = int(edge["left_l1_id"])
+        right = int(edge["right_l1_id"])
+        status = str(edge.get("status") or "rejected")
+        reason = str(edge["reason"])
+        priority = 110 if reason == "force_separate" else 50 if status == "rejected" else 40
+        pair = (left, right)
+        existing = decisions.get(pair)
+        if existing is not None and existing[0] >= priority:
+            continue
+        decisions[pair] = (
+            priority,
+            status,
+            0.0,
             {
                 "policy_version": plan["policy_version"],
                 "evidence_type": edge["evidence_type"],
-                "automatic": edge["evidence_type"] != "force_merge",
+                "reason": reason,
+                "automatic": reason != "force_separate",
             },
-            ensure_ascii=False,
-            sort_keys=True,
         )
-        conn.execute(
-            """INSERT INTO track_group_candidates(
-                   scope, original_l1_id, candidate_l1_id,
-                   confidence, evidence_json, status
-               ) VALUES ('recording', ?, ?, ?, ?, 'accepted')
-               ON CONFLICT(scope, original_l1_id, candidate_l1_id) DO UPDATE SET
-                   confidence=excluded.confidence,
-                   evidence_json=excluded.evidence_json,
-                   status='accepted'""",
-            (left, right, float(edge["confidence"]), evidence),
-        )
+
+    for (left, right), (_priority, status, confidence, evidence_payload) in decisions.items():
+        evidence = json.dumps(evidence_payload, ensure_ascii=False, sort_keys=True)
+        updated = conn.execute(
+            """UPDATE track_group_candidates
+                  SET confidence=?, evidence_json=?, status=?
+                WHERE scope='recording'
+                  AND MIN(original_l1_id, candidate_l1_id)=?
+                  AND MAX(original_l1_id, candidate_l1_id)=?""",
+            (confidence, evidence, status, left, right),
+        ).rowcount
+        if not updated:
+            conn.execute(
+                """INSERT INTO track_group_candidates(
+                       scope, original_l1_id, candidate_l1_id,
+                       confidence, evidence_json, status
+                   ) VALUES ('recording', ?, ?, ?, ?, ?)""",
+                (left, right, confidence, evidence, status),
+            )
+    return len(decisions)
+
+
+def _group_by_active_recording_member(conn: sqlite3.Connection) -> dict[int, int]:
+    return {
+        int(row["l1_id"]): int(row["group_id"])
+        for row in conn.execute(
+            """SELECT members.l1_id, members.group_id
+                 FROM track_group_l1_members members
+                 JOIN track_groups groups ON groups.group_id=members.group_id
+                WHERE groups.scope='recording' AND groups.group_status='active'"""
+        ).fetchall()
+    }
 
 
 def apply_l2_track_merge_plan(
@@ -511,12 +837,14 @@ def apply_l2_track_merge_plan(
     plan: dict[str, Any] | None = None,
     *,
     commit: bool = False,
+    bump_revision: bool = True,
 ) -> dict[str, Any]:
     """Apply one current plan atomically without rebuilding dependents.
 
-    A stale dry-run is rejected.  Callers that already own a larger metadata
-    transaction should keep ``commit=False``; standalone callers may request a
-    commit and then rebuild downstream data exactly once.
+    A stale dry-run is rejected. Callers that already own a larger metadata
+    transaction should keep ``commit=False`` and may set ``bump_revision=False``
+    so the outer governance transaction advances the revision exactly once.
+    Standalone callers retain the default revision bump.
     """
 
     current = build_l2_track_merge_plan(conn)
@@ -529,6 +857,11 @@ def apply_l2_track_merge_plan(
         }
     plan = current
     if not plan["changed"]:
+        candidate_count = _upsert_candidate_evidence(
+            conn, plan, _group_by_active_recording_member(conn)
+        )
+        if commit:
+            conn.commit()
         return {
             "status": "unchanged",
             "changed": False,
@@ -539,6 +872,8 @@ def apply_l2_track_merge_plan(
             "groups_archived": 0,
             "members_added": 0,
             "members_removed": 0,
+            "candidate_evidence_upserted": candidate_count,
+            "revision_bumped": False,
             "track_identity_revision": plan["track_identity_revision"],
         }
 
@@ -637,10 +972,13 @@ def apply_l2_track_merge_plan(
             for member in item["member_l1_ids"]:
                 group_by_member[int(member)] = target_group_id
 
-        _upsert_candidate_evidence(conn, plan, group_by_member)
-        from backend.domains.metadata.track_identity import bump_track_identity_revision
+        candidate_count = _upsert_candidate_evidence(conn, plan, group_by_member)
+        if bump_revision:
+            from backend.domains.metadata.track_identity import bump_track_identity_revision
 
-        revision = bump_track_identity_revision(conn)
+            revision = bump_track_identity_revision(conn)
+        else:
+            revision = int(plan["track_identity_revision"])
         conn.execute("RELEASE SAVEPOINT l2_track_auto_merge")
         if commit:
             conn.commit()
@@ -669,6 +1007,8 @@ def apply_l2_track_merge_plan(
         "groups_archived": len(plan["archived_group_ids"]),
         "members_added": len(after_pairs - before_pairs),
         "members_removed": len(before_pairs - after_pairs),
+        "candidate_evidence_upserted": candidate_count,
         "blocked_edge_count": len(plan["blocked_edges"]),
+        "revision_bumped": bump_revision,
         "track_identity_revision": revision,
     }

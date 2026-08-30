@@ -1567,7 +1567,7 @@ def _assert_shared_full_publish_fence(
     candidate_generation_id: str,
     semantic_base_key: str,
 ) -> None:
-    if _active_playback_generation(conn) != source_generation_id:
+    if str(_active_playback_generation(conn) or "") != str(source_generation_id or ""):
         raise RuntimeError("playback generation changed during shared-full snapshot build")
     index_state = get_music_search_index_state(conn)
     if str(
@@ -1608,6 +1608,7 @@ def _publish_shared_full_snapshot_set(
     semantic_base_key: str,
     source_dataset_digest: str | None,
     dependency_digest: str | None,
+    publish_year_end: bool = False,
 ) -> None:
     """Fence and activate the exact four variants in one write transaction."""
     conn.execute("BEGIN IMMEDIATE")
@@ -1622,16 +1623,14 @@ def _publish_shared_full_snapshot_set(
         if source_dataset_digest is not None:
             current_generation_id, current_dataset_digest = active_playback_lineage(conn)
             if (
-                current_generation_id != source_generation_id
+                str(current_generation_id or "") != str(source_generation_id or "")
                 or current_dataset_digest != source_dataset_digest
             ):
                 raise RuntimeError("playback lineage changed during shared-full snapshot build")
-            if dependency_digest is None or (
-                music_search_snapshot_dependency_digest(conn) != dependency_digest
-            ):
-                raise RuntimeError(
-                    "snapshot dependencies changed during shared-full snapshot build"
-                )
+        if dependency_digest is not None and (
+            music_search_snapshot_dependency_digest(conn) != dependency_digest
+        ):
+            raise RuntimeError("snapshot dependencies changed during shared-full snapshot build")
         conn.execute(
             """UPDATE music_search_snapshot_meta SET status='running', last_error=NULL
                WHERE snapshot_key IN ({})""".format(",".join("?" for _ in contexts)),
@@ -1691,6 +1690,27 @@ def _publish_shared_full_snapshot_set(
                WHERE snapshot_key IN ({})""".format(",".join("?" for _ in contexts)),
             tuple(context.filter_fingerprint for context in contexts),
         )
+        if publish_year_end:
+            from backend.domains.music_search.year_end_projection import (
+                build_year_end_projection_rows,
+                projection_tables_available,
+                publish_year_end_projection,
+            )
+
+            if not projection_tables_available(conn):
+                raise RuntimeError("music-search Year-End projection tables are unavailable")
+            for context in contexts:
+                snapshot_key = context.filter_fingerprint
+                candidate_keys = {str(row[0]) for row in rows_by_fingerprint[snapshot_key]}
+                meta_rows, entity_rows = build_year_end_projection_rows(
+                    weekly_rows_by_fingerprint.get(snapshot_key, []),
+                    candidate_keys,
+                    track_top_n=context.bb_top_n,
+                    album_top_n=context.bb_album_top_n,
+                    artist_top_n=context.bb_artist_top_n,
+                    week_start_dow=context.bb_week_start_dow,
+                )
+                publish_year_end_projection(conn, snapshot_key, meta_rows, entity_rows)
         for context in contexts:
             _activate_snapshot_variant(conn, context, context.filter_fingerprint)
         conn.commit()
@@ -1704,6 +1724,8 @@ def build_shared_full_music_search_snapshot_set(
     contexts: tuple[MusicSearchFilterContext, ...],
     *,
     source_generation_id: str,
+    require_complete_weekly_ledger: bool = False,
+    publish_year_end: bool = False,
 ) -> dict[str, Any] | None:
     """Fully rebuild four L2/L3 variants from two shared logical-frame sets.
 
@@ -1711,10 +1733,10 @@ def build_shared_full_music_search_snapshot_set(
     source metadata on legacy snapshot rows, while eliminating the repeated
     lifetime loads formerly performed once per variant.
     """
-    if not contexts or not source_generation_id:
+    if not contexts:
         return None
     semantic_base_key = _validate_shared_full_contexts(contexts)
-    if _active_playback_generation(conn) != source_generation_id:
+    if str(_active_playback_generation(conn) or "") != str(source_generation_id or ""):
         return None
     index_state = get_music_search_index_state(conn)
     if index_state.get("status") not in {"ready", "degraded"}:
@@ -1728,13 +1750,16 @@ def build_shared_full_music_search_snapshot_set(
     duration_by_fingerprint: dict[str, float] = {}
     reports: list[dict[str, Any]] = []
     lineage_generation_id, source_dataset_digest = active_playback_lineage(conn)
-    lineage_ready = lineage_generation_id == source_generation_id and bool(source_dataset_digest)
+    lineage_ready = str(lineage_generation_id or "") == str(source_generation_id or "") and bool(
+        source_dataset_digest
+    )
     dependency_digest: str | None = None
-    if lineage_ready:
-        try:
-            dependency_digest = music_search_snapshot_dependency_digest(conn)
-        except Exception:
-            lineage_ready = False
+    try:
+        dependency_digest = music_search_snapshot_dependency_digest(conn)
+    except RuntimeError:
+        if not source_generation_id:
+            raise
+    weekly_ledger_ready = True
     try:
         prepare_music_search_snapshot_set(conn, contexts)
         for context in contexts:
@@ -1871,7 +1896,7 @@ def build_shared_full_music_search_snapshot_set(
                     rows_by_fingerprint[context.filter_fingerprint] = rows
                     weekly_rows_by_fingerprint[context.filter_fingerprint] = ledger_rows[variant]
                     if not ledger_complete[variant]:
-                        lineage_ready = False
+                        weekly_ledger_ready = False
                     duration_by_fingerprint[context.filter_fingerprint] = round(
                         (time.perf_counter() - variant_started) * 1000,
                         3,
@@ -1883,6 +1908,8 @@ def build_shared_full_music_search_snapshot_set(
                 invalidate_except("billboard", {"latest_snapshot"})
                 invalidate("db")
                 gc.collect()
+        if require_complete_weekly_ledger and not weekly_ledger_ready:
+            raise RuntimeError("shared-full weekly ledger is incomplete")
         _publish_shared_full_snapshot_set(
             conn,
             contexts,
@@ -1892,7 +1919,8 @@ def build_shared_full_music_search_snapshot_set(
             candidate_generation_id=candidate_generation_id,
             semantic_base_key=semantic_base_key,
             source_dataset_digest=source_dataset_digest if lineage_ready else None,
-            dependency_digest=dependency_digest if lineage_ready else None,
+            dependency_digest=dependency_digest,
+            publish_year_end=publish_year_end,
         )
         for context in contexts:
             rows = rows_by_fingerprint[context.filter_fingerprint]
@@ -1948,7 +1976,8 @@ def build_shared_full_music_search_snapshot_set(
         "strategy": "shared_full_snapshot_rebuild",
         "shared_logical_frame_sets": len({context.dynamic_threshold for context in contexts}),
         "chart_strategy": "full_family_recompute",
-        "weekly_ledger_ready": lineage_ready,
+        "weekly_ledger_ready": weekly_ledger_ready,
+        "year_end_published_atomically": publish_year_end,
     }
 
 

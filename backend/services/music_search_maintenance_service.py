@@ -461,6 +461,7 @@ def rebuild_current_music_search_derived_data(
     rebuild_documents: bool = False,
     statistics_reuse_only: bool = False,
     shared_full_snapshot_plan: Mapping[str, Any] | None = None,
+    atomic_snapshot_set: bool = False,
 ) -> dict[str, Any]:
     if not _search_metadata_dependencies_ready(conn):
         raise RuntimeError("music-search metadata aggregate dependency is not ready")
@@ -483,6 +484,24 @@ def rebuild_current_music_search_derived_data(
     shared_frame_fallback_reason: str | None = None
     delta_fallback_reason: str | None = None
     if snapshot_set_report is None:
+        if atomic_snapshot_set:
+            source_generation_row = conn.execute(
+                "SELECT active_generation_id FROM playback_import_state WHERE state_id=1"
+            ).fetchone()
+            source_generation_id = (
+                str(source_generation_row[0])
+                if source_generation_row is not None and source_generation_row[0]
+                else ""
+            )
+            snapshot_set_report = build_shared_full_music_search_snapshot_set(
+                conn,
+                contexts,
+                source_generation_id=source_generation_id,
+                require_complete_weekly_ledger=True,
+                publish_year_end=True,
+            )
+            if snapshot_set_report is None:
+                raise RuntimeError("atomic music-search snapshot set is unavailable")
         if shared_full_snapshot_plan is not None and shared_full_snapshot_plan.get(
             "schema_version"
         ) in {"music_search_shared_full_snapshot_v1", "music_search_shared_full_snapshot_v2"}:

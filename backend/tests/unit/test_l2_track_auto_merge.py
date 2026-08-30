@@ -9,6 +9,7 @@ from backend.domains.metadata.l2_track_auto_merge import (
     apply_l2_track_merge_plan,
     build_l2_track_merge_plan,
 )
+from backend.domains.metadata.track_identity import validate_track_identity_invariants
 from backend.domains.metadata.track_title_identity import normalize_l2_track_title
 
 pytestmark = pytest.mark.unit
@@ -23,7 +24,15 @@ def _connection() -> sqlite3.Connection:
     return conn
 
 
-def _track(conn: sqlite3.Connection, track_id: int, name: str, plays: int = 0) -> None:
+def _track(
+    conn: sqlite3.Connection,
+    track_id: int,
+    name: str,
+    plays: int = 0,
+    *,
+    isrc: str | None = None,
+    duration_ms: int = 180_000,
+) -> None:
     spotify_id = f"spotify-{track_id}"
     conn.execute(
         """INSERT INTO tracks(track_id, track_name, artist_id, album_id, spotify_track_id)
@@ -48,8 +57,8 @@ def _track(conn: sqlite3.Connection, track_id: int, name: str, plays: int = 0) -
     )
     conn.execute(
         """INSERT INTO spotify_track_meta(spotify_track_id, track_name, duration_ms, isrc)
-           VALUES (?, ?, 180000, ?)""",
-        (spotify_id, name, f"ISRC-{track_id}"),
+           VALUES (?, ?, ?, ?)""",
+        (spotify_id, name, duration_ms, isrc or f"ISRC-{track_id}"),
     )
     conn.execute(
         """INSERT INTO track_l1_source_links(
@@ -72,6 +81,7 @@ def test_title_normalizer_removes_packaging_but_preserves_recording_suffix() -> 
     assert normalize_l2_track_title("純妹妹 - 2025版").key == ("纯妹妹", ())
     assert normalize_l2_track_title("Song - 2018 Remastered").key == ("song", ())
     assert normalize_l2_track_title("Song (Explicit)").key == ("song", ())
+    assert normalize_l2_track_title("Song - Bonus Track").key == ("song", ())
     assert normalize_l2_track_title("Yoü And I").key != normalize_l2_track_title("You And I").key
     assert normalize_l2_track_title("Running Up That Hill (A Deal With God)").key == (
         "running up that hill a deal with god",
@@ -85,6 +95,29 @@ def test_title_normalizer_removes_packaging_but_preserves_recording_suffix() -> 
         normalize_l2_track_title("Song (feat. A)").key
         != normalize_l2_track_title("Song (feat. B)").key
     )
+
+
+@pytest.mark.parametrize(
+    ("title", "semantic_tag"),
+    [
+        ("the lakes - original version", "original_version"),
+        ("Thriller - Single Version", "single_version"),
+        ("Song - Album Version", "album_version"),
+        ("Song - Extended Mix", "extended"),
+        ("Song - Sped Up", "sped_up"),
+        ("Song - Slowed Down", "slowed"),
+    ],
+)
+def test_title_normalizer_preserves_l2_semantic_versions(title: str, semantic_tag: str) -> None:
+    identity = normalize_l2_track_title(title)
+    assert identity.base_title in {"the lakes", "thriller", "song"}
+    assert any(tag.startswith(f"{semantic_tag}:") for tag in identity.semantic_version_tags)
+
+
+def test_title_normalizer_preserves_source_context_outside_identity_key() -> None:
+    identity = normalize_l2_track_title('City Of Stars - From "La La Land" Soundtrack')
+    assert identity.key == ("city of stars", ())
+    assert identity.source_context_tags == ("from la la land soundtrack",)
 
 
 def test_same_artist_and_normalized_title_merge_while_semantic_versions_stay_separate() -> None:
@@ -128,6 +161,7 @@ def test_force_separate_outweighs_auto_merge_and_apply_is_idempotent() -> None:
 
         report = apply_l2_track_merge_plan(conn, plan, commit=True)
         assert report["status"] == "applied"
+        assert report["revision_bumped"] is True
         assert report["track_identity_revision"] == before_revision + 1
         group = conn.execute(
             """SELECT automatic_artist_id, automatic_title_key,
@@ -142,5 +176,350 @@ def test_force_separate_outweighs_auto_merge_and_apply_is_idempotent() -> None:
         second = apply_l2_track_merge_plan(conn, commit=True)
         assert second["status"] == "unchanged"
         assert second["track_identity_revision"] == before_revision + 1
+    finally:
+        conn.close()
+
+
+def test_known_semantic_versions_are_rejected_while_packaging_variants_merge() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "the lakes - bonus track", isrc="USUG12002851", duration_ms=211_813)
+        _track(
+            conn,
+            2,
+            "the lakes - original version",
+            isrc="USUG12103510",
+            duration_ms=227_203,
+        )
+        _track(conn, 3, "Thriller", isrc="USSM19902989", duration_ms=358_807)
+        _track(
+            conn,
+            4,
+            "Thriller - Single Version",
+            isrc="USSM10501511",
+            duration_ms=312_967,
+        )
+        _track(conn, 5, "Loverboy", isrc="USVI20100288", duration_ms=229_173)
+        _track(
+            conn,
+            6,
+            "Loverboy - Firecracker - Original Version, 2001",
+            isrc="USQX92003593",
+            duration_ms=194_588,
+        )
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert plan["groups"] == []
+        assert {
+            (edge["left_l1_id"], edge["right_l1_id"], edge["reason"])
+            for edge in plan["blocked_edges"]
+        } == {
+            (1, 2, "semantic_version_conflict"),
+            (3, 4, "semantic_version_conflict"),
+            (5, 6, "semantic_version_conflict"),
+        }
+
+        report = apply_l2_track_merge_plan(conn, plan, commit=True)
+        assert report["status"] == "unchanged"
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM track_group_candidates WHERE status='rejected'"
+            ).fetchone()[0]
+            == 3
+        )
+    finally:
+        conn.close()
+
+
+def test_source_context_requires_shared_isrc_and_compatible_duration() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "City Of Stars", isrc="USUG11600665", duration_ms=111_240)
+        _track(
+            conn,
+            2,
+            'City Of Stars - From "La La Land" Soundtrack',
+            isrc="USUG11600656",
+            duration_ms=149_706,
+        )
+        _track(conn, 3, "Another Song", isrc="SHARED", duration_ms=180_000)
+        _track(
+            conn,
+            4,
+            'Another Song - From "A Film" Soundtrack',
+            isrc="SHARED",
+            duration_ms=181_000,
+        )
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert [group["member_l1_ids"] for group in plan["groups"]] == [[3, 4]]
+        assert plan["groups"][0]["evidence_types"] == ["same_isrc_compatible_duration"]
+        assert any(
+            edge["left_l1_id"] == 1
+            and edge["right_l1_id"] == 2
+            and edge["reason"] == "source_context_requires_strong_evidence"
+            and edge["status"] == "pending"
+            for edge in plan["blocked_edges"]
+        )
+    finally:
+        conn.close()
+
+
+def test_force_merge_overrides_semantic_version_rejection() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "Song")
+        _track(conn, 2, "Song - Original Version")
+        conn.execute(
+            """INSERT INTO track_merge_overrides(
+                   scope, left_l1_id, right_l1_id, action, reason
+               ) VALUES ('recording', 1, 2, 'force_merge', 'curated same recording')"""
+        )
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert [group["member_l1_ids"] for group in plan["groups"]] == [[1, 2]]
+        assert plan["groups"][0]["evidence_types"] == ["force_merge"]
+        assert not any(
+            {edge["left_l1_id"], edge["right_l1_id"]} == {1, 2} for edge in plan["blocked_edges"]
+        )
+    finally:
+        conn.close()
+
+
+def test_generic_intro_with_disjoint_isrc_and_duration_conflict_is_rejected() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "INTRO", isrc="TWA450582101", duration_ms=48_077)
+        _track(conn, 2, "Intro", isrc="TWA450170201", duration_ms=30_960)
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert plan["groups"] == []
+        assert any(
+            edge["reason"] == "generic_title_recording_conflict" and edge["status"] == "rejected"
+            for edge in plan["blocked_edges"]
+        )
+    finally:
+        conn.close()
+
+
+def test_generic_intro_with_internal_l1_conflict_is_rejected() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "INTRO", isrc="TWA450582101", duration_ms=48_077)
+        conn.execute(
+            """INSERT INTO track_l1_external_ids(
+                   provider, external_track_id, l1_id, evidence_type, is_primary
+               ) VALUES ('spotify', 'spotify-1-alt', 1, 'provider_observed', 0)"""
+        )
+        conn.execute(
+            """INSERT INTO spotify_track_meta(
+                   spotify_track_id, track_name, duration_ms, isrc
+               ) VALUES ('spotify-1-alt', 'INTRO', 13293, 'TWA450275401')"""
+        )
+        _track(conn, 2, "Intro", isrc="TWA450170201", duration_ms=48_000)
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert plan["groups"] == []
+        assert plan["strong_internal_identity_conflict_node_count"] == 1
+        assert any(
+            edge["reason"] == "generic_title_internal_identity_conflict"
+            and edge["status"] == "rejected"
+            for edge in plan["blocked_edges"]
+        )
+    finally:
+        conn.close()
+
+
+def test_two_zero_evidence_local_nodes_stay_pending_without_active_group() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "Unsubstantiated")
+        _track(conn, 2, "unsubstantiated")
+        conn.execute("DELETE FROM track_l1_external_ids")
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert plan["groups"] == []
+        assert plan["edge_status_counts"]["pending"] == 1
+        assert plan["unsubstantiated_zero_evidence_pair_count"] == 1
+        report = apply_l2_track_merge_plan(conn, plan, commit=True)
+        assert report["status"] == "unchanged"
+        assert conn.execute("SELECT status FROM track_group_candidates").fetchone()[0] == "pending"
+    finally:
+        conn.close()
+
+
+def test_apply_can_defer_revision_bump_to_outer_governance_transaction() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "Same")
+        _track(conn, 2, "same")
+        before_revision = conn.execute(
+            "SELECT current_revision FROM track_identity_state WHERE state_id=1"
+        ).fetchone()[0]
+
+        report = apply_l2_track_merge_plan(conn, commit=True, bump_revision=False)
+
+        assert report["status"] == "applied"
+        assert report["revision_bumped"] is False
+        assert report["track_identity_revision"] == before_revision
+        assert (
+            conn.execute(
+                "SELECT current_revision FROM track_identity_state WHERE state_id=1"
+            ).fetchone()[0]
+            == before_revision
+        )
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM track_groups WHERE group_status='active'"
+            ).fetchone()[0]
+            == 1
+        )
+    finally:
+        conn.close()
+
+
+def test_noncanonical_alias_node_cannot_form_automatic_group() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "Alias Song")
+        _track(conn, 2, "alias song")
+        conn.execute(
+            """INSERT INTO spotify_track_owners(
+                   spotify_track_id, track_id, evidence_type
+               ) VALUES ('spotify-1', 2, 'catalog_projection')"""
+        )
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert plan["groups"] == []
+        assert plan["noncanonical_identity_node_count"] == 1
+        assert plan["noncanonical_candidate_rejection_count"] == 1
+        assert any(
+            edge["reason"] == "noncanonical_identity_requires_owner_repair"
+            and edge["status"] == "rejected"
+            for edge in plan["blocked_edges"]
+        )
+        apply_l2_track_merge_plan(conn, plan, commit=True)
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM track_groups WHERE group_status='active'"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            validate_track_identity_invariants(conn).pending_candidate_noncanonical_reference_count
+            == 0
+        )
+    finally:
+        conn.close()
+
+
+def test_old_pending_candidate_for_superseded_alias_is_rejected() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "Alias Song")
+        _track(conn, 2, "alias song")
+        conn.execute(
+            """INSERT INTO spotify_track_owners(
+                   spotify_track_id, track_id, evidence_type
+               ) VALUES ('spotify-1', 2, 'catalog_projection')"""
+        )
+        conn.execute("UPDATE track_l1_identities SET identity_status='superseded' WHERE l1_id=1")
+        conn.execute(
+            """INSERT INTO track_group_candidates(
+                   scope, original_l1_id, candidate_l1_id,
+                   confidence, evidence_json, status
+               ) VALUES ('recording', 2, 1, 0.5, '{"legacy":true}', 'pending')"""
+        )
+
+        before = validate_track_identity_invariants(conn)
+        assert before.pending_candidate_noncanonical_reference_count == 1
+        plan = build_l2_track_merge_plan(conn)
+        assert plan["changed"] is False
+        assert plan["noncanonical_identity_node_count"] == 0
+        assert plan["noncanonical_candidate_rejection_count"] == 1
+
+        report = apply_l2_track_merge_plan(conn, plan, commit=True)
+
+        assert report["status"] == "unchanged"
+        candidate = conn.execute(
+            """SELECT status, evidence_json FROM track_group_candidates
+                WHERE scope='recording'
+                  AND MIN(original_l1_id, candidate_l1_id)=1
+                  AND MAX(original_l1_id, candidate_l1_id)=2"""
+        ).fetchone()
+        assert candidate["status"] == "rejected"
+        assert "noncanonical_identity_requires_owner_repair" in candidate["evidence_json"]
+        assert (
+            validate_track_identity_invariants(conn).pending_candidate_noncanonical_reference_count
+            == 0
+        )
+    finally:
+        conn.close()
+
+
+def test_alias_source_link_marks_node_noncanonical_without_raw_owner() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "Projection Alias")
+        _track(conn, 2, "projection alias")
+        conn.execute(
+            """INSERT INTO track_l1_source_links(
+                   l1_id, track_id, evidence_type, observed_plays
+               ) VALUES (2, 1, 'track_projection', 0)"""
+        )
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert plan["groups"] == []
+        assert plan["noncanonical_identity_node_count"] == 1
+        assert any(
+            edge["reason"] == "noncanonical_identity_requires_owner_repair"
+            for edge in plan["blocked_edges"]
+        )
+    finally:
+        conn.close()
+
+
+def test_pure_sister_packaging_merges_and_manual_palm_rose_group_survives() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "纯妹妹", plays=3, isrc="TWU712403525", duration_ms=191_918)
+        _track(conn, 2, "純妹妹", plays=2, isrc="TWU712403525", duration_ms=191_918)
+        _track(conn, 3, "純妹妹 - 2025版", plays=1, isrc="HKD012720776", duration_ms=191_918)
+        _track(conn, 4, "手心的薔薇", plays=2, isrc="TWA531480006", duration_ms=280_053)
+        _track(
+            conn,
+            5,
+            "手心的薔薇 (ft. 鄧紫棋)",
+            plays=1,
+            isrc="TWA531480006",
+            duration_ms=280_053,
+        )
+        cursor = conn.execute(
+            """INSERT INTO track_groups(
+                   canonical_name, primary_track_id, primary_l1_id,
+                   scope, is_manual, group_status
+               ) VALUES ('手心的薔薇', 4, 4, 'recording', 1, 'active')"""
+        )
+        group_id = int(cursor.lastrowid)
+        conn.executemany(
+            "INSERT INTO track_group_l1_members(group_id, l1_id) VALUES (?, ?)",
+            [(group_id, 4), (group_id, 5)],
+        )
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert [group["member_l1_ids"] for group in plan["groups"]] == [[1, 2, 3], [4, 5]]
+        palm_group = plan["groups"][1]
+        assert palm_group["target_group_id"] == group_id
+        assert palm_group["target_is_manual"] is True
+        assert palm_group["evidence_types"] == ["existing_manual_group"]
     finally:
         conn.close()

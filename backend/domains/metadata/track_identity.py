@@ -100,7 +100,9 @@ def _ensure_owner_schema(conn: sqlite3.Connection) -> None:
     )
 
 
-def _ensure_compat_track_identity(conn: sqlite3.Connection, track_id: int) -> None:
+def _ensure_compat_track_identity(
+    conn: sqlite3.Connection, track_id: int, *, reactivate: bool = False
+) -> None:
     track_id = int(track_id)
     if conn.execute("SELECT 1 FROM tracks WHERE track_id=?", (track_id,)).fetchone() is None:
         raise ValueError(f"track {track_id} does not exist")
@@ -114,10 +116,11 @@ def _ensure_compat_track_identity(conn: sqlite3.Connection, track_id: int) -> No
     conn.execute(
         """UPDATE track_l1_identities
               SET provider='local', external_track_id=NULL,
-                  fallback_track_id=?, identity_status='active',
+                  fallback_track_id=?,
+                  identity_status=CASE WHEN ? THEN 'active' ELSE identity_status END,
                   representative_track_id=?, updated_at=datetime('now')
             WHERE l1_id=?""",
-        (track_id, track_id, track_id),
+        (track_id, int(reactivate), track_id, track_id),
     )
 
 
@@ -244,7 +247,10 @@ def ensure_spotify_track_owner(
                ) VALUES (?, ?, ?)""",
             (token, owner, evidence_type),
         )
-    _ensure_compat_track_identity(conn, owner)
+    # Authoritative provider ownership may reactivate a retired compatibility
+    # row. A merely preferred raw projection must not revive an alias whose
+    # Spotify id is already owned by another track.
+    _ensure_compat_track_identity(conn, owner, reactivate=True)
     has_primary = conn.execute(
         """SELECT 1 FROM track_l1_external_ids
             WHERE l1_id=? AND provider='spotify' AND is_primary=1""",
@@ -557,11 +563,10 @@ def _refresh_representatives(conn: sqlite3.Connection) -> None:
         """UPDATE track_l1_identities
               SET representative_track_id=l1_id,
                   fallback_track_id=l1_id,
-                  identity_status='active',
                   updated_at=datetime('now')
-            WHERE representative_track_id IS NOT l1_id
-               OR fallback_track_id IS NOT l1_id
-               OR identity_status!='active'"""
+            WHERE identity_status!='superseded'
+              AND (representative_track_id IS NOT l1_id
+                   OR fallback_track_id IS NOT l1_id)"""
     )
 
 
