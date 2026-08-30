@@ -491,6 +491,9 @@ def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -
     assert "docker ps --no-trunc" in workflow
     assert "cmp --silent" in workflow
     assert "retention-days: 1" in workflow
+    assert 'gate["all_four_ready"] is True' in workflow
+    assert "ready_variant_count']}/4 ready" in workflow
+    assert "all_six_ready" not in workflow
     assert "one-time-search-snapshot-bootstrap.yml" in production_workflow
     assert "INITIALIZE_SEARCH_SNAPSHOTS" in workflow
     assert "bootstrap-music-search-statistics.sh" in production_workflow
