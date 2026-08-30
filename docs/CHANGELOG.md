@@ -2,6 +2,15 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-31 — 生产发布门禁与当前测试数据库契约修复
+
+- GitHub Actions 将项目虚拟环境加入后续步骤的 `PATH`，性能与基准脚本测试改用当前解释器，避免子进程误用 runner 全局 Python 并缺少项目依赖。
+- migration 1 只对真正空库注入当前 schema；既有无版本数据库按顺序升级。migration 14 对已经具备 scope/parent 的发行分组直接幂等返回，避免重建时丢失 composition 分组。
+- 重新生成的 CI seed 会真实执行全部迁移再写版本记录，同时写入当前 L1 分组投影并校验 schema 65、完整性、外键和关键触发器；小页尺寸继续把 115 张契约表控制在 1 MB 内。
+- 当前 L1 同 scope 分组合并先归档来源组再迁移成员，满足唯一性触发器；合辑独占项目不会被 provider catalog 误提升为普通专辑归属。相关 contract 已切到当前 schema 路径。
+- Billboard Records 的连续周数与 Top 20 排序抽为共享帮助函数，`records_longevity.py` / `records_endurance.py` 回到架构行数门槛；同一 seed 下重构前后 60 个记录族的序列化结果保持逐字节一致。
+- 首页架构断言同步当前 rediscovery presentation 数据流；发布前仍以完整后端 unit/contract、前端测试/构建和三种生产 profile 门禁为准。
+
 ## 2026-08-30 — 播放记录与 Billboard Records 页面文案、展示收口
 
 - 播放记录移除标题已经足够明确的冗余 subtitle，并将连续播放、最快里程碑、全碟回放等说明改为面向用户的自然语言；不再在卡片副标题中暴露 `run`、缺失发行日或其他内部处理细节。

@@ -3,12 +3,8 @@
 import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists
-from backend.domains.billboard.record_sorting import stable_record_sort
-
-
-def _rank(frame, sort_keys, stable_columns, columns=None):
-    ranked = stable_record_sort(frame, sort_keys, stable_columns=stable_columns, limit=20)
-    return ranked[columns] if columns else ranked
+from backend.domains.billboard.record_sequences import consecutive_chart_streaks
+from backend.domains.billboard.record_sorting import rank_records as _rank
 
 
 def compute_longevity_records(
@@ -136,89 +132,25 @@ def compute_longevity_records(
         records["longest_no_top5_artist"] = pd.DataFrame()
 
     # ── 8. Longest consecutive streak ─────────────────────────────────
-    streaks = []
-    for tid, grp in weekly.sort_values(["track_id", "billboard_week"]).groupby("track_id"):
-        wks = grp["billboard_week"].tolist()
-        max_run = 1
-        cur_run = 1
-        run_start = wks[0]
-        run_end = wks[0]
-        best_start = wks[0]
-        best_end = wks[0]
-
-        for i in range(1, len(wks)):
-            if (wks[i] - wks[i - 1]).days <= 8:
-                cur_run += 1
-                run_end = wks[i]
-            else:
-                if cur_run > max_run:
-                    max_run = cur_run
-                    best_start = run_start
-                    best_end = run_end
-                cur_run = 1
-                run_start = wks[i]
-                run_end = wks[i]
-
-        if cur_run > max_run:
-            max_run = cur_run
-            best_start = run_start
-            best_end = run_end
-
-        streaks.append(
-            {
-                "track_id": tid,
-                "track_name": grp.iloc[0]["track_name"],
-                "artist_name": grp.iloc[0]["artist_name"],
-                "连续周数": max_run,
-                "起始周": best_start,
-                "结束周": best_end,
-            }
-        )
+    streaks = consecutive_chart_streaks(
+        weekly,
+        group_columns=("track_id",),
+        identity_columns=("track_id", "track_name", "artist_name"),
+    )
     records["longest_streak"] = _rank(
-        pd.DataFrame(streaks),
+        streaks,
         [("连续周数", False), ("起始周", True), ("结束周", False)],
         ("track_id", "artist_name", "track_name"),
     )
     # Album version
     if weekly_album is not None:
-        album_streaks = []
-        for (aname, aname_artist), grp in weekly_album.sort_values(
-            ["album_name", "artist_name", "billboard_week"]
-        ).groupby(["album_name", "artist_name"]):
-            wks = grp["billboard_week"].tolist()
-            max_run = 1
-            cur_run = 1
-            run_start = wks[0]
-            run_end = wks[0]
-            best_start = wks[0]
-            best_end = wks[0]
-            for i in range(1, len(wks)):
-                if (wks[i] - wks[i - 1]).days <= 8:
-                    cur_run += 1
-                    run_end = wks[i]
-                else:
-                    if cur_run > max_run:
-                        max_run = cur_run
-                        best_start = run_start
-                        best_end = run_end
-                    cur_run = 1
-                    run_start = wks[i]
-                    run_end = wks[i]
-            if cur_run > max_run:
-                max_run = cur_run
-                best_start = run_start
-                best_end = run_end
-            album_streaks.append(
-                {
-                    "album_name": aname,
-                    "artist_name": aname_artist,
-                    "连续周数": max_run,
-                    "起始周": best_start,
-                    "结束周": best_end,
-                }
-            )
+        album_streaks = consecutive_chart_streaks(
+            weekly_album,
+            group_columns=("album_name", "artist_name"),
+            identity_columns=("album_name", "artist_name"),
+        )
         records["longest_streak_album"] = _rank(
-            pd.DataFrame(album_streaks),
+            album_streaks,
             [("连续周数", False), ("起始周", True), ("结束周", False)],
             ("album_name", "artist_name"),
         )
@@ -226,43 +158,13 @@ def compute_longevity_records(
         records["longest_streak_album"] = pd.DataFrame()
 
     if weekly_artist is not None:
-        artist_streaks = []
-        for aname, grp in weekly_artist.sort_values(["artist_name", "billboard_week"]).groupby(
-            "artist_name"
-        ):
-            wks = grp["billboard_week"].tolist()
-            max_run = 1
-            cur_run = 1
-            run_start = wks[0]
-            run_end = wks[0]
-            best_start = wks[0]
-            best_end = wks[0]
-            for i in range(1, len(wks)):
-                if (wks[i] - wks[i - 1]).days <= 8:
-                    cur_run += 1
-                    run_end = wks[i]
-                else:
-                    if cur_run > max_run:
-                        max_run = cur_run
-                        best_start = run_start
-                        best_end = run_end
-                    cur_run = 1
-                    run_start = wks[i]
-                    run_end = wks[i]
-            if cur_run > max_run:
-                max_run = cur_run
-                best_start = run_start
-                best_end = run_end
-            artist_streaks.append(
-                {
-                    "artist_name": aname,
-                    "连续周数": max_run,
-                    "起始周": best_start,
-                    "结束周": best_end,
-                }
-            )
+        artist_streaks = consecutive_chart_streaks(
+            weekly_artist,
+            group_columns=("artist_name",),
+            identity_columns=("artist_name",),
+        )
         records["longest_streak_artist"] = _rank(
-            pd.DataFrame(artist_streaks),
+            artist_streaks,
             [("连续周数", False), ("起始周", True), ("结束周", False)],
             ("artist_name",),
         )
