@@ -93,6 +93,7 @@ function App() {
           <Route path="/music/tracks/l1/:trackId" element={<LegacyCanonicalTrackRedirect />} />
           <Route path="/music/tracks/:trackId" element={<Suspense fallback={<RouteFallback />}><TrackDetailPage /></Suspense>} />
           <Route path="/music/artists/:artistName" element={<Suspense fallback={<RouteFallback />}><ArtistDetailPage /></Suspense>} />
+          <Route path="/music/album-projects/:albumProjectId" element={<Suspense fallback={<RouteFallback />}><AlbumDetailPage /></Suspense>} />
           <Route path="/music/albums/:albumName" element={<Suspense fallback={<RouteFallback />}><AlbumDetailPage /></Suspense>} />
           <Route path="/billboard/track/:trackId" element={<LegacyMusicRedirect kind="track" />} />
           <Route path="/billboard/artist/:artistName" element={<LegacyMusicRedirect kind="artist" />} />

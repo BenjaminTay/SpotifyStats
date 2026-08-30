@@ -205,7 +205,7 @@ def _ranked_match_cte(
             WHERE ({predicate})
               AND d.generation_id=:generation_id
               AND d.kind IN ({", ".join(kind_names)})
-              AND (d.kind!='track' OR d.merge_level=:merge_level)
+              AND (d.kind NOT IN ('track', 'album_project') OR d.merge_level IN (0, :merge_level))
               {"AND NOT EXISTS (SELECT 1 FROM music_search_entity_deny_overlay denied WHERE denied.entity_key=d.entity_key)" if deny_overlay else ""}
         )"""
     return cte, params
@@ -335,6 +335,9 @@ def _to_candidate(
         href=str(row["href"]),
         track_id=int(row["track_id"]) if row["track_id"] is not None else None,
         artist_id=int(row["artist_id"]) if row["artist_id"] is not None else None,
+        album_project_id=(
+            int(row["album_project_id"]) if row["album_project_id"] is not None else None
+        ),
         album_name=str(row["album_name"]) if row["album_name"] else None,
         artist_name=str(row["artist_name"]) if row["artist_name"] else None,
         cover_url=str(row["cover_url"]) if row["cover_url"] else None,
@@ -439,7 +442,7 @@ def _query_fuzzy_rows(
             WHERE music_search_documents_fts MATCH :fts_expression
               AND d.generation_id=:generation_id
               AND d.kind IN ({", ".join(kind_names)})
-              AND (d.kind!='track' OR d.merge_level=:merge_level)
+              AND (d.kind NOT IN ('track', 'album_project') OR d.merge_level IN (0, :merge_level))
               {"AND NOT EXISTS (SELECT 1 FROM music_search_entity_deny_overlay denied WHERE denied.entity_key=d.entity_key)" if deny_overlay_available(conn) else ""}
             ORDER BY fuzzy_recall_rank, d.normalized_label, d.entity_key
             LIMIT :pool_size""",

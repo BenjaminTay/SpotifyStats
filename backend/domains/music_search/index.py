@@ -242,6 +242,10 @@ def _album_href(album_name: str, artist_name: str | None) -> str:
     return f"{href}?artist={quote(artist_name, safe='')}" if artist_name else href
 
 
+def _album_project_href(project_id: int) -> str:
+    return f"/music/album-projects/{project_id}"
+
+
 def _document(
     *,
     entity_key: str,
@@ -757,14 +761,31 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
         )
 
     if _table_exists(conn, "album_projects") and active_project_ids:
+        project_aliases: dict[int, list[str]] = defaultdict(list)
+        project_member_ids: dict[int, set[int]] = defaultdict(set)
+        for alias_row in conn.execute(
+            """SELECT apa.project_id, apa.album_id, al.album_name
+                 FROM album_project_albums apa
+                 JOIN albums al ON al.album_id=apa.album_id
+                ORDER BY apa.project_id, apa.album_id"""
+        ).fetchall():
+            project_aliases[int(alias_row["project_id"])].append(str(alias_row["album_name"]))
+            project_member_ids[int(alias_row["project_id"])].add(int(alias_row["album_id"]))
         project_rows = conn.execute(
             """SELECT ap.project_id, ap.canonical_name, ap.artist_id,
-                      ap.primary_album_id, ar.artist_name
+                      ap.primary_album_id, ap.scope, ar.artist_name
                FROM album_projects ap
                LEFT JOIN artists ar ON ar.artist_id=ap.artist_id
                WHERE ap.include_in_charts=1
                ORDER BY ap.project_id"""
         ).fetchall()
+        composition_members_by_artist: dict[int | None, set[int]] = defaultdict(set)
+        for row in project_rows:
+            if str(row["scope"]) == "composition":
+                artist_key = int(row["artist_id"]) if row["artist_id"] is not None else None
+                composition_members_by_artist[artist_key].update(
+                    project_member_ids.get(int(row["project_id"]), set())
+                )
         for row in project_rows:
             if int(row["project_id"]) not in active_project_ids:
                 continue
@@ -778,26 +799,41 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 else (str(row["artist_name"]) if row["artist_name"] else None)
             )
             album_name = str(row["canonical_name"])
-            documents.append(
-                _document(
-                    entity_key=make_music_search_entity_key("album_project", project_id),
-                    kind="album_project",
-                    label=album_name,
-                    secondary=artist_name,
-                    aliases=None,
-                    popularity=0,
-                    href=_album_href(album_name, artist_name),
-                    cover_url=_cover_url(
-                        "albums",
-                        int(row["primary_album_id"]) if row["primary_album_id"] else None,
-                    ),
-                    album_id=(int(row["primary_album_id"]) if row["primary_album_id"] else None),
-                    album_project_id=project_id,
-                    artist_id=artist_id,
-                    album_name=album_name,
-                    artist_name=artist_name,
+            scope = str(row["scope"])
+            document_levels = [3] if scope == "composition" else [2]
+            if scope == "release" and not (
+                project_member_ids.get(project_id, set())
+                & composition_members_by_artist.get(raw_artist_id, set())
+            ):
+                document_levels.append(3)
+            for document_level in document_levels:
+                documents.append(
+                    _document(
+                        entity_key=make_music_search_entity_key("album_project", project_id),
+                        kind="album_project",
+                        label=album_name,
+                        secondary=artist_name,
+                        aliases=[
+                            alias
+                            for alias in project_aliases.get(project_id, [])
+                            if alias != album_name
+                        ],
+                        popularity=0,
+                        href=_album_project_href(project_id),
+                        cover_url=_cover_url(
+                            "albums",
+                            int(row["primary_album_id"]) if row["primary_album_id"] else None,
+                        ),
+                        album_id=(
+                            int(row["primary_album_id"]) if row["primary_album_id"] else None
+                        ),
+                        album_project_id=project_id,
+                        artist_id=artist_id,
+                        album_name=album_name,
+                        artist_name=artist_name,
+                        merge_level=document_level,
+                    )
                 )
-            )
 
     for canonical_id, aliases in sorted(raw_names_by_canonical.items()):
         resolution = identity_map.get(canonical_id)

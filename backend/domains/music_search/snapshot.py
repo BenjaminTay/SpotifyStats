@@ -687,7 +687,8 @@ def _weekly_ledger_rows(
         str(row[0])
         for row in conn.execute(
             """SELECT entity_key FROM music_search_documents
-               WHERE generation_id=? AND (kind!='track' OR merge_level=?)""",
+               WHERE generation_id=?
+                 AND (kind NOT IN ('track', 'album_project') OR merge_level IN (0, ?))""",
             (generation_id, context.merge_level),
         ).fetchall()
     }
@@ -997,7 +998,7 @@ def _context_rows(
                   artist_id, album_name, artist_name
            FROM music_search_documents
            WHERE generation_id=? AND kind IN ('track', ?, 'artist')
-             AND (kind!='track' OR merge_level=?)""",
+             AND (kind NOT IN ('track', 'album_project') OR merge_level IN (0, ?))""",
         (generation_id, album_document_kind, context.merge_level),
     ).fetchall()
     result: list[tuple[Any, ...]] = []
@@ -1878,7 +1879,7 @@ def build_shared_full_music_search_snapshot_set(
                             for row in conn.execute(
                                 """SELECT entity_key FROM music_search_documents
                                    WHERE generation_id=?
-                                     AND (kind!='track' OR merge_level=?)""",
+                                     AND (kind NOT IN ('track', 'album_project') OR merge_level IN (0, ?))""",
                                 (candidate_generation_id, context.merge_level),
                             ).fetchall()
                         }

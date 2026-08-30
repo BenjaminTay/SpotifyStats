@@ -26,6 +26,7 @@ type EntityStatsTarget = {
   kind: 'track' | 'album' | 'artist'
   trackId?: number | string
   albumName?: string
+  albumProjectId?: number
   artistName?: string
   mergeLevel?: number
 }
@@ -36,8 +37,11 @@ function entityStatsRequest(
   apiParams: Record<string, ApiQueryParam>,
   includeRankContext = false,
 ) {
-  const { kind, trackId, albumName, artistName, mergeLevel } = target
-  const entityId = (trackId ?? albumName ?? artistName) != null ? String(trackId ?? albumName ?? artistName) : ''
+  const { kind, trackId, albumName, albumProjectId, artistName, mergeLevel } = target
+  const targetIdentity = kind === 'album' && albumProjectId != null
+    ? `album-project:${albumProjectId}`
+    : trackId ?? albumName ?? artistName
+  const entityId = targetIdentity != null ? String(targetIdentity) : ''
   const resolvedMergeLevel = mergeLevel ?? getDefaultMergeLevel()
   const periodParams = {
     period: apiParams.period,
@@ -58,6 +62,12 @@ function entityStatsRequest(
     queryFn: () => {
       if (kind === 'track' && trackId != null) {
         return api.get<EntityStatsResponse>(`/music/tracks/l1/${trackId}/stats`, { ...filters, ...periodParams, merge_level: resolvedMergeLevel, include_rank_context: includeRankContext })
+      }
+      if (kind === 'album' && albumProjectId != null) {
+        return api.get<EntityStatsResponse>(
+          `/music/album-projects/${albumProjectId}/stats`,
+          { ...filters, ...periodParams, merge_level: resolvedMergeLevel, include_rank_context: includeRankContext },
+        )
       }
       if (kind === 'album' && albumName) {
         return api.get<EntityStatsResponse>(
@@ -107,6 +117,7 @@ export function EntityStatsPanel({
   kind,
   trackId,
   albumName,
+  albumProjectId,
   artistName,
   mergeLevel,
   releaseDate,
@@ -118,7 +129,7 @@ export function EntityStatsPanel({
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { period, metric, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
   const request = entityStatsRequest(
-    { kind, trackId, albumName, artistName, mergeLevel },
+    { kind, trackId, albumName, albumProjectId, artistName, mergeLevel },
     filters,
     apiParams,
   )
@@ -129,7 +140,7 @@ export function EntityStatsPanel({
     enabled: !filtersLoading && entityId !== '',
   })
   const rankRequest = entityStatsRequest(
-    { kind, trackId, albumName, artistName, mergeLevel },
+    { kind, trackId, albumName, albumProjectId, artistName, mergeLevel },
     filters,
     apiParams,
     true,
@@ -170,7 +181,7 @@ export function EntityStatsPanel({
     enabled: kind === 'artist' && !!artistName && !filtersLoading && data?.found === true,
   })
 
-  const albumRankingContext = JSON.stringify({ albumName, artistName, metric, resolvedMergeLevel, ...filters, ...apiParams })
+  const albumRankingContext = JSON.stringify({ albumName, albumProjectId, artistName, metric, resolvedMergeLevel, ...filters, ...apiParams })
   const [albumRankingPageState, setAlbumRankingPageState] = useState({
     context: albumRankingContext,
     page: 1,
@@ -188,11 +199,13 @@ export function EntityStatsPanel({
     offset: (albumRankingPage - 1) * ALBUM_RANKING_PAGE_SIZE,
   }
   const { data: albumRanking, isPending: albumRankingPending } = useQuery({
-    queryKey: queryKeys.music.albumRankings(albumName ?? '', artistName ?? '', albumRankingParams),
+    queryKey: queryKeys.music.albumRankings(albumProjectId != null ? `project:${albumProjectId}` : albumName ?? '', artistName ?? '', albumRankingParams),
     queryFn: () => api.get<AlbumPersonalRankingResponse>(
-      `/music/albums/${encodeURIComponent(albumName!)}/rankings`, albumRankingParams,
+      albumProjectId != null
+        ? `/music/album-projects/${albumProjectId}/rankings`
+        : `/music/albums/${encodeURIComponent(albumName!)}/rankings`, albumRankingParams,
     ),
-    enabled: kind === 'album' && !!albumName && !filtersLoading && data?.found === true,
+    enabled: kind === 'album' && (albumProjectId != null || !!albumName) && !filtersLoading && data?.found === true,
   })
 
   const metricKey: AnalysisMetric = metric
@@ -550,7 +563,7 @@ export function EntityStatsPanel({
             if (kind === 'track' && trackId != null)
               return analysisApi.entityPlays('track', String(trackId), filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel })
             if (kind === 'album' && albumName)
-              return analysisApi.entityPlays('album', albumName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel }, artistName)
+              return analysisApi.entityPlays('album', albumName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel }, artistName, albumProjectId)
             if (kind === 'artist' && artistName)
               return analysisApi.entityPlays('artist', artistName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date })
             return { total: 0, limit, offset: 0, rows: [] }
@@ -559,7 +572,7 @@ export function EntityStatsPanel({
             if (kind === 'track' && trackId != null)
               return analysisApi.entityPlayDates('track', String(trackId), filters, { ...apiParams, merge_level: resolvedMergeLevel })
             if (kind === 'album' && albumName)
-              return analysisApi.entityPlayDates('album', albumName, filters, { ...apiParams, merge_level: resolvedMergeLevel }, artistName)
+              return analysisApi.entityPlayDates('album', albumName, filters, { ...apiParams, merge_level: resolvedMergeLevel }, artistName, albumProjectId)
             if (kind === 'artist' && artistName)
               return analysisApi.entityPlayDates('artist', artistName, filters, apiParams)
             return []

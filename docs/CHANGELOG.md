@@ -2,6 +2,18 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-30 — L2 同名歌曲与 Album Project 别名统一
+
+- L2 产品语义调整为“同歌曲基础版本”：canonical primary artist 与规范化普通歌名相同时由机器直接
+  归并，ISRC、时长、Soundtrack/source context 和零事实差异只保留审计 warning；Acoustic、Live、
+  Remix、Taylor's Version 等明确版本仍只在 L3 合并。
+- `Intro`、`Outro`、`Interlude` 等结构性标题改为确定性拒绝，不再依赖时长/ISRC 冲突，也不进入人工
+  待审队列；不同标题的共享 ISRC 保守 fallback 保持不变。
+- Album Project 详情统一解析规范名、成员发行名与大小写/Unicode 别名，并补充稳定项目 ID 入口；搜索
+  使用成员发行名作为规范项目 alias，避免豪华版、Long Pond 和大小写版本进入来源专辑局部统计。
+- 正式治理发布要求先在一致副本完整演练，并在四套 L2/L3 × dynamic/fixed 精确快照及详情年榜投影
+  全部 ready 后完成；失败时继续服务治理前 LKG，可按 revision 幂等重跑或从停机备份回滚。
+
 ## 2026-08-30 — 播放记录与 Billboard Records 页面文案、展示收口
 
 - 播放记录移除标题已经足够明确的冗余 subtitle，并将连续播放、最快里程碑、全碟回放等说明改为面向用户的自然语言；不再在卡片副标题中暴露 `run`、缺失发行日或其他内部处理细节。

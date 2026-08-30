@@ -4,7 +4,7 @@
 
 Settings 的“音乐源数据管理”是人工音乐事实治理的唯一入口，分为“归并与版本 / 曲目署名 / 艺人身份 / 流派与语言”四个平级模块。“归并与版本”先选择“歌曲归并 / 专辑归并”，再共用“自动检测 / 已保存分组 / 手动创建”三类任务。对象切换在三个任务中始终可见；手动创建统一采用“选择成员 → 配置代表版本与层级 → 确认保存”三步流程；用户只选择 L2/L3，不提供 L1 统计开关。专辑自动检测额外提供重叠率，Album Projects 重建归入维护工具，不再以另一套工作台或隐藏的对象入口呈现。单曲详情的“编辑”先展示“归并歌曲版本 / 调整曲目署名 / 管理艺人身份”动作菜单，再以实体参数和返回地址深链到唯一治理入口；专辑和艺人详情同样只提供深链，不能复制写逻辑。
 
-歌曲手动归并必须允许搜索并明确选择两个不同的 owner `track_id`、指定代表版本和生效层级。`tracks.track_id` 是唯一的应用、统计和公开歌曲身份，不再另建 canonical track ID。一个 `track_id` 可以拥有多个 Spotify Track ID；一个 Spotify Track ID 必须且只能归属于一个现有 `track_id`。历史原始 Track ID、兼容 L1 ID、Spotify ID 和名称候选进入治理工作区前必须统一经过 `spotify_track_owners` 解析；不拥有任何 Spotify ID 且已投影到其他 owner 的兼容壳记录不得单独展示或写入分组。新导入记录先按 Spotify owner 命中已有 `track_id`；没有 owner 时才沿用既有“艺人 + 曲名”匹配或创建 track，再登记 owner。日常版本关系只在 L2 `recording`（同一录音/母带）或 L3 `composition`（同一作品，包括重录、现场、Acoustic、Remix 等）建立。
+歌曲手动归并必须允许搜索并明确选择两个不同的 owner `track_id`、指定代表版本和生效层级。`tracks.track_id` 是唯一的应用、统计和公开歌曲身份，不再另建 canonical track ID。一个 `track_id` 可以拥有多个 Spotify Track ID；一个 Spotify Track ID 必须且只能归属于一个现有 `track_id`。历史原始 Track ID、兼容 L1 ID、Spotify ID 和名称候选进入治理工作区前必须统一经过 `spotify_track_owners` 解析；不拥有任何 Spotify ID 且已投影到其他 owner 的兼容壳记录不得单独展示或写入分组。新导入记录先按 Spotify owner 命中已有 `track_id`；没有 owner 时才沿用既有“艺人 + 曲名”匹配或创建 track，再登记 owner。日常版本关系只在 L2 `recording`（产品意义上的同一首基础歌曲；内部 scope 名为历史兼容）或 L3 `composition`（同一作品，包括重录、现场、Acoustic、Remix 等）建立。
 
 歌曲与专辑的“已保存分组”必须使用一致的卡片结构与成员操作。歌曲分组以稳定 `track_id` 列出成员，并支持切换代表曲目、移除非代表成员和删除覆盖组；当前活动 L2/L3 关系以 `track_group_l1_members` 为准，其中 `l1_id` 必须等于对应 owner `track_id`，`track_group_members` 只保留旧版兼容数据，不得作为新自动任务的写入或统计来源。每个成员默认折叠其历史来源，展开后显示代表来源、封面、有效艺人和来源冲突。这些操作不得修改原始 `tracks`、`plays` 或署名事实。
 
@@ -26,19 +26,27 @@ L1 不作为设置项或人工合并层级，原“高级：基础身份纠错�
 
 L2 默认由机器维护。canonical primary artist 相同且 L2 语义规范化歌名相同的 L1 identities 默认自动
 进入同一活动 `recording` group；规范化会移除大小写、简繁、Unicode/空白/等价标点以及 Explicit、
-Clean、Bonus、Remaster 等发行标签，但保留 Acoustic、Live、Remix、Radio Edit、Demo、
-Instrumental、Taylor's Version/重录、Original/Single/Album Version、Extended、Sped Up/Slowed
-和参与艺人变化。自动判断使用 accepted/rejected/pending 三态：普通同艺人同语义标题直接 accepted；
-通用短标题在 ISRC 不相交且时长差至少 10 秒时 rejected；Soundtrack 等来源语境与无语境标题只有共享
-ISRC 且时长兼容才 accepted；双方都无播放、外部 ID 和来源事实时 pending。rejected/pending 均不创建
-活动组，避免把低证据对象推给人工审核。人工审核只处理显式 `force_merge` / `force_separate` 例外，且
-`force_separate` 优先于 `force_merge` 和自动规则。
+Clean、Bonus、Remaster 和 Soundtrack/source context 等发行说明，但保留 Acoustic、Live、Remix、
+Radio Edit、Demo、Instrumental、Taylor's Version/重录、Original/Single/Album Version、Extended、
+Sped Up/Slowed 和参与艺人变化。普通同艺人同语义标题直接 accepted，不以 ISRC、时长、来源专辑或
+零播放/零外部证据否决；这些差异只写入审计 warning。`Intro`、`Outro`、`Interlude`、`Overture`、
+`Prelude`、`Prologue`、`Epilogue`、`Theme` 等结构性标题及其编号/副标题形式一律 deterministic
+rejected，不进入人工待审队列；只有显式 `force_merge` 才能覆盖。不同规范标题共享 ISRC 时仍保留
+艺人、语义版本和兼容时长均一致的保守 fallback。人工审核只处理显式 `force_merge` /
+`force_separate` 例外，且 `force_separate` 优先于 `force_merge` 和自动规则。
 
 Album Project 同样优先机器归并同名大小写差异和 catalog 证据完整的标准/豪华/expanded 发行。
 共享 `album_spotify_links` 不是充分条件，必须同时核对 canonical album artist、发行日期/类型与完整
 track list。一个项目可以包含不同 recording key 的 Acoustic、Long Pond 或 rehearsal 额外曲目；
 这只改变专辑项目 membership，不会把这些歌曲在 L2 曲目榜合成原版录音。精选集策略未定期间，
 自动任务不得改变 compilation project 的现有 membership 或榜单资格。
+
+Album Project 的规范项目名、所有成员发行名及其 Unicode/大小写/空白等价形式都是同一项目的只读
+别名，但项目身份始终是稳定 `album_project_id`。新搜索结果和详情深链必须使用
+`/music/album-projects/{album_project_id}`；旧名称入口解析后替换为稳定地址。别名解析必须以
+canonical album artist 消歧，L2 优先 `release`、L3 优先 `composition`，歧义时 fail closed；详情
+摘要、排行、播放明细、日历和 Billboard 不得各自实现名称匹配，也不得因为从成员发行名进入就退回
+具体来源专辑的局部统计。
 
 Phone 当前把归并、署名和元数据维护明确归入“高级数据管理 · 电脑端管理”，不能静默显示不完整的移动版操作；后续若开放 Phone 写入，必须直接挂载同一套响应式工作台、API 与 owner 语义，不得复制另一套治理逻辑。
 

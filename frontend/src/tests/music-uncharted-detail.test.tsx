@@ -48,6 +48,7 @@ function detailWrapper(initialEntry: string) {
           <RuntimeCapabilitiesProvider>
             <Routes>
               <Route path="/music/albums/:albumName" element={children} />
+              <Route path="/music/album-projects/:albumProjectId" element={children} />
               <Route path="/music/artists/:artistName" element={children} />
               <Route path="/music/tracks/:trackId" element={children} />
             </Routes>
@@ -61,6 +62,43 @@ function detailWrapper(initialEntry: string) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('未入榜实体详情', () => {
+  it('稳定专辑项目入口不依赖含斜杠的专辑名', async () => {
+    const get = vi.spyOn(api, 'get').mockImplementation((path: string) => {
+      if (path !== '/billboard/album-project/3') {
+        return Promise.reject(new Error(`unexpected GET ${path}`))
+      }
+      return Promise.resolve({
+        found: true,
+        chart_status: 'not_charted',
+        track_chart_status: 'not_charted',
+        effective_play_count: 9,
+        album_project_id: 3,
+        album_project_name: 'A/B',
+        album_name: 'A/B',
+        artist_name: 'Artist',
+        cover_url: null,
+        meta: null,
+        info: null,
+        chart_summary: null,
+        album_project: null,
+        album_weekly_history: [],
+        album_no1_by_week: [],
+        best_singles_overlay: [],
+        tracks: [],
+      })
+    })
+
+    render(<AlbumDetailExperience />, {
+      wrapper: detailWrapper('/music/album-projects/3'),
+    })
+
+    expect(await screen.findByText('A/B')).toBeInTheDocument()
+    expect(get).toHaveBeenCalledWith(
+      '/billboard/album-project/3',
+      expect.objectContaining({ view: 'summary' }),
+    )
+  })
+
   it('单曲标题区提供精准管理深链并保留返回路径', async () => {
     vi.spyOn(api, 'get').mockImplementation((path: string) => {
       if (path === '/billboard/track/canonical/175') {

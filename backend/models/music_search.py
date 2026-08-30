@@ -39,6 +39,7 @@ class MusicSearchResult(BaseModel):
     total_ms: int = 0
     track_id: int | None = None
     artist_id: int | None = None
+    album_project_id: int | None = None
     album_name: str | None = None
     artist_name: str | None = None
     cover_url: str | None = None
@@ -68,6 +69,7 @@ class MusicSearchCandidateResult(BaseModel):
     href: str
     track_id: int | None = None
     artist_id: int | None = None
+    album_project_id: int | None = None
     album_name: str | None = None
     artist_name: str | None = None
     cover_url: str | None = None

@@ -552,7 +552,7 @@ def _candidate_keys(
     rows = conn.execute(
         """SELECT entity_key, kind FROM music_search_documents
            WHERE generation_id=? AND kind IN ('track', ?, 'artist')
-             AND (kind!='track' OR merge_level=?)""",
+             AND (kind NOT IN ('track', 'album_project') OR merge_level IN (0, ?))""",
         (candidate_generation, album_kind, context.merge_level),
     ).fetchall()
     result: dict[str, set[str]] = {"track": set(), "album": set(), "artist": set()}

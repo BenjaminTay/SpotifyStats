@@ -352,7 +352,8 @@ def _clone_and_apply_context_rows(
         str(row[0])
         for row in conn.execute(
             """SELECT entity_key FROM music_search_documents
-               WHERE generation_id=? AND (kind!='track' OR merge_level=?)""",
+               WHERE generation_id=?
+                 AND (kind NOT IN ('track', 'album_project') OR merge_level IN (0, ?))""",
             (candidate_generation, context.merge_level),
         ).fetchall()
     }
@@ -399,7 +400,8 @@ def _candidate_keys_for_context(
         str(row[0])
         for row in conn.execute(
             """SELECT entity_key FROM music_search_documents
-               WHERE generation_id=? AND (kind!='track' OR merge_level=?)""",
+               WHERE generation_id=?
+                 AND (kind NOT IN ('track', 'album_project') OR merge_level IN (0, ?))""",
             (candidate_generation, context.merge_level),
         ).fetchall()
     }

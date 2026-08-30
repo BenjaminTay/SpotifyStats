@@ -1347,6 +1347,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billboard/album-project/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Album Project Chart Detail */
+        get: operations["album_project_chart_detail_api_billboard_album_project__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billboard/entity-lists": {
         parameters: {
             query?: never;
@@ -2241,6 +2258,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/music/album-projects/{project_id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Album Project Stats */
+        get: operations["album_project_stats_api_music_album_projects__project_id__stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/music/artists/{artist_name}/stats": {
         parameters: {
             query?: never;
@@ -2267,6 +2301,23 @@ export interface paths {
         };
         /** Album Personal Rankings */
         get: operations["album_personal_rankings_api_music_albums__album_name__rankings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/album-projects/{project_id}/rankings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Album Project Personal Rankings */
+        get: operations["album_project_personal_rankings_api_music_album_projects__project_id__rankings_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2326,6 +2377,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/music/album-projects/{project_id}/plays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Album Project Plays */
+        get: operations["album_project_plays_api_music_album_projects__project_id__plays_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/music/artists/{artist_name}/plays": {
         parameters: {
             query?: never;
@@ -2369,6 +2437,23 @@ export interface paths {
         };
         /** Album Play Dates */
         get: operations["album_play_dates_api_music_albums__album_name__play_dates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/album-projects/{project_id}/play-dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Album Project Play Dates */
+        get: operations["album_project_play_dates_api_music_album_projects__project_id__play_dates_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7029,6 +7114,18 @@ export interface components {
             rows: {
                 [key: string]: unknown;
             }[];
+            /** Album Project Id */
+            album_project_id?: number | null;
+            /** Album Project Name */
+            album_project_name?: string | null;
+            /** Requested Album Name */
+            requested_album_name?: string | null;
+            /** Album Project Identity */
+            album_project_identity?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * EntityRecordFamily
@@ -8600,6 +8697,8 @@ export interface components {
             track_id?: number | null;
             /** Artist Id */
             artist_id?: number | null;
+            /** Album Project Id */
+            album_project_id?: number | null;
             /** Album Name */
             album_name?: string | null;
             /** Artist Name */
@@ -8748,6 +8847,8 @@ export interface components {
             track_id?: number | null;
             /** Artist Id */
             artist_id?: number | null;
+            /** Album Project Id */
+            album_project_id?: number | null;
             /** Album Name */
             album_name?: string | null;
             /** Artist Name */
@@ -15359,6 +15460,7 @@ export interface operations {
                 max_merge_gap_minutes?: number | null;
                 /** @description 版本归并级别（L2/L3） */
                 merge_level?: number;
+                readonly?: boolean;
             };
             header?: never;
             path: {
@@ -15378,6 +15480,74 @@ export interface operations {
                 };
             };
             /** @description Album has no resolvable chart or effective-play facts */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    album_project_chart_detail_api_billboard_album_project__project_id__get: {
+        parameters: {
+            query?: {
+                include_compilations?: boolean;
+                view?: "full" | "summary" | "overview" | "tracks" | "project";
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number | null;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number | null;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number | null;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number | null;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number | null;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本归并级别（L2/L3） */
+                merge_level?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumChartDetailResponse"];
+                };
+            };
+            /** @description Album project not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -17400,6 +17570,54 @@ export interface operations {
             };
         };
     };
+    album_project_stats_api_music_album_projects__project_id__stats_get: {
+        parameters: {
+            query?: {
+                merge_level?: number;
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                include_rank_context?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     artist_stats_api_music_artists__artist_name__stats_get: {
         parameters: {
             query?: {
@@ -17473,6 +17691,56 @@ export interface operations {
             header?: never;
             path: {
                 album_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumPersonalRankingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    album_project_personal_rankings_api_music_album_projects__project_id__rankings_get: {
+        parameters: {
+            query?: {
+                metric?: "plays" | "hours";
+                limit?: number;
+                offset?: number;
+                merge_level?: number;
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: number;
             };
             cookie?: never;
         };
@@ -17651,6 +17919,57 @@ export interface operations {
             };
         };
     };
+    album_project_plays_api_music_album_projects__project_id__plays_get: {
+        parameters: {
+            query?: {
+                merge_level?: number;
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                search?: string | null;
+                date?: string | null;
+                limit?: number;
+                offset?: number;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityPlaysResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     artist_plays_api_music_artists__artist_name__plays_get: {
         parameters: {
             query?: {
@@ -17771,6 +18090,53 @@ export interface operations {
             header?: never;
             path: {
                 album_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayDateEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    album_project_play_dates_api_music_album_projects__project_id__play_dates_get: {
+        parameters: {
+            query?: {
+                merge_level?: number;
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                project_id: number;
             };
             cookie?: never;
         };

@@ -17,7 +17,7 @@ from functools import lru_cache
 
 from opencc import OpenCC
 
-L2_TITLE_IDENTITY_POLICY_VERSION = "nfkc_t2s_title_semantic_source_v3"
+L2_TITLE_IDENTITY_POLICY_VERSION = "nfkc_t2s_title_semantic_source_v4"
 
 _PUNCTUATION_TRANSLATION = str.maketrans(
     {
@@ -126,6 +126,15 @@ _SOURCE_CONTEXT_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(r"\bmusic\s+from\s+.+", re.IGNORECASE),
+    re.compile(
+        r"(?:电影|电视剧|剧集|动画|动漫|游戏|综艺|影视|電視劇|劇集|動畫|動漫|遊戲|綜藝|影視)"
+        r".+(?:主题曲|插曲|片尾曲|片头曲|原声|主題曲|片尾曲|片頭曲|原聲)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"《.+》.*(?:主题曲|插曲|片尾曲|片头曲|原声|主題曲|片尾曲|片頭曲|原聲)",
+        re.IGNORECASE,
+    ),
 )
 
 _TRAILING_PACKAGING_PATTERNS = (

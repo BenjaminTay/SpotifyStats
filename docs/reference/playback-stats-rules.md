@@ -44,7 +44,7 @@ SpotifyStats 的统计口径要回答三个不同问题：
 | 专辑播放量 | album project 内 canonical song 播放量的去重求和 |
 | 来源拆分 | 对专辑播放量按原版专辑、豪华版、单曲版、精选集等 source album 来源做解释 |
 | canonical track | 本地稳定基础身份；一个基础身份可持有多个完全等价的 provider ID，一个 provider ID 只能有一个 owner |
-| L2 | 默认统计模式，同录音/同发行项目口径 |
+| L2 | 默认统计模式，同歌曲基础版本/同发行项目口径 |
 | L3 | 可选统计模式，同作品/同专辑项目口径 |
 
 ---
@@ -163,14 +163,16 @@ L1 不做歌曲版本或发行项目合并。它只回答“一次播放属于�
 因此，“L1 不合并”是指不合并业务版本；它不禁止把已证明属于同一 provider 对象的历史别名或
 relink 修复到同一 owner。L1 是内部治理层，不作为公开统计切换项。
 
-### R7. L2：同录音/同发行项目口径
+### R7. L2：同歌曲基础版本/同发行项目口径
 
 L2 是默认推荐口径。
 
-歌曲层面：同一份录音合并为同一首歌。包括：
+歌曲层面：产品意义上的同一首基础歌曲合并为同一首歌；数据库内部继续使用历史兼容的
+`recording` scope 名称，但不再以“必须是同一录音/母带”作为产品门禁。包括：
 
-- canonical artist 相同且 L2 语义规范化歌名相同的版本；这是默认机器归并规则。通用标题、来源语境和
-  零事实对象按 R10 的确定性门禁处理。
+- canonical artist 相同且 L2 语义规范化歌名相同的版本；这是默认机器归并规则。时长、ISRC、来源
+  专辑、Soundtrack/source context 与零事实状态只作为审计证据，不阻止普通标题归并；结构性通用标题
+  按 R10 的确定性门禁保持分开。
 - 单曲专辑中的单曲版。
 - 录音室专辑中的 track 版。
 - Explicit / Clean。
@@ -234,10 +236,10 @@ L3 是宽松口径。
 | 级别 | 曲目聚合键 | 行为 |
 |------|------------|------|
 | 基础身份 | `canonical_track_id` | 系统治理层，不作为用户可选统计模式 |
-| L2 | `recording_group_id`，未入组则回退 `canonical_track_id` | 同录音聚合；公开默认 |
+| L2 | `recording_group_id`，未入组则回退 `canonical_track_id` | 同歌曲基础版本聚合；公开默认 |
 | L3 | `composition_group_id`，未入组则回退 L2/canonical key | 同作品聚合 |
 
-### R10. L2 同录音判断
+### R10. L2 同歌曲基础版本判断
 
 L2 自动归并以 canonical primary artist 与语义规范化歌名为主键：二者相同，默认视为同一首歌并
 机器归并，不要求人工审核。规范化只消除 Unicode、简繁、大小写、首尾/重复空白、等价标点，以及
@@ -246,15 +248,15 @@ Live、Remix、Radio Edit、Instrumental、Demo、Taylor's Version/重录、Orig
 Version、Extended、Sped Up/Slowed 和参与艺人变化等语义标签必须保留在 key 中，因此不会被标题
 清洗跨版本吞并。
 
-自动判断为三态：`accepted` 直接入组，`rejected` 保持分开，`pending` 只记录证据且不创建活动组。
-优先级固定为：`force_separate` 人工覆盖 > `force_merge` 人工覆盖 > 自动标题规则。默认同艺人同
-语义标题不因单一 ISRC、时长或来源专辑差异而否决；但以下属于确定性的机器门禁，不转人工：
+自动判断保留 `accepted` / `rejected` / `pending` 三态契约，但普通同艺人同语义标题必须直接
+`accepted`。优先级固定为：`force_separate` 人工覆盖 > `force_merge` 人工覆盖 > 自动标题规则。
 
-- `Intro`、`Interlude`、`Overture`、`Theme` 等通用短标题若 ISRC 集合不相交且时长差至少 10 秒，
-  判为 `rejected`；同一个 L1 内已经存在多 ISRC 且时长冲突时也拒绝扩大归并。
-- 标题中的 `From ... Soundtrack`、影视/舞台原声来源只视为发行语境；与无语境标题相遇时，只有共享
-  ISRC 且时长兼容才自动 `accepted`，证据不足则 `pending`，不会仅因出现 Soundtrack 字样排除专辑项目。
-- 两侧都没有播放、没有外部 ID、没有可验证来源事实时判为 `pending`，避免空壳身份形成活动组。
+- 普通标题不因 ISRC 不同、时长差异、来源专辑、`From ... Soundtrack`/影视舞台来源说明或双方均为
+  零播放/零外部证据而否决；这些差异必须作为 warning 写入候选审计，但不得创建 pending 人工队列。
+- `Intro`、`Outro`、`Interlude`、`Overture`、`Prelude`、`Prologue`、`Epilogue`、`Theme` 等结构性
+  标题及其编号/副标题形式一律判为 `rejected`，不比较 ISRC 或时长；只有显式 `force_merge` 可以覆盖。
+- 不同规范标题之间的同 ISRC fallback 仍然保守：canonical artist、语义版本和兼容时长必须同时一致，
+  避免 provider 错误元数据跨标题合并。
 - 已 superseded 的兼容身份及历史 rejected/pending 候选不能继续成为活动组成员；人工覆盖仍可明确
   改变结果。
 
@@ -305,8 +307,7 @@ Version、Extended、Sped Up/Slowed 和参与艺人变化等语义标签必须�
 以下情况默认不自动合并：
 
 - 不同艺人的同名歌曲。
-- 通用短标题且存在不相交 ISRC 和明显时长冲突的同名片段。
-- 同艺人同标题但双方都没有播放、外部 ID 或来源事实的空壳对象（保留为 pending，不建组）。
+- 结构性通用标题，包括 `Intro`、`Outro`、`Interlude` 等及其编号/副标题形式。
 - 翻唱版本，即使曲名相同。
 - 插曲、采样、mashup、parody、translation。
 - 主艺人不同且原版主歌手没有参与的新 remix。
@@ -751,6 +752,12 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 
 专辑详情页展示 album project：
 
+- 新链接统一使用 `/music/album-projects/{album_project_id}` 稳定路由；旧专辑名称路由只作兼容入口，
+  一旦解析成功必须替换到稳定路由，不能让名称、斜杠或大小写差异决定实体身份。
+- 规范项目名、成员发行名以及它们的 Unicode/大小写/空白等价形式都必须解析到同一个项目范围；
+  同名跨艺人或同层级存在多个项目时 fail closed，不能退回具体来源专辑的局部统计。
+- L2 优先解析 `release` 项目，L3 优先解析 `composition` 项目；L3 没有 composition 项目时可回退
+  release 项目。统计摘要、排行、播放明细、日历与 Billboard 详情必须共用同一 resolver。
 - canonical album project 名称。
 - primary album 封面。
 - L2/L3 顶部发行日期使用 `album_projects.release_date`；具体 Spotify 版本的发行日期只在版本列表中展示，不能用日期更晚的 Deluxe、Anniversary、Bonus、精选集或原声带覆盖项目发行日。
@@ -766,7 +773,7 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 榜单页必须显示当前合并级别：
 
 - L1：不合并。
-- L2：同录音/同发行项目合并。
+- L2：同歌曲基础版本/同发行项目合并。
 - L3：同作品/同专辑项目合并。
 
 切换合并级别后：
@@ -862,7 +869,8 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 
 自动检测可以高置信应用：
 
-- canonical artist + L2 语义规范化歌名相同且未触发 R10 硬冲突门禁的 recording group。
+- canonical artist + L2 语义规范化普通歌名相同的 recording group；时长、ISRC、source context 和
+  零事实差异只记 warning，不阻止自动归并。
 - 同 ISRC / Spotify relink 且标题缺失时，其他强证据仍一致的保守 recording fallback。
 - 同专辑大小写/Unicode/空白差异，以及 catalog/曲目包含关系明确的标准版、豪华版、expanded
   album project。
@@ -873,7 +881,7 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 - Taylor's Version / 重录。
 - 精选集独有歌曲归属（当前冻结）。
 - 同名不同歌。
-- 通用短标题存在不相交 ISRC 和明显时长冲突。
+- `Intro`、`Outro`、`Interlude` 等结构性通用标题及其编号/副标题形式。
 - 翻唱、采样、mashup。
 
 ### R42. 历史 backfill 标注

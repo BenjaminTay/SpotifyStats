@@ -31,13 +31,19 @@ const TABS: { key: TabKey; label: string }[] = [
 
 export function AlbumDetailExperience() {
   useChineseTextVersion()
-  const { albumName } = useParams<{ albumName: string }>()
+  const { albumName, albumProjectId } = useParams<{ albumName?: string; albumProjectId?: string }>()
+  const stableProjectId = albumProjectId && /^\d+$/.test(albumProjectId) ? Number(albumProjectId) : undefined
   const [searchParams, setSearchParams] = useSearchParams()
   const artistName = searchParams.get('artist') || ''
   const navigate = useNavigate()
   const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
+  const hasAlbumIdentity = !!albumName || stableProjectId != null
+  const albumDetailPath = stableProjectId != null
+    ? `/billboard/album-project/${stableProjectId}`
+    : `/billboard/album/${albumName ?? ''}`
+  const detailIdentityKey = stableProjectId != null ? `project:${stableProjectId}` : albumName ?? ''
 
   const requestedTab = searchParams.get('tab')
   const activeTab: TabKey = TABS.some((tab) => tab.key === requestedTab) ? requestedTab as TabKey : 'stats'
@@ -51,24 +57,24 @@ export function AlbumDetailExperience() {
 
   const summaryParams = { ...billboardParams, artist_name: artistName, view: 'summary' }
   const { data, isPending, error, refetch } = useQuery({
-    queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName, mergeLevel, summaryParams),
-    queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, summaryParams),
-    enabled: !!albumName && !filtersLoading,
+    queryKey: queryKeys.music.albumDetail(detailIdentityKey, artistName, mergeLevel, summaryParams),
+    queryFn: () => api.get<AlbumDetailResponse>(albumDetailPath, summaryParams),
+    enabled: hasAlbumIdentity && !filtersLoading,
   })
   const { data: overviewData, isPending: overviewPending } = useQuery({
-    queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'overview' }),
-    queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { ...billboardParams, artist_name: artistName, view: 'overview' }),
-    enabled: activeTab === 'overview' && !!albumName && !filtersLoading,
+    queryKey: queryKeys.music.albumDetail(detailIdentityKey, artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'overview' }),
+    queryFn: () => api.get<AlbumDetailResponse>(albumDetailPath, { ...billboardParams, artist_name: artistName, view: 'overview' }),
+    enabled: activeTab === 'overview' && hasAlbumIdentity && !filtersLoading,
   })
   const { data: tracksData, isPending: tracksPending } = useQuery({
-    queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'tracks' }),
-    queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { ...billboardParams, artist_name: artistName, view: 'tracks' }),
-    enabled: activeTab === 'tracks' && !!albumName && !filtersLoading,
+    queryKey: queryKeys.music.albumDetail(detailIdentityKey, artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'tracks' }),
+    queryFn: () => api.get<AlbumDetailResponse>(albumDetailPath, { ...billboardParams, artist_name: artistName, view: 'tracks' }),
+    enabled: activeTab === 'tracks' && hasAlbumIdentity && !filtersLoading,
   })
   const { data: projectData } = useQuery({
-    queryKey: queryKeys.music.albumDetail(albumName ?? '', artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'project' }),
-    queryFn: () => api.get<AlbumDetailResponse>('/billboard/album/' + albumName!, { ...billboardParams, artist_name: artistName, view: 'project' }),
-    enabled: activeTab === 'stats' && data?.found === true && !!albumName && !filtersLoading,
+    queryKey: queryKeys.music.albumDetail(detailIdentityKey, artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'project' }),
+    queryFn: () => api.get<AlbumDetailResponse>(albumDetailPath, { ...billboardParams, artist_name: artistName, view: 'project' }),
+    enabled: activeTab === 'stats' && data?.found === true && hasAlbumIdentity && !filtersLoading,
   })
   const isCharted = data?.chart_status === 'charted' || !!data?.chart_summary
   const summaryTrackChartStatus = data?.track_chart_status
@@ -80,10 +86,18 @@ export function AlbumDetailExperience() {
     setSearchParams(next, { replace: true })
   }, [requestedTab, searchParams, setSearchParams])
 
+  useEffect(() => {
+    if (stableProjectId != null || data?.album_project_id == null) return
+    navigate(
+      { pathname: `/music/album-projects/${data.album_project_id}`, search: searchParams.toString() },
+      { replace: true },
+    )
+  }, [data?.album_project_id, navigate, searchParams, stableProjectId])
+
   return (
     <>
-      {activeTab === 'stats' && albumName && (
-        <EntityStatsPrefetch kind="album" albumName={albumName} artistName={artistName} mergeLevel={mergeLevel} />
+      {activeTab === 'stats' && hasAlbumIdentity && (
+        <EntityStatsPrefetch kind="album" albumName={data?.album_name ?? albumName} albumProjectId={data?.album_project_id ?? stableProjectId} artistName={data?.artist_name ?? artistName} mergeLevel={mergeLevel} />
       )}
       {isPending && <AlbumDetailSkeleton />}
 
@@ -180,7 +194,7 @@ export function AlbumDetailExperience() {
 
               {activeTab === 'stats' && (
                 <>
-                  <EntityStatsPanel kind="album" albumName={data.album_name} artistName={data.artist_name} mergeLevel={mergeLevel} releaseDate={data.meta?.release_date} />
+                  <EntityStatsPanel kind="album" albumName={data.album_name} albumProjectId={data.album_project_id ?? stableProjectId} artistName={data.artist_name} mergeLevel={mergeLevel} releaseDate={data.meta?.release_date} />
                   {projectData?.meta?.release_group && projectData.meta.release_group.versions && projectData.meta.release_group.versions.length >= 2 && (
                     <div className="mt-8">
                       <VersionGroupSection

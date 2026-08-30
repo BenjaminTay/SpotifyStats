@@ -100,9 +100,13 @@ def _album_result(
     if not album_name:
         return None
     artist_name = candidate.get("artist_name")
-    href = f"/music/albums/{quote(str(album_name), safe='')}"
-    if artist_name:
-        href = f"{href}?artist={quote(str(artist_name), safe='')}"
+    album_project_id = candidate.get("album_project_id")
+    if album_project_id is not None:
+        href = f"/music/album-projects/{int(album_project_id)}"
+    else:
+        href = f"/music/albums/{quote(str(album_name), safe='')}"
+        if artist_name:
+            href = f"{href}?artist={quote(str(artist_name), safe='')}"
     return MusicSearchResult(
         kind="album",
         label=str(album_name),
@@ -110,6 +114,7 @@ def _album_result(
         href=href,
         play_events=_candidate_metric(candidate, "play_events", metrics),
         total_ms=_candidate_metric(candidate, "total_ms", metrics),
+        album_project_id=(int(album_project_id) if album_project_id is not None else None),
         album_name=str(album_name),
         artist_name=str(artist_name) if artist_name else None,
         cover_url=_cover_url("albums", candidate.get("album_id")),

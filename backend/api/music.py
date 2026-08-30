@@ -20,6 +20,10 @@ from backend.domains.music_search.snapshot import (
     lookup_music_search_context,
 )
 from backend.domains.music_search.timing import MusicSearchTiming
+from backend.domains.playback.album_project_identity import (
+    AlbumProjectIdentity,
+    resolve_album_project_identity,
+)
 from backend.domains.settings.repository import SettingsRepository
 from backend.models.music_search import (
     MusicSearchCandidateResponse,
@@ -166,10 +170,15 @@ class EntityStatsResponse(BaseModel):
 
 
 class EntityPlaysResponse(BaseModel):
+    model_config = {"extra": "allow"}
     total: int
     limit: int
     offset: int
     rows: list[dict]
+    album_project_id: int | None = None
+    album_project_name: str | None = None
+    requested_album_name: str | None = None
+    album_project_identity: dict | None = None
 
 
 class PlayDateEntry(BaseModel):
@@ -236,6 +245,61 @@ class AlbumPersonalRankingResponse(BaseModel):
     limit: int
     offset: int
     rows: list[dict]
+
+
+def _album_project_or_404(
+    conn: Connection,
+    project_id: int,
+    merge_level: int,
+) -> AlbumProjectIdentity:
+    identity = resolve_album_project_identity(
+        conn,
+        project_id=project_id,
+        merge_level=merge_level,
+    )
+    if identity is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Album project not found")
+    preferred_scope = "composition" if merge_level >= 3 else "release"
+    if identity.scope == preferred_scope:
+        return identity
+    if merge_level < 3:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Album project is not available at this merge level",
+        )
+    preferred = resolve_album_project_identity(
+        conn,
+        album_name=identity.canonical_name,
+        artist_name=identity.artist_name,
+        merge_level=merge_level,
+    )
+    if preferred is None or preferred.project_id != identity.project_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Album project is not available at this merge level",
+        )
+    return identity
+
+
+def _attach_requested_album_identity(
+    result: dict,
+    identity: AlbumProjectIdentity,
+) -> dict:
+    payload = identity.payload()
+    result["album_project_id"] = identity.project_id
+    result["album_project_name"] = identity.canonical_name
+    result["requested_album_name"] = identity.requested_album_name
+    result["album_project_identity"] = payload
+    if isinstance(result.get("entity"), dict):
+        result["entity"].update(
+            {
+                "album_name": identity.canonical_name,
+                "album_project_id": identity.project_id,
+                "album_project_name": identity.canonical_name,
+                "requested_album_name": identity.requested_album_name,
+            }
+        )
+    return result
 
 
 @router.get(
@@ -721,6 +785,40 @@ def album_stats(
     return result
 
 
+@router.get("/album-projects/{project_id}/stats", response_model=EntityStatsResponse)
+def album_project_stats(
+    project_id: int,
+    response: Response,
+    filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    include_rank_context: bool = Query(default=True),
+    conn: Connection = Depends(get_conn),
+):
+    identity = _album_project_or_404(conn, project_id, merge_level)
+    timing = MusicSearchTiming()
+    with timing.measure("entity_stats"):
+        result = get_album_stats(
+            conn,
+            identity.canonical_name,
+            identity.artist_name,
+            filters.min_ms,
+            filters.music_only,
+            filters.merge_enabled,
+            period,
+            start_date,
+            end_date,
+            filters.dynamic_threshold,
+            filters.max_merge_gap_minutes,
+            merge_level=merge_level,
+            include_rank_context=include_rank_context,
+        )
+    response.headers["Server-Timing"] = timing.server_timing_header()
+    return _attach_requested_album_identity(result, identity)
+
+
 @router.get("/artists/{artist_name}/stats", response_model=EntityStatsResponse)
 def artist_stats(
     artist_name: str,
@@ -785,6 +883,43 @@ def album_personal_rankings(
         filters.max_merge_gap_minutes,
         merge_level,
     )
+
+
+@router.get(
+    "/album-projects/{project_id}/rankings",
+    response_model=AlbumPersonalRankingResponse,
+)
+def album_project_personal_rankings(
+    project_id: int,
+    metric: Literal["plays", "hours"] = Query(default="plays"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    conn: Connection = Depends(get_conn),
+):
+    identity = _album_project_or_404(conn, project_id, merge_level)
+    result = get_album_personal_ranking(
+        conn,
+        identity.canonical_name,
+        identity.artist_name,
+        metric,
+        limit,
+        offset,
+        filters.min_ms,
+        filters.music_only,
+        filters.merge_enabled,
+        period,
+        start_date,
+        end_date,
+        filters.dynamic_threshold,
+        filters.max_merge_gap_minutes,
+        merge_level,
+    )
+    return _attach_requested_album_identity(result, identity)
 
 
 @router.get(
@@ -932,6 +1067,43 @@ def album_plays(
     )
 
 
+@router.get("/album-projects/{project_id}/plays", response_model=EntityPlaysResponse)
+def album_project_plays(
+    project_id: int,
+    filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    date: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    conn: Connection = Depends(get_conn),
+):
+    identity = _album_project_or_404(conn, project_id, merge_level)
+    result = get_entity_plays(
+        conn,
+        entity="album",
+        album_name=identity.canonical_name,
+        artist_name=identity.artist_name,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
+        merge_level=merge_level,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+        search=search,
+        date=date,
+        limit=limit,
+        offset=offset,
+    )
+    return _attach_requested_album_identity(result, identity)
+
+
 @router.get("/artists/{artist_name}/plays", response_model=EntityPlaysResponse)
 def artist_plays(
     artist_name: str,
@@ -1039,6 +1211,37 @@ def album_play_dates(
         entity="album",
         album_name=album_name,
         artist_name=artist,
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
+        merge_level=merge_level,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+    )
+
+
+@router.get(
+    "/album-projects/{project_id}/play-dates",
+    response_model=list[PlayDateEntry],
+)
+def album_project_play_dates(
+    project_id: int,
+    filters: PlayFilters = Depends(),
+    merge_level: int = Query(default=2, ge=2, le=3),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    conn: Connection = Depends(get_conn),
+):
+    identity = _album_project_or_404(conn, project_id, merge_level)
+    return get_entity_play_dates(
+        conn,
+        entity="album",
+        album_name=identity.canonical_name,
+        artist_name=identity.artist_name,
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         merge_enabled=filters.merge_enabled,

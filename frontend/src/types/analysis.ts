@@ -390,6 +390,9 @@ export interface EntityStatsResponse extends AnalysisStatsResponse {
     track_id?: number
     track_name?: string
     album_name?: string
+    album_project_id?: number | null
+    album_project_name?: string | null
+    requested_album_name?: string | null
     artist_name?: string
     cover_url?: string | null
   }
@@ -427,6 +430,9 @@ export interface ArtistPersonalRankingResponse {
 export interface AlbumPersonalRankingResponse {
   found: boolean
   album_name?: string
+  album_project_id?: number | null
+  album_project_name?: string | null
+  requested_album_name?: string | null
   artist_name?: string
   entity: 'track'
   metric: AnalysisMetric

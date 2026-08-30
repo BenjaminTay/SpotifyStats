@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import re
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
@@ -21,18 +22,12 @@ from backend.domains.metadata.track_title_identity import (
     normalize_l2_track_title,
 )
 
-L2_AUTO_MERGE_POLICY_VERSION = f"canonical_artist_title_v2:{L2_TITLE_IDENTITY_POLICY_VERSION}"
+L2_AUTO_MERGE_POLICY_VERSION = f"canonical_artist_title_v3:{L2_TITLE_IDENTITY_POLICY_VERSION}"
 
-_GENERIC_TITLE_KEYS = frozenset(
-    {
-        "intro",
-        "interlude",
-        "overture",
-        "outro",
-        "prelude",
-        "prologue",
-        "epilogue",
-    }
+_STRUCTURAL_TITLE_PATTERN = re.compile(
+    r"^(?:(?:the)\s+)?(?:intro|outro|interlude|overture|ouverture|prelude|"
+    r"prologue|epilogue|theme|序曲|间奏|前奏|尾声|主题曲?)(?:\s|$)",
+    re.IGNORECASE,
 )
 
 
@@ -355,6 +350,35 @@ def _has_internal_identity_conflict(node: _TrackNode) -> bool:
     return len(isrcs) >= 2 and len(durations) >= 2 and max(durations) - min(durations) >= 10_000
 
 
+def _is_structural_title(node: _TrackNode) -> bool:
+    if _STRUCTURAL_TITLE_PATTERN.match(node.normalized_title):
+        return True
+    tokens = node.normalized_title.split()
+    if len(tokens) <= 3 and tokens and tokens[-1] == "theme":
+        return True
+    return node.normalized_title.endswith(("主题", "主题曲")) and len(node.normalized_title) <= 8
+
+
+def _pair_audit_warnings(left: _TrackNode, right: _TrackNode) -> list[str]:
+    warnings: list[str] = []
+    if left.source_context_tags or right.source_context_tags:
+        warnings.append("source_context_present")
+    if _has_disjoint_isrcs(left, right):
+        warnings.append("disjoint_isrc")
+    if _has_strong_duration_conflict(left, right):
+        warnings.append("strong_duration_conflict")
+    if _has_internal_identity_conflict(left) or _has_internal_identity_conflict(right):
+        warnings.append("internal_identity_conflict")
+    if (
+        left.play_count == 0
+        and right.play_count == 0
+        and left.external_id_count == 0
+        and right.external_id_count == 0
+    ):
+        warnings.append("zero_play_zero_external_evidence")
+    return warnings
+
+
 def _automatic_pair_decision(left: _TrackNode, right: _TrackNode) -> tuple[str, str] | None:
     """Return a title-level decision before inferred edges are connected."""
 
@@ -362,28 +386,10 @@ def _automatic_pair_decision(left: _TrackNode, right: _TrackNode) -> tuple[str, 
         return None
     if left.is_noncanonical_alias or right.is_noncanonical_alias:
         return "rejected", "noncanonical_identity_requires_owner_repair"
+    if _is_structural_title(left) or _is_structural_title(right):
+        return "rejected", "structural_title_requires_explicit_merge"
     if left.semantic_version_tags != right.semantic_version_tags:
         return "rejected", "semantic_version_conflict"
-    if left.source_context_tags or right.source_context_tags:
-        if not _shared_isrc_evidence(left, right):
-            return "pending", "source_context_requires_strong_evidence"
-    if (
-        left.play_count == 0
-        and right.play_count == 0
-        and left.external_id_count == 0
-        and right.external_id_count == 0
-    ):
-        return "pending", "unsubstantiated_zero_evidence_pair"
-    if left.normalized_title in _GENERIC_TITLE_KEYS and (
-        _has_internal_identity_conflict(left) or _has_internal_identity_conflict(right)
-    ):
-        return "rejected", "generic_title_internal_identity_conflict"
-    if (
-        left.normalized_title in _GENERIC_TITLE_KEYS
-        and _has_disjoint_isrcs(left, right)
-        and _has_strong_duration_conflict(left, right)
-    ):
-        return "rejected", "generic_title_recording_conflict"
     return None
 
 
@@ -495,6 +501,7 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
     dsu = _DisjointSets(node_ids, force_separate)
     accepted_edges: list[dict[str, Any]] = []
     blocked_edges: list[dict[str, Any]] = []
+    warning_edges: list[dict[str, Any]] = []
 
     parent_by_member: dict[int, int] = {}
     for group in groups:
@@ -552,10 +559,9 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
         for member in members[1:]:
             add_edge(anchor, member, "existing_manual_group", 1.0)
 
-    # Version differences, weak source-title wrappers and high-confidence
-    # generic-title collisions must not be bypassed through a third inferred
-    # title edge. Explicit force-merge and existing manual groups were already
-    # connected above and therefore remain authoritative.
+    # Semantic versions, structural titles and noncanonical aliases must not
+    # be bypassed through a third inferred title edge. Explicit force-merge and
+    # existing manual groups were already connected above and remain authoritative.
     automatic_decisions: dict[tuple[int, int], tuple[str, str]] = {}
     for left, right in sorted(force_separate):
         automatic_decisions[(left, right)] = ("rejected", "force_separate")
@@ -626,13 +632,18 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
         for left, right in itertools.combinations(sorted(set(members)), 2):
             if (left, right) in automatic_decisions:
                 continue
-            if nodes[left].source_context_tags or nodes[right].source_context_tags:
-                continue
+            for warning in _pair_audit_warnings(nodes[left], nodes[right]):
+                warning_edges.append(
+                    {
+                        "left_l1_id": left,
+                        "right_l1_id": right,
+                        "warning": warning,
+                    }
+                )
             add_edge(left, right, "canonical_artist_normalized_title", 1.0)
 
-    # ISRC is a fallback for spelling/source-title differences, not an
-    # unconditional identity.  Artist, semantic version and duration still
-    # have to agree so known bad provider metadata cannot collapse two songs.
+    # Shared ISRC remains a conservative fallback for spelling differences.
+    # Same-title merges above never require it and never let it veto identity.
     by_isrc: dict[tuple[tuple[int, ...], str, tuple[str, ...]], list[int]] = defaultdict(list)
     for node in nodes.values():
         for isrc, _duration in node.isrc_durations:
@@ -640,8 +651,12 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
     for (_artists, isrc, _tags), members in by_isrc.items():
         for left, right in itertools.combinations(sorted(set(members)), 2):
             pair = (left, right)
-            if nodes[left].is_noncanonical_alias or nodes[right].is_noncanonical_alias:
-                if pair not in automatic_decisions and dsu.find(left) != dsu.find(right):
+            if nodes[left].normalized_title == nodes[right].normalized_title:
+                continue
+            if dsu.find(left) != dsu.find(right) and (
+                nodes[left].is_noncanonical_alias or nodes[right].is_noncanonical_alias
+            ):
+                if pair not in automatic_decisions:
                     automatic_decisions[pair] = (
                         "rejected",
                         "noncanonical_identity_requires_owner_repair",
@@ -657,8 +672,41 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
                         }
                     )
                 continue
+            if dsu.find(left) != dsu.find(right) and (
+                _is_structural_title(nodes[left]) or _is_structural_title(nodes[right])
+            ):
+                if pair not in automatic_decisions:
+                    automatic_decisions[pair] = (
+                        "rejected",
+                        "structural_title_requires_explicit_merge",
+                    )
+                    dsu.cannot_link.add(pair)
+                    blocked_edges.append(
+                        {
+                            "left_l1_id": left,
+                            "right_l1_id": right,
+                            "evidence_type": "same_isrc_compatible_duration",
+                            "reason": "structural_title_requires_explicit_merge",
+                            "status": "rejected",
+                        }
+                    )
+                continue
             if isrc in _shared_isrc_evidence(nodes[left], nodes[right]):
                 add_edge(left, right, "same_isrc_compatible_duration", 0.99)
+
+    warning_edges = [
+        {
+            "left_l1_id": left,
+            "right_l1_id": right,
+            "warning": warning,
+        }
+        for left, right, warning in sorted(
+            {
+                (int(edge["left_l1_id"]), int(edge["right_l1_id"]), str(edge["warning"]))
+                for edge in warning_edges
+            }
+        )
+    ]
 
     edges_by_member: dict[int, set[str]] = defaultdict(set)
     for edge in accepted_edges:
@@ -739,10 +787,15 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
             for edge in blocked_edges
         ),
         "unsubstantiated_zero_evidence_pair_count": sum(
-            edge.get("reason") == "unsubstantiated_zero_evidence_pair" for edge in blocked_edges
+            edge.get("warning") == "zero_play_zero_external_evidence" for edge in warning_edges
         ),
+        "warning_reason_counts": {
+            warning: sum(edge["warning"] == warning for edge in warning_edges)
+            for warning in sorted({edge["warning"] for edge in warning_edges})
+        },
         "accepted_edges": accepted_edges,
         "blocked_edges": blocked_edges,
+        "warning_edges": warning_edges,
         "groups": desired,
     }
 
@@ -753,6 +806,12 @@ def _upsert_candidate_evidence(
     if not _table_exists(conn, "track_group_candidates"):
         return 0
     decisions: dict[tuple[int, int], tuple[int, str, float, dict[str, Any]]] = {}
+    warnings_by_pair: dict[tuple[int, int], list[str]] = defaultdict(list)
+    for edge in plan.get("warning_edges", []):
+        pair = (int(edge["left_l1_id"]), int(edge["right_l1_id"]))
+        warning = str(edge["warning"])
+        if warning not in warnings_by_pair[pair]:
+            warnings_by_pair[pair].append(warning)
 
     for edge in plan["accepted_edges"]:
         left = int(edge["left_l1_id"])
@@ -774,6 +833,7 @@ def _upsert_candidate_evidence(
                 "policy_version": plan["policy_version"],
                 "evidence_type": evidence_type,
                 "automatic": evidence_type not in {"force_merge", "existing_manual_group"},
+                "warnings": sorted(warnings_by_pair.get((left, right), [])),
             },
         )
 

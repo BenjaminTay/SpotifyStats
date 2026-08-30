@@ -336,12 +336,15 @@ export const analysisApi = {
     filters: AnalysisFilters,
     params: { period: AnalysisPeriod; start_date?: string; end_date?: string; limit?: number; offset?: number; search?: string; date?: string; merge_level?: number },
     artistName?: string,
+    albumProjectId?: number,
   ) => {
     const path =
       kind === 'track'
         ? `/music/tracks/l1/${id}/plays`
         : kind === 'album'
-          ? `/music/albums/${encodeURIComponent(id)}/plays`
+          ? albumProjectId != null
+            ? `/music/album-projects/${albumProjectId}/plays`
+            : `/music/albums/${encodeURIComponent(id)}/plays`
           : `/music/artists/${encodeURIComponent(id)}/plays`
     const q = analysisParams(filters, {
       period: params.period,
@@ -386,12 +389,15 @@ export const analysisApi = {
     filters: AnalysisFilters,
     params: { period: AnalysisPeriod; start_date?: string; end_date?: string; merge_level?: number },
     artistName?: string,
+    albumProjectId?: number,
   ) => {
     const path =
       kind === 'track'
         ? `/music/tracks/l1/${id}/play-dates`
         : kind === 'album'
-          ? `/music/albums/${encodeURIComponent(id)}/play-dates`
+          ? albumProjectId != null
+            ? `/music/album-projects/${albumProjectId}/play-dates`
+            : `/music/albums/${encodeURIComponent(id)}/play-dates`
           : `/music/artists/${encodeURIComponent(id)}/play-dates`
     const queryParams = analysisParams(filters, {
       ...params,

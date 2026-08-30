@@ -1161,6 +1161,20 @@ export interface AlbumDetailResponse extends DetailYearEndFields {
   track_chart_status?: 'charted' | 'not_charted'
   effective_play_count?: number
   album_name: string
+  album_project_id?: number | null
+  album_project_name?: string | null
+  requested_album_name?: string | null
+  album_project_identity?: {
+    project_id: number
+    canonical_name: string
+    artist_name: string | null
+    scope: string
+    matched_by: 'project_id' | 'canonical_name' | 'member_album_name'
+    requested_album_name: string | null
+    requested_project_id: number | null
+    matched_album_id: number | null
+    matched_album_name: string | null
+  } | null
   artist_name: string
   cover_url: string | null
   meta: AlbumSpotifyMeta | null

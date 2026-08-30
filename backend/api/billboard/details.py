@@ -14,14 +14,16 @@ POST /billboard/versus/artist        — compare multiple artists (2–5)
 
 from __future__ import annotations
 
+from sqlite3 import Connection
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from backend.core.db import get_db
-from backend.dependencies import BillboardFilters, MergeConfig
+from backend.dependencies import BillboardFilters, MergeConfig, get_conn
 from backend.domains.music_search.timing import MusicSearchTiming
+from backend.domains.playback.album_project_identity import resolve_album_project_identity
 from backend.services.billboard_service import (
     get_album_detail_view,
     get_artist_detail_view,
@@ -321,8 +323,19 @@ def album_chart_detail(
     merge: MergeConfig = Depends(),
     include_compilations: bool = Query(False),
     view: AlbumDetailView = Query("full"),
+    conn: Connection = Depends(get_conn),
 ):
     """Get detailed album chart data: weekly history, track performances, trend overlay."""
+    identity = resolve_album_project_identity(
+        conn,
+        album_name=album_name,
+        artist_name=artist_name or None,
+        merge_level=merge.merge_level,
+    )
+    requested_album_name = album_name
+    if identity is not None:
+        album_name = identity.canonical_name
+        artist_name = identity.artist_name or artist_name
     timing = MusicSearchTiming()
     with timing.measure("detail_service"):
         result = get_album_detail_view(
@@ -347,6 +360,75 @@ def album_chart_detail(
     response.headers["Server-Timing"] = timing.server_timing_header()
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Album not found")
+    if identity is not None:
+        result.update(
+            {
+                "album_project_id": identity.project_id,
+                "album_project_name": identity.canonical_name,
+                "requested_album_name": requested_album_name,
+                "album_project_identity": identity.payload(),
+            }
+        )
+    return result
+
+
+@router.get(
+    "/album-project/{project_id}",
+    response_model=AlbumChartDetailResponse,
+    responses={404: {"description": "Album project not found"}},
+)
+def album_project_chart_detail(
+    project_id: int,
+    response: Response,
+    filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
+    view: AlbumDetailView = Query("full"),
+    conn: Connection = Depends(get_conn),
+):
+    identity = resolve_album_project_identity(
+        conn,
+        project_id=project_id,
+        merge_level=merge.merge_level,
+    )
+    if identity is None:
+        raise HTTPException(status_code=404, detail="Album project not found")
+    preferred_scope = "composition" if merge.merge_level >= 3 else "release"
+    if identity.scope != preferred_scope:
+        if merge.merge_level < 3:
+            raise HTTPException(
+                status_code=404,
+                detail="Album project is not available at this merge level",
+            )
+        preferred = resolve_album_project_identity(
+            conn,
+            album_name=identity.canonical_name,
+            artist_name=identity.artist_name,
+            merge_level=merge.merge_level,
+        )
+        if preferred is None or preferred.project_id != identity.project_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Album project is not available at this merge level",
+            )
+    result = album_chart_detail(
+        identity.canonical_name,
+        response,
+        identity.artist_name or "",
+        filters,
+        merge,
+        include_compilations,
+        view,
+        conn,
+    )
+    result.update(
+        {
+            "album_project_id": identity.project_id,
+            "album_project_name": identity.canonical_name,
+            "requested_album_name": None,
+            "album_project_identity": identity.payload(),
+        }
+    )
     return result
 
 

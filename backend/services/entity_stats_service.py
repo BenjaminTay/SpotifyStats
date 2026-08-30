@@ -18,6 +18,10 @@ from backend.core.db import (
     load_plays_for_artists,
 )
 from backend.domains.music_search.revisions import get_music_search_revision_state
+from backend.domains.playback.album_project_identity import (
+    AlbumProjectIdentity,
+    resolve_album_project_identity,
+)
 from backend.domains.playback.track_groups import resolve_track_aggregation_scope
 from backend.services.analysis_stats_service import (
     PERIOD_LABELS,
@@ -404,23 +408,26 @@ def _build_track_stats(
 
 
 def _resolve_album_project_id(
-    conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int
+    conn: sqlite3.Connection,
+    album_name: str,
+    artist_name: str | None,
+    merge_level: int,
 ) -> int | None:
-    preferred_scope = "composition" if merge_level >= 3 else "release"
-    row = conn.execute(
-        """SELECT ap.project_id
-           FROM album_projects ap
-           JOIN artists ar ON ar.artist_id = ap.artist_id
-           WHERE ap.canonical_name = ? AND ar.artist_name = ?
-           ORDER BY CASE WHEN ap.scope = ? THEN 0 ELSE 1 END, ap.project_id
-           LIMIT 1""",
-        (album_name, artist_name, preferred_scope),
-    ).fetchone()
-    return int(row["project_id"]) if row else None
+    identity = resolve_album_project_identity(
+        conn,
+        album_name=album_name,
+        artist_name=artist_name,
+        merge_level=merge_level,
+    )
+    return identity.project_id if identity is not None else None
 
 
 def _resolve_album_project_song_keys(
-    conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int = 2
+    conn: sqlite3.Connection,
+    album_name: str,
+    artist_name: str,
+    merge_level: int = 2,
+    project_id: int | None = None,
 ) -> set[str]:
     """Return canonical_song_keys belonging to the album project.
 
@@ -435,7 +442,7 @@ def _resolve_album_project_song_keys(
 
     ensure_album_projects(conn)
 
-    project_id = _resolve_album_project_id(conn, album_name, artist_name, merge_level)
+    project_id = project_id or _resolve_album_project_id(conn, album_name, artist_name, merge_level)
     if project_id is None:
         return set()
 
@@ -461,12 +468,16 @@ def _resolve_album_project_song_keys(
 
 
 def _resolve_album_project_track_ids(
-    conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int = 2
+    conn: sqlite3.Connection,
+    album_name: str,
+    artist_name: str,
+    merge_level: int = 2,
+    project_id: int | None = None,
 ) -> list[int]:
     from backend.domains.playback.album_projects import ensure_album_projects
 
     ensure_album_projects(conn)
-    project_id = _resolve_album_project_id(conn, album_name, artist_name, merge_level)
+    project_id = project_id or _resolve_album_project_id(conn, album_name, artist_name, merge_level)
     if project_id is not None:
         rows = conn.execute(
             """SELECT DISTINCT track_id FROM album_project_tracks
@@ -486,7 +497,11 @@ def _resolve_album_project_track_ids(
 
 
 def _resolve_album_project_album_names(
-    conn: sqlite3.Connection, album_name: str, artist_name: str, merge_level: int = 2
+    conn: sqlite3.Connection,
+    album_name: str,
+    artist_name: str,
+    merge_level: int = 2,
+    project_id: int | None = None,
 ) -> list[str]:
     """Return all source album names that contribute tracks to this album project.
 
@@ -498,7 +513,7 @@ def _resolve_album_project_album_names(
 
     ensure_album_projects(conn)
 
-    project_id = _resolve_album_project_id(conn, album_name, artist_name, merge_level)
+    project_id = project_id or _resolve_album_project_id(conn, album_name, artist_name, merge_level)
     if project_id is None:
         return [album_name]
 
@@ -518,6 +533,12 @@ def _resolve_album_project_album_names(
     return names
 
 
+def _album_project_response_identity(
+    identity: AlbumProjectIdentity | None,
+) -> dict[str, Any] | None:
+    return identity.payload() if identity is not None else None
+
+
 def _build_album_stats(
     conn: sqlite3.Connection,
     album_name: str,
@@ -535,7 +556,18 @@ def _build_album_stats(
 ) -> dict:
     from backend.domains.playback.album_projects import apply_canonical_song_keys
 
-    artist_name = artist
+    requested_album_name = album_name
+    identity = resolve_album_project_identity(
+        conn,
+        album_name=album_name,
+        artist_name=artist,
+        merge_level=merge_level,
+    )
+    if identity is not None:
+        album_name = identity.canonical_name
+        artist_name = identity.artist_name or artist
+    else:
+        artist_name = artist
     if not artist_name:
         row = conn.execute(
             """SELECT ar.artist_name FROM albums al
@@ -546,7 +578,13 @@ def _build_album_stats(
         artist_name = str(row[0]) if row else None
     scoped = not include_rank_context and period in {"lifetime", "custom"}
     track_ids = (
-        _resolve_album_project_track_ids(conn, album_name, artist_name, merge_level)
+        _resolve_album_project_track_ids(
+            conn,
+            album_name,
+            artist_name,
+            merge_level,
+            identity.project_id if identity is not None else None,
+        )
         if scoped and artist_name
         else []
     )
@@ -582,7 +620,13 @@ def _build_album_stats(
     # Resolve album project track membership — canonical_song_key attribution
     # replaces the old release_group album_name string matching.
     if artist_name:
-        project_keys = _resolve_album_project_song_keys(conn, album_name, artist_name, merge_level)
+        project_keys = _resolve_album_project_song_keys(
+            conn,
+            album_name,
+            artist_name,
+            merge_level,
+            identity.project_id if identity is not None else None,
+        )
     else:
         project_keys = set()
 
@@ -593,7 +637,13 @@ def _build_album_stats(
         entity_df = current_df[current_df["canonical_song_key"].isin(project_keys)]
         # Expand album_names to all source albums in the project so that
         # ranking/top250 lookups match any contributing version.
-        album_names = _resolve_album_project_album_names(conn, album_name, artist_name, merge_level)
+        album_names = _resolve_album_project_album_names(
+            conn,
+            album_name,
+            artist_name,
+            merge_level,
+            identity.project_id if identity is not None else None,
+        )
     else:
         # Fallback: no album project found — filter by album_name string match
         # (preserves behaviour for albums that haven't been bootstrapped yet).
@@ -626,12 +676,21 @@ def _build_album_stats(
     data.update(
         {
             "found": True,
+            "album_project_id": identity.project_id if identity is not None else None,
+            "album_project_name": identity.canonical_name if identity is not None else album_name,
+            "requested_album_name": requested_album_name,
             "period": resolved,
             "entity": {
                 "album_name": album_name,
                 "artist_name": artist_name,
                 "cover_url": _album_cover_lookup(conn).get((album_name, artist_name)),
+                "album_project_id": identity.project_id if identity is not None else None,
+                "album_project_name": (
+                    identity.canonical_name if identity is not None else album_name
+                ),
+                "requested_album_name": requested_album_name,
             },
+            "album_project_identity": _album_project_response_identity(identity),
             "first_played": str(entity_all["ts"].min()),
             "last_played": str(entity_all["ts"].max()),
             "ranks": (
@@ -686,6 +745,16 @@ def get_album_personal_ranking(
     """Return a stable server-paginated track ranking for one album project."""
     from backend.domains.playback.album_projects import apply_canonical_song_keys
 
+    requested_album_name = album_name
+    identity = resolve_album_project_identity(
+        conn,
+        album_name=album_name,
+        artist_name=artist,
+        merge_level=merge_level,
+    )
+    if identity is not None:
+        album_name = identity.canonical_name
+        artist = identity.artist_name or artist
     all_df, current_df, resolved = load_period_plays(
         conn,
         min_ms,
@@ -705,7 +774,13 @@ def get_album_personal_ranking(
             artist_name = str(matches.iloc[0]["artist_name"])
 
     project_keys = (
-        _resolve_album_project_song_keys(conn, album_name, artist_name, merge_level)
+        _resolve_album_project_song_keys(
+            conn,
+            album_name,
+            artist_name,
+            merge_level,
+            identity.project_id if identity is not None else None,
+        )
         if artist_name
         else set()
     )
@@ -744,6 +819,10 @@ def get_album_personal_ranking(
         "found": True,
         "album_name": album_name,
         "artist_name": artist_name,
+        "album_project_id": identity.project_id if identity is not None else None,
+        "album_project_name": identity.canonical_name if identity is not None else album_name,
+        "requested_album_name": requested_album_name,
+        "album_project_identity": _album_project_response_identity(identity),
         "period": resolved,
         "entity": "track",
         "metric": metric,
@@ -1041,6 +1120,18 @@ def get_entity_plays(
     offset: int = 0,
 ) -> dict:
     """Return paginated play records for a specific entity using the shared rules pipeline."""
+    album_identity = None
+    requested_album_name = album_name
+    if entity == "album" and album_name is not None:
+        album_identity = resolve_album_project_identity(
+            conn,
+            album_name=album_name,
+            artist_name=artist_name,
+            merge_level=merge_level,
+        )
+        if album_identity is not None:
+            album_name = album_identity.canonical_name
+            artist_name = album_identity.artist_name or artist_name
     loader = None
     if entity == "track" and track_id is not None and period in {"lifetime", "custom"}:
         scope = resolve_track_aggregation_scope(conn, track_id, merge_level)
@@ -1159,7 +1250,21 @@ def get_entity_plays(
             entry["artist_names"] = names_map[tid]
         result.append(entry)
 
-    return {"total": total, "limit": limit, "offset": offset, "rows": result}
+    response = {"total": total, "limit": limit, "offset": offset, "rows": result}
+    if entity == "album":
+        response.update(
+            {
+                "album_project_id": (
+                    album_identity.project_id if album_identity is not None else None
+                ),
+                "album_project_name": (
+                    album_identity.canonical_name if album_identity is not None else album_name
+                ),
+                "requested_album_name": requested_album_name,
+                "album_project_identity": _album_project_response_identity(album_identity),
+            }
+        )
+    return response
 
 
 def _filter_entity_rows(
@@ -1221,6 +1326,16 @@ def get_entity_play_dates(
     max_merge_gap_minutes: int | None = 5,
 ) -> list[dict[str, Any]]:
     """Return [{date, count}] for calendar highlighting."""
+    if entity == "album" and album_name is not None:
+        identity = resolve_album_project_identity(
+            conn,
+            album_name=album_name,
+            artist_name=artist_name,
+            merge_level=merge_level,
+        )
+        if identity is not None:
+            album_name = identity.canonical_name
+            artist_name = identity.artist_name or artist_name
     loader = None
     if entity == "track" and track_id is not None and period in {"lifetime", "custom"}:
         scope = resolve_track_aggregation_scope(conn, track_id, merge_level)

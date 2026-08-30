@@ -106,6 +106,10 @@ def test_title_normalizer_removes_packaging_but_preserves_recording_suffix() -> 
         ("Song - Extended Mix", "extended"),
         ("Song - Sped Up", "sped_up"),
         ("Song - Slowed Down", "slowed"),
+        ("Song - Acoustic", "acoustic"),
+        ("Song - Live", "live"),
+        ("Song - Club Remix", "remix"),
+        ("Song (Taylor's Version)", "rerecord"),
     ],
 )
 def test_title_normalizer_preserves_l2_semantic_versions(title: str, semantic_tag: str) -> None:
@@ -118,6 +122,9 @@ def test_title_normalizer_preserves_source_context_outside_identity_key() -> Non
     identity = normalize_l2_track_title('City Of Stars - From "La La Land" Soundtrack')
     assert identity.key == ("city of stars", ())
     assert identity.source_context_tags == ("from la la land soundtrack",)
+    chinese = normalize_l2_track_title("任性（电视剧《难哄》主题曲）")
+    assert chinese.key == ("任性", ())
+    assert chinese.source_context_tags == ("电视剧 难哄 主题曲",)
 
 
 def test_same_artist_and_normalized_title_merge_while_semantic_versions_stay_separate() -> None:
@@ -232,7 +239,7 @@ def test_known_semantic_versions_are_rejected_while_packaging_variants_merge() -
         conn.close()
 
 
-def test_source_context_requires_shared_isrc_and_compatible_duration() -> None:
+def test_source_context_is_a_warning_and_same_base_title_still_merges() -> None:
     conn = _connection()
     try:
         _track(conn, 1, "City Of Stars", isrc="USUG11600665", duration_ms=111_240)
@@ -254,13 +261,51 @@ def test_source_context_requires_shared_isrc_and_compatible_duration() -> None:
 
         plan = build_l2_track_merge_plan(conn)
 
-        assert [group["member_l1_ids"] for group in plan["groups"]] == [[3, 4]]
-        assert plan["groups"][0]["evidence_types"] == ["same_isrc_compatible_duration"]
-        assert any(
-            edge["left_l1_id"] == 1
-            and edge["right_l1_id"] == 2
-            and edge["reason"] == "source_context_requires_strong_evidence"
-            and edge["status"] == "pending"
+        assert [group["member_l1_ids"] for group in plan["groups"]] == [[1, 2], [3, 4]]
+        assert all(
+            group["evidence_types"] == ["canonical_artist_normalized_title"]
+            for group in plan["groups"]
+        )
+        assert plan["edge_status_counts"]["pending"] == 0
+        assert plan["warning_reason_counts"] == {
+            "disjoint_isrc": 1,
+            "source_context_present": 2,
+            "strong_duration_conflict": 1,
+        }
+    finally:
+        conn.close()
+
+
+def test_ordinary_same_title_merges_despite_isrc_and_duration_conflicts() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "Ordinary Song", isrc="ISRC-A", duration_ms=120_000)
+        _track(conn, 2, "ordinary song", isrc="ISRC-B", duration_ms=300_000)
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert [group["member_l1_ids"] for group in plan["groups"]] == [[1, 2]]
+        assert plan["edge_status_counts"]["pending"] == 0
+        assert plan["warning_reason_counts"] == {
+            "disjoint_isrc": 1,
+            "strong_duration_conflict": 1,
+        }
+    finally:
+        conn.close()
+
+
+def test_theme_inside_a_long_ordinary_song_title_is_not_structural() -> None:
+    conn = _connection()
+    try:
+        title = "Can't Take That Away (Mariah's Theme)"
+        _track(conn, 1, title)
+        _track(conn, 2, title.lower())
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert [group["member_l1_ids"] for group in plan["groups"]] == [[1, 2]]
+        assert not any(
+            edge["reason"] == "structural_title_requires_explicit_merge"
             for edge in plan["blocked_edges"]
         )
     finally:
@@ -289,7 +334,7 @@ def test_force_merge_overrides_semantic_version_rejection() -> None:
         conn.close()
 
 
-def test_generic_intro_with_disjoint_isrc_and_duration_conflict_is_rejected() -> None:
+def test_structural_intro_is_rejected_regardless_of_recording_evidence() -> None:
     conn = _connection()
     try:
         _track(conn, 1, "INTRO", isrc="TWA450582101", duration_ms=48_077)
@@ -299,14 +344,15 @@ def test_generic_intro_with_disjoint_isrc_and_duration_conflict_is_rejected() ->
 
         assert plan["groups"] == []
         assert any(
-            edge["reason"] == "generic_title_recording_conflict" and edge["status"] == "rejected"
+            edge["reason"] == "structural_title_requires_explicit_merge"
+            and edge["status"] == "rejected"
             for edge in plan["blocked_edges"]
         )
     finally:
         conn.close()
 
 
-def test_generic_intro_with_internal_l1_conflict_is_rejected() -> None:
+def test_structural_intro_with_internal_l1_conflict_is_still_deterministic() -> None:
     conn = _connection()
     try:
         _track(conn, 1, "INTRO", isrc="TWA450582101", duration_ms=48_077)
@@ -327,7 +373,7 @@ def test_generic_intro_with_internal_l1_conflict_is_rejected() -> None:
         assert plan["groups"] == []
         assert plan["strong_internal_identity_conflict_node_count"] == 1
         assert any(
-            edge["reason"] == "generic_title_internal_identity_conflict"
+            edge["reason"] == "structural_title_requires_explicit_merge"
             and edge["status"] == "rejected"
             for edge in plan["blocked_edges"]
         )
@@ -335,7 +381,73 @@ def test_generic_intro_with_internal_l1_conflict_is_rejected() -> None:
         conn.close()
 
 
-def test_two_zero_evidence_local_nodes_stay_pending_without_active_group() -> None:
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Intro 1",
+        "Outro - Closing",
+        "Interlude: II",
+        "Ouverture (Act I)",
+        "Overture - Orchestra",
+        "The Prelude II",
+        "Prologue 2",
+        "Epilogue - End",
+        "Theme - Main",
+        "Main Theme",
+        "电影主题曲",
+    ],
+)
+def test_structural_title_number_and_subtitle_forms_are_rejected(title: str) -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, title, isrc="SHARED", duration_ms=180_000)
+        _track(conn, 2, title.upper(), isrc="SHARED", duration_ms=180_000)
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert plan["groups"] == []
+        assert any(
+            edge["reason"] == "structural_title_requires_explicit_merge"
+            for edge in plan["blocked_edges"]
+        )
+    finally:
+        conn.close()
+
+
+def test_force_merge_is_the_only_way_to_merge_structural_titles() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "Intro")
+        _track(conn, 2, "INTRO")
+        conn.execute(
+            """INSERT INTO track_merge_overrides(
+                   scope, left_l1_id, right_l1_id, action, reason
+               ) VALUES ('recording', 1, 2, 'force_merge', 'curated structural identity')"""
+        )
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert [group["member_l1_ids"] for group in plan["groups"]] == [[1, 2]]
+        assert "force_merge" in plan["groups"][0]["evidence_types"]
+    finally:
+        conn.close()
+
+
+def test_shared_isrc_fallback_still_merges_different_title_spellings() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "Colour Song", isrc="SHARED", duration_ms=180_000)
+        _track(conn, 2, "Color Song", isrc="SHARED", duration_ms=181_000)
+
+        plan = build_l2_track_merge_plan(conn)
+
+        assert [group["member_l1_ids"] for group in plan["groups"]] == [[1, 2]]
+        assert plan["groups"][0]["evidence_types"] == ["same_isrc_compatible_duration"]
+    finally:
+        conn.close()
+
+
+def test_two_zero_evidence_local_nodes_merge_with_audit_warning() -> None:
     conn = _connection()
     try:
         _track(conn, 1, "Unsubstantiated")
@@ -344,12 +456,16 @@ def test_two_zero_evidence_local_nodes_stay_pending_without_active_group() -> No
 
         plan = build_l2_track_merge_plan(conn)
 
-        assert plan["groups"] == []
-        assert plan["edge_status_counts"]["pending"] == 1
+        assert [group["member_l1_ids"] for group in plan["groups"]] == [[1, 2]]
+        assert plan["edge_status_counts"]["pending"] == 0
         assert plan["unsubstantiated_zero_evidence_pair_count"] == 1
         report = apply_l2_track_merge_plan(conn, plan, commit=True)
-        assert report["status"] == "unchanged"
-        assert conn.execute("SELECT status FROM track_group_candidates").fetchone()[0] == "pending"
+        assert report["status"] == "applied"
+        candidate = conn.execute(
+            "SELECT status, evidence_json FROM track_group_candidates"
+        ).fetchone()
+        assert candidate["status"] == "accepted"
+        assert "zero_play_zero_external_evidence" in candidate["evidence_json"]
     finally:
         conn.close()
 
