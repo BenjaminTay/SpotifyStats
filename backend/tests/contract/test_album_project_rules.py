@@ -531,7 +531,21 @@ def test_album_detail_includes_album_project_payload(use_seed_db):
 
 
 def test_collaboration_candidate_detector_finds_primary_artist_remix(use_seed_db):
+    from backend.core.db import get_db
     from backend.core.version_merge import detect_collaboration_track_group_candidates
+
+    conn = get_db(readonly=False)
+    try:
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id=921")
+        conn.execute("DELETE FROM track_group_members WHERE group_id=921")
+        conn.execute("DELETE FROM track_groups WHERE group_id=921")
+        conn.execute(
+            """UPDATE track_l1_source_links SET evidence_type='play_at_time'
+                WHERE track_id IN (920, 926)"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     candidates = detect_collaboration_track_group_candidates()
     match = candidates[

@@ -44,7 +44,14 @@ def migration(version: int, name: str):
 
 @migration(1, "initial_schema")
 def migrate_001(conn: sqlite3.Connection):
-    """Baseline: create all tables and indexes with IF NOT EXISTS."""
+    """Create the current schema only for an actually empty database.
+
+    Existing unversioned databases must advance through the registered
+    migrations in order.  Injecting the latest ``SCHEMA`` into one of those
+    databases can create triggers that reference columns introduced by later
+    migrations, which makes an earlier SQLite table rebuild fail while the
+    schema is being reparsed.
+    """
     existing_tables = {
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
@@ -58,6 +65,7 @@ def migrate_001(conn: sqlite3.Connection):
             conn.execute("ALTER TABLE plays ADD COLUMN spotify_track_id_at_play TEXT")
         if "spotify_album_id_at_play" not in play_columns:
             conn.execute("ALTER TABLE plays ADD COLUMN spotify_album_id_at_play TEXT")
+        return
     conn.executescript(SCHEMA)
 
 
@@ -170,6 +178,9 @@ def migrate_014(conn: sqlite3.Connection):
 
     SQLite cannot alter UNIQUE constraints in place, so we rebuild the table.
     """
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(release_groups)")}
+    if {"scope", "parent_group_id"} <= columns:
+        return
     conn.execute("PRAGMA foreign_keys=OFF")
     conn.execute(
         """CREATE TABLE IF NOT EXISTS release_groups_new (

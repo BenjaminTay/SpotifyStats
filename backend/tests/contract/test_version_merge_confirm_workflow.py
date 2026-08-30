@@ -40,6 +40,7 @@ def test_confirm_track_candidate_creates_l3_group_and_rebuilds(isolated_seed_db)
 
     conn = get_db(readonly=False)
     try:
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id IN (920, 921)")
         conn.execute("DELETE FROM track_group_members WHERE group_id IN (920, 921)")
         conn.execute("DELETE FROM track_groups WHERE group_id IN (920, 921)")
         conn.commit()
@@ -70,17 +71,21 @@ def test_confirm_track_candidate_unifies_existing_same_scope_groups(isolated_see
 
     conn = get_db(readonly=False)
     try:
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id IN (920, 921, 9920, 9921)")
         conn.execute("DELETE FROM track_group_members WHERE group_id IN (920, 921, 9920, 9921)")
         conn.execute("DELETE FROM track_groups WHERE group_id IN (920, 921, 9920, 9921)")
         conn.execute(
-            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, scope, is_manual) VALUES (9920, 'Original group', 920, 'composition', 1)"
+            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, primary_l1_id, scope, is_manual) VALUES (9920, 'Original group', 920, 920, 'composition', 1)"
         )
         conn.execute(
-            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, scope, is_manual) VALUES (9921, 'Candidate group', 926, 'composition', 1)"
+            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, primary_l1_id, scope, is_manual) VALUES (9921, 'Candidate group', 926, 926, 'composition', 1)"
         )
         conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (9920, 920)")
         conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (9921, 925)")
         conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (9921, 926)")
+        conn.execute("INSERT INTO track_group_l1_members(group_id, l1_id) VALUES (9920, 920)")
+        conn.execute("INSERT INTO track_group_l1_members(group_id, l1_id) VALUES (9921, 925)")
+        conn.execute("INSERT INTO track_group_l1_members(group_id, l1_id) VALUES (9921, 926)")
         conn.commit()
     finally:
         conn.close()
@@ -93,17 +98,24 @@ def test_confirm_track_candidate_unifies_existing_same_scope_groups(isolated_see
     conn = get_db(readonly=True)
     try:
         rows = conn.execute(
-            """SELECT tg.group_id, tg.primary_track_id, tgm.track_id FROM track_groups tg JOIN track_group_members tgm ON tgm.group_id = tg.group_id WHERE tg.scope = 'composition' AND tgm.track_id IN (920, 925, 926) ORDER BY tgm.track_id"""
+            """SELECT groups.group_id, groups.primary_l1_id, members.l1_id
+                 FROM track_groups groups
+                 JOIN track_group_l1_members members
+                   ON members.group_id=groups.group_id
+                WHERE groups.scope='composition'
+                  AND groups.group_status='active'
+                  AND members.l1_id IN (920, 925, 926)
+                ORDER BY members.l1_id"""
         ).fetchall()
-        assert [(row["group_id"], row["track_id"]) for row in rows] == [
+        assert [(row["group_id"], row["l1_id"]) for row in rows] == [
             (9920, 920),
             (9920, 925),
             (9920, 926),
         ]
-        assert all(row["primary_track_id"] == 920 for row in rows)
+        assert all(row["primary_l1_id"] == 920 for row in rows)
         assert (
-            conn.execute("SELECT COUNT(*) FROM track_groups WHERE group_id = 9921").fetchone()[0]
-            == 0
+            conn.execute("SELECT group_status FROM track_groups WHERE group_id=9921").fetchone()[0]
+            == "archived"
         )
     finally:
         conn.close()
@@ -122,13 +134,21 @@ def test_saved_track_group_management_uses_stable_track_ids(isolated_seed_db):
 
     conn = get_db(readonly=False)
     try:
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id = 921")
+        conn.execute("DELETE FROM track_group_members WHERE group_id = 921")
+        conn.execute("DELETE FROM track_groups WHERE group_id = 921")
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id = 9930")
         conn.execute("DELETE FROM track_group_members WHERE group_id = 9930")
         conn.execute("DELETE FROM track_groups WHERE group_id = 9930")
         conn.execute(
-            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, scope, is_manual) VALUES (9930, 'UI CRUD group', 920, 'composition', 0)"
+            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, primary_l1_id, scope, is_manual) VALUES (9930, 'UI CRUD group', 920, 920, 'composition', 0)"
         )
         conn.executemany(
             "INSERT INTO track_group_members(group_id, track_id) VALUES (9930, ?)", [(920,), (926,)]
+        )
+        conn.executemany(
+            "INSERT INTO track_group_l1_members(group_id, l1_id) VALUES (9930, ?)",
+            [(920,), (926,)],
         )
         conn.commit()
     finally:
@@ -174,32 +194,6 @@ def test_manual_candidate_search_and_confirmation_use_one_spotify_owner(isolated
     spotify_id = "5DpQ7EYvM9aCG90luO9PQW"
     conn = get_db(readonly=False)
     try:
-        conn.executescript(
-            """
-            CREATE TABLE track_l1_identities(
-                l1_id INTEGER PRIMARY KEY, provider TEXT NOT NULL,
-                fallback_track_id INTEGER, identity_status TEXT NOT NULL,
-                representative_track_id INTEGER
-            );
-            CREATE TABLE track_l1_external_ids(
-                provider TEXT NOT NULL, external_track_id TEXT NOT NULL,
-                l1_id INTEGER NOT NULL, evidence_type TEXT NOT NULL,
-                is_primary INTEGER NOT NULL
-            );
-            CREATE TABLE track_l1_source_links(
-                l1_id INTEGER NOT NULL, track_id INTEGER NOT NULL,
-                evidence_type TEXT NOT NULL, observed_plays INTEGER NOT NULL,
-                first_seen_at TEXT, last_seen_at TEXT
-            );
-            CREATE TABLE spotify_track_owners(
-                spotify_track_id TEXT PRIMARY KEY, track_id INTEGER NOT NULL,
-                evidence_type TEXT NOT NULL
-            );
-            CREATE TABLE track_group_l1_members(
-                group_id INTEGER NOT NULL, l1_id INTEGER NOT NULL
-            );
-            """
-        )
         conn.executemany(
             """INSERT INTO tracks(
                    track_id, track_name, artist_id, album_id, spotify_track_id
@@ -322,6 +316,7 @@ def test_track_group_confirm_api_returns_rebuild_status(isolated_seed_db):
 
     conn = get_db(readonly=False)
     try:
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id IN (920, 921)")
         conn.execute("DELETE FROM track_group_members WHERE group_id IN (920, 921)")
         conn.execute("DELETE FROM track_groups WHERE group_id IN (920, 921)")
         conn.commit()
@@ -419,6 +414,7 @@ def test_album_relation_bundle_confirms_album_and_matching_track_versions(isolat
     try:
         conn.execute("DELETE FROM release_group_members WHERE group_id = 921")
         conn.execute("DELETE FROM release_groups WHERE group_id = 921")
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id = 921")
         conn.execute("DELETE FROM track_group_members WHERE group_id = 921")
         conn.execute("DELETE FROM track_groups WHERE group_id = 921")
         rebuild_album_projects(conn)

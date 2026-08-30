@@ -853,6 +853,14 @@ def _confirm_l1_track_group(
         group_id = int(cursor.lastrowid)
 
     for source_group_id in existing_group_ids[1:]:
+        # Release the source group's active-scope uniqueness claim before its
+        # members move into the surviving group. The trigger correctly rejects
+        # the reverse order because each L1 would briefly belong to two active
+        # groups at the same scope.
+        conn.execute(
+            "UPDATE track_groups SET group_status='archived' WHERE group_id=?",
+            (source_group_id,),
+        )
         conn.execute(
             """INSERT OR IGNORE INTO track_group_l1_members(group_id, l1_id)
                SELECT ?, l1_id FROM track_group_l1_members WHERE group_id=?""",
@@ -863,10 +871,6 @@ def _confirm_l1_track_group(
             (group_id, source_group_id),
         )
         conn.execute("DELETE FROM track_group_l1_members WHERE group_id=?", (source_group_id,))
-        conn.execute(
-            "UPDATE track_groups SET group_status='archived' WHERE group_id=?",
-            (source_group_id,),
-        )
 
     conn.execute(
         """UPDATE track_groups

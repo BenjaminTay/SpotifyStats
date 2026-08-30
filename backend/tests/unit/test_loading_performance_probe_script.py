@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 def test_loading_performance_probe_exposes_cold_warm_and_gate_options():
     result = subprocess.run(
-        ["python", str(ROOT / "scripts" / "loading_performance_probe.py"), "--help"],
+        [sys.executable, str(ROOT / "scripts" / "loading_performance_probe.py"), "--help"],
         cwd=ROOT,
         check=False,
         text=True,

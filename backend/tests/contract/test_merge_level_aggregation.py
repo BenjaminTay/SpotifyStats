@@ -142,6 +142,8 @@ class TestLoadTrackGroupKeys:
         keys = load_track_group_keys(seed_conn, merge_level=1)
         assert keys.empty
         assert list(keys.columns) == [
+            "l1_id",
+            "track_agg_l1_id",
             "track_id",
             "track_agg_id",
             "track_agg_name",

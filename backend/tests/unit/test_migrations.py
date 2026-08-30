@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -48,12 +49,103 @@ def test_applied_versions_empty(empty_db):
     assert _applied_versions(empty_db) == set()
 
 
+def test_tracked_seed_matches_current_schema_contract():
+    seed_path = Path(__file__).resolve().parents[1] / "fixtures" / "seed.db"
+    conn = sqlite3.connect(f"file:{seed_path}?mode=ro&immutable=1", uri=True)
+    try:
+        versions = {int(row[0]) for row in conn.execute("SELECT version FROM schema_migrations")}
+        expected_versions = {version for version, _name, _migration in MIGRATIONS}
+        assert versions == expected_versions
+        assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(track_groups)")}
+        assert {"primary_l1_id", "group_status"} <= columns
+    finally:
+        conn.close()
+
+
+def test_initial_migration_does_not_inject_future_schema_into_existing_database(empty_db):
+    from backend.core import migrations
+
+    empty_db.executescript(
+        """
+        CREATE TABLE plays (
+            play_id INTEGER PRIMARY KEY,
+            track_id INTEGER
+        );
+        CREATE TABLE track_groups (
+            group_id INTEGER PRIMARY KEY,
+            canonical_name TEXT NOT NULL,
+            scope TEXT NOT NULL
+        );
+        """
+    )
+
+    migrations.migrate_001(empty_db)
+
+    play_columns = {str(row[1]) for row in empty_db.execute("PRAGMA table_info(plays)")}
+    assert {"spotify_track_id_at_play", "spotify_album_id_at_play"} <= play_columns
+    group_columns = {str(row[1]) for row in empty_db.execute("PRAGMA table_info(track_groups)")}
+    assert "group_status" not in group_columns
+    assert (
+        empty_db.execute(
+            """SELECT 1 FROM sqlite_master
+                 WHERE type='trigger'
+                   AND name='trg_track_group_l1_single_active_scope_insert'"""
+        ).fetchone()
+        is None
+    )
+
+
+def test_release_group_migration_preserves_already_scoped_groups(empty_db):
+    from backend.core import migrations
+
+    empty_db.executescript(
+        """
+        CREATE TABLE release_groups (
+            group_id INTEGER PRIMARY KEY,
+            canonical_name TEXT NOT NULL,
+            artist_id INTEGER,
+            primary_album_id INTEGER,
+            scope TEXT NOT NULL,
+            parent_group_id INTEGER,
+            is_manual INTEGER DEFAULT 0,
+            created_at TEXT,
+            UNIQUE(canonical_name, artist_id, scope)
+        );
+        CREATE TABLE release_group_members (
+            group_id INTEGER,
+            album_id INTEGER,
+            UNIQUE(group_id, album_id)
+        );
+        INSERT INTO release_groups VALUES
+            (920, 'Fixture Future LP', 901, 921, 'release', NULL, 1, '2026-08-30'),
+            (921, 'Fixture Future LP', 901, 921, 'composition', NULL, 1, '2026-08-30');
+        INSERT INTO release_group_members VALUES (920, 921), (921, 921);
+        """
+    )
+
+    migrations.migrate_014(empty_db)
+
+    groups = empty_db.execute(
+        "SELECT group_id, scope FROM release_groups ORDER BY group_id"
+    ).fetchall()
+    members = empty_db.execute(
+        "SELECT group_id, album_id FROM release_group_members ORDER BY group_id"
+    ).fetchall()
+    assert [tuple(row) for row in groups] == [
+        (920, "release"),
+        (921, "composition"),
+    ]
+    assert [tuple(row) for row in members] == [(920, 921), (921, 921)]
+
+
 def test_migration_idempotency(empty_db):
     """Running all migrations once, then re-running is safe.
 
-    migrate_001 creates the full SCHEMA (including columns that later
-    migrations add), so on fresh DBs migrations 2-9 are no-ops. The
-    runner handles this via try/except OperationalError.
+    migrate_001 creates the full SCHEMA on an empty database, so later
+    migrations may be no-ops. The runner handles those idempotent operations
+    via try/except OperationalError.
     """
     _ensure_migrations_table(empty_db)
 
