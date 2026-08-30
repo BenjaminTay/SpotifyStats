@@ -96,7 +96,7 @@ export function HallOfFameSection({ rec, covers }: { rec: BillboardRecords; cove
 
   return (
     <div>
-      <SectionHeader icon={Crown} title="名人堂" subtitle="按长期榜单表现，选出各年代最具代表性的歌曲、专辑与艺人" />
+      <SectionHeader icon={Crown} title="名人堂" />
 
       {/* 歌曲走势总榜 */}
       <RecordCard title="歌曲走势总榜 · All-Time Greatest Songs">

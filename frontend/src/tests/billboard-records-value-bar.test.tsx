@@ -21,4 +21,12 @@ describe('Billboard records ValueBar', () => {
 
     expect(fill).toHaveStyle({ width: '45%' })
   })
+
+  it('keeps long values on one line before the visual bar', () => {
+    const { container } = render(<ValueBar value={1512} max={1512} suffix="天" />)
+    const value = container.querySelector('.inline-flex > span')
+
+    expect(value).toHaveTextContent('1,512天')
+    expect(value).toHaveClass('shrink-0', 'whitespace-nowrap')
+  })
 })

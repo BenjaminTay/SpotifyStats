@@ -69,7 +69,7 @@ export function ValueBar({ value, max, suffix }: { value: number; max: number; s
   }
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="inline-block w-[52px] text-right font-sans text-[14px] font-semibold tabular-nums">
+      <span className="inline-block w-[52px] shrink-0 whitespace-nowrap text-right font-sans text-[14px] font-semibold tabular-nums">
         {fmtNum(value)}{suffix && <span className="ml-0.5 text-[11px] font-normal text-muted-foreground">{suffix}</span>}
       </span>
       <span className="inline-block h-[3px] w-[56px] overflow-hidden rounded-[2px] bg-muted">
@@ -190,6 +190,7 @@ function Pagination({ page, totalPages, startIdx, endIdx, totalItems, onPageChan
 type MiniRankColumn<T extends object> = MobileRecordColumn<T> & {
   width?: string
   align?: 'left' | 'right' | 'center'
+  className?: string
 }
 
 export function MiniRankTable<T extends object>({ rows, columns, emptyText = '暂无数据', fixed, mobileSkip = 0, mobilePreviewCount = 3, mobileRowClassName, mobileRenderRow }: {
@@ -243,7 +244,7 @@ export function MiniRankTable<T extends object>({ rows, columns, emptyText = '�
           <thead>
             <tr className="border-b border-border">
               {columns.map((col, i) => (
-                <th key={i} className={cn('pb-2 font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground', col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left')} style={col.width ? { width: col.width } : undefined}>{col.header}</th>
+                <th key={i} className={cn('pb-2 font-sans text-[10px] font-bold uppercase tracking-[1.2px] text-muted-foreground', col.className, col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left')} style={col.width ? { width: col.width } : undefined}>{col.header}</th>
               ))}
             </tr>
           </thead>
@@ -251,7 +252,7 @@ export function MiniRankTable<T extends object>({ rows, columns, emptyText = '�
             {displayRows.map((row, idx) => (
               <tr key={idx} className="border-b border-border/50 transition-colors hover:bg-muted/30">
                 {columns.map((col, colIdx) => (
-                  <td key={colIdx} className={cn('py-2.5', col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left')} style={col.width ? { width: col.width } : undefined}>{col.render(row, (safePage - 1) * PAGE_SIZE + idx)}</td>
+                  <td key={colIdx} className={cn('py-2.5', col.className, col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left')} style={col.width ? { width: col.width } : undefined}>{col.render(row, (safePage - 1) * PAGE_SIZE + idx)}</td>
                 ))}
               </tr>
             ))}

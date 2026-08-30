@@ -23,7 +23,7 @@ export function MarketSection({ rec, covers }: { rec: BillboardRecords; covers: 
       <RecordCard title="每周播放量排行 · Weekly Total Plays">
         <MiniRankTable rows={rec.week_total_plays} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-          { header: '周次', render: (r) => <WeekLink date={r.billboard_week} /> },
+          { header: '周次', className: 'pl-3', render: (r) => <WeekLink date={r.billboard_week} /> },
           { header: '总播放', width: '165px', align: 'right', render: (r) => <ValueBar value={r.total_plays} max={rec.week_total_plays[0]?.total_plays ?? 1} /> },
           { header: <span className="pl-6">#1 歌曲</span>, render: (r) => r.no1_track ? <div className="pl-6"><TrackCell trackId={r.no1_track_id ?? undefined} trackName={r.no1_track} artistName={r.no1_track_artist ?? undefined} coverUrl={covers.track.get(r.no1_track_id ?? -1)} /></div> : <span className="pl-6 text-muted-foreground">—</span> },
           { header: <span className="pl-6">#1 专辑</span>, render: (r) => r.no1_album ? <div className="pl-6"><AlbumCell albumName={r.no1_album} artistName={r.no1_album_artist ?? ''} coverUrl={covers.album.get(r.no1_album)} /></div> : <span className="pl-6 text-muted-foreground">—</span> },
@@ -42,7 +42,7 @@ export function MarketSection({ rec, covers }: { rec: BillboardRecords; covers: 
       <RecordCard title="新歌活跃度 · New Entry Ratio" subtitle="每周新入榜歌曲占比的变化">
         <MiniRankTable rows={rec.new_entry_ratio} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
-          { header: '周次', render: (r) => <WeekLink date={r.billboard_week} /> },
+          { header: '周次', className: 'pl-3', render: (r) => <WeekLink date={r.billboard_week} /> },
           { header: '新入榜', width: '80px', align: 'center', mobileRole: 'fact', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r['新入榜歌曲数']}</span> },
           { header: '新歌占比', width: '145px', align: 'right', mobileRole: 'primary', render: (r) => <ValueBar value={Math.round(r['新歌占比'])} max={100} suffix="%" /> },
         ]} />

@@ -40,6 +40,8 @@ import {
   type EntityType,
 } from './RecordsPrimitives'
 
+const TIME_RANGE_COLUMN_GAP = 'pr-6'
+
 export function LongevitySection({ rec, covers }: { rec: BillboardRecords; covers: CoverMaps }) {
   const [chartingType, setChartingType] = useState<EntityType>('track')
   const [streakType, setStreakType] = useState<EntityType>('track')
@@ -85,21 +87,21 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
           <MiniRankTable rows={rec.longest_streak as LongestStreakRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
-            { header: '连续周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_streak as LongestStreakRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
+            { header: '连续周数', width: '145px', align: 'right', className: TIME_RANGE_COLUMN_GAP, render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_streak as LongestStreakRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
             { header: '时间区间', width: '190px', render: (r) => <span className="inline-flex items-center gap-1"><WeekLink date={r['起始周']} /><span className="text-muted-foreground">—</span><WeekLink date={r['结束周']} /></span> },
           ]} />
         ) : streakType === 'album' ? (
           <MiniRankTable rows={rec.longest_streak_album as LongestStreakAlbumRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '专辑', render: (r) => <AlbumCell albumName={r.album_name} artistName={r.artist_name} coverUrl={covers.album.get(r.album_name)} /> },
-            { header: '连续周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_streak_album as LongestStreakAlbumRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
+            { header: '连续周数', width: '145px', align: 'right', className: TIME_RANGE_COLUMN_GAP, render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_streak_album as LongestStreakAlbumRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
             { header: '时间区间', width: '190px', render: (r) => <span className="inline-flex items-center gap-1"><WeekLink date={r['起始周']} /><span className="text-muted-foreground">—</span><WeekLink date={r['结束周']} /></span> },
           ]} />
         ) : (
           <MiniRankTable rows={rec.longest_streak_artist as LongestStreakArtistRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} compact /> },
-            { header: '连续周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_streak_artist as LongestStreakArtistRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
+            { header: '连续周数', width: '145px', align: 'right', className: TIME_RANGE_COLUMN_GAP, render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_streak_artist as LongestStreakArtistRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
             { header: '时间区间', width: '190px', render: (r) => <span className="inline-flex items-center gap-1"><WeekLink date={r['起始周']} /><span className="text-muted-foreground">—</span><WeekLink date={r['结束周']} /></span> },
           ]} />
         )}
@@ -186,7 +188,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },
             { header: '排名', width: '55px', align: 'center', render: (r) => <PeakNum rank={r['停留排名']} /> },
-            { header: '连续周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_consecutive_same_rank as LongestSameRankRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
+            { header: '连续周数', width: '145px', align: 'right', className: TIME_RANGE_COLUMN_GAP, render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_consecutive_same_rank as LongestSameRankRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
             { header: '时间区间', width: '190px', render: (r) => <span className="inline-flex items-center gap-1"><WeekLink date={r['起始周']} /><span className="text-muted-foreground">—</span><WeekLink date={r['结束周']} /></span> },
           ]} />
         ) : sameRankType === 'album' ? (
@@ -194,7 +196,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '专辑', render: (r) => <AlbumCell albumName={r.album_name} artistName={r.artist_name} coverUrl={covers.album.get(r.album_name)} /> },
             { header: '排名', width: '55px', align: 'center', render: (r) => <PeakNum rank={r['停留排名']} /> },
-            { header: '连续周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_consecutive_same_rank_album as LongestSameRankAlbumRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
+            { header: '连续周数', width: '145px', align: 'right', className: TIME_RANGE_COLUMN_GAP, render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_consecutive_same_rank_album as LongestSameRankAlbumRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
             { header: '时间区间', width: '190px', render: (r) => <span className="inline-flex items-center gap-1"><WeekLink date={r['起始周']} /><span className="text-muted-foreground">—</span><WeekLink date={r['结束周']} /></span> },
           ]} />
         ) : (
@@ -202,7 +204,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
             { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} compact /> },
             { header: '排名', width: '55px', align: 'center', render: (r) => <PeakNum rank={r['停留排名']} /> },
-            { header: '连续周数', width: '145px', align: 'right', render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_consecutive_same_rank_artist as LongestSameRankArtistRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
+            { header: '连续周数', width: '145px', align: 'right', className: TIME_RANGE_COLUMN_GAP, render: (r) => <ValueBar value={r['连续周数']} max={(rec.longest_consecutive_same_rank_artist as LongestSameRankArtistRecord[])[0]?.['连续周数'] ?? 1} suffix="周" /> },
             { header: '时间区间', width: '190px', render: (r) => <span className="inline-flex items-center gap-1"><WeekLink date={r['起始周']} /><span className="text-muted-foreground">—</span><WeekLink date={r['结束周']} /></span> },
           ]} />
         )}
@@ -212,7 +214,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         <MiniRankTable rows={rec.longest_artist_span} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
           { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} /> },
-          { header: '生涯跨度', width: '145px', align: 'right', render: (r) => <ValueBar value={r['跨度天数']} max={rec.longest_artist_span[0]?.['跨度天数'] ?? 1} suffix="天" /> },
+          { header: '生涯跨度', width: '145px', align: 'right', className: TIME_RANGE_COLUMN_GAP, render: (r) => <ValueBar value={r['跨度天数']} max={rec.longest_artist_span[0]?.['跨度天数'] ?? 1} suffix="天" /> },
           { header: '时间区间', width: '190px', render: (r) => <span className="inline-flex items-center gap-1"><WeekLink date={r['首次上榜']} /><span className="text-muted-foreground">—</span><WeekLink date={r['最近上榜']} /></span> },
           { header: '歌曲数', width: '60px', align: 'center', render: (r) => <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{r['上榜歌曲数']}</span> },
         ]} />

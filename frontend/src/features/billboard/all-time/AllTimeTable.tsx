@@ -41,8 +41,8 @@ const COLUMN_WIDTH_DEFAULTS: Record<string, number> = {
   track_power_rank: 108,
   album_power_sum: 116,
   album_power_rank: 108,
-  total_chart_plays: 110,
-  total_plays: 110,
+  total_chart_plays: 118,
+  total_plays: 118,
   total_tracks: 72,
   top1_tracks: 80,
   top5_tracks: 72,
@@ -314,7 +314,11 @@ export function AllTimeTable({
     const isSortCol = column.key === sortKey
     const isRankCol = column.rankStyle && typeof rawValue === 'number' && Number.isFinite(rawValue)
     const showBar = isTotalPlaysCol(column.key) && typeof rawValue === 'number'
-    const pinTrackPlayValueRight = column.key === 'total_chart_plays'
+    const formattedValue = isRankCol ? String(rawValue).padStart(2, '0') : column.format(row)
+    const barMaxValue = maxBarValue > 0 ? maxBarValue : 1
+    const barPercent = showBar
+      ? Math.min(100, Math.max(0, Math.round((Math.max(rawValue as number, 0) / barMaxValue) * 100)))
+      : 0
 
     return (
       <td
@@ -322,27 +326,30 @@ export function AllTimeTable({
         data-column-key={column.key}
         className={cn(
           'whitespace-nowrap px-3 py-2.5 tabular-nums',
-          pinTrackPlayValueRight && 'relative',
           isRankCol ? 'font-serif text-[17px] font-semibold' : 'font-sans text-[13px]',
           column.align === 'right' ? 'text-right' : column.align === 'center' ? 'text-center' : 'text-left',
           isRankCol ? rankColorClass(rawValue) : isSortCol ? 'font-semibold text-accent-foreground' : 'text-foreground/80',
         )}
       >
-        <span className={cn(pinTrackPlayValueRight && 'relative z-[1] inline-block text-right')}>
-          {isRankCol ? String(rawValue).padStart(2, '0') : column.format(row)}
-        </span>
-        {showBar && (
-          <span className={cn(
-            'h-[3px] w-[70px] rounded-[2px] bg-muted',
-            pinTrackPlayValueRight
-              ? 'absolute bottom-1.5 right-3'
-              : 'ml-2 inline-block align-middle',
-          )}>
+        {showBar ? (
+          <span className="inline-flex items-center justify-end gap-1.5">
+            <span className="shrink-0 text-right">{formattedValue}</span>
             <span
-              className="block h-full rounded-[2px] bg-accent-foreground transition-[width] duration-300"
-              style={{ width: `${Math.round((rawValue / maxBarValue) * 100)}%` }}
-            />
+              role="meter"
+              aria-label={`${column.label}：${formattedValue}`}
+              aria-valuemin={0}
+              aria-valuemax={barMaxValue}
+              aria-valuenow={rawValue}
+              className="inline-block h-[3px] w-[56px] shrink-0 overflow-hidden rounded-[2px] bg-muted align-middle"
+            >
+              <span
+                className="block h-full rounded-[2px] bg-accent-foreground transition-[width] duration-300"
+                style={{ width: `${barPercent}%` }}
+              />
+            </span>
           </span>
+        ) : (
+          <span>{formattedValue}</span>
         )}
       </td>
     )
