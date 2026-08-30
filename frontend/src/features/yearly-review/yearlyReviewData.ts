@@ -2,7 +2,6 @@ import type { AnalysisFilters } from '@/types/analysis'
 import type {
   YearlyEntityRef,
   YearlyMetric,
-  YearlyReviewResponse,
   YearlyReviewStatus,
 } from '@/types/yearly-review-v2'
 import { displayName } from '@/lib/chinese'
@@ -80,19 +79,6 @@ export function formatMetricComparison(metric: YearlyMetric): MetricComparison |
     text: `${percentage}%`,
     ariaLabel: `${comparisonLabel}${changeLabel} ${percentage}%`,
   }
-}
-
-export function formatComparisonWindow(comparison: YearlyReviewResponse['coverage']['comparison']): string | null {
-  if (
-    !comparison.comparable
-    || comparison.mode === 'full_year'
-    || !comparison.current_start
-    || !comparison.current_end
-    || !comparison.baseline_start
-    || !comparison.baseline_end
-  ) return null
-  const format = (value: string) => value.replaceAll('-', '.')
-  return `${format(comparison.current_start)}–${format(comparison.current_end)} 对比 ${format(comparison.baseline_start)}–${format(comparison.baseline_end)}`
 }
 
 export function entitySubtitle(entity: YearlyEntityRef | null | undefined): string | null {

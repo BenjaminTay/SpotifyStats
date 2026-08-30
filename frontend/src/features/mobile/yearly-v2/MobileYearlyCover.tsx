@@ -1,4 +1,4 @@
-import { STATUS_COPY, formatComparisonWindow, formatMetricComparison } from '@/features/yearly-review/yearlyReviewData'
+import { STATUS_COPY, formatMetricComparison } from '@/features/yearly-review/yearlyReviewData'
 import type { YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 export function MobileYearlyCover({ report }: { report: YearlyReviewResponse }) {
@@ -8,8 +8,6 @@ export function MobileYearlyCover({ report }: { report: YearlyReviewResponse }) 
   const periodLabel = passport.observed_end
     ? `截至 ${passport.observed_end.replaceAll('-', '.')}`
     : `${report.year}`
-  const comparisonWindow = formatComparisonWindow(report.coverage.comparison)
-
   return (
     <section className="mobile-yearly-v2-cover" aria-labelledby="mobile-yearly-v2-title">
       <div className="mobile-yearly-v2-cover-rings" aria-hidden="true"><i /></div>
@@ -49,11 +47,6 @@ export function MobileYearlyCover({ report }: { report: YearlyReviewResponse }) 
           )
         })}
       </div>
-      {comparisonWindow && (
-        <p className="mobile-yearly-v2-comparison-window">
-          <span>同期参照</span>{comparisonWindow}
-        </p>
-      )}
     </section>
   )
 }

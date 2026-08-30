@@ -16,7 +16,8 @@ describe('Yearly Review V2 phone presentation contract', () => {
   it('renders the cover as a 2 by 3 KPI editorial grid', () => {
     expect(phoneCoverSource).toContain('passport.metrics.slice(0, 6)')
     expect(phoneCoverSource).toContain('formatMetricComparison(metric)')
-    expect(phoneCoverSource).toContain('formatComparisonWindow(report.coverage.comparison)')
+    expect(phoneCoverSource).not.toContain('同期参照')
+    expect(phoneCoverSource).not.toContain('formatComparisonWindow')
     expect(phoneCoverSource).toContain('className="mobile-yearly-v2-kpis"')
   })
 

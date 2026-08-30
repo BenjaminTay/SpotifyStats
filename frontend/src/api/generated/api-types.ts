@@ -7289,6 +7289,11 @@ export interface components {
             plays: number;
             /** Hours */
             hours: number;
+            /**
+             * Movement
+             * @enum {string}
+             */
+            movement: "new" | "re" | "up" | "down" | "same";
             /** Previous Rank */
             previous_rank?: number | null;
             /** Rank Change */
@@ -7363,10 +7368,10 @@ export interface components {
         HomeOverviewResponse: {
             /**
              * Schema Version
-             * @default home_overview_v1
+             * @default home_overview_v2
              * @constant
              */
-            schema_version: "home_overview_v1";
+            schema_version: "home_overview_v2";
             /** Generated At */
             generated_at: string;
             /**
@@ -7389,6 +7394,8 @@ export interface components {
             billboard: components["schemas"]["HomeBillboard"];
             yearly_review: components["schemas"]["HomeYearlyReview"];
             rediscovery?: components["schemas"]["HomeRediscovery"] | null;
+            /** Rediscovery Candidates */
+            rediscovery_candidates?: components["schemas"]["HomeRediscovery"][];
         };
         /** HomePeriod */
         HomePeriod: {
@@ -9069,6 +9076,8 @@ export interface components {
             end_date?: string | null;
             /** Total Plays */
             total_plays?: number | null;
+            /** Total Ms */
+            total_ms?: number | null;
             /** Total Hours */
             total_hours?: number | null;
             /** Unique Tracks */

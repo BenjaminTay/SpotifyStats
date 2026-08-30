@@ -124,9 +124,6 @@
 .yearly-v2-kpi-strip em.is-up { color: #76c995; }
 .yearly-v2-kpi-strip em.is-down { color: #e67d70; }
 .yearly-v2-kpi-strip em.is-flat { color: rgba(246,238,223,.62); }
-.yearly-v2-comparison-window { margin: 12px 0 0; color: rgba(246,238,223,.55); font: 500 10px/1.5 Inter, sans-serif; letter-spacing: .03em; }
-.yearly-v2-comparison-window span { margin-right: 8px; color: #d49d51; font-weight: 700; letter-spacing: .12em; }
-
 .yearly-v2-chapter-nav { position: sticky; top: 78px; z-index: 12; display: flex; gap: 6px; margin: 24px 0 0; padding: 10px; overflow-x: auto; border: 1px solid var(--annual-rule); background: color-mix(in srgb, var(--annual-paper) 88%, transparent); backdrop-filter: blur(18px); }
 .yearly-v2-chapter-nav a { flex: none; min-height: 36px; display: flex; align-items: center; padding: 0 12px; color: var(--annual-muted); font: 650 10px/1 Inter, sans-serif; text-decoration: none; }
 .yearly-v2-chapter-nav a:hover { color: var(--annual-red); background: var(--annual-soft); }
