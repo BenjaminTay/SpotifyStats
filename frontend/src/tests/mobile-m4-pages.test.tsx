@@ -4,7 +4,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MobileSectionSwitcher } from '@/components/mobile'
-import { ChartWeeksValue, MiniRankTable as BillboardMiniRankTable, PeakNum, RecordCard as BillboardRecordCard, TrackAlbumToggle } from '@/features/billboard/records/RecordsPrimitives'
+import { ChartWeeksValue, MiniRankTable as BillboardMiniRankTable, PeakNum, RecordCard as BillboardRecordCard, SectionHeader as BillboardSectionHeader, TrackAlbumToggle } from '@/features/billboard/records/RecordsPrimitives'
+import { ChampionshipSection } from '@/features/billboard/records/ChampionshipSection'
 import { CuriositiesSection } from '@/features/billboard/records/CuriositiesSection'
 import { MiniRankTable as PlaybackMiniRankTable } from '@/features/analysis/records/PlaybackRecordsPrimitives'
 import { MobileAllTime } from '@/features/mobile/billboard/MobileAllTime'
@@ -105,6 +106,28 @@ describe('M4 mobile page presentations', () => {
     expect(within(dialog).getAllByRole('article')).toHaveLength(40)
   })
 
+  it('allows Billboard record section headers to omit subtitles', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+    const Icon = () => null
+
+    render(<BillboardSectionHeader icon={Icon} title="冠军圣殿" />)
+
+    expect(screen.getByRole('heading', { name: '冠军圣殿' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '冠军圣殿' }).nextElementSibling).toBeNull()
+  })
+
   it('keeps record entity controls compact and pairs two headline metrics on the right', () => {
     render(
       <MemoryRouter>
@@ -176,6 +199,58 @@ describe('M4 mobile page presentations', () => {
 
     expect(screen.getAllByRole('article')).toHaveLength(4)
     expect(screen.getByRole('button', { name: /查看完整榜单/ })).toBeInTheDocument()
+  })
+
+  it('shows artists on replacement tracks and covers on blocked-track links', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+    const records = {
+      artist_most_no1: [],
+      artist_most_no1_album: [],
+      debut_no1: [],
+      debut_no1_album: [],
+      return_to_no1: [],
+      return_to_no1_album: [],
+      return_to_no1_artist: [],
+      self_replacement_no1: [{ '艺人': 'Artist', '前冠单_id': 1, '前冠单': 'Previous Song', '新冠单_id': 3, '新冠单': 'New Song' }],
+      self_replacement_no1_album: [],
+      blocker_king: [{ track_id: 1, track_name: 'Champion', artist_name: 'Artist', '阻挡数': 1, '走势评分': 0 }],
+      blocked_tracks_map: { 1: [{ track_id: 2, track_name: 'Blocked Song', artist_name: 'Challenger' }] },
+      blocker_king_album: [],
+      blocked_albums_map: {},
+      blocker_king_artist: [],
+      blocked_artists_map: {},
+      longest_to_no1: [],
+      longest_to_no1_album: [],
+      longest_to_no1_artist: [],
+    } as unknown as BillboardRecords
+
+    const covers = {
+      track: new Map([[1, '/previous.jpg'], [2, '/blocked.jpg'], [3, '/new.jpg']]),
+      album: new Map(),
+      artist: new Map(),
+    }
+    const { container } = render(<MemoryRouter><ChampionshipSection rec={records} covers={covers} /></MemoryRouter>)
+
+    expect(screen.getByRole('link', { name: 'Previous Song' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'New Song' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Artist' })).toHaveLength(4)
+    expect(container.querySelectorAll('.championship-replacement-arrow')).toHaveLength(1)
+    expect(container.querySelector('.championship-replacement-arrow')?.closest('td')).toHaveStyle({ width: '72px' })
+    const blockedLink = screen.getByRole('link', { name: 'Blocked Song' })
+    expect(blockedLink).toHaveAttribute('href', expect.stringContaining('/music/tracks/2'))
+    expect(blockedLink.querySelector('img')).toHaveAttribute('src', '/blocked.jpg')
   })
 
   it('renders double and triple chart events as equal aligned achievement rows on phone', () => {

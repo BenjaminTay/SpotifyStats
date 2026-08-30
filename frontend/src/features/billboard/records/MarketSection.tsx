@@ -18,7 +18,7 @@ import {
 export function MarketSection({ rec, covers }: { rec: BillboardRecords; covers: CoverMaps }) {
   return (
     <div>
-      <SectionHeader icon={BarChart3} title="每周大盘" subtitle="榜单整体走势——每周的竞争格局与新歌活力" />
+      <SectionHeader icon={BarChart3} title="每周大盘" subtitle="查看每周总播放、冠亚军差距和新歌入榜情况" />
 
       <RecordCard title="每周播放量排行 · Weekly Total Plays">
         <MiniRankTable rows={rec.week_total_plays} columns={[
@@ -39,7 +39,7 @@ export function MarketSection({ rec, covers }: { rec: BillboardRecords; covers: 
         </RecordCard>
       </div>
 
-      <RecordCard title="新歌活跃度 · New Entry Ratio" subtitle="每周新入榜歌曲占比趋势">
+      <RecordCard title="新歌活跃度 · New Entry Ratio" subtitle="每周新入榜歌曲占比的变化">
         <MiniRankTable rows={rec.new_entry_ratio} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
           { header: '周次', render: (r) => <WeekLink date={r.billboard_week} /> },

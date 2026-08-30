@@ -108,7 +108,7 @@ function DailyPeakRecordCard({ data }: Pick<Props, 'data'>) {
   return (
     <RecordCard
       title="单日巅峰 · Daily Peak"
-      subtitle="单个自然日内播放次数或累计听歌时长最高的歌曲、专辑与艺人"
+      subtitle="按播放次数或听歌时长，查看歌曲、专辑与艺人的单日最高纪录"
       toggle={
         <div className="mobile-record-combined-controls flex items-center gap-1">
           <button
@@ -212,11 +212,11 @@ export function ObsessionSection({ data, reigns, behavior }: Props) {
 
   return (
     <div>
-      <SectionHeader icon={Flame} title="高光时刻" subtitle="把最强烈的一天、关键里程碑与最快达成纪录放在同一条个人音乐时间线上。" />
+      <SectionHeader icon={Flame} title="高光时刻" />
       <DailyPeakRecordCard data={data} />
       <RecordCard
         title="单日总量记录 · Daily Total"
-        subtitle="把一天的播放强度、曲目广度与最高歌曲、专辑、艺人放在同一张日历切片中"
+        subtitle="比较每天的播放次数与听歌时长，并查看当天播放最多的歌曲、专辑与艺人"
         toggle={<DailyTotalSortToggle value={dailyTotalSort} onChange={setDailyTotalSort} />}
       >
         {dailyTotalRows.length > 0 ? (
@@ -229,7 +229,7 @@ export function ObsessionSection({ data, reigns, behavior }: Props) {
       </RecordCard>
       <PlaybackMilestonesCard data={behavior} />
       <FastestMilestoneCard data={reigns} />
-      <EntityRecordCard title="连续播放马拉松 · Consecutive Marathon" subtitle="播放序列中连续出现同一实体的最长 run"
+      <EntityRecordCard title="连续播放马拉松 · Consecutive Marathon" subtitle="一次连续播放中，连续听同一歌曲、专辑或艺人的最长纪录"
         recordsByEntity={{ track: data.consecutive_marathon?.track ?? [], album: data.consecutive_marathon?.album ?? [], artist: data.consecutive_marathon?.artist ?? [] }}
         columns={(entity) => marathonCols(entity, data.consecutive_marathon?.[entity] ?? [])} />
     </div>

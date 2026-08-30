@@ -57,8 +57,8 @@ export function DiscoverySection({ data }: Props) {
 
   return (
     <div>
-      <SectionHeader icon={Compass} title="探索与品味" subtitle="从新发现、完整专辑、合作歌曲与同名作品中，看见你的聆听广度。" />
-      <EntityRecordCard title="发现日 · Discovery Day" subtitle="单日首次播放的新歌曲/专辑/艺人数量最多的日期"
+      <SectionHeader icon={Compass} title="探索与品味" />
+      <EntityRecordCard title="发现日 · Discovery Day" subtitle="哪一天第一次听到的歌曲、专辑与艺人最多"
         recordsByEntity={{ track: data.discovery_day?.track ?? [], album: data.discovery_day?.album ?? [], artist: data.discovery_day?.artist ?? [] }}
         mobileRowClassName="mobile-record-discovery-row"
         columns={(entity) => {
@@ -70,7 +70,7 @@ export function DiscoverySection({ data }: Props) {
           { header: '新发现', width: '170px', align: 'right', mobileRole: 'primary', render: (row) => <ValueBar value={row.value} max={max} suffix={displayName(row.unit)} label={`${displayName(row.name)}新发现数量`} /> },
           ]
         }} />
-      <EntityRecordCard title="专辑全碟回放 · Full Album Replays" subtitle="仅统计曲目总数可靠且已听完全部曲目的专辑；完整回放次数取各曲目播放次数的最小值"
+      <EntityRecordCard title="专辑全碟回放 · Full Album Replays" subtitle="根据专辑中每首歌的播放情况，找出你最常完整听到的专辑"
         recordsByEntity={{ album: data.album_completionist?.album ?? [] }} defaultEntity="album"
         columns={() => [
           { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
@@ -79,7 +79,7 @@ export function DiscoverySection({ data }: Props) {
           { header: '曲目覆盖', width: '110px', align: 'right', mobileRole: 'fact', render: (row) => <span className="font-sans text-[12px] text-muted-foreground">{row.secondary_value}{displayName(row.secondary_unit ?? '')}</span> },
           { header: '总播放', width: '100px', align: 'right', mobileRole: 'fact', render: (row) => <span className="font-sans text-[12px] text-muted-foreground">{row.total_plays ?? '—'} 次</span> },
         ]} />
-      <EntityRecordCard title="合作曲排行 · Feat Ranking" subtitle="合作歌曲与常出现的合作艺人排行"
+      <EntityRecordCard title="合作曲排行 · Feat Ranking" subtitle="按播放次数查看你最常听的合作歌曲、专辑与合作艺人"
           headerExtra={featSummaryRow ? (
             <div aria-label="合作曲播放摘要" className="flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] border border-accent-foreground/20 bg-accent-foreground/[0.05] px-3 py-1.5 font-sans text-[10px] text-muted-foreground">
               <span>播放次数 <strong className="ml-1 font-serif text-[15px] font-semibold tabular-nums text-foreground">{Number(featSummaryRow.secondary_value ?? 0).toLocaleString('zh-CN')}</strong></span>
@@ -101,7 +101,7 @@ export function DiscoverySection({ data }: Props) {
             { header: '播放次数', width: '156px', align: 'right', mobileRole: 'primary' as const, render: (row) => <ValueBar value={row.value} max={max} suffix="次" label={`${displayName(row.name)}合作曲播放次数`} /> },
             ]
           }} />
-      <RecordCard title="同名异曲 · Same Name, Different Artist" subtitle="以歌名为索引，对照你听过的所有不同艺人版本">
+      <RecordCard title="同名异曲 · Same Name, Different Artist" subtitle="比较同一个歌名下不同艺人的版本">
           <MiniRankTable
             rows={data.same_name_diff_artist}
             mobileRenderRow={(row, index) => (

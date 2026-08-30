@@ -23,9 +23,9 @@ function entityNameCol(entity: string) {
 export function TimePatternsSection({ data }: Props) {
   return (
     <div>
-      <SectionHeader icon={Clock} title="时间习惯" subtitle="观察一天中的听歌时段、逐月冠军，以及深夜聆听比例如何随时间变化。" />
+      <SectionHeader icon={Clock} title="时间习惯" />
       <HourlySegmentsCard records={{ track: data.hourly_dominance?.track ?? [], album: data.hourly_dominance?.album ?? [], artist: data.hourly_dominance?.artist ?? [] }} />
-      <EntityRecordCard title="月度巅峰 · Monthly Peak" subtitle="逐个自然月列出当月播放次数最高的歌曲/专辑/艺人"
+      <EntityRecordCard title="月度巅峰 · Monthly Peak" subtitle="每个月播放次数最高的歌曲、专辑与艺人"
         recordsByEntity={{ track: data.monthly_peak?.track ?? [], album: data.monthly_peak?.album ?? [], artist: data.monthly_peak?.artist ?? [] }}
         columns={(entity) => [
           { header: '月份', width: '84px', mobileRole: 'fact', render: (row) => <RecordDateValue value={row.date} /> },

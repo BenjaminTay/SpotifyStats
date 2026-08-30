@@ -217,9 +217,9 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
 
   return (
     <div>
-      <SectionHeader icon={Sparkles} title="奇趣纪录" subtitle="那些让人会心一笑的冷知识——数据里的彩蛋" />
+      <SectionHeader icon={Sparkles} title="奇趣纪录" />
 
-      <RecordCard title="双榜空降 · Double Debut" subtitle="同一艺人的歌曲与专辑在同一周分别空降榜首">
+      <RecordCard title="双榜空降 · Double Debut" subtitle="同一艺人的歌曲和专辑在同一周同时空降榜首">
         <div className="mb-3 flex justify-end md:block">
           <SortToggle mode={debutSort.mode} desc={debutSort.desc} onChange={handleDebutSort} />
         </div>
@@ -252,7 +252,7 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
         ]} />
       </RecordCard>
 
-      <RecordCard title="全榜单制霸 · Triple #1" subtitle="同一周单曲榜、专辑榜、艺人榜三榜 #1 同属一人">
+      <RecordCard title="全榜单制霸 · Triple #1" subtitle="同一周同时拿下单曲榜、专辑榜和艺人榜第一名">
         <div className="mb-3 flex justify-end md:block">
           <SortToggle mode={tripleSort.mode} desc={tripleSort.desc} onChange={handleTripleSort} dateLabel="榜单周" />
         </div>
@@ -312,7 +312,7 @@ export function CuriositiesSection({ rec, covers, trackSummary, artistTrackCount
         ]} />
       </RecordCard>
 
-      <RecordCard title="同名异曲 · Same Name, Different Song" subtitle="相同歌名、不同艺人的歌曲">
+      <RecordCard title="同名异曲 · Same Name, Different Song" subtitle="不同艺人的同名歌曲">
         {sameNameDiffArtist.length > 0 ? (
           <div className="space-y-3">
             {sameNameDiffArtist.slice(0, 5).map((group) => (

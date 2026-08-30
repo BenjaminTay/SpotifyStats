@@ -89,7 +89,7 @@ export function HourlySegmentsCard({ records }: { records: EntityRecordFamily })
   return (
     <RecordCard
       title="时段统计 · Hourly Patterns"
-      subtitle="每小时播放冠军；按一天的三个八小时区段并排对照"
+      subtitle="每个小时播放次数最多的歌曲、专辑与艺人"
       toggle={<EntityRecordToggle value={active} available={available} onChange={setSelected} />}
     >
       {available.length === 0 ? (

@@ -36,10 +36,14 @@ export function WeekLink({ date }: { date: string }) {
 
 // ── shared sub-components ────────────────────────────────────
 
-export function CoverImg({ url }: { url?: string | null }) {
+export function CoverImg({ url, size = 'md' }: { url?: string | null; size?: 'sm' | 'md' }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
-  if (url && failedUrl !== url) return <img src={url} alt="" className="h-10 w-10 shrink-0 rounded-[8px] object-cover" onError={() => setFailedUrl(url)} loading="lazy" />
-  return <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-muted text-base">🎵</div>
+  const isSmall = size === 'sm'
+  const className = isSmall
+    ? 'h-5 w-5 shrink-0 rounded-[4px] object-cover'
+    : 'h-10 w-10 shrink-0 rounded-[8px] object-cover'
+  if (url && failedUrl !== url) return <img src={url} alt="" className={className} onError={() => setFailedUrl(url)} loading="lazy" />
+  return <div className={cn(className, 'flex items-center justify-center bg-muted', isSmall ? 'text-[9px]' : 'text-base')}>🎵</div>
 }
 
 export function ArtistCoverImg({ url, size }: { url?: string | null; size?: 'sm' | 'md' }) {
@@ -87,7 +91,7 @@ export function ChartWeeksValue({ value }: { value: number }) {
   return <span className="font-sans text-[13px] tabular-nums text-muted-foreground">{fmtNum(value)} 周</span>
 }
 
-export function SectionHeader({ icon: Icon, title, subtitle }: { icon: ComponentType<{ className?: string }>; title: string; subtitle: string }) {
+export function SectionHeader({ icon: Icon, title, subtitle }: { icon: ComponentType<{ className?: string }>; title: string; subtitle?: string }) {
   const isPhone = useViewportMode() === 'phone'
   if (isPhone) return null
   return (
@@ -96,7 +100,7 @@ export function SectionHeader({ icon: Icon, title, subtitle }: { icon: Component
         <Icon className="h-5 w-5 text-accent-foreground" />
         <h2 className="font-serif text-[28px] font-bold tracking-[-0.5px]">{title}</h2>
       </div>
-      <p className="font-sans text-[13px] text-muted-foreground">{subtitle}</p>
+      {subtitle && <p className="font-sans text-[13px] text-muted-foreground">{subtitle}</p>}
     </div>
   )
 }

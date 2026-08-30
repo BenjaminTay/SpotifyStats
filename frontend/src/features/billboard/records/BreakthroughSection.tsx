@@ -22,9 +22,9 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
 
   return (
     <div>
-      <SectionHeader icon={Zap} title="爆发时刻" subtitle="那些让人瞠目结舌的瞬间——榜单上最极致的爆发力" />
+      <SectionHeader icon={Zap} title="爆发时刻" />
 
-      <RecordCard title="艺人霸榜 · Most Simultaneous Chart Entries" subtitle="单周同一艺人上榜歌曲数最多">
+      <RecordCard title="艺人霸榜 · Most Simultaneous Chart Entries" subtitle="同一周上榜歌曲最多的艺人">
         {rec.artist_simul && (
           <div className="mb-4">
             <FeaturedRecord label="艺人霸榜纪录" value={rec.artist_simul.count} unit="首歌曲同时在榜" caption={`${rec.artist_simul.artist} · ${fmtDate(rec.artist_simul.week)}`} coverUrl={covers.artist.get(rec.artist_simul.artist)} linkTo={billboardDetailLink(`/music/artists/${encodeURIComponent(rec.artist_simul.artist || '')}`)} />
@@ -40,7 +40,7 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
         )}
       </RecordCard>
 
-      <RecordCard title="专辑霸榜 · Most Simultaneous Album Entries" subtitle="单周同一专辑上榜歌曲数最多">
+      <RecordCard title="专辑霸榜 · Most Simultaneous Album Entries" subtitle="同一周上榜歌曲最多的专辑">
         {rec.album_simul && (
           <div className="mb-4">
             <FeaturedRecord label="专辑霸榜纪录" value={rec.album_simul.count} unit="首歌曲同时在榜" caption={`${rec.album_simul.album} · ${rec.album_simul.artist} · ${fmtDate(rec.album_simul.week)}`} coverUrl={covers.album.get(rec.album_simul.album)} linkTo={billboardDetailLink(`/music/albums/${encodeURIComponent(rec.album_simul.album || '')}`)} />
@@ -73,7 +73,7 @@ export function BreakthroughSection({ rec, covers }: { rec: BillboardRecords; co
         </RecordCard>
       </div>
 
-      <RecordCard title="最快出榜 · Fastest Exit After #1" subtitle="夺冠后最快跌出榜单">
+      <RecordCard title="最快出榜 · Fastest Exit After #1" subtitle="夺冠后用最少周数离开榜单">
         <MiniRankTable rows={rec.fastest_exit_after_no1} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
           { header: '歌曲', render: (r) => <TrackCell trackId={r.track_id} trackName={r.track_name} artistName={r.artist_name} artistNames={r.artist_names} coverUrl={covers.track.get(r.track_id)} /> },

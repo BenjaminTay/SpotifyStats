@@ -50,9 +50,9 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
 
   return (
     <div>
-      <SectionHeader icon={Clock} title="持久传奇" subtitle="时间是最严苛的裁判——那些经得起岁月考验的纪录" />
+      <SectionHeader icon={Clock} title="持久传奇" />
 
-      <RecordCard title="最长在榜 · Longest Charting" subtitle="在榜周数最多" toggle={<TrackAlbumToggle value={chartingType} onChange={setChartingType} showArtist />}>
+      <RecordCard title="最长在榜 · Longest Charting" toggle={<TrackAlbumToggle value={chartingType} onChange={setChartingType} showArtist />}>
         {chartingType === 'track' ? (
           <MiniRankTable rows={rec.longest_charting as LongestChartingRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
@@ -80,7 +80,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         )}
       </RecordCard>
 
-      <RecordCard title="最长连续在榜 · Longest Consecutive Streak" subtitle="无断档连续在榜纪录" toggle={<TrackAlbumToggle value={streakType} onChange={setStreakType} showArtist />}>
+      <RecordCard title="最长连续在榜 · Longest Consecutive Streak" toggle={<TrackAlbumToggle value={streakType} onChange={setStreakType} showArtist />}>
         {streakType === 'track' ? (
           <MiniRankTable rows={rec.longest_streak as LongestStreakRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
@@ -105,7 +105,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         )}
       </RecordCard>
 
-      <RecordCard title="隐形冠军 · Longest Without Top 5" subtitle="在榜最久但从未来到 Top 5" mobileSubtitle="在榜最久但从未进入 Top 5" toggle={<TrackAlbumToggle value={noTop5Type} onChange={setNoTop5Type} showArtist />}>
+      <RecordCard title="隐形冠军 · Longest Without Top 5" subtitle="在榜时间最长，却从未进入前五名" mobileSubtitle="在榜时间最长，却从未进入前五名" toggle={<TrackAlbumToggle value={noTop5Type} onChange={setNoTop5Type} showArtist />}>
         {noTop5Type === 'track' ? (
           <MiniRankTable rows={rec.longest_no_top5 as LongestNoTop5Record[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
@@ -130,7 +130,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         )}
       </RecordCard>
 
-      <RecordCard title="万年老二 · Most Weeks at #2 Without #1" subtitle="在 #2 停留最久但从未夺冠" mobileSubtitle="在第 2 名停留最久但从未夺冠" toggle={<TrackAlbumToggle value={no2Type} onChange={setNo2Type} showArtist />}>
+      <RecordCard title="万年老二 · Most Weeks at #2 Without #1" subtitle="在第二名停留最久，却从未夺冠" mobileSubtitle="在第二名停留最久，却从未夺冠" toggle={<TrackAlbumToggle value={no2Type} onChange={setNo2Type} showArtist />}>
         {no2Type === 'track' ? (
           <MiniRankTable rows={rec.most_weeks_no2_no_no1 as MostWeeksNo2Record[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
@@ -180,7 +180,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         )}
       </RecordCard>
 
-      <RecordCard title="稳如磐石 · Longest Consecutive Same Rank" subtitle="在同一排名连续停留最久" toggle={<TrackAlbumToggle value={sameRankType} onChange={setSameRankType} showArtist />}>
+      <RecordCard title="稳如磐石 · Longest Consecutive Same Rank" subtitle="在同一名次连续停留时间最长" toggle={<TrackAlbumToggle value={sameRankType} onChange={setSameRankType} showArtist />}>
         {sameRankType === 'track' ? (
           <MiniRankTable rows={rec.longest_consecutive_same_rank as LongestSameRankRecord[]} columns={[
             { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
@@ -208,7 +208,7 @@ export function LongevitySection({ rec, covers }: { rec: BillboardRecords; cover
         )}
       </RecordCard>
 
-      <RecordCard title="最长艺人生涯 · Longest Artist Chart Span" subtitle="首次上榜到最近上榜跨度最大">
+      <RecordCard title="最长艺人生涯 · Longest Artist Chart Span" subtitle="从首次上榜到最近上榜，榜单生涯跨度最长的艺人">
         <MiniRankTable rows={rec.longest_artist_span} columns={[
           { header: '#', width: '48px', align: 'center', render: (_, idx) => <RankNum rank={idx + 1} /> },
           { header: '艺人', render: (r) => <ArtistCell artistName={r.artist_name} coverUrl={covers.artist.get(r.artist_name)} /> },

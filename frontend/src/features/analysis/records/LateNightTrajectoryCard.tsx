@@ -81,7 +81,7 @@ export function LateNightTrajectoryCard({ trajectory }: { trajectory?: Trajector
   )
 
   return (
-    <RecordCard title="深夜聆听轨迹 · Late-night Listening" subtitle="0:00–4:59 的有效播放占比，趋势保留全部时间点" toggle={toggle}>
+    <RecordCard title="深夜聆听轨迹 · Late-night Listening" subtitle="凌晨 0:00–4:59 的播放占比，按月或季度查看变化" toggle={toggle}>
       {rows.length === 0 ? (
         <div className="rounded-[12px] border border-dashed border-border px-4 py-10 text-center">
           <p className="font-serif text-[16px] font-semibold">暂无深夜轨迹</p>

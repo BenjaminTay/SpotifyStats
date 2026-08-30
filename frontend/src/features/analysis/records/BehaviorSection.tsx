@@ -9,10 +9,9 @@ interface Props { data: PlaybackBehaviorRecords }
 export function PlaybackMilestonesCard({ data }: Props) {
   useChineseTextVersion()
   const milestones = data.playback_milestones ?? []
-  const currentTotal = milestones[0]?.total_plays
 
   return (
-    <RecordCard title="播放里程碑 · Playback Milestones" subtitle={`${currentTotal ? `当前共 ${currentTotal.toLocaleString('zh-CN')} 次有效播放 · ` : ''}仅展示已经完成的动态标准节点`}>
+    <RecordCard title="播放里程碑 · Playback Milestones">
       {milestones.length > 0 ? (
           <ol className="divide-y divide-border/50">
             {milestones.map((row) => (

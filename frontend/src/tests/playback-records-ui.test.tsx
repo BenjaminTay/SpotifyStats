@@ -89,6 +89,28 @@ function renderTimePatterns(data: PlaybackTimePatternRecords) {
   return render(<ThemeProvider><MemoryRouter><TimePatternsSection data={data} /></MemoryRouter></ThemeProvider>)
 }
 
+function renderAllRecordCopy() {
+  const emptyData: PlaybackRecordsData = {
+    obsession: obsessionData(),
+    reigns: { daily_champion: emptyFamily(), monthly_reign: emptyFamily(), yearly_reign: emptyFamily(), fastest_milestone: emptyFamily(), consecutive_champion_days: emptyFamily() },
+    longevity: { longest_streak_days: emptyFamily(), longest_span: emptyFamily(), comeback_after_sleep: emptyFamily(), most_active_months: emptyFamily(), user_active_streak: [] },
+    time_patterns: { hourly_dominance: emptyFamily(), monthly_peak: emptyFamily(), yearly_peak: emptyFamily(), late_night_peak_day: [], weekday_preference: [] },
+    discovery: { discovery_day: emptyFamily(), longest_no_repeat: emptyFamily(), album_completionist: emptyFamily(), same_name_diff_artist: [], feat_lover: emptyFamily() },
+    behavior: { skip_storm: emptyFamily(), shuffle_peak: [], platform_reign: [], platform_switch_day: [], playback_milestones: [] },
+  }
+  return render(
+    <ThemeProvider>
+      <MemoryRouter>
+        <ObsessionSection data={emptyData.obsession} reigns={emptyData.reigns} behavior={emptyData.behavior} />
+        <ReignsSection data={emptyData.reigns} />
+        <LongevitySection data={emptyData.longevity} />
+        <TimePatternsSection data={emptyData.time_patterns} />
+        <DiscoverySection data={emptyData.discovery} />
+      </MemoryRouter>
+    </ThemeProvider>,
+  )
+}
+
 function RouterStateProbe() {
   const location = useLocation()
   const navigationType = useNavigationType()
@@ -136,6 +158,27 @@ describe('播放记录 UI', () => {
       }
     }
     expect(observed.size).toBe(20)
+  })
+
+  it('播放记录文案不暴露算法细节，并删除冗余栏目导语', () => {
+    renderAllRecordCopy()
+
+    for (const text of [
+      '把最强烈的一天、关键里程碑与最快达成纪录放在同一条个人音乐时间线上。',
+      '关于谁在你的时间线上统治过——日冠军、月冠军、年冠军。',
+      '关于长期关系——哪首歌陪你最久、谁在离开后再次回来。',
+      '观察一天中的听歌时段、逐月冠军，以及深夜聆听比例如何随时间变化。',
+      '从新发现、完整专辑、合作歌曲与同名作品中，看见你的聆听广度。',
+      '当前共 64,986 次有效播放 · 仅展示已经完成的动态标准节点',
+    ]) {
+      expect(screen.queryByText(text)).not.toBeInTheDocument()
+    }
+
+    expect(screen.queryByText(/最长 run|同一实体|动态标准节点|曲目总数可靠|取各曲目播放次数的最小值|缺失可靠发行日不参与|以歌名为索引|八小时区段并排对照/)).not.toBeInTheDocument()
+    expect(screen.getByText('按播放次数或听歌时长，查看歌曲、专辑与艺人的单日最高纪录')).toBeInTheDocument()
+    expect(screen.getByText('一次连续播放中，连续听同一歌曲、专辑或艺人的最长纪录')).toBeInTheDocument()
+    expect(screen.getByText('凌晨 0:00–4:59 的播放占比，按月或季度查看变化')).toBeInTheDocument()
+    expect(screen.getByText('比较同一个歌名下不同艺人的版本')).toBeInTheDocument()
   })
 
   it('移动端使用横向滑动栏目条，并省略重复的栏目标题和说明', async () => {
@@ -413,7 +456,7 @@ describe('播放记录 UI', () => {
     }
 
     const { container, unmount } = renderTimePatterns(timeData)
-    expect(screen.getByText('逐个自然月列出当月播放次数最高的歌曲/专辑/艺人')).toBeInTheDocument()
+    expect(screen.getByText('每个月播放次数最高的歌曲、专辑与艺人')).toBeInTheDocument()
     expect(screen.getByText('逐月冠军')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: '0:00-7:00 歌曲时段冠军' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: '8:00-15:00 歌曲时段冠军' })).toBeInTheDocument()
@@ -423,14 +466,14 @@ describe('播放记录 UI', () => {
     expect(container.querySelector('img[src="/covers/albums/hour-0.jpg"]')).not.toBeNull()
     expect(container.querySelectorAll('[data-hour-offset="0"]')).toHaveLength(3)
     expect(screen.queryByLabelText('下一页')).not.toBeInTheDocument()
-    expect(screen.getByText('观察一天中的听歌时段、逐月冠军，以及深夜聆听比例如何随时间变化。')).toBeInTheDocument()
+    expect(screen.queryByText('观察一天中的听歌时段、逐月冠军，以及深夜聆听比例如何随时间变化。')).not.toBeInTheDocument()
     expect(screen.queryByText('年度巅峰 · Yearly Peak')).not.toBeInTheDocument()
     expect(screen.queryByText("跨年时刻 · New Year's Eve")).not.toBeInTheDocument()
     expect(screen.queryByText('重复年冠军')).not.toBeInTheDocument()
     unmount()
 
     render(<MemoryRouter><ReignsSection data={reignData} /></MemoryRouter>)
-    expect(screen.getByText('累计获得自然月播放冠军次数最多的歌曲/专辑/艺人')).toBeInTheDocument()
+    expect(screen.getByText('获得月冠军次数最多的歌曲、专辑与艺人')).toBeInTheDocument()
     expect(screen.getByText('累计月冠军')).toBeInTheDocument()
     expect(screen.queryByText('最快里程碑 · Fastest Milestone')).not.toBeInTheDocument()
   })
@@ -598,7 +641,7 @@ describe('播放记录 UI', () => {
 
     const { container } = render(<MemoryRouter><PlaybackMilestonesCard data={data} /></MemoryRouter>)
 
-    expect(screen.getByText('当前共 64,986 次有效播放 · 仅展示已经完成的动态标准节点')).toBeInTheDocument()
+    expect(screen.queryByText('当前共 64,986 次有效播放 · 仅展示已经完成的动态标准节点')).not.toBeInTheDocument()
     expect(screen.getByText('1,000')).toBeInTheDocument()
     expect(screen.getByText('里程碑歌曲')).toBeInTheDocument()
     expect(screen.getByText('里程碑艺人')).toBeInTheDocument()
