@@ -10,12 +10,12 @@ import { findChrome } from './lib/chrome_executable.mjs'
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 5000
 const DEFAULT_ROUTE_READY_WAIT_MS = 12000
-const DYNAMIC_ROUTE_WAIT_MS = 12000
-const SLOW_ROUTE_WAIT_MS = 45000
+const DYNAMIC_ROUTE_WAIT_MS = 45000
+const SLOW_ROUTE_WAIT_MS = 360000
 const ROUTE_READY_POLL_INTERVAL_MS = 1000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
-const SLOW_ROUTES = new Set(['/analysis/records'])
+const SLOW_ROUTES = new Set(['/analysis/records', '/billboard/year-end', '/account'])
 const DETAIL_ROUTE_FILTERS = {
   min_ms: 30000,
   music_only: true,

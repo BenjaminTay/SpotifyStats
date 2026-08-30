@@ -6,7 +6,7 @@ Settings 的“音乐源数据管理”是人工音乐事实治理的唯一入�
 
 歌曲手动归并必须允许搜索并明确选择两个不同的 owner `track_id`、指定代表版本和生效层级。`tracks.track_id` 是唯一的应用、统计和公开歌曲身份，不再另建 canonical track ID。一个 `track_id` 可以拥有多个 Spotify Track ID；一个 Spotify Track ID 必须且只能归属于一个现有 `track_id`。历史原始 Track ID、兼容 L1 ID、Spotify ID 和名称候选进入治理工作区前必须统一经过 `spotify_track_owners` 解析；不拥有任何 Spotify ID 且已投影到其他 owner 的兼容壳记录不得单独展示或写入分组。新导入记录先按 Spotify owner 命中已有 `track_id`；没有 owner 时才沿用既有“艺人 + 曲名”匹配或创建 track，再登记 owner。日常版本关系只在 L2 `recording`（同一录音/母带）或 L3 `composition`（同一作品，包括重录、现场、Acoustic、Remix 等）建立。
 
-歌曲与专辑的“已保存分组”必须使用一致的卡片结构与成员操作。歌曲分组以稳定 `track_id` 列出成员，并支持切换代表曲目、移除非代表成员和删除覆盖组；`track_group_members` 是 L2/L3 的原始治理关系，`track_group_l1_members` 仅作旧消费代码的兼容投影，且其中 `l1_id` 必须等于对应 `track_id`。每个成员默认折叠其历史来源，展开后显示代表来源、封面、有效艺人和来源冲突。这些操作不得修改原始 `tracks`、`plays` 或署名事实。
+歌曲与专辑的“已保存分组”必须使用一致的卡片结构与成员操作。歌曲分组以稳定 `track_id` 列出成员，并支持切换代表曲目、移除非代表成员和删除覆盖组；当前活动 L2/L3 关系以 `track_group_l1_members` 为准，其中 `l1_id` 必须等于对应 owner `track_id`，`track_group_members` 只保留旧版兼容数据，不得作为新自动任务的写入或统计来源。每个成员默认折叠其历史来源，展开后显示代表来源、封面、有效艺人和来源冲突。这些操作不得修改原始 `tracks`、`plays` 或署名事实。
 
 播放归属优先使用事件发生时保存的 `plays.spotify_track_id_at_play`，仅在缺失时回退 `tracks.spotify_track_id`，再通过 `spotify_track_owners` 解析到唯一 `track_id`；没有 Spotify ID 时直接使用 `plays.track_id`。已登记 owner 不能因名称、简繁、艺人、专辑、封面、ISRC 或时长变化而自动改写。确定性历史回填按“有播放记录优先、播放行数最多、艺人与专辑元数据更完整、最后取最小稳定 track_id”选择 owner，并保留人工纠错的扩展位。
 

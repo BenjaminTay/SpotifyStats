@@ -50,6 +50,7 @@
 
 ### 元数据、AI 与质量门禁
 
+- [`2026-08-30-l2-governance-execution-and-acceptance.md`](2026-08-30-l2-governance-execution-and-acceptance.md)
 - [`2026-08-27-settings-rebuild-and-data-governance-remediation.md`](2026-08-27-settings-rebuild-and-data-governance-remediation.md)
 - [`2026-08-27-spotify-track-l1-identity-migration.md`](2026-08-27-spotify-track-l1-identity-migration.md)
 - [`2026-08-24-fullstack-gate-duration-optimization.md`](2026-08-24-fullstack-gate-duration-optimization.md)

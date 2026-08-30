@@ -64,3 +64,14 @@ def stable_record_sort(
     if limit is not None:
         result = result.head(limit)
     return result.reset_index(drop=True)
+
+
+def rank_records(
+    frame: pd.DataFrame,
+    sort_keys: Sequence[SortKey],
+    stable_columns: Sequence[str],
+    columns: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Return one deterministic Top 20 record table with optional projection."""
+    ranked = stable_record_sort(frame, sort_keys, stable_columns=stable_columns, limit=20)
+    return ranked[list(columns)] if columns else ranked

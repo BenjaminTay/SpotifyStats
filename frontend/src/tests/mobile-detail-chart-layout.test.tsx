@@ -108,6 +108,10 @@ describe('移动详情图表布局', () => {
     renderStatsPanel()
 
     const trigger = await screen.findByRole('button', { name: '选择时间范围，当前全部时间' })
+    expect(mocks.get).toHaveBeenCalledWith(
+      '/music/tracks/l1/7/stats',
+      expect.objectContaining({ merge_level: 2 }),
+    )
     expect(trigger).toHaveClass('mobile-time-range-trigger-compact')
     expect(trigger).not.toHaveClass('mobile-time-range-trigger-icon-only')
     expect(trigger.closest('.entity-stats-controls')).toHaveClass('entity-stats-controls-mobile', 'justify-end')

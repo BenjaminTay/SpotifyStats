@@ -62,7 +62,7 @@ def test_frontend_route_smoke_script_checks_route_content_markers():
     assert "'/settings': ['设置', 'Spotify']" in source
     assert "for (let attempt = 1; attempt <= 2; attempt += 1)" in source
     assert "RETRY" in source
-    assert "const SLOW_ROUTE_WAIT_MS = 45000" in source
+    assert "const SLOW_ROUTE_WAIT_MS = 360000" in source
     assert "ROUTE_READY_POLL_INTERVAL_MS" in source
     assert "await client.send('Page.navigate', { url })" in source
     assert "async function navigateAndReadState" not in source
@@ -102,7 +102,9 @@ def test_frontend_route_smoke_default_wait_allows_cold_route_content():
 
     assert "const DEFAULT_WAIT_MS = 5000" in source
     assert "const DEFAULT_ROUTE_READY_WAIT_MS = 12000" in source
-    assert "const DYNAMIC_ROUTE_WAIT_MS = 12000" in source
+    assert "const DYNAMIC_ROUTE_WAIT_MS = 45000" in source
+    assert "'/billboard/year-end'" in source
+    assert "'/account'" in source
     assert "isDynamicRoute(route)" in source
 
 

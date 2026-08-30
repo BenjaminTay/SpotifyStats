@@ -57,7 +57,7 @@ function entityStatsRequest(
     queryKey: queryKeys.music.entityStats(kind, entityId, statsParams),
     queryFn: () => {
       if (kind === 'track' && trackId != null) {
-        return api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, { ...filters, ...periodParams, merge_level: resolvedMergeLevel, include_rank_context: includeRankContext })
+        return api.get<EntityStatsResponse>(`/music/tracks/l1/${trackId}/stats`, { ...filters, ...periodParams, merge_level: resolvedMergeLevel, include_rank_context: includeRankContext })
       }
       if (kind === 'album' && albumName) {
         return api.get<EntityStatsResponse>(

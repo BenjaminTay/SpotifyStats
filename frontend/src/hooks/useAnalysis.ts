@@ -205,7 +205,7 @@ export const analysisApi = {
     const q = analysisParams(filters, params)
     return fetchQuery(
       queryKeys.music.entityStats('track', String(trackId), q),
-      () => api.get<EntityStatsResponse>(`/music/tracks/${trackId}/stats`, q),
+      () => api.get<EntityStatsResponse>(`/music/tracks/l1/${trackId}/stats`, q),
     )
   },
   albumStats: (
@@ -339,7 +339,7 @@ export const analysisApi = {
   ) => {
     const path =
       kind === 'track'
-        ? `/music/tracks/${id}/plays`
+        ? `/music/tracks/l1/${id}/plays`
         : kind === 'album'
           ? `/music/albums/${encodeURIComponent(id)}/plays`
           : `/music/artists/${encodeURIComponent(id)}/plays`
@@ -389,7 +389,7 @@ export const analysisApi = {
   ) => {
     const path =
       kind === 'track'
-        ? `/music/tracks/${id}/play-dates`
+        ? `/music/tracks/l1/${id}/play-dates`
         : kind === 'album'
           ? `/music/albums/${encodeURIComponent(id)}/play-dates`
           : `/music/artists/${encodeURIComponent(id)}/play-dates`

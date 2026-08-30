@@ -2,12 +2,7 @@
 
 import pandas as pd
 
-from backend.domains.billboard.record_sorting import stable_record_sort
-
-
-def _rank(frame, sort_keys, stable_columns, columns=None):
-    ranked = stable_record_sort(frame, sort_keys, stable_columns=stable_columns, limit=20)
-    return ranked[columns] if columns else ranked
+from backend.domains.billboard.record_sorting import rank_records as _rank
 
 
 def compute_endurance_records(

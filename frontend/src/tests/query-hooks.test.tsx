@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
-import { useBillboardWeekly } from '@/hooks/useBillboard'
+import { useBillboardWeekly, useBillboardYearEnd } from '@/hooks/useBillboard'
 import {
   useWeeklyDigest,
   useMonthlyPersonality,
@@ -74,12 +74,12 @@ describe('Phase 5 query hook migration', () => {
 
     expect(api.get).toHaveBeenNthCalledWith(
       1,
-      '/music/tracks/4309/plays',
+      '/music/tracks/l1/4309/plays',
       expect.objectContaining({ merge_level: 3 }),
     )
     expect(api.get).toHaveBeenNthCalledWith(
       2,
-      '/music/tracks/4309/play-dates',
+      '/music/tracks/l1/4309/play-dates',
       expect.objectContaining({ merge_level: 3 }),
     )
   })
@@ -103,6 +103,28 @@ describe('Phase 5 query hook migration', () => {
     expect(api.get).toHaveBeenCalledTimes(1)
     expect(client.getQueryData(queryKeys.billboard.weekly({ merge_level: 2, include_compilations: false }))).toBe(weekly)
     expect(result.current.selectedWeek).toBe('2026-05-24')
+  })
+
+  it('allows the deterministic year-end cold build to outlive the default API timeout', async () => {
+    const client = createClient()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      meta: { year: 2026, available_years: [] },
+      tracks: [],
+      albums: [],
+      artists: [],
+    })
+
+    const { result } = renderHook(() => useBillboardYearEnd(2026), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(api.get).toHaveBeenCalledWith(
+      '/billboard/year-end',
+      { year: 2026, merge_level: 2, include_compilations: false },
+      300_000,
+    )
   })
 
   it('follows weekly URL history and restores the latest week when the query is removed', async () => {

@@ -18,6 +18,7 @@ import {
 
 let cachedWeekIndex = 0
 let cachedWeeklyIndex = 0
+const YEAR_END_REQUEST_TIMEOUT_MS = 300_000
 
 export function loadBillboardData(
   params: BillboardContextParams,
@@ -297,7 +298,7 @@ function prefetchBillboardYearEndYears(
     const params = billboardYearEndParams(availableYear, mergeLevel, includeCompilations)
     void queryClientForHook.prefetchQuery({
       queryKey: queryKeys.billboard.yearEnd(params),
-      queryFn: () => api.get<BillboardYearEndResponse>('/billboard/year-end', params),
+      queryFn: () => api.get<BillboardYearEndResponse>('/billboard/year-end', params, YEAR_END_REQUEST_TIMEOUT_MS),
     })
   })
 }
@@ -312,7 +313,7 @@ export function useBillboardYearEnd(
   const params = billboardYearEndParams(year, mergeLevel, includeCompilations)
   const query = useQuery({
     queryKey: queryKeys.billboard.yearEnd(params),
-    queryFn: () => api.get<BillboardYearEndResponse>('/billboard/year-end', params),
+    queryFn: () => api.get<BillboardYearEndResponse>('/billboard/year-end', params, YEAR_END_REQUEST_TIMEOUT_MS),
     placeholderData: keepPreviousData,
     enabled,
   })
