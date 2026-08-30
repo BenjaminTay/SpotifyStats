@@ -180,9 +180,23 @@ if [[ ! "$minimum_available_mib" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 capacity_report="$work_dir/capacity.json"
-python3 "$CAPACITY_PROBE" \
-  --db-path "$baseline_path" --min-available-mib "$minimum_available_mib" \
-  --phase before --json-output "$capacity_report"
+capacity_ready="false"
+for capacity_attempt in {1..10}; do
+  if python3 "$CAPACITY_PROBE" \
+      --db-path "$baseline_path" --min-available-mib "$minimum_available_mib" \
+      --phase before --json-output "$capacity_report"; then
+    capacity_ready="true"
+    break
+  fi
+  if [[ "$capacity_attempt" -lt 10 ]]; then
+    echo "搜索统计 bootstrap 容量暂未满足；保持现网在线并等待重试：attempt=$capacity_attempt/10" >&2
+    sleep 15
+  fi
+done
+if [[ "$capacity_ready" != "true" ]]; then
+  echo "搜索统计 bootstrap 容量在有界等待后仍不满足；拒绝开始冷构建。" >&2
+  exit 1
+fi
 
 baseline_dir="$(dirname -- "$baseline_path")"
 baseline_file="$(basename -- "$baseline_path")"
