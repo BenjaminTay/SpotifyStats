@@ -25,6 +25,7 @@
 `reference/` 是当前统计和数据契约的权威入口。代码、测试或部署运行手册若与这里冲突，应先核对实际实现和证据，再更新规则文档。
 
 - [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md)：逻辑播放事件、收听时长、版本合并、专辑项目和 Billboard 统计
+- [`reference/homepage-presentation-rules.md`](reference/homepage-presentation-rules.md)：首页 Billboard 状态、长期记忆候选池与刷新随机选择
 - [`reference/account-archive-statistics.md`](reference/account-archive-statistics.md)：音乐档案、收藏旅程、回归、发现和其他媒体统计
 - [`reference/music-metadata-management.md`](reference/music-metadata-management.md)：版本归并、曲目署名、艺人身份和人工治理
 - [`reference/2026-07-04-artist-genre-taxonomy.md`](reference/2026-07-04-artist-genre-taxonomy.md)：流派四轴与消费展示 taxonomy

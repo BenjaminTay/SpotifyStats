@@ -15,6 +15,7 @@
 - 项目介绍与启动：[README.md](README.md)
 - 文档地图：[docs/README.md](docs/README.md)
 - 当前统计规则：[docs/reference/playback-stats-rules.md](docs/reference/playback-stats-rules.md)
+- 首页展示规则：[docs/reference/homepage-presentation-rules.md](docs/reference/homepage-presentation-rules.md)
 - 音乐档案规则：[docs/reference/account-archive-statistics.md](docs/reference/account-archive-statistics.md)
 - 元数据治理：[docs/reference/music-metadata-management.md](docs/reference/music-metadata-management.md)
 - 流派与语言：[docs/reference/2026-07-04-artist-genre-taxonomy.md](docs/reference/2026-07-04-artist-genre-taxonomy.md)、[docs/reference/artist-language-statistics.md](docs/reference/artist-language-statistics.md)

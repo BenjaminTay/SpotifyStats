@@ -9,7 +9,7 @@ import { HomeDesktopExperience } from '@/features/home/HomeDesktopExperience'
 import { HomeEmpty } from '@/features/home/HomeStates'
 import { HomePhoneExperience } from '@/features/home/HomePhoneExperience'
 import { useAnalysisQueryState } from '@/components/shared/AnalysisControls'
-import { useHomeOverview } from '@/hooks/useHome'
+import { chooseHomeRediscovery, useHomeOverview, useHomeRediscovery } from '@/hooks/useHome'
 import type { AnalysisFilters } from '@/types/analysis'
 import type { HomeOverviewResponse } from '@/types/home'
 
@@ -59,6 +59,13 @@ const data: HomeOverviewResponse = {
   },
   yearly_review: { state: 'ready', year: 2026, headline: '这一年的声音与轨迹', statement: '八章个人音乐年鉴。', entity: track },
   rediscovery: { entity: track, last_played: '2025-06-01', total_plays: 46, days_since_last_play: 435 },
+  rediscovery_candidates: [
+    { entity: track, last_played: '2025-06-01', total_plays: 46, days_since_last_play: 435 },
+    {
+      entity: { ...track, entity_id: 43, name: '另一首久违的歌', deep_link: '/music/tracks/43' },
+      last_played: '2025-05-01', total_plays: 28, days_since_last_play: 466,
+    },
+  ],
 }
 
 const filters: AnalysisFilters = {
@@ -86,7 +93,26 @@ function router(children: ReactNode) {
 describe('正式首页 V1', () => {
   afterEach(() => {
     vi.useRealTimers()
+    window.sessionStorage.clear()
     vi.restoreAllMocks()
+  })
+
+  it('chooses a different rediscovery track on the next load', () => {
+    const candidates = data.rediscovery_candidates ?? []
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+
+    expect(chooseHomeRediscovery(candidates, data.filter_fingerprint)?.entity.entity_id).toBe(42)
+    expect(chooseHomeRediscovery(candidates, data.filter_fingerprint)?.entity.entity_id).toBe(43)
+  })
+
+  it('keeps the selected rediscovery track stable across rerenders', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const { result, rerender } = renderHook(() => useHomeRediscovery(data))
+
+    expect(result.current?.entity.entity_id).toBe(42)
+    rerender()
+    expect(result.current?.entity.entity_id).toBe(42)
+    expect(Math.random).toHaveBeenCalledTimes(1)
   })
 
   it('renders the streamlined desktop music front page without utility rows', () => {

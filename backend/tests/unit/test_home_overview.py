@@ -54,6 +54,30 @@ def test_headline_prefers_evidenced_comeback(monkeypatch):
     assert result["statement"] == "最近4周播放了 6 次。"
 
 
+def test_rediscovery_returns_ranked_candidate_pool(monkeypatch):
+    all_tracks = _track_rows(
+        [
+            (7, "最常重听的久违歌曲", "艺人甲", 15, "2026-01-01"),
+            (8, "第二首久违歌曲", "艺人乙", 12, "2026-02-01"),
+            (9, "还不够久的歌曲", "艺人丙", 20, "2026-06-01"),
+            (10, "播放次数不足", "艺人丁", 9, "2026-01-01"),
+        ]
+    )
+    monkeypatch.setattr(
+        overview,
+        "_track_cover_urls",
+        lambda _conn, track_ids: {track_id: f"/{track_id}.jpg" for track_id in track_ids},
+    )
+
+    result = overview._rediscovery_candidates(
+        sqlite3.connect(":memory:"), all_tracks, overview.date(2026, 8, 1)
+    )
+
+    assert [item["entity"]["entity_id"] for item in result] == [7, 8]
+    assert result[0]["days_since_last_play"] == 212
+    assert result[1]["entity"]["cover_url"] == "/8.jpg"
+
+
 def test_billboard_champion_uses_project_identity_and_previous_rank():
     rows = [
         {

@@ -28,6 +28,7 @@ def test_home_overview_response_uses_complete_filter_context(client):
     assert payload["schema_version"] == "home_overview_v2"
     assert payload["filter_fingerprint"]
     assert payload["state"] in {"ready", "limited", "empty"}
+    assert isinstance(payload["rediscovery_candidates"], list)
     coverage = payload["coverage"]
     assert "source_latest_date" in coverage
     assert "latest_effective_play_date" in coverage

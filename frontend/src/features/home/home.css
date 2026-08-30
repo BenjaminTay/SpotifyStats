@@ -277,7 +277,7 @@
 .home-chart-champion .home-entity-artwork { width: 100%; aspect-ratio: 1; border-radius: 2px; font-size: 46px; }
 .home-chart-copy { display: flex; min-width: 0; flex-direction: column; grid-column: 1 / -1; }
 .home-chart-copy strong { overflow: hidden; font-family: var(--font-serif); font-size: 21px; text-overflow: ellipsis; white-space: nowrap; }
-.home-chart-copy > span { overflow: hidden; margin-top: 3px; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.home-chart-copy > span { min-height: 1.2em; overflow: hidden; margin-top: 3px; color: var(--muted-foreground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .home-chart-copy small { margin-top: 12px; color: var(--accent-foreground); font-size: 9px; font-weight: 700; }
 .home-chart-arrow { position: absolute; right: 24px; bottom: 26px; width: 16px; height: 16px; opacity: 0; transition: opacity 160ms ease, transform 160ms ease; }
 .home-chart-champion:hover .home-chart-arrow { opacity: 1; transform: translateX(3px); }

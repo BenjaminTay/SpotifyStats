@@ -133,3 +133,4 @@ class HomeOverviewResponse(BaseModel):
     billboard: HomeBillboard
     yearly_review: HomeYearlyReview
     rediscovery: HomeRediscovery | None = None
+    rediscovery_candidates: list[HomeRediscovery] = Field(default_factory=list)

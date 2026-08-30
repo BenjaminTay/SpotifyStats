@@ -595,9 +595,9 @@ def _yearly(context: YearlyReviewFilterContext) -> dict[str, Any]:
         }
 
 
-def _rediscovery(
+def _rediscovery_candidates(
     conn: sqlite3.Connection, all_tracks: pd.DataFrame, latest: date
-) -> dict[str, Any] | None:
+) -> list[dict[str, Any]]:
     cutoff = latest - timedelta(days=90)
     grouped = (
         all_tracks.groupby(["home_track_id", "home_track_name", "artist_name"], dropna=False)
@@ -613,22 +613,35 @@ def _rediscovery(
         (grouped["total_plays"] >= 10) & (grouped["last_played_date"] < cutoff)
     ].copy()
     if candidates.empty:
-        return None
+        return []
     candidates = candidates.sort_values(
         ["total_plays", "last_played_date", "home_track_id"], ascending=[False, True, True]
     ).head(20)
+    rows = candidates.to_dict(orient="records")
+    covers = _track_cover_urls(conn, [int(row["home_track_id"]) for row in rows])
+    return [
+        {
+            "entity": _track_entity(
+                int(row["home_track_id"]),
+                row["home_track_name"],
+                row["artist_name"],
+                covers.get(int(row["home_track_id"])),
+            ),
+            "last_played": row["last_played_date"].isoformat(),
+            "total_plays": int(row["total_plays"]),
+            "days_since_last_play": (latest - row["last_played_date"]).days,
+        }
+        for row in rows
+    ]
+
+
+def _legacy_rediscovery(candidates: list[dict[str, Any]], latest: date) -> dict[str, Any] | None:
+    """Keep the old single-item field stable for clients without the pool."""
+    if not candidates:
+        return None
     week_key = f"{latest.isocalendar().year}-{latest.isocalendar().week}"
     index = int(hashlib.sha256(week_key.encode()).hexdigest()[:8], 16) % len(candidates)
-    row = candidates.iloc[index]
-    track_id = int(row["home_track_id"])
-    cover = _track_cover_urls(conn, [track_id]).get(track_id)
-    last_played = row["last_played_date"]
-    return {
-        "entity": _track_entity(track_id, row["home_track_name"], row["artist_name"], cover),
-        "last_played": last_played.isoformat(),
-        "total_plays": int(row["total_plays"]),
-        "days_since_last_play": (latest - last_played).days,
-    }
+    return candidates[index]
 
 
 def build_home_overview(
@@ -711,6 +724,7 @@ def build_home_overview(
                 "entity": None,
             },
             "rediscovery": None,
+            "rediscovery_candidates": [],
         }
 
     # Artist fan-out is needed only for the recent-leader card.  Restrict its
@@ -749,6 +763,7 @@ def build_home_overview(
         duration_frame=EMPTY_DURATION_FRAME,
     )
     recent, current, previous, _raw_current = _recent_payload(conn, df, artist_df, context)
+    rediscovery_candidates = _rediscovery_candidates(conn, all_tracks, latest)
     return {
         "schema_version": "home_overview_v2",
         "generated_at": generated_at,
@@ -776,5 +791,6 @@ def build_home_overview(
         "recent": recent,
         "billboard": _billboard(context),
         "yearly_review": _yearly(context),
-        "rediscovery": _rediscovery(conn, all_tracks, latest),
+        "rediscovery": _legacy_rediscovery(rediscovery_candidates, latest),
+        "rediscovery_candidates": rediscovery_candidates,
     }

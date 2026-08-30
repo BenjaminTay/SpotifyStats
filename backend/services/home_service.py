@@ -26,7 +26,7 @@ from backend.models.yearly_review import YearlyReviewFilterContext
 from backend.services.yearly_review_service import database_revision, yearly_review_cache_state
 
 _HOME_SNAPSHOT_DIR = Path(DB_PATH).parent / "cache" / "home-overview"
-_HOME_FACTS_VERSION = "home-facts-v3"
+_HOME_FACTS_VERSION = "home-facts-v4"
 logger = logging.getLogger(__name__)
 _rebuild_guard = threading.Lock()
 _rebuild_paths: set[Path] = set()

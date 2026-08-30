@@ -126,4 +126,5 @@ export interface HomeOverviewResponse {
   billboard: HomeBillboard
   yearly_review: HomeYearlyReviewPreview
   rediscovery: HomeRediscoveryTrack | null
+  rediscovery_candidates?: HomeRediscoveryTrack[]
 }
