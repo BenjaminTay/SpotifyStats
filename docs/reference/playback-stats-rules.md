@@ -151,13 +151,17 @@ logical_plays = full_plays + (1 if remainder >= effective_threshold else 0)
 
 ## 4. 合并级别总览
 
-### R6. L1：物理实体口径
+### R6. L1：基础身份口径
 
-L1 下，只要 ID 不同，就不是同一首歌或同一张专辑：
+L1 不做歌曲版本或发行项目合并。它只回答“一次播放属于哪个稳定 provider owner”：
 
-- 不同 `track_id` 独立统计。
-- 不同 `album_id` 独立统计。
-- 单曲版、专辑版、豪华版、精选集版本都各自排名。
+- 一个合法 Spotify Track ID 只能归属于一个活动 L1 identity。
+- provider relink、重复导入投影或错误 owner 纠正属于基础身份治理，不是 L2 版本合并。
+- 没有强 provider 证据时，不得仅凭名称、ISRC、时长或专辑自动改写 L1 owner。
+- 不同基础发行容器在 L1 独立；单曲版、专辑版、豪华版和精选集版不会在 L1 聚成 album project。
+
+因此，“L1 不合并”是指不合并业务版本；它不禁止把已证明属于同一 provider 对象的历史别名或
+relink 修复到同一 owner。L1 是内部治理层，不作为公开统计切换项。
 
 ### R7. L2：同录音/同发行项目口径
 
@@ -165,6 +169,7 @@ L2 是默认推荐口径。
 
 歌曲层面：同一份录音合并为同一首歌。包括：
 
+- canonical artist 相同且 L2 规范化歌名相同的版本；这是默认机器归并规则。
 - 单曲专辑中的单曲版。
 - 录音室专辑中的 track 版。
 - Explicit / Clean。
@@ -189,6 +194,11 @@ L2 不合并：
 - Taylor's Version 或其他重录版本。
 - Live / Remix / Acoustic 专辑。
 - 重录专辑。
+
+这里的“不合并”约束歌曲 recording identity，不约束 album project 的曲目集合。一个 L2 album
+project 可以同时包含原版曲目和 Acoustic、Long Pond、rehearsal 等额外录音；这些录音在歌曲榜仍
+保持各自的 L2 key，但共同贡献给所属发行项目。例如 `Folklore: The Long Pond Studio Sessions`
+和包含原版 12 首歌及 Acoustic Collection 的豪华发行都可以归入各自原专辑项目。
 
 ### R8. L3：同作品/同专辑项目口径
 
@@ -227,6 +237,16 @@ L3 是宽松口径。
 | L3 | `composition_group_id`，未入组则回退 L2/canonical key | 同作品聚合 |
 
 ### R10. L2 同录音判断
+
+L2 自动归并以 canonical primary artist 与规范化歌名为主键：二者相同，就视为同一首歌并机器
+归并，不要求人工审核。规范化只消除 Unicode、大小写、首尾/重复空白、等价标点，以及
+Explicit、Clean、Remaster/Remastered（含年份）等不改变歌曲身份的发行标签；Acoustic、Live、
+Remix、Radio Edit、Instrumental、Demo、Taylor's Version/重录和参与艺人变化等语义标签必须保留
+在 key 中，因此不会被这条自动规则跨版本吞并。
+
+优先级固定为：`force_separate` 人工覆盖 > `force_merge` 人工覆盖 > 自动标题规则。ISRC、Spotify
+relink、时长和来源专辑作为证据、冲突诊断与缺失标题时的保守 fallback；当艺人与规范化标题已经
+相同，它们不能单独否决合并。自动任务必须支持 dry-run、幂等重跑、一次 revision 发布与逐组审计。
 
 以下版本可在 L2 合并：
 
@@ -354,6 +374,12 @@ album_project_plays = sum(play_count(canonical_song) for canonical_song in album
 | L2 | `album_project_id` / `release_group_id(scope=release)` | 标准版、豪华版、区域版等合并 |
 | L3 | `album_project_id` / `release_group_id(scope=composition)` | 重录、live、remix、acoustic 等项目级合并 |
 
+L2 album project 自动归并使用稳定发行证据：规范化项目名和 canonical album artist 是基础条件；
+同一 Spotify Album ID 只有在 album artist、发行类型/日期与完整 track list 等 catalog 证据相容时
+才能成为项目 owner 证据。`album_spotify_links` 是多对多的播放来源线索，单独共享一个 link 不能
+触发合并。同专辑名仅大小写、Unicode 或空白不同应机器合并；标准版、Deluxe、Expanded、
+Anniversary 等通过曲目包含关系归并。跨 artist、同名不同专辑或证据冲突的组件保持独立并进入审计。
+
 ### R18. 标准版与豪华版
 
 L2 下，标准版和豪华版合并为同一 album project。
@@ -437,11 +463,15 @@ Billboard 周榜中：
 
 ### R24. 全由既有歌曲组成的精选集
 
-如果精选集内所有歌曲都是已有录音室专辑、EP 或单曲项目中的歌曲组合：
+如果精选集内所有歌曲都是已有录音室专辑、EP 或单曲项目中的歌曲组合，目标口径是：
 
 - L1 下可作为独立 album container 显示。
 - 非 L1 下默认不作为独立 album project 进入专辑榜。
 - 这些播放按 source breakdown 显示为“精选集/合辑来源”，但播放贡献回流到歌曲的 primary album project。
+
+当前精选集最终产品策略尚未确认。在策略冻结期间，自动 Album Project 任务不得新增精选集识别、
+隐藏、拆分或回流决策，也不得改变已有 compilation project 的榜单资格；只允许保留现状并输出
+单独审计清单。R24/R25 作为目标语义，需在产品决策确认后通过独立迁移启用。
 
 ### R25. 含独有新歌的精选集
 
@@ -818,14 +848,16 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 
 自动检测可以高置信应用：
 
-- 同 ISRC / Spotify relink / 同录音证据明确的 L2 track group。
-- 标准版/豪华版/expanded 的 L2 release group。
+- canonical artist + L2 规范化歌名相同的 recording group。
+- 同 ISRC / Spotify relink 且标题缺失时，其他强证据仍一致的保守 recording fallback。
+- 同专辑大小写/Unicode/空白差异，以及 catalog/曲目包含关系明确的标准版、豪华版、expanded
+  album project。
 
-低置信候选必须人工确认：
+以下关系不会被 L2 自动任务合并；若要跨录音归并，应进入 L3 或显式覆盖：
 
 - Acoustic / Live / Remix。
 - Taylor's Version / 重录。
-- 精选集独有歌曲归属。
+- 精选集独有歌曲归属（当前冻结）。
 - 同名不同歌。
 - 翻唱、采样、mashup。
 
@@ -851,6 +883,9 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 8. Billboard 专辑周榜不能在专辑发行前出现该专辑。
 9. Billboard raw fallback 与预聚合路径在同一参数下输出一致。
 10. 前端展示的封面、归属专辑、来源拆分只能解释统计结果，不能反向改变计数。
+11. 自动归并前后 `plays`、`tracks`、`track_artists` 的行数与内容 hash 不变。
+12. 每个 provider external ID 只能有一个活动 owner；每个 L1 在同一 scope 至多属于一个活动组。
+13. 自动任务 dry-run 不得写业务状态；apply 必须幂等，并为每个变更保存可追溯证据。
 
 ---
 

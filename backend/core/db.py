@@ -294,13 +294,27 @@ CREATE TABLE IF NOT EXISTS track_groups (
     is_manual         INTEGER NOT NULL DEFAULT 0,
     automatic_spotify_track_id TEXT,
     automatic_artist_id INTEGER,
+    automatic_title_key TEXT,
+    automatic_version_tag TEXT,
+    identity_policy_version TEXT,
     primary_l1_id     INTEGER REFERENCES track_l1_identities(l1_id),
     group_status      TEXT NOT NULL DEFAULT 'active'
                       CHECK(group_status IN ('active', 'archived', 'conflict')),
     created_at        TEXT DEFAULT (datetime('now')),
     CHECK(
         is_manual = 1
-        OR (automatic_spotify_track_id IS NULL) = (automatic_artist_id IS NULL)
+        OR (
+            automatic_artist_id IS NULL
+            AND automatic_spotify_track_id IS NULL
+            AND automatic_title_key IS NULL
+        )
+        OR (
+            automatic_artist_id IS NOT NULL
+            AND (
+                automatic_spotify_track_id IS NOT NULL
+                OR automatic_title_key IS NOT NULL
+            )
+        )
     )
 );
 
@@ -313,13 +327,29 @@ CREATE TABLE IF NOT EXISTS track_group_members (
 CREATE INDEX IF NOT EXISTS idx_track_groups_scope ON track_groups(scope);
 CREATE INDEX IF NOT EXISTS idx_track_groups_parent ON track_groups(parent_group_id);
 CREATE INDEX IF NOT EXISTS idx_track_group_members_track ON track_group_members(track_id);
-
 CREATE TABLE IF NOT EXISTS track_group_l1_members (
     group_id INTEGER NOT NULL REFERENCES track_groups(group_id),
     l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
     PRIMARY KEY(group_id, l1_id)
 );
 CREATE INDEX IF NOT EXISTS idx_track_group_l1_member ON track_group_l1_members(l1_id);
+
+CREATE TABLE IF NOT EXISTS track_merge_overrides (
+    override_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    scope           TEXT NOT NULL DEFAULT 'recording'
+                    CHECK(scope IN ('recording', 'composition')),
+    left_l1_id      INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+    right_l1_id     INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+    action          TEXT NOT NULL CHECK(action IN ('force_merge', 'force_separate')),
+    reason          TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK(left_l1_id != right_l1_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_track_merge_overrides_unordered_pair
+    ON track_merge_overrides(
+        scope, MIN(left_l1_id, right_l1_id), MAX(left_l1_id, right_l1_id)
+    );
 
 CREATE TRIGGER IF NOT EXISTS trg_track_group_l1_single_active_scope_insert
 BEFORE INSERT ON track_group_l1_members
@@ -479,6 +509,9 @@ CREATE TABLE IF NOT EXISTS album_projects (
     project_type      TEXT NOT NULL DEFAULT 'album',
     include_in_charts INTEGER NOT NULL DEFAULT 1,
     is_manual         INTEGER NOT NULL DEFAULT 0,
+    normalized_name   TEXT,
+    album_artist_key  TEXT,
+    identity_policy_version TEXT,
     created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(canonical_name, artist_id, scope)
 );
@@ -507,6 +540,49 @@ CREATE INDEX IF NOT EXISTS idx_album_projects_artist ON album_projects(artist_id
 CREATE INDEX IF NOT EXISTS idx_album_projects_primary_album ON album_projects(primary_album_id);
 CREATE INDEX IF NOT EXISTS idx_album_project_albums_album ON album_project_albums(album_id);
 CREATE INDEX IF NOT EXISTS idx_album_project_tracks_track ON album_project_tracks(track_id);
+
+CREATE TABLE IF NOT EXISTS album_project_external_ids (
+    provider          TEXT NOT NULL,
+    external_album_id TEXT NOT NULL,
+    project_id        INTEGER NOT NULL REFERENCES album_projects(project_id),
+    evidence_type     TEXT NOT NULL DEFAULT 'catalog_exact',
+    confidence        REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0 AND confidence <= 1),
+    is_primary        INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0, 1)),
+    created_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(provider, external_album_id)
+);
+CREATE INDEX IF NOT EXISTS idx_album_project_external_owner
+    ON album_project_external_ids(project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_album_project_external_primary
+    ON album_project_external_ids(project_id, provider)
+    WHERE is_primary=1;
+
+CREATE TABLE IF NOT EXISTS version_governance_runs (
+    run_id          TEXT PRIMARY KEY,
+    scope           TEXT NOT NULL,
+    policy_version  TEXT NOT NULL,
+    status          TEXT NOT NULL CHECK(status IN ('planned', 'running', 'applied', 'failed')),
+    dry_run         INTEGER NOT NULL DEFAULT 1 CHECK(dry_run IN (0, 1)),
+    summary_json    TEXT NOT NULL DEFAULT '{}',
+    created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS version_governance_events (
+    event_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id            TEXT NOT NULL REFERENCES version_governance_runs(run_id),
+    entity_type       TEXT NOT NULL,
+    action            TEXT NOT NULL,
+    survivor_id       INTEGER,
+    affected_ids_json TEXT NOT NULL DEFAULT '[]',
+    before_json       TEXT NOT NULL DEFAULT '{}',
+    after_json        TEXT NOT NULL DEFAULT '{}',
+    evidence_json     TEXT NOT NULL DEFAULT '{}',
+    created_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_version_governance_events_run
+    ON version_governance_events(run_id, event_id);
 
 -- Spotify metadata tables (independent from import cycle, survive data re-imports)
 CREATE TABLE IF NOT EXISTS spotify_track_meta (

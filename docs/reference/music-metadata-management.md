@@ -24,6 +24,19 @@ tracks.album_id)` 展示实际来源专辑和封面。
 
 L1 不作为设置项或人工合并层级，原“高级：基础身份纠错”入口关闭。底层只执行 Spotify ID 单一归属不变量；需要修正 owner 时必须走单独的受审计数据治理流程，不能通过 L2/L3 或公开 canonical merge/split API 生成新歌曲身份。
 
+L2 默认由机器维护。canonical primary artist 相同且 L2 规范化歌名相同的 L1 identities 必须自动
+进入同一活动 `recording` group；规范化会移除大小写、Unicode/空白/等价标点以及 Explicit、Clean、
+Remaster 等发行标签，但保留 Acoustic、Live、Remix、Radio Edit、Demo、Instrumental、Taylor's
+Version/重录和参与艺人变化。人工审核只处理显式 `force_merge` / `force_separate` 例外，且
+`force_separate` 优先于 `force_merge` 和自动规则。ISRC、时长、Spotify relink 与来源专辑用于审计、
+冲突提示和缺失标题 fallback，不得否决已经满足“同艺人 + 同规范化歌名”的规则。
+
+Album Project 同样优先机器归并同名大小写差异和 catalog 证据完整的标准/豪华/expanded 发行。
+共享 `album_spotify_links` 不是充分条件，必须同时核对 canonical album artist、发行日期/类型与完整
+track list。一个项目可以包含不同 recording key 的 Acoustic、Long Pond 或 rehearsal 额外曲目；
+这只改变专辑项目 membership，不会把这些歌曲在 L2 曲目榜合成原版录音。精选集策略未定期间，
+自动任务不得改变 compilation project 的现有 membership 或榜单资格。
+
 Phone 当前把归并、署名和元数据维护明确归入“高级数据管理 · 电脑端管理”，不能静默显示不完整的移动版操作；后续若开放 Phone 写入，必须直接挂载同一套响应式工作台、API 与 owner 语义，不得复制另一套治理逻辑。
 
 人工治理不得重写或删除 `plays`、`tracks`、`track_artists`。这些表继续表达导入时的原始事实；人工判断存放在独立覆盖层并保留审计链。

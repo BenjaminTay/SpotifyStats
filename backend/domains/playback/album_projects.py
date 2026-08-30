@@ -157,10 +157,21 @@ def bootstrap_album_projects(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def rebuild_album_projects(conn: sqlite3.Connection) -> None:
-    """Rebuild inferred projects without changing stable semantic identities."""
-    ensure_album_project_schema(conn)
-    _ensure_album_project_revision_schema(conn)
+def rebuild_album_projects(
+    conn: sqlite3.Connection,
+    *,
+    commit: bool = True,
+    ensure_schema: bool = True,
+) -> None:
+    """Rebuild inferred projects without changing stable semantic identities.
+
+    ``commit=False`` lets a higher-level batch include release-governance
+    changes and the derived project rebuild in one transaction. Existing
+    callers retain the historical commit-on-success behaviour.
+    """
+    if ensure_schema:
+        ensure_album_project_schema(conn)
+        _ensure_album_project_revision_schema(conn)
     conn.execute("SAVEPOINT rebuild_album_projects")
     try:
         # Membership is derived state. Clear it first so reused project IDs do not
@@ -200,7 +211,8 @@ def rebuild_album_projects(conn: sqlite3.Connection) -> None:
         conn.execute("ROLLBACK TO SAVEPOINT rebuild_album_projects")
         conn.execute("RELEASE SAVEPOINT rebuild_album_projects")
         raise
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 def rebuild_album_projects_for_impact(
@@ -1083,6 +1095,11 @@ def _bootstrap_from_release_groups(
         # as a single by Spotify metadata.  The name-match SQL already
         # prefers album > ep > single via the correlated subquery.
         spotify_type = group["album_type"]
+        release_date = group["release_date"]
+        if not release_date and group["primary_album_id"]:
+            linked = _best_spotify_album_for_local_album(conn, int(group["primary_album_id"]))
+            if linked:
+                release_date = linked["release_date"] or release_date
         resolved = _resolve_standalone_album_type(
             conn, int(group["primary_album_id"]), spotify_type
         )
@@ -1103,7 +1120,7 @@ def _bootstrap_from_release_groups(
             canonical_name=group["canonical_name"],
             artist_id=artist_id,
             primary_album_id=group["primary_album_id"],
-            release_date=group["release_date"],
+            release_date=release_date,
             scope=group["scope"],
             project_type="album",
             include_in_charts=1,

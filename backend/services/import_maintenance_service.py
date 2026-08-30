@@ -100,9 +100,11 @@ def run_post_streaming_import_maintenance(
         )
 
         synchronize_track_identity_projection(conn)
-        # Kept in the maintenance report for backward-compatible diagnostics.
-        # Same-provider ids are identities now, never automatic L2 groups.
-        groups_created, members_added = 0, 0
+        groups_created, members_added = _auto_group_tracks_by_spotify_id(
+            conn,
+            track_ids=(change_set.track_ids if change_set is not None else None),
+            spotify_track_ids=(change_set.spotify_track_ids if change_set is not None else None),
+        )
         grouping_seconds = time.perf_counter() - grouping_started
 
         _progress(progress_callback, "重建 album projects...", 0.84)
@@ -316,11 +318,32 @@ def _auto_group_tracks_by_spotify_id(
     track_ids: frozenset[int] | None = None,
     spotify_track_ids: frozenset[str] | None = None,
 ) -> tuple[int, int]:
-    """Retired compatibility shim.
+    """Compatibility entrypoint for machine-first L2 title reconciliation.
 
-    A Spotify id has one canonical owner through ``track_l1_external_ids``.
-    Creating an L2 group for duplicate source rows would manufacture a version
-    relation, so import maintenance deliberately performs no grouping here.
+    The historical function name is retained for callers, but Spotify ID alone
+    still never creates an L2 relation. The current planner uses canonical
+    artist plus normalized title (and conservative ISRC fallback), reconciles
+    the complete group set in one transaction, and leaves downstream rebuilding
+    to the import maintenance batch.
     """
-    del conn, track_ids, spotify_track_ids
-    return (0, 0)
+
+    del track_ids, spotify_track_ids
+    required = {
+        "track_l1_identities",
+        "track_l1_source_links",
+        "track_group_l1_members",
+        "track_identity_state",
+        "track_artists",
+    }
+    tables = {
+        str(row[0])
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    if not required.issubset(tables):
+        return (0, 0)
+    from backend.domains.metadata.l2_track_auto_merge import apply_l2_track_merge_plan
+
+    report = apply_l2_track_merge_plan(conn, commit=False)
+    if not report.get("changed"):
+        return (0, 0)
+    return int(report["groups_created"]), int(report["members_added"])

@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 65
+LATEST_SCHEMA_VERSION = 67
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3512,6 +3512,189 @@ def migrate_065(conn: sqlite3.Connection):
     for name, sql_type in additions.items():
         if name not in columns:
             conn.execute(f"ALTER TABLE music_search_documents ADD COLUMN {name} {sql_type}")
+
+
+@migration(66, "automatic_l2_governance")
+def migrate_066(conn: sqlite3.Connection):
+    """Add stable automatic L2 identities, overrides, and auditable run state."""
+
+    track_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(track_groups)")}
+    required_track_columns = {
+        "automatic_title_key",
+        "automatic_version_tag",
+        "identity_policy_version",
+    }
+    if not required_track_columns.issubset(track_columns):
+        conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            conn.execute("DROP TABLE IF EXISTS track_groups_v66")
+            conn.execute(
+                """CREATE TABLE track_groups_v66 (
+                    group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    canonical_name TEXT NOT NULL,
+                    primary_track_id INTEGER REFERENCES tracks(track_id),
+                    scope TEXT NOT NULL DEFAULT 'recording'
+                        CHECK(scope IN ('recording', 'composition')),
+                    parent_group_id INTEGER REFERENCES track_groups(group_id),
+                    is_manual INTEGER NOT NULL DEFAULT 0,
+                    automatic_spotify_track_id TEXT,
+                    automatic_artist_id INTEGER,
+                    automatic_title_key TEXT,
+                    automatic_version_tag TEXT,
+                    identity_policy_version TEXT,
+                    primary_l1_id INTEGER REFERENCES track_l1_identities(l1_id),
+                    group_status TEXT NOT NULL DEFAULT 'active'
+                        CHECK(group_status IN ('active', 'archived', 'conflict')),
+                    created_at TEXT DEFAULT (datetime('now')),
+                    CHECK(
+                        is_manual = 1
+                        OR (
+                            automatic_artist_id IS NULL
+                            AND automatic_spotify_track_id IS NULL
+                            AND automatic_title_key IS NULL
+                        )
+                        OR (
+                            automatic_artist_id IS NOT NULL
+                            AND (
+                                automatic_spotify_track_id IS NOT NULL
+                                OR automatic_title_key IS NOT NULL
+                            )
+                        )
+                    )
+                )"""
+            )
+            conn.execute(
+                """INSERT INTO track_groups_v66(
+                       group_id, canonical_name, primary_track_id, scope,
+                       parent_group_id, is_manual, automatic_spotify_track_id,
+                       automatic_artist_id, primary_l1_id, group_status, created_at
+                   )
+                   SELECT group_id, canonical_name, primary_track_id, scope,
+                          parent_group_id, is_manual, automatic_spotify_track_id,
+                          automatic_artist_id, primary_l1_id, group_status, created_at
+                     FROM track_groups"""
+            )
+            conn.execute("DROP TABLE track_groups")
+            conn.execute("ALTER TABLE track_groups_v66 RENAME TO track_groups")
+        finally:
+            conn.execute("PRAGMA foreign_keys=ON")
+
+    album_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(album_projects)")}
+    for column_name in (
+        "normalized_name",
+        "album_artist_key",
+        "identity_policy_version",
+    ):
+        if column_name not in album_columns:
+            conn.execute(f"ALTER TABLE album_projects ADD COLUMN {column_name} TEXT")
+
+    conn.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_track_groups_scope ON track_groups(scope);
+        CREATE INDEX IF NOT EXISTS idx_track_groups_parent ON track_groups(parent_group_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_manual_name_scope
+            ON track_groups(canonical_name, scope) WHERE is_manual=1;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_automatic_identity
+            ON track_groups(scope, automatic_spotify_track_id, automatic_artist_id)
+            WHERE is_manual=0
+              AND automatic_spotify_track_id IS NOT NULL
+              AND automatic_artist_id IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_track_groups_automatic_title_identity
+            ON track_groups(
+                scope, automatic_artist_id, automatic_title_key,
+                COALESCE(automatic_version_tag, '')
+            )
+            WHERE is_manual=0
+              AND group_status='active'
+              AND automatic_artist_id IS NOT NULL
+              AND automatic_title_key IS NOT NULL;
+
+        CREATE TRIGGER IF NOT EXISTS trg_track_group_single_active_scope_update
+        BEFORE UPDATE OF group_status, scope ON track_groups
+        WHEN NEW.group_status='active' AND EXISTS (
+            SELECT 1
+              FROM track_group_l1_members incoming_member
+              JOIN track_group_l1_members existing_member
+                ON existing_member.l1_id=incoming_member.l1_id
+               AND existing_member.group_id!=incoming_member.group_id
+              JOIN track_groups existing_group
+                ON existing_group.group_id=existing_member.group_id
+             WHERE incoming_member.group_id=NEW.group_id
+               AND existing_group.group_status='active'
+               AND existing_group.scope=NEW.scope
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'activating group would overlap another active group at this scope');
+        END;
+
+        CREATE TABLE IF NOT EXISTS track_merge_overrides (
+            override_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scope TEXT NOT NULL DEFAULT 'recording'
+                CHECK(scope IN ('recording', 'composition')),
+            left_l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            right_l1_id INTEGER NOT NULL REFERENCES track_l1_identities(l1_id),
+            action TEXT NOT NULL CHECK(action IN ('force_merge', 'force_separate')),
+            reason TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            CHECK(left_l1_id != right_l1_id)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_track_merge_overrides_unordered_pair
+            ON track_merge_overrides(
+                scope, MIN(left_l1_id, right_l1_id), MAX(left_l1_id, right_l1_id)
+            );
+
+        CREATE TABLE IF NOT EXISTS album_project_external_ids (
+            provider TEXT NOT NULL,
+            external_album_id TEXT NOT NULL,
+            project_id INTEGER NOT NULL REFERENCES album_projects(project_id),
+            evidence_type TEXT NOT NULL DEFAULT 'catalog_exact',
+            confidence REAL NOT NULL DEFAULT 1.0 CHECK(confidence >= 0 AND confidence <= 1),
+            is_primary INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(provider, external_album_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_album_project_external_owner
+            ON album_project_external_ids(project_id);
+
+        CREATE TABLE IF NOT EXISTS version_governance_runs (
+            run_id TEXT PRIMARY KEY,
+            scope TEXT NOT NULL,
+            policy_version TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('planned', 'running', 'applied', 'failed')),
+            dry_run INTEGER NOT NULL DEFAULT 1 CHECK(dry_run IN (0, 1)),
+            summary_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS version_governance_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL REFERENCES version_governance_runs(run_id),
+            entity_type TEXT NOT NULL,
+            action TEXT NOT NULL,
+            survivor_id INTEGER,
+            affected_ids_json TEXT NOT NULL DEFAULT '[]',
+            before_json TEXT NOT NULL DEFAULT '{}',
+            after_json TEXT NOT NULL DEFAULT '{}',
+            evidence_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_version_governance_events_run
+            ON version_governance_events(run_id, event_id);
+        """
+    )
+
+
+@migration(67, "automatic_album_identity_invariants")
+def migrate_067(conn: sqlite3.Connection):
+    """Enforce one primary provider release identity per Album Project."""
+
+    conn.execute(
+        """CREATE UNIQUE INDEX IF NOT EXISTS idx_album_project_external_primary
+               ON album_project_external_ids(project_id, provider)
+            WHERE is_primary=1"""
+    )
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):
