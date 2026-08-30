@@ -44,9 +44,9 @@ router = APIRouter(prefix="/music", tags=["Music"])
 
 
 def _legacy_track_l1_id(conn: Connection, track_id: int) -> int | None:
-    from backend.domains.metadata.track_identity import resolve_source_track_l1_ids
+    from backend.domains.metadata.track_identity import resolve_public_track_l1_ids
 
-    l1_ids = resolve_source_track_l1_ids(conn, track_id)
+    l1_ids = resolve_public_track_l1_ids(conn, track_id)
     if not l1_ids:
         return None
     if len(l1_ids) > 1:

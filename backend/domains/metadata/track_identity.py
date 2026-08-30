@@ -499,6 +499,27 @@ def resolve_source_track_l1_ids(conn: sqlite3.Connection, track_id: int) -> list
     return [int(row[0]) for row in rows]
 
 
+def resolve_public_track_l1_ids(conn: sqlite3.Connection, track_id: int) -> list[int]:
+    """Resolve a public track id, preferring its stable active L1 identity.
+
+    Public track URLs use ``tracks.track_id`` as the canonical identity whenever
+    an active L1 row with the same id exists.  Source-link fan-out is only a
+    compatibility fallback for historical raw track ids; otherwise a canonical
+    representative can become spuriously ambiguous after safe L1 consolidation.
+    """
+
+    if _table_exists(conn, "track_l1_identities"):
+        direct = conn.execute(
+            """SELECT l1_id
+                 FROM track_l1_identities
+                WHERE l1_id=? AND identity_status IN ('active', 'unresolved')""",
+            (int(track_id),),
+        ).fetchone()
+        if direct is not None:
+            return [int(direct[0])]
+    return resolve_source_track_l1_ids(conn, track_id)
+
+
 def _identity_semantic_signature(conn: sqlite3.Connection) -> tuple[tuple, ...]:
     """Capture ownership/projection semantics, excluding evidence counters and dates."""
     identities = tuple(

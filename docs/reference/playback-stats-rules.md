@@ -169,7 +169,8 @@ L2 是默认推荐口径。
 
 歌曲层面：同一份录音合并为同一首歌。包括：
 
-- canonical artist 相同且 L2 规范化歌名相同的版本；这是默认机器归并规则。
+- canonical artist 相同且 L2 语义规范化歌名相同的版本；这是默认机器归并规则。通用标题、来源语境和
+  零事实对象按 R10 的确定性门禁处理。
 - 单曲专辑中的单曲版。
 - 录音室专辑中的 track 版。
 - Explicit / Clean。
@@ -238,15 +239,26 @@ L3 是宽松口径。
 
 ### R10. L2 同录音判断
 
-L2 自动归并以 canonical primary artist 与规范化歌名为主键：二者相同，就视为同一首歌并机器
-归并，不要求人工审核。规范化只消除 Unicode、大小写、首尾/重复空白、等价标点，以及
-Explicit、Clean、Remaster/Remastered（含年份）等不改变歌曲身份的发行标签；Acoustic、Live、
-Remix、Radio Edit、Instrumental、Demo、Taylor's Version/重录和参与艺人变化等语义标签必须保留
-在 key 中，因此不会被这条自动规则跨版本吞并。
+L2 自动归并以 canonical primary artist 与语义规范化歌名为主键：二者相同，默认视为同一首歌并
+机器归并，不要求人工审核。规范化只消除 Unicode、简繁、大小写、首尾/重复空白、等价标点，以及
+Explicit、Clean、Bonus、Remaster/Remastered（含年份）等不改变歌曲身份的发行标签；Acoustic、
+Live、Remix、Radio Edit、Instrumental、Demo、Taylor's Version/重录、Original/Single/Album
+Version、Extended、Sped Up/Slowed 和参与艺人变化等语义标签必须保留在 key 中，因此不会被标题
+清洗跨版本吞并。
 
-优先级固定为：`force_separate` 人工覆盖 > `force_merge` 人工覆盖 > 自动标题规则。ISRC、Spotify
-relink、时长和来源专辑作为证据、冲突诊断与缺失标题时的保守 fallback；当艺人与规范化标题已经
-相同，它们不能单独否决合并。自动任务必须支持 dry-run、幂等重跑、一次 revision 发布与逐组审计。
+自动判断为三态：`accepted` 直接入组，`rejected` 保持分开，`pending` 只记录证据且不创建活动组。
+优先级固定为：`force_separate` 人工覆盖 > `force_merge` 人工覆盖 > 自动标题规则。默认同艺人同
+语义标题不因单一 ISRC、时长或来源专辑差异而否决；但以下属于确定性的机器门禁，不转人工：
+
+- `Intro`、`Interlude`、`Overture`、`Theme` 等通用短标题若 ISRC 集合不相交且时长差至少 10 秒，
+  判为 `rejected`；同一个 L1 内已经存在多 ISRC 且时长冲突时也拒绝扩大归并。
+- 标题中的 `From ... Soundtrack`、影视/舞台原声来源只视为发行语境；与无语境标题相遇时，只有共享
+  ISRC 且时长兼容才自动 `accepted`，证据不足则 `pending`，不会仅因出现 Soundtrack 字样排除专辑项目。
+- 两侧都没有播放、没有外部 ID、没有可验证来源事实时判为 `pending`，避免空壳身份形成活动组。
+- 已 superseded 的兼容身份及历史 rejected/pending 候选不能继续成为活动组成员；人工覆盖仍可明确
+  改变结果。
+
+自动任务必须支持 dry-run、幂等重跑、一次 revision 发布、原始事实 hash 门禁和逐组审计。
 
 以下版本可在 L2 合并：
 
@@ -293,6 +305,8 @@ relink、时长和来源专辑作为证据、冲突诊断与缺失标题时的�
 以下情况默认不自动合并：
 
 - 不同艺人的同名歌曲。
+- 通用短标题且存在不相交 ISRC 和明显时长冲突的同名片段。
+- 同艺人同标题但双方都没有播放、外部 ID 或来源事实的空壳对象（保留为 pending，不建组）。
 - 翻唱版本，即使曲名相同。
 - 插曲、采样、mashup、parody、translation。
 - 主艺人不同且原版主歌手没有参与的新 remix。
@@ -848,7 +862,7 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 
 自动检测可以高置信应用：
 
-- canonical artist + L2 规范化歌名相同的 recording group。
+- canonical artist + L2 语义规范化歌名相同且未触发 R10 硬冲突门禁的 recording group。
 - 同 ISRC / Spotify relink 且标题缺失时，其他强证据仍一致的保守 recording fallback。
 - 同专辑大小写/Unicode/空白差异，以及 catalog/曲目包含关系明确的标准版、豪华版、expanded
   album project。
@@ -859,6 +873,7 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 - Taylor's Version / 重录。
 - 精选集独有歌曲归属（当前冻结）。
 - 同名不同歌。
+- 通用短标题存在不相交 ISRC 和明显时长冲突。
 - 翻唱、采样、mashup。
 
 ### R42. 历史 backfill 标注

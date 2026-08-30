@@ -236,11 +236,11 @@ def legacy_track_history(
     include_compilations: bool = Query(False),
     view: TrackDetailView = Query("full"),
 ):
-    from backend.domains.metadata.track_identity import resolve_source_track_l1_ids
+    from backend.domains.metadata.track_identity import resolve_public_track_l1_ids
 
     conn = get_db()
     try:
-        l1_ids = resolve_source_track_l1_ids(conn, track_id)
+        l1_ids = resolve_public_track_l1_ids(conn, track_id)
     finally:
         conn.close()
     if not l1_ids:

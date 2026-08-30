@@ -24,12 +24,15 @@ tracks.album_id)` 展示实际来源专辑和封面。
 
 L1 不作为设置项或人工合并层级，原“高级：基础身份纠错”入口关闭。底层只执行 Spotify ID 单一归属不变量；需要修正 owner 时必须走单独的受审计数据治理流程，不能通过 L2/L3 或公开 canonical merge/split API 生成新歌曲身份。
 
-L2 默认由机器维护。canonical primary artist 相同且 L2 规范化歌名相同的 L1 identities 必须自动
-进入同一活动 `recording` group；规范化会移除大小写、Unicode/空白/等价标点以及 Explicit、Clean、
-Remaster 等发行标签，但保留 Acoustic、Live、Remix、Radio Edit、Demo、Instrumental、Taylor's
-Version/重录和参与艺人变化。人工审核只处理显式 `force_merge` / `force_separate` 例外，且
-`force_separate` 优先于 `force_merge` 和自动规则。ISRC、时长、Spotify relink 与来源专辑用于审计、
-冲突提示和缺失标题 fallback，不得否决已经满足“同艺人 + 同规范化歌名”的规则。
+L2 默认由机器维护。canonical primary artist 相同且 L2 语义规范化歌名相同的 L1 identities 默认自动
+进入同一活动 `recording` group；规范化会移除大小写、简繁、Unicode/空白/等价标点以及 Explicit、
+Clean、Bonus、Remaster 等发行标签，但保留 Acoustic、Live、Remix、Radio Edit、Demo、
+Instrumental、Taylor's Version/重录、Original/Single/Album Version、Extended、Sped Up/Slowed
+和参与艺人变化。自动判断使用 accepted/rejected/pending 三态：普通同艺人同语义标题直接 accepted；
+通用短标题在 ISRC 不相交且时长差至少 10 秒时 rejected；Soundtrack 等来源语境与无语境标题只有共享
+ISRC 且时长兼容才 accepted；双方都无播放、外部 ID 和来源事实时 pending。rejected/pending 均不创建
+活动组，避免把低证据对象推给人工审核。人工审核只处理显式 `force_merge` / `force_separate` 例外，且
+`force_separate` 优先于 `force_merge` 和自动规则。
 
 Album Project 同样优先机器归并同名大小写差异和 catalog 证据完整的标准/豪华/expanded 发行。
 共享 `album_spotify_links` 不是充分条件，必须同时核对 canonical album artist、发行日期/类型与完整

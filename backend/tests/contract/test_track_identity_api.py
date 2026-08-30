@@ -94,6 +94,48 @@ def test_legacy_track_resolution_returns_the_same_track_id(client, use_seed_db: 
     assert payload["items"][0]["album_attribution"]["canonical_track_id"] == track_id
 
 
+def test_public_track_detail_prefers_direct_active_l1_over_legacy_source_fanout(
+    client, use_seed_db: str
+) -> None:
+    conn = sqlite3.connect(use_seed_db)
+    try:
+        source_track_id = int(
+            conn.execute(
+                """SELECT links.track_id
+                     FROM track_l1_source_links links
+                     JOIN track_l1_identities identity ON identity.l1_id=links.l1_id
+                    WHERE links.track_id=identity.l1_id
+                      AND identity.identity_status='active'
+                    ORDER BY links.track_id
+                    LIMIT 1"""
+            ).fetchone()[0]
+        )
+        other_l1_id = int(
+            conn.execute(
+                """SELECT l1_id FROM track_l1_identities
+                    WHERE l1_id!=? AND identity_status='active'
+                    ORDER BY l1_id LIMIT 1""",
+                (source_track_id,),
+            ).fetchone()[0]
+        )
+        conn.execute(
+            """INSERT INTO track_l1_source_links(
+                   l1_id, track_id, evidence_type, observed_plays
+               ) VALUES (?, ?, 'manual', 0)""",
+            (other_l1_id, source_track_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = client.get(
+        f"/api/music/tracks/{source_track_id}/stats",
+        params={"merge_level": 2, "include_rank_context": False},
+    )
+    assert response.status_code == 200
+    assert response.json()["found"] is True
+
+
 def test_public_canonical_merge_and_split_are_retired(client, use_seed_db: str) -> None:
     probe = sqlite3.connect(use_seed_db)
     try:
