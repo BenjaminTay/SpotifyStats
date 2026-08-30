@@ -1,6 +1,6 @@
 # L2 自动归并治理执行与验收报告
 
-> 状态：Pass。规则收口、代码实现、克隆演练、真实数据库治理、派生重建、真实 API、双视口浏览器和默认完整全栈门禁均已完成。证据日期：2026-08-30。
+> 状态：Pass。规则收口、代码实现、克隆演练、真实数据库治理、派生重建、真实 API、双视口浏览器和默认完整全栈门禁均已完成。证据日期：2026-08-30 至 2026-08-31；当前终态以第 8 节 v3 追补为准。
 > 当前规则：[`../reference/music-metadata-management.md`](../reference/music-metadata-management.md)、[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
 
 ## 1. 最终口径
@@ -119,3 +119,92 @@ L2 的“同艺人 + 同歌名”仍是主规则。标题规范化会合并简�
 - 核心收紧提交：`7a0ec623 fix: 收紧 L2 自动归并与治理发布门禁`。
 - 代表详情解析提交：`7e91e8e5 fix: 修复 L2 代表曲目详情解析`。
 - 本轮只在本地提交，未 push、未部署；真实数据库和 backup 不进入 Git。
+
+## 8. v3 同名强归并追补与最终终验（2026-08-31）
+
+本节记录用户进一步确认“同 canonical artist、同普通歌名即同一首 L2 歌曲，即使时长相差较长也合并”后的 v3 追补实施。第 1—6 节保留 v2 历史执行证据；其中候选数、活动组数、revision、snapshot key 和自动决策边界如与本节冲突，以本节终态为准。
+
+### 8.1 当前 L2/L3 口径
+
+- L2 身份策略为 `canonical_artist_title_v3`，标题策略为 `nfkc_t2s_title_semantic_source_v4`。
+- 普通标题在 canonical primary artist 与规范化歌名相同时直接机器 accepted；时长差、ISRC 不相交、来源专辑或 Soundtrack 语境只保留为 warning/evidence，不再阻止 L2 归并，也不产生人工审核队列。
+- `intro`、`outro`、`interlude` 等结构性标题是硬例外：即使同艺人同规范化标题，也不自动合并。
+- Acoustic、Live、Remix、Taylor's Version、Original/Single/Album Version、Extended、Radio Edit、Demo、Instrumental、Sped Up/Slowed 等显式录音语义仍保留为不同 L2 recording；只有建立 composition 关系后才可在 L3 合并。
+- Album Project 与歌曲 recording 身份继续分离：Long Pond、Acoustic Collection 等发行可以进入同一专辑项目，但不会因此把其中的 Acoustic/Live 单曲在歌曲 L2 吞入原版。
+
+这套规则将人工审核收缩到真正需要产品判断或外部事实的边界；普通同名不再因“时长差太大”“ISRC 不同”进入 pending。
+
+### 8.2 克隆与主库治理
+
+一次性克隆目录为 `/tmp/spotifystats-l2-governance-v3.3wVfdT`，运行 ID `7348a597-6850-4980-9171-48713362fee5`。克隆结果为 L1 操作 0、L2 创建 5 组/更新 40 组/归档 0 组/新增 10 个成员，accepted 48、pending 0、rejected 585；第二次 dry-run 无变化。
+
+正式主库第一次运行 `c5c4d249-6f9d-45e2-897f-59d5906941a8` 在关系层完成后遇到并发候选索引生成导致的派生 fence 失败，运行被明确记录为 failed，没有原始事实破坏。随后以同策略幂等恢复运行：
+
+- 成功运行 ID：`fe988290-2a49-436f-887f-15ae1bc48514`
+- Online Backup：`data/backups/spotify_stats_20260830T144420Z_before-l2-governance.db`
+- L1：操作 0；817 个多 owner 风险项继续仅审计，不自动分拆。
+- L2：创建 5 组、更新 40 组、归档 0 组、新增 10 个成员；终态 46 个活动 recording group。
+- 候选账本：accepted 48、pending 0、rejected 585；活动成员重叠 0。
+- revision：track identity `7 → 8`，album project `2 → 3`。
+- 成功后再次 dry-run：L1 0、L2 创建/更新/归档 0，证明收敛与幂等。
+
+2026-08-31 最终全栈验收后再次只读核对：track revision 8、album revision 3、活动组 46、accepted 48、pending 0、rejected 585、重叠 0，`foreign_key_check=0`、`integrity_check=ok`。原始事实仍为：
+
+| 原始表 | 行数 | SHA-256 |
+| --- | ---: | --- |
+| `plays` | 92,908 | `bfa9f79b095d4ca865a6d84a10997f83e1f2fd44db9262c784c8cc1be9e1ad37` |
+| `tracks` | 9,549 | `c8add4d665b193f495760d791d2136dbbd1f3df4e4a94c54a2ed8db5329f5593` |
+| `track_artists` | 9,983 | `6cfbaf91359011d726211c9be73ea382d3d85fbf854a4974b67503821dfcc879` |
+
+### 8.3 真实样本与专辑项目
+
+新增或补齐的普通同名 L2 组包括：
+
+| 歌曲 | 成员 track ID | 结果 |
+| --- | --- | --- |
+| 纯妹妹 | `4546/5107/5732` | 组 `5846`，真实 API 30 次、1.6 小时 |
+| Boom Clap | `1047/1469` | 同一活动 L2 组 |
+| Gonna Build A Mountain | `2972/3573` | 同一活动 L2 组 |
+| City of Stars | `3832/5799` | 同一活动 L2 组；来源语境不再阻止普通同名归并 |
+| 有点甜 | `4384/49154` | 同一活动 L2 组 |
+| 千言萬語 | `5118/5119` | 同一活动 L2 组 |
+
+结构性反例 `INTRO` `2613` 与 `Intro` `2876` 的旧组已归档，候选因 structural title 被 rejected；两首分别保留 11 次与 5 次，不发生机器归并。
+
+专辑项目终态：
+
+- `The Life of a Showgirl` project `41476` 同时包含原版和 `The Life of a Showgirl + Acoustic Collection` 别名；真实 L2 API 为 1,663 次、97.4 小时。
+- `folklore` project `41478` 同时包含原版和 `The Long Pond Studio Sessions` 发行别名；真实 L2 API 为 1,305 次、82.8 小时。
+- 搜索结果使用稳定 `/music/album-projects/{project_id}` href；旧名称 URL 在详情数据解析后 replace 到稳定 project URL。
+- 稳定项目提供 stats、rankings、plays、play-dates 与 Billboard detail 五个真实入口；API 烟测动态选择主库现存 project `41553`，五个入口全部 200，不再硬编码测试夹具 ID。
+
+### 8.4 派生快照终态
+
+四套精确快照均为 ready/current，每套 7,873 个 entity context、5 个年度、550 行 Year-End 投影：
+
+| merge level | 动态阈值 | snapshot key |
+| ---: | :---: | --- |
+| 2 | 关 | `bc2b19830dde7f576a3deff9953b03ce8d2d8c21c8b7a8e9138664b3bdfa35cc` |
+| 2 | 开 | `9017ca9f2cd9aff7f2e3d8add7cdfd8f16ced079972924b14a05e7bea40710c4` |
+| 3 | 关 | `9cbceb668ba56429d90d1ac9868d5fda79bfed608a2dbf08a323f9a92b62d853` |
+| 3 | 开 | `0bed4742d23ed7f66f4b84ad23eb339610da55da2be89fcd109b2e27eff5390e` |
+
+### 8.5 UI 与默认完整门禁
+
+- 稳定 album-project 页面已在 desktop 与 390×844 phone 真实浏览器验收；手机顶栏正确显示“专辑详情”，返回/分享可用，`clientWidth=scrollWidth=390`。
+- 跨浏览器脚本对旧专辑 URL 等待实际 replace 到 `/music/album-projects/{id}`，并要求稳定页再次出现“有效播放”；避免把跳转前的短暂 DOM 当成完成态。
+- 路由烟测只对唯一明确的瞬态 `net::ERR_CONNECTION_CLOSED` 允许重跑一次；第二次必须零 console/page error、零 warning、零溢出才通过，持续错误仍失败。
+
+最终默认完整模式 `scripts/fullstack_verification_check.sh` 状态为 **PASS**，机器报告 `/tmp/spotify_fullstack_verification.json`：总耗时 2,496,788ms。
+
+| 阶段 | 状态 | 耗时 | 关键证据 |
+| --- | --- | ---: | --- |
+| quality | PASS | 36,050ms | 文档审计、全文件 pre-commit、前端 610/610、production build |
+| backend | PASS | 879,486ms | 2,443 passed，4 个既存环境/弃用 warning |
+| api | PASS | 747,745ms | smoke 143/143、边界 113/113、211 operations 与 98 parameter obligations 均 0 未归属；热 P95 全部低于 500ms |
+| browser-routes | PASS | 466,571ms | desktop/mobile 全路由与 30 个五档代表视口均通过；console/page error、warning、横向溢出均为 0 |
+| browser-interactions | PASS | 90,436ms | 桌面、移动、图表交互全部通过 |
+| browser-inventory | PASS | 80,297ms | 40 个页面/视口控件样本、主要触控目标尺寸违规 0；7 个长列表场景通过 |
+| browser-compat | PASS | 196,025ms | Chromium、Firefox、WebKit 的路由、搜索与核心交互全部通过 |
+
+阶段实现提交为 `a74cb5aa fix: 统一 L2 同名归并与专辑项目别名`。本轮仍只在本地提交，不 push、不部署；主库、backup、候选索引和快照均不进入 Git。

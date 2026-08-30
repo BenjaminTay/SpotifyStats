@@ -10,7 +10,7 @@ const DEFAULT_PYTHON = process.env.PYTHON_PLAYWRIGHT || 'python'
 const DEFAULT_BROWSERS = ['chromium', 'firefox', 'webkit']
 const DEFAULT_SCENARIOS = ['route-markers', 'core-interactions', 'music-search']
 const DEFAULT_WAIT_MS = 12000
-const DYNAMIC_ROUTE_WAIT_MS = 20000
+const DYNAMIC_ROUTE_WAIT_MS = 45000
 const DEFAULT_MAX_SCROLL_OVERFLOW = 0
 const REWRITE_PATH_PREFIXES = ['/api', '/covers']
 const DETAIL_ROUTE_FILTERS = {
@@ -169,14 +169,14 @@ async function resolveDetailRoutes(baseUrl, apiBaseUrl) {
   if (album) {
     routes.push({
       path: `/music/albums/${encodeURIComponent(album.album_name)}?artist=${encodeURIComponent(album.artist_name)}`,
-      markers: ['专辑详情'],
+      markers: ['专辑详情', album.album_name],
       dynamic: true,
     })
   }
   if (artist) {
     routes.push({
       path: `/music/artists/${encodeURIComponent(artist.artist_name)}`,
-      markers: ['艺人详情'],
+      markers: ['艺人详情', artist.artist_name],
       dynamic: true,
     })
   }
@@ -581,9 +581,19 @@ def run_route_markers(browser):
                             page.wait_for_timeout(250)
                 if last_error:
                     raise last_error
+                if urlparse(route["path"]).path.startswith("/music/albums/"):
+                    wait_for_condition(
+                        lambda: page.evaluate(
+                            "() => location.pathname.startsWith('/music/album-projects/') ? location.pathname : null"
+                        ),
+                        "Legacy album route did not resolve to a stable album-project URL",
+                        timeout_ms=route_wait_ms,
+                    )
+                    wait_for_text(page, "有效播放", timeout_ms=route_wait_ms)
                 wait_for_condition(
                     lambda: page_state(page) if page_state(page)["rootTextLength"] > 20 else None,
                     f"Route body did not become ready: {route['path']}",
+                    timeout_ms=route_wait_ms,
                 )
                 if urlparse(route["path"]).path == "/yearly-review":
                     if viewport_name == "mobile":

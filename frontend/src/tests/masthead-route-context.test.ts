@@ -64,6 +64,17 @@ describe('masthead route context', () => {
     })
   })
 
+  it('treats stable album-project URLs as album detail routes', () => {
+    expect(getMastheadRouteContext('/music/album-projects/41476', '')).toMatchObject({
+      activeNavTo: null,
+      contextSegments: ['音乐详情', '专辑'],
+      title: null,
+      mobileTopBarMode: 'push',
+      mobileTitle: '专辑详情',
+      mobileFallbackTo: '/music/search',
+    })
+  })
+
   it('keeps music search as a utility route without a primary nav owner', () => {
     expect(getMastheadRouteContext('/music/search', '?q=love')).toMatchObject({
       activeNavTo: null,

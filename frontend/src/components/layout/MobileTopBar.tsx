@@ -98,6 +98,7 @@ export function MobileTopBar() {
 
   const canShare = location.pathname.startsWith('/music/tracks/')
     || location.pathname.startsWith('/music/albums/')
+    || location.pathname.startsWith('/music/album-projects/')
     || location.pathname.startsWith('/music/artists/')
     || location.pathname.startsWith('/community/post/')
     || location.pathname.startsWith('/community/account/')

@@ -236,6 +236,10 @@ DEFAULT_BOUNDARY_CASES: tuple[BoundaryCase, ...] = (
     BoundaryCase("version_group_path_nonint", "/api/version-merge/groups/not-an-int/members"),
     BoundaryCase("music_track_path_nonint", "/api/music/tracks/not-an-int/stats"),
     BoundaryCase(
+        "music_album_project_path_nonint",
+        "/api/music/album-projects/not-an-int/stats",
+    ),
+    BoundaryCase(
         "music_track_canonical_identity_path_nonint",
         "/api/music/tracks/canonical/not-an-int",
     ),

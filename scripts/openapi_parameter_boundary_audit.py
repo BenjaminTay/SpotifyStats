@@ -410,6 +410,11 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("music_track_path_nonint", "billboard_track_path_nonint", "lyrics_path_nonint"),
         "track-id path conversion is validated across music, Billboard, and lyrics surfaces",
     ),
+    ("path", "project_id", "integer"): ParameterEvidence(
+        "boundary_probe",
+        ("music_album_project_path_nonint",),
+        "album-project path conversion rejects non-integer stable project identifiers",
+    ),
     ("path", "year", "integer"): ParameterEvidence(
         "boundary_probe",
         ("wrapped_year_path_nonint",),

@@ -6,7 +6,11 @@ pytestmark = pytest.mark.unit
 
 
 def test_api_smoke_probe_exposes_reusable_readonly_cases():
-    from scripts.api_smoke_probe import DEFAULT_SAFE_GET_CASES, run_cases
+    from scripts.api_smoke_probe import (
+        ALBUM_PROJECT_ID_TOKEN,
+        DEFAULT_SAFE_GET_CASES,
+        run_cases,
+    )
 
     assert callable(run_cases)
     assert len(DEFAULT_SAFE_GET_CASES) >= 50
@@ -36,6 +40,7 @@ def test_api_smoke_probe_exposes_reusable_readonly_cases():
         404,
     )
     assert "/api/spotify/auth/playing" not in paths
+    assert any(ALBUM_PROJECT_ID_TOKEN in path for path in paths)
 
 
 def test_api_smoke_probe_accounts_for_openapi_get_paths():

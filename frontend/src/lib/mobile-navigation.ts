@@ -36,6 +36,7 @@ function returnToFromState(state: unknown): string | null {
 export function isMusicDetailPath(pathname: string): boolean {
   return pathname.startsWith('/music/tracks/')
     || pathname.startsWith('/music/albums/')
+    || pathname.startsWith('/music/album-projects/')
     || pathname.startsWith('/music/artists/')
 }
 
