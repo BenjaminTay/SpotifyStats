@@ -2,6 +2,14 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-31 — AI Agent 证据、恢复与报告质量 V4
+
+- 新增五维 Answer Quality Contract、`tool_evidence_v2` 和 Constraint Patch V2；空时间窗不再误判为有效证据，社区问答必须返回真实主体或活动。
+- 社区检索优先使用候选索引和周榜 scoped snapshot，真实工具耗时从约 227 秒降至约 0.1–0.2 秒；变更问题矩阵在真实数据库副本和当前 DeepSeek 配置上 11/11 Pass。
+- Worker 改为 90 秒短租约与独立心跳；真实杀进程恢复从第 3 步继续，3 个已完成工具没有重复。SSE 组合 cursor 从答案分片 1 重连只重放分片 2–4。
+- 年度报告增加逐节 checkpoint、同证据写作重试、可验证确定性回退和硬质量门禁。真实 2025 报告 6 节/3345 字，critic、事实、最终 artifact、6/6 checkpoint 全部通过并缓存；但 677 秒冷路径与模型 writer 空完成仍分别标记性能 Fail、模型写作 Partial。
+- Desktop/390px 真实浏览器问答通过；移动思考开关和发送按钮修复为至少 44×44px。详细见 [`designs/2026-08-31-ai-agent-quality-v4.md`](designs/2026-08-31-ai-agent-quality-v4.md) 与 [`reports/2026-08-31-ai-agent-quality-v4-acceptance.md`](reports/2026-08-31-ai-agent-quality-v4-acceptance.md)。
+
 ## 2026-08-31 — AI Agent 真实数据质量与运行中转向 V3
 
 - 对照 Pi 的小核心循环与 DeepSeek Harness 的 Turn/Step、事件溯源，保留 SpotifyStats 确定性事实和只读权限边界；V3 仍是应用内最小 Agent，不扩展为通用 Shell、SQL、联网或多 Agent 平台。
