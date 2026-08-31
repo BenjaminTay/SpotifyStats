@@ -8,6 +8,10 @@ from typing import Any
 import pandas as pd
 
 from backend.core.db import load_plays
+from backend.domains.yearly_review.duration import (
+    listening_duration_slices,
+    with_listening_duration_slices,
+)
 from backend.domains.yearly_review.entity_links import entity_deep_link
 from backend.models.yearly_review import YearlyReviewFilterContext
 from backend.services.analysis_records_service import _build_entity_frames
@@ -120,6 +124,7 @@ def _normalize_artist_shares(
     *,
     metric: str,
     annual_events: pd.DataFrame,
+    annual_duration: pd.DataFrame,
 ) -> list[dict[str, Any]]:
     """Use logical annual plays/hours as the artist-share denominator.
 
@@ -133,7 +138,7 @@ def _normalize_artist_shares(
         value_key = "plays"
         denominator_scope = "annual_logical_play_events"
     else:
-        denominator = max(float(annual_events["ms_played"].sum()) / 3_600_000, 0.000001)
+        denominator = max(float(annual_duration["ms_played"].sum()) / 3_600_000, 0.000001)
         value_key = "hours"
         denominator_scope = "annual_logical_play_hours"
     normalized: list[dict[str, Any]] = []
@@ -164,8 +169,12 @@ def build_play_rankings(
             dynamic_threshold=context.dynamic_threshold,
             max_merge_gap_minutes=context.max_merge_gap_minutes,
         )
-    annual_events = _year_frame(event_frame, year)
-    if annual_events.empty:
+    annual_duration = listening_duration_slices(event_frame, year=year)
+    annual_events = with_listening_duration_slices(
+        _year_frame(event_frame, year),
+        annual_duration,
+    )
+    if annual_events.empty and annual_duration.empty:
         return {
             "year": year,
             "empty": True,
@@ -188,17 +197,28 @@ def build_play_rankings(
             dynamic_threshold=context.dynamic_threshold,
             max_merge_gap_minutes=context.max_merge_gap_minutes,
         )
-    track_frame, album_frame, artist_frame = (_year_frame(frame, year) for frame in entity_frames)
+    track_frame, album_frame, artist_frame = (
+        with_listening_duration_slices(
+            _year_frame(frame, year),
+            listening_duration_slices(frame, year=year),
+        )
+        for frame in entity_frames
+    )
     activity_maps = _activity_maps(track_frame, album_frame, artist_frame)
     source_frames = {
         "track": annual_events,
         "album": annual_events,
         "artist": artist_frame,
     }
+    duration_frames = {
+        "track": annual_duration,
+        "album": annual_duration,
+        "artist": listening_duration_slices(artist_frame, year=year),
+    }
 
     charts: dict[str, Any] = {}
     for entity, limit in PLAY_RANKING_LIMITS.items():
-        total, plays_rows = chart_rows(
+        plays_total, plays_rows = chart_rows(
             conn,
             source_frames[entity],
             entity,
@@ -206,8 +226,9 @@ def build_play_rankings(
             limit=limit,
             merge_level=context.merge_level,
             include_compilations=context.include_compilations,
+            duration_frame=duration_frames[entity],
         )
-        _, hours_rows = chart_rows(
+        hours_total, hours_rows = chart_rows(
             conn,
             source_frames[entity],
             entity,
@@ -215,20 +236,23 @@ def build_play_rankings(
             limit=limit,
             merge_level=context.merge_level,
             include_compilations=context.include_compilations,
+            duration_frame=duration_frames[entity],
         )
         if entity == "artist":
             plays_rows = _normalize_artist_shares(
                 plays_rows,
                 metric="plays",
                 annual_events=annual_events,
+                annual_duration=annual_duration,
             )
             hours_rows = _normalize_artist_shares(
                 hours_rows,
                 metric="hours",
                 annual_events=annual_events,
+                annual_duration=annual_duration,
             )
         charts[entity] = {
-            "available_count": total,
+            "available_count": max(plays_total, hours_total),
             "by_plays": _enrich_rows(entity, "plays", plays_rows, activity_maps[entity]),
             "by_hours": _enrich_rows(entity, "hours", hours_rows, activity_maps[entity]),
         }

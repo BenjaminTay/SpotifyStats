@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from backend.domains.ai_reports.visual_chart_data import build_visual_chart_data, chart_coverage
+from backend.domains.playback.logical_timeline import attach_listening_duration_frame
 
 pytestmark = pytest.mark.unit
 
@@ -138,6 +139,34 @@ def test_visual_chart_data_marks_album_duality_aligned_when_leaders_match():
     assert album_data["relation"] == "aligned"
     assert "同一张专辑" in album_data["interpretation"]
     assert "两种不同" not in album_data["interpretation"]
+
+
+def test_calendar_minutes_use_attached_duration_while_plays_stay_event_based():
+    events = _plays()
+    duration = pd.concat(
+        [
+            events,
+            pd.DataFrame(
+                [
+                    {
+                        **events.iloc[0].to_dict(),
+                        "ms_played": 20_000,
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    attach_listening_duration_frame(events, duration)
+
+    chart_data = build_visual_chart_data(
+        {},
+        [{"id": "listening_calendar", "chart_type": "listening_calendar_heatmap"}],
+        plays_df=events,
+    )
+
+    first_day = chart_data["listening_calendar"]["days"][0]
+    assert first_day == {"date": "2025-01-01", "plays": 2, "minutes": 6.7}
 
 
 def test_visual_chart_data_loads_filtered_report_period_with_request_filters(monkeypatch):

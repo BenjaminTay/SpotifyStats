@@ -1145,7 +1145,11 @@ def _logical_billboard_events(
     max_gap_minutes: int,
 ) -> pd.DataFrame:
     from backend.domains.playback.counting import filter_effective_plays
-    from backend.domains.playback.logical_timeline import reconstruct_logical_plays
+    from backend.domains.playback.logical_timeline import (
+        attach_listening_duration_frame,
+        reconstruct_listening_intervals,
+        reconstruct_logical_plays,
+    )
 
     frame = pd.DataFrame.from_records(rows)
     if frame.empty:
@@ -1153,6 +1157,12 @@ def _logical_billboard_events(
     if "l1_id" not in frame.columns:
         frame["l1_id"] = frame["track_id"]
     frame["_source_album_id"] = frame["source_album_id"].fillna(0).astype(int)
+    duration = reconstruct_listening_intervals(
+        frame,
+        identity_column="l1_id",
+        max_gap_minutes=max_gap_minutes,
+        boundary_column="source_album_id",
+    )
     events = reconstruct_logical_plays(
         frame,
         min_ms,
@@ -1167,7 +1177,7 @@ def _logical_billboard_events(
             min_ms=min_ms,
             dynamic_threshold=dynamic_threshold,
         )
-    return events
+    return attach_listening_duration_frame(events, duration)
 
 
 def _logical_billboard_contribution_signature(
@@ -1176,9 +1186,13 @@ def _logical_billboard_contribution_signature(
     week_start_dow: int,
     week_start_hour: int,
 ) -> dict[tuple[str, str, int, int], tuple[int, int]]:
-    from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
+    from backend.domains.playback.logical_timeline import (
+        build_billboard_weighted_frame,
+        get_listening_duration_frame,
+    )
 
-    if events.empty:
+    duration = get_listening_duration_frame(events)
+    if events.empty and (duration is None or duration.empty):
         return {}
     weighted = build_billboard_weighted_frame(
         events,

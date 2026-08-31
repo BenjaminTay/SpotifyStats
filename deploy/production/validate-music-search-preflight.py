@@ -14,7 +14,7 @@ from typing import Any
 # This validator is also shipped as a standalone host-side file, so it cannot
 # import the backend package in production.  Keep this release contract in
 # lockstep with MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION.
-EXPECTED_BUILDER_VERSION = "music_search_snapshot_v9_l3_album_owner"
+EXPECTED_BUILDER_VERSION = "music_search_snapshot_v10_all_duration"
 REQUIRED_MIGRATION_VERSION = 58
 EXPECTED_VARIANTS = {
     (2, False),

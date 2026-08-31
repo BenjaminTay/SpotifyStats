@@ -159,9 +159,13 @@ def _convert(
 
 
 def _metrics_from_frame(frame: pd.DataFrame) -> tuple[int, int]:
-    if frame.empty:
+    from backend.domains.playback.logical_timeline import get_listening_duration_frame
+
+    duration = get_listening_duration_frame(frame)
+    duration = duration if duration is not None else frame
+    if frame.empty and duration.empty:
         return 0, 0
-    return int(len(frame)), int(frame["ms_played"].sum())
+    return int(len(frame)), int(duration["ms_played"].sum())
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
@@ -189,9 +193,13 @@ def _direct_album_metrics(
     album_name: str,
     artist_name: str | None,
 ) -> tuple[int, int]:
-    frame = plays_df[plays_df["album_name"] == album_name]
-    if artist_name is not None:
-        frame = frame[frame["artist_name"] == artist_name]
+    frame = _filter_entity_rows(
+        plays_df,
+        "album",
+        None,
+        album_name,
+        artist_name,
+    )
     return _metrics_from_frame(frame)
 
 
@@ -614,7 +622,7 @@ def search_music_entities(
                     if use_filtered_counts
                     else None
                 )
-                if metrics is not None and metrics[0] <= 0:
+                if metrics is not None and metrics[0] <= 0 and metrics[1] <= 0:
                     continue
                 item = _convert(
                     kind,

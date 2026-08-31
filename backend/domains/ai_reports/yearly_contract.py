@@ -8,6 +8,8 @@ import sqlite3
 from datetime import date
 from typing import Any, Optional
 
+from backend.domains.yearly_review.duration import listening_duration_slices
+
 PERSONALITY_LABELS = {
     "explorer": "探索者",
     "loyalist": "专一者",
@@ -519,16 +521,23 @@ def pct_change(new_value: float, old_value: float) -> Optional[float]:
     return round((new_value - old_value) / old_value * 100, 1)
 
 
-def summarize_period_frame(df) -> dict[str, Any]:
-    if df.empty:
+def summarize_period_frame(df, *, duration_frame=None) -> dict[str, Any]:
+    duration_frame = duration_frame if duration_frame is not None else listening_duration_slices(df)
+    if df.empty and duration_frame.empty:
         return {"hours": 0.0, "plays": 0, "tracks": 0, "artists": 0, "active_days": 0}
     track_col = "track_id" if "track_id" in df else "track_name" if "track_name" in df else None
     return {
-        "hours": round(float(df["ms_played"].sum() / 3_600_000), 1) if "ms_played" in df else 0.0,
+        "hours": (
+            round(float(duration_frame["ms_played"].sum() / 3_600_000), 1)
+            if "ms_played" in duration_frame
+            else 0.0
+        ),
         "plays": int(len(df)),
         "tracks": int(df[track_col].dropna().nunique()) if track_col else 0,
         "artists": int(df["artist_name"].dropna().nunique()) if "artist_name" in df else 0,
-        "active_days": int(df["ts_date"].nunique()) if "ts_date" in df else 0,
+        "active_days": (
+            int(duration_frame["ts_date"].nunique()) if "ts_date" in duration_frame else 0
+        ),
     }
 
 
@@ -574,11 +583,14 @@ def build_same_period_comparison_from_frame(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
+    duration_frame = listening_duration_slices(all_plays_df) if all_plays_df is not None else None
     if (
         not end_date
         or all_plays_df is None
-        or getattr(all_plays_df, "empty", True)
-        or "ts_date" not in all_plays_df
+        or (
+            "ts_date" not in all_plays_df
+            and (duration_frame is None or "ts_date" not in duration_frame)
+        )
     ):
         return None
 
@@ -586,16 +598,27 @@ def build_same_period_comparison_from_frame(
     current_end = date.fromisoformat(end_date)
     previous_start = same_day_previous_year(current_start)
     previous_end = same_day_previous_year(current_end)
-    ts_dates = all_plays_df["ts_date"].astype(str).str[:10]
-
-    current_df = all_plays_df[
-        (ts_dates >= current_start.isoformat()) & (ts_dates <= current_end.isoformat())
+    if "ts_date" in all_plays_df:
+        ts_dates = all_plays_df["ts_date"].astype(str).str[:10]
+        current_df = all_plays_df[
+            (ts_dates >= current_start.isoformat()) & (ts_dates <= current_end.isoformat())
+        ]
+        previous_df = all_plays_df[
+            (ts_dates >= previous_start.isoformat()) & (ts_dates <= previous_end.isoformat())
+        ]
+    else:
+        current_df = all_plays_df.iloc[0:0]
+        previous_df = all_plays_df.iloc[0:0]
+    current_duration = duration_frame[
+        (duration_frame["ts_date"].astype(str).str[:10] >= current_start.isoformat())
+        & (duration_frame["ts_date"].astype(str).str[:10] <= current_end.isoformat())
     ]
-    previous_df = all_plays_df[
-        (ts_dates >= previous_start.isoformat()) & (ts_dates <= previous_end.isoformat())
+    previous_duration = duration_frame[
+        (duration_frame["ts_date"].astype(str).str[:10] >= previous_start.isoformat())
+        & (duration_frame["ts_date"].astype(str).str[:10] <= previous_end.isoformat())
     ]
-    current = summarize_period_frame(current_df)
-    previous = summarize_period_frame(previous_df)
+    current = summarize_period_frame(current_df, duration_frame=current_duration)
+    previous = summarize_period_frame(previous_df, duration_frame=previous_duration)
     periods = {
         "current_period": {
             "start_date": current_start.isoformat(),
@@ -606,7 +629,7 @@ def build_same_period_comparison_from_frame(
             "end_date": previous_end.isoformat(),
         },
     }
-    if previous["plays"] == 0:
+    if previous["plays"] == 0 and previous["hours"] == 0:
         return {
             "mode": "same_period_ytd",
             **periods,

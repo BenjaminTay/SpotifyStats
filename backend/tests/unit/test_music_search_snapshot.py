@@ -35,6 +35,7 @@ from backend.domains.music_search.snapshot import (
     mark_music_search_derived_data_dirty,
 )
 from backend.domains.music_search.variants import build_music_search_variant_contexts
+from backend.domains.playback.logical_timeline import attach_listening_duration_frame
 from backend.models.music_search import MusicSearchChartSummary
 
 pytestmark = pytest.mark.unit
@@ -1303,6 +1304,65 @@ def test_metric_maps_load_primary_and_artist_frames_sequentially(monkeypatch) ->
     assert released == ["db", "db"]
 
 
+def test_shared_metric_maps_use_qualified_events_and_all_attached_duration(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    context = _context(merge_level=1, dynamic_threshold=True)
+    primary = pd.DataFrame({"track_id": [1], "ms_played": [40_000]})
+    primary_duration = pd.DataFrame(
+        {
+            "track_id": [1, 1, 2],
+            "ms_played": [40_000, 20_000, 10_000],
+        }
+    )
+    attach_listening_duration_frame(primary, primary_duration)
+    artists = pd.DataFrame({"artist_id": [3], "ms_played": [40_000]})
+    artist_duration = pd.DataFrame(
+        {
+            "artist_id": [3, 3, 4],
+            "ms_played": [40_000, 20_000, 10_000],
+        }
+    )
+    attach_listening_duration_frame(artists, artist_duration)
+
+    def album_plays(frame, *_args, **_kwargs):
+        return pd.DataFrame(
+            {
+                "album_project_id": [2],
+                "play_count": [int(frame["play_count"].sum())],
+                "total_ms": [int(frame["total_ms"].sum())],
+            }
+        )
+
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot.compute_album_project_plays",
+        album_plays,
+    )
+
+    maps = _shared_metric_maps(
+        conn,
+        (context,),
+        shared_frames={True: (primary, artists)},
+    )
+
+    track_metrics, album_metrics, artist_metrics = maps[(1, True)]
+    assert track_metrics == {1: (1, 60_000), 2: (0, 10_000)}
+    assert album_metrics == {2: (1, 70_000)}
+    assert artist_metrics == {3: (1, 60_000), 4: (0, 10_000)}
+
+
+def test_context_rows_keep_duration_only_entities() -> None:
+    rows = _context_rows(
+        _conn(),
+        _context(),
+        metric_maps=({1: (0, 20_000)}, {}, {}),
+        chart_lookup={"track": {}, "album": {}, "artist": {}},
+    )
+
+    assert ("track:1", 0, 20_000) == rows[0][:3]
+
+
 def test_search_frame_loader_skips_unused_duration_slices(monkeypatch) -> None:
     from backend.services import music_search_service
 
@@ -1580,10 +1640,14 @@ def test_shared_chart_frames_match_billboard_source_album_schema(monkeypatch) ->
         }
     )
     artist = primary.assign(artist_id=[3, 4], artist_name=["Artist A", "Artist B"])
-    captured: list[pd.DataFrame] = []
+    primary_duration = primary.assign(ms_played=[20_000, 10_000])
+    artist_duration = artist.assign(ms_played=[20_000, 10_000])
+    attach_listening_duration_frame(primary, primary_duration)
+    attach_listening_duration_frame(artist, artist_duration)
+    captured: list[tuple[pd.DataFrame, pd.DataFrame]] = []
 
-    def capture_billboard_schema(frame, **_kwargs):
-        captured.append(frame.copy())
+    def capture_billboard_schema(frame, *, duration_frame, **_kwargs):
+        captured.append((frame.copy(), duration_frame.copy()))
         return frame.assign(
             billboard_week="2026-01-02",
             play_count=1,
@@ -1614,9 +1678,10 @@ def test_shared_chart_frames_match_billboard_source_album_schema(monkeypatch) ->
     )
 
     assert len(captured) == 2
-    for frame in captured:
-        assert "track_album_id" not in frame.columns
-        assert frame["album_name"].tolist() == ["Track Album", "Playback Source Album"]
+    for events, duration in captured:
+        for frame in (events, duration):
+            assert "track_album_id" not in frame.columns
+            assert frame["album_name"].tolist() == ["Track Album", "Playback Source Album"]
 
     captured.clear()
     dynamic_context = _context(merge_level=1, dynamic_threshold=True)
@@ -1632,9 +1697,10 @@ def test_shared_chart_frames_match_billboard_source_album_schema(monkeypatch) ->
     )
 
     assert len(captured) == 2
-    for frame in captured:
-        assert frame["track_album_id"].tolist() == [10, 20]
-        assert frame["album_name"].tolist() == ["Track Album", "Playback Source Album"]
+    for events, duration in captured:
+        for frame in (events, duration):
+            assert frame["track_album_id"].tolist() == [10, 20]
+            assert frame["album_name"].tolist() == ["Track Album", "Playback Source Album"]
 
 
 def test_shared_chart_skips_unloaded_primary_or_artist_family(monkeypatch) -> None:

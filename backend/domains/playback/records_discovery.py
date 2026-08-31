@@ -8,7 +8,11 @@ import sqlite3
 
 import pandas as pd
 
-from backend.domains.playback.records_helpers import TOP_RECORD_LIMIT, safe_groupby_cols
+from backend.domains.playback.records_helpers import (
+    TOP_RECORD_LIMIT,
+    grouped_records_duration,
+    safe_groupby_cols,
+)
 from backend.domains.playback.records_sorting import sort_and_limit
 
 
@@ -118,15 +122,15 @@ def _same_name_diff_artist(track_frame, conn: sqlite3.Connection | None = None):
         except Exception:
             artist_cover_map = {}
 
+    duration_rows = grouped_records_duration(track_frame, ["track_name", "artist_name"])
     rows: list[dict[str, object]] = []
     for _, sn in same_name.iterrows():
         versions = track_frame[track_frame["track_name"] == sn["track_name"]]
         artist_counts = versions.groupby("artist_name").size().reset_index(name="plays")
-        if "ms_played" in versions.columns:
-            durations = versions.groupby("artist_name")["ms_played"].sum()
-            artist_counts["total_ms"] = artist_counts["artist_name"].map(durations).fillna(0)
-        else:
-            artist_counts["total_ms"] = 0
+        durations = duration_rows[duration_rows["track_name"] == sn["track_name"]].set_index(
+            "artist_name"
+        )["total_ms"]
+        artist_counts["total_ms"] = artist_counts["artist_name"].map(durations).fillna(0)
         artist_counts = artist_counts.sort_values(
             ["plays", "total_ms", "artist_name"],
             ascending=[False, False, True],
@@ -258,15 +262,10 @@ def _album_full_replays(frame, conn, merge_level=2):
         play_column = "_play_marker"
     else:
         play_column = "play_id"
-    if "ms_played" not in working.columns:
-        working["_ms_marker"] = 0.0
-        ms_column = "_ms_marker"
-    else:
-        ms_column = "ms_played"
     song_group_cols = list(dict.fromkeys([album_id_col, album_name_col, "artist_name", song_col]))
     per_song = (
         working.groupby(song_group_cols, dropna=False)
-        .agg(song_plays=(play_column, "count"), song_ms=(ms_column, "sum"))
+        .agg(song_plays=(play_column, "count"))
         .reset_index()
     )
     if per_song.empty:
@@ -274,6 +273,11 @@ def _album_full_replays(frame, conn, merge_level=2):
 
     results = []
     group_cols = list(dict.fromkeys([album_id_col, album_name_col, "artist_name"]))
+    duration_totals = grouped_records_duration(frame, group_cols)
+    duration_map = {
+        tuple(str(row[column]) for column in group_cols): float(row["total_ms"])
+        for _, row in duration_totals.iterrows()
+    }
     for keys, songs in per_song.groupby(group_cols, dropna=False):
         key_values = keys if isinstance(keys, tuple) else (keys,)
         group_values = dict(zip(group_cols, key_values))
@@ -283,7 +287,8 @@ def _album_full_replays(frame, conn, merge_level=2):
         album_name = str(album_name)
         artist_name = str(artist_name)
         total_plays = int(songs["song_plays"].sum())
-        total_ms = float(songs["song_ms"].sum())
+        duration_key = tuple(str(group_values[column]) for column in group_cols)
+        total_ms = duration_map.get(duration_key, 0.0)
         total = None
         replay_songs = songs
         is_numeric_project = False

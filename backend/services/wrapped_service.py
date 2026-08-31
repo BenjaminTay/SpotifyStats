@@ -41,6 +41,11 @@ from backend.domains.metadata.language_registry import (
     LANGUAGE_VARIANTS,
     normalize_language_claim,
 )
+from backend.domains.yearly_review.duration import (
+    count_duration_frame,
+    listening_duration_slices,
+    with_listening_duration_slices,
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # helpers
@@ -55,6 +60,24 @@ def _hour(ms_series):
 def _total_minutes(ms_series):
     """Sum ms_played → minutes."""
     return float(ms_series.sum() / 60_000)
+
+
+def _count_duration_aggregate(
+    events: pd.DataFrame,
+    duration: pd.DataFrame,
+    group_columns: list[str],
+) -> pd.DataFrame:
+    """Aggregate qualified event counts and unthresholded duration together."""
+    weighted = count_duration_frame(events, duration)
+    if weighted.empty or not set(group_columns).issubset(weighted.columns):
+        return pd.DataFrame(columns=[*group_columns, "plays", "hours"])
+    return (
+        weighted.groupby(group_columns, dropna=False)
+        .agg(plays=("play_count", "sum"), hours=("total_ms", _hour))
+        .reset_index()
+        .sort_values(["plays", "hours"], ascending=False)
+        .reset_index(drop=True)
+    )
 
 
 def _get_artist_cover(conn: sqlite3.Connection, artist_name: str) -> str:
@@ -347,10 +370,18 @@ def _build_wrapped_full(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
     )
-    year_df = df[df["ts_year"] == year]
-    year_df_artists = df_artists[df_artists["ts_year"] == year]
-    reporting_period = build_reporting_period_from_frame(year_df, year)
-    if year_df.empty:
+    year_duration = listening_duration_slices(df, year=year)
+    year_artist_duration = listening_duration_slices(df_artists, year=year)
+    year_df = with_listening_duration_slices(df[df["ts_year"] == year], year_duration)
+    year_df_artists = with_listening_duration_slices(
+        df_artists[df_artists["ts_year"] == year],
+        year_artist_duration,
+    )
+    reporting_period = build_reporting_period_from_frame(
+        year_df if not year_df.empty else year_duration,
+        year,
+    )
+    if year_df.empty and year_duration.empty:
         return {
             "year": year,
             "empty": True,
@@ -368,32 +399,34 @@ def _build_wrapped_full(
             "comparison": None,
         }
 
-    total_minutes = _total_minutes(year_df["ms_played"])
+    total_minutes = _total_minutes(year_duration["ms_played"])
     total_plays = len(year_df)
-    active_days = int(year_df["ts_date"].nunique())
+    active_days = int(year_duration["ts_date"].nunique())
     unique_tracks = int(year_df["track_id"].nunique())
     unique_artists = int(year_df_artists["artist_name"].dropna().nunique())
     avg_hours_per_day = float(total_minutes / 60 / max(active_days, 1))
 
     # Pre-compute commonly needed aggregates
     # artist_agg uses multi-artist data so featured artists get credit
-    artist_agg = (
-        year_df_artists.groupby("artist_name")
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-        .sort_values(["plays", "hours"], ascending=False)
-    )
+    artist_agg = _count_duration_aggregate(
+        year_df_artists,
+        year_artist_duration,
+        ["artist_name"],
+    ).set_index("artist_name")
     # track_agg and album_agg use single-artist data — tracks/albums are not duplicated
-    track_agg = (
-        year_df.groupby(["track_name", "artist_name", "track_id"])
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-        .sort_values(["plays", "hours"], ascending=False)
-        .reset_index()
+    track_agg = _count_duration_aggregate(
+        year_df,
+        year_duration,
+        ["track_name", "artist_name", "track_id"],
     )
     if merge_level > 1:
         from backend.domains.playback.album_projects import compute_album_project_plays
 
         project_agg = compute_album_project_plays(
-            year_df, conn, merge_level=merge_level, include_compilations=False
+            count_duration_frame(year_df, year_duration),
+            conn,
+            merge_level=merge_level,
+            include_compilations=False,
         )
         album_agg = project_agg.rename(
             columns={
@@ -407,11 +440,10 @@ def _build_wrapped_full(
             drop=True
         )
     else:
-        album_agg = (
-            year_df.groupby(["album_name", "artist_name"])
-            .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-            .sort_values(["plays", "hours"], ascending=False)
-            .reset_index()
+        album_agg = _count_duration_aggregate(
+            year_df,
+            year_duration,
+            ["album_name", "artist_name"],
         )
 
     return {
@@ -425,17 +457,35 @@ def _build_wrapped_full(
             conn, year_df, artist_agg, total_plays, avg_hours_per_day, unique_tracks
         ),
         "top_lists": _build_top_lists(conn, artist_agg, track_agg, album_agg),
-        "genre_panorama": _build_genre_panorama(conn, year_df, artist_agg),
-        "time_story": _build_time_story(conn, year_df),
+        "genre_panorama": _build_genre_panorama(
+            conn,
+            year_df,
+            artist_agg,
+            duration_frame=year_duration,
+        ),
+        "time_story": _build_time_story(conn, year_df, duration_frame=year_duration),
         "music_map": _build_music_map(conn, year_df, artist_agg),
         "discovery_returns": _build_discovery_returns(
             conn, df, year_df, df_artists, year_df_artists, year
         ),
         "listening_depth": _build_listening_depth(conn, year_df, track_agg, year),
         "special_moments": _build_special_moments(conn, year_df),
-        "monthly_drilldown": _build_monthly_drilldown(conn, year_df, year_df_artists),
+        "monthly_drilldown": _build_monthly_drilldown(
+            conn,
+            year_df,
+            year_df_artists,
+            duration_frame=year_duration,
+        ),
         "comparison": _build_comparison(
-            df, year_df, df_artists, year_df_artists, year, track_agg, artist_agg
+            df,
+            year_df,
+            df_artists,
+            year_df_artists,
+            year,
+            track_agg,
+            artist_agg,
+            duration_frame=year_duration,
+            all_duration_frame=listening_duration_slices(df),
         ),
     }
 
@@ -545,6 +595,8 @@ def _calc_trend_chaser_score(conn: sqlite3.Connection, year_df) -> float:
     Join path: unique (track_name, artist_name) pairs → tracks → spotify_track_meta
     → spotify_album_meta.release_date, matched against the year.
     """
+    if year_df.empty:
+        return 0.0
     year = int(year_df["ts_year"].iloc[0])
     pairs = list(year_df[["track_name", "artist_name"]].drop_duplicates().itertuples(index=False))
     pairs = [(t, a) for t, a in pairs if pd.notna(t) and pd.notna(a)]
@@ -700,18 +752,18 @@ def _calc_globetrotter_score(conn: sqlite3.Connection, year_df, artist_agg) -> f
 
     resolved = resolve_artist_genres_map(conn, artist_names)
 
-    total_plays = 0
-    non_chinese_plays = 0
+    total_hours = 0.0
+    non_chinese_hours = 0.0
     for artist_name, row in artist_agg.iterrows():
-        plays = int(row["plays"])
-        total_plays += plays
+        hours = float(row["hours"])
+        total_hours += hours
         item = resolved.get(artist_name)
         if item and _resolved_has_region_evidence(item) and not _resolved_is_chinese(item):
-            non_chinese_plays += plays
+            non_chinese_hours += hours
 
-    if total_plays == 0:
+    if total_hours == 0:
         return 0.0
-    return round(non_chinese_plays / total_plays * 100, 1)
+    return round(non_chinese_hours / total_hours * 100, 1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -776,12 +828,15 @@ def _build_top_lists(conn, artist_agg, track_agg, album_agg):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _build_genre_panorama(conn, year_df, artist_agg):
+def _build_genre_panorama(conn, year_df, artist_agg, *, duration_frame=None):
     """Build genre axes and language coverage from the same primary-artist plays."""
-    consumer_profile = build_consumer_taste_profile(conn, year_df)
+    duration_frame = (
+        duration_frame if duration_frame is not None else listening_duration_slices(year_df)
+    )
+    consumer_profile = build_consumer_taste_profile(conn, duration_frame)
     artist_ms, excluded_ms = build_primary_artist_ms(
         conn,
-        year_df.loc[:, ["track_id", "ms_played"]],
+        duration_frame.loc[:, ["track_id", "ms_played"]],
     )
     artist_names_by_id: dict[int, str] = {}
     artist_ids = list(artist_ms)
@@ -812,7 +867,7 @@ def _build_genre_panorama(conn, year_df, artist_agg):
 
     distribution = compute_artist_genre_distribution(conn, artist_hours)
     distribution["coverage"]["excluded_unattributed_hours"] = excluded_ms / 3_600_000
-    monthly_genres_list = _build_monthly_genres(year_df, artist_style_genres)
+    monthly_genres_list = _build_monthly_genres(duration_frame, artist_style_genres)
 
     return {
         **distribution,
@@ -1122,12 +1177,19 @@ def _build_music_map(conn, year_df, artist_agg) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _build_time_story(conn, year_df):
+def _build_time_story(conn, year_df, *, duration_frame=None):
     # daily_grid: 12 rows x 31 columns
     daily_grid = _build_daily_grid(year_df)
 
     # monthly_pulse
-    monthly_pulse_df = year_df.groupby("ts_month").agg(hours=("ms_played", _hour)).reset_index()
+    duration_frame = (
+        duration_frame if duration_frame is not None else listening_duration_slices(year_df)
+    )
+    monthly_pulse_df = (
+        duration_frame.groupby("ts_month").agg(hours=("ms_played", _hour)).reset_index()
+        if not duration_frame.empty
+        else pd.DataFrame(columns=["ts_month", "hours"])
+    )
     month_hours = {
         int(r.ts_month): round(float(r.hours), 1) for r in monthly_pulse_df.itertuples(index=False)
     }
@@ -1492,6 +1554,13 @@ def _calc_album_completion(conn, year_df) -> list[dict]:
 
 
 def _build_special_moments(conn, year_df) -> dict:
+    if year_df.empty:
+        return {
+            "most_active_day": None,
+            "earliest_listen": None,
+            "latest_listen": None,
+            "longest_streak": None,
+        }
     # most_active_day
     most_active_day = _find_most_active_day(conn, year_df)
 
@@ -1593,12 +1662,22 @@ def _find_longest_streak(year_df) -> dict | None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _build_monthly_drilldown(conn, year_df, year_df_artists=None) -> list[dict]:
+def _build_monthly_drilldown(
+    conn,
+    year_df,
+    year_df_artists=None,
+    *,
+    duration_frame=None,
+) -> list[dict]:
     """Per-month breakdown: total_hours + top 3 tracks + top 1 artist."""
+    duration_frame = (
+        duration_frame if duration_frame is not None else listening_duration_slices(year_df)
+    )
     months = []
     for m in range(1, 13):
         month_df = year_df[year_df["ts_month"] == m]
-        if month_df.empty:
+        month_duration = duration_frame[duration_frame["ts_month"] == m]
+        if month_df.empty and month_duration.empty:
             months.append(
                 {
                     "month": m,
@@ -1609,7 +1688,7 @@ def _build_monthly_drilldown(conn, year_df, year_df_artists=None) -> list[dict]:
             )
             continue
 
-        total_hours = round(float(month_df["ms_played"].sum() / 3_600_000), 1)
+        total_hours = round(float(month_duration["ms_played"].sum() / 3_600_000), 1)
 
         # Top 3 tracks
         top_tracks_df = (
@@ -1618,6 +1697,8 @@ def _build_monthly_drilldown(conn, year_df, year_df_artists=None) -> list[dict]:
             .sort_values("plays", ascending=False)
             .head(3)
             .reset_index()
+            if not month_df.empty
+            else pd.DataFrame(columns=["track_name", "artist_name", "track_id", "plays"])
         )
         names_map = get_track_artist_names_map()
         top_tracks = []
@@ -1644,6 +1725,8 @@ def _build_monthly_drilldown(conn, year_df, year_df_artists=None) -> list[dict]:
         )
         top_artist_name = (
             artist_month_df.groupby("artist_name").size().sort_values(ascending=False).index[0]
+            if not artist_month_df.empty
+            else None
         )
         top_artist = (
             {
@@ -1670,13 +1753,35 @@ def _build_monthly_drilldown(conn, year_df, year_df_artists=None) -> list[dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _build_comparison(df, year_df, df_artists, year_df_artists, year, track_agg, artist_agg):
+def _build_comparison(
+    df,
+    year_df,
+    df_artists,
+    year_df_artists,
+    year,
+    track_agg,
+    artist_agg,
+    *,
+    duration_frame=None,
+    all_duration_frame=None,
+):
     # last_year comparison
     last_year_df = df[df["ts_year"] == year - 1]
     last_year_cmp = None
-    if not last_year_df.empty:
-        this_hours = _hour(year_df["ms_played"])
-        last_hours = _hour(last_year_df["ms_played"])
+    duration_frame = (
+        duration_frame if duration_frame is not None else listening_duration_slices(year_df)
+    )
+    all_duration_frame = (
+        all_duration_frame if all_duration_frame is not None else listening_duration_slices(df)
+    )
+    last_year_duration = (
+        all_duration_frame[all_duration_frame["ts_year"] == year - 1]
+        if "ts_year" in all_duration_frame.columns
+        else all_duration_frame.iloc[0:0]
+    )
+    if not last_year_df.empty or not last_year_duration.empty:
+        this_hours = _hour(duration_frame["ms_played"])
+        last_hours = _hour(last_year_duration["ms_played"])
         this_plays = len(year_df)
         last_plays = len(last_year_df)
         last_year_artists_df = df_artists[df_artists["ts_year"] == year - 1]
@@ -1690,8 +1795,8 @@ def _build_comparison(df, year_df, df_artists, year_df_artists, year, track_agg,
                 return None
             return round((new_val - old_val) / old_val * 100, 1)
 
-        this_days = year_df["ts_date"].nunique()
-        last_days = last_year_df["ts_date"].nunique()
+        this_days = duration_frame["ts_date"].nunique()
+        last_days = last_year_duration["ts_date"].nunique()
 
         last_year_cmp = {
             "total_hours_change": _pct_change(this_hours, last_hours),

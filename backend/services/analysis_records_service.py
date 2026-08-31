@@ -11,10 +11,15 @@ import pandas as pd
 
 from backend.core.cache import singleflight
 from backend.core.db import get_db, load_plays, load_plays_for_artists
+from backend.domains.playback.logical_timeline import attach_listening_duration_frame
 from backend.domains.playback.records import (
     _add_cover_urls_to_records,
     _serialize_records,
     compute_playback_records,
+)
+from backend.domains.playback.records_helpers import (
+    attach_scoped_records_duration,
+    records_duration_frame,
 )
 from backend.domains.playback.track_groups import load_track_group_keys
 from backend.services.analysis_stats_service import PERIOD_LABELS, resolve_period_dates
@@ -23,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Bump this whenever record ranking/serialization semantics change so a
 # long-lived process cannot serve a pre-fix payload from its LRU cache.
-PLAYBACK_RECORDS_SORT_CONTRACT_VERSION = "2026-08-30-v2"
+PLAYBACK_RECORDS_SORT_CONTRACT_VERSION = "2026-09-01-all-duration-v3"
 
 
 def _load_reliable_album_release_dates(conn: sqlite3.Connection) -> pd.DataFrame:
@@ -59,6 +64,8 @@ def _build_entity_frames(
     merge_enabled: bool = True,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
+    period_start: str | None = None,
+    period_end: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build track, album, and artist entity frames with canonicalization.
 
@@ -67,12 +74,17 @@ def _build_entity_frames(
         album_frame: event_frame with album_project_id/name columns added
         artist_frame: fan-out frame with one row per contributing artist
     """
-    track_frame = event_frame.copy() if not event_frame.empty else event_frame
-    album_frame = event_frame.copy() if not event_frame.empty else event_frame
+    duration_frame = records_duration_frame(event_frame)
+    track_frame = event_frame.copy()
+    track_duration = duration_frame.copy()
+    album_frame = event_frame.copy()
+    album_duration = duration_frame.copy()
 
     # ── Track canonicalization ──
-    if not track_frame.empty and merge_level >= 2:
+    tg = pd.DataFrame()
+    if (not track_frame.empty or not track_duration.empty) and merge_level >= 2:
         tg = load_track_group_keys(conn, merge_level)
+    if not track_frame.empty and merge_level >= 2:
         if not tg.empty:
             track_frame = track_frame.merge(tg, on="track_id", how="left")
             track_frame["canonical_track_id"] = track_frame["track_agg_id"].fillna(
@@ -87,6 +99,23 @@ def _build_entity_frames(
     elif not track_frame.empty:
         track_frame["canonical_track_id"] = track_frame["track_id"]
         track_frame["canonical_track_name"] = track_frame["track_name"]
+
+    if not track_duration.empty and merge_level >= 2:
+        if not tg.empty:
+            track_duration = track_duration.merge(tg, on="track_id", how="left")
+            track_duration["canonical_track_id"] = track_duration["track_agg_id"].fillna(
+                track_duration["track_id"]
+            )
+            track_duration["canonical_track_name"] = track_duration["track_agg_name"].fillna(
+                track_duration["track_name"]
+            )
+        else:
+            track_duration["canonical_track_id"] = track_duration["track_id"]
+            track_duration["canonical_track_name"] = track_duration["track_name"]
+    elif not track_duration.empty:
+        track_duration["canonical_track_id"] = track_duration["track_id"]
+        track_duration["canonical_track_name"] = track_duration["track_name"]
+    attach_listening_duration_frame(track_frame, track_duration)
 
     # ── Album canonicalization via album project membership ──
     if not album_frame.empty and merge_level >= 2:
@@ -136,6 +165,50 @@ def _build_entity_frames(
         album_frame["album_project_id"] = album_frame["album_name"].astype(str)
         album_frame["album_project_name"] = album_frame["album_name"]
 
+    if not album_duration.empty and merge_level >= 2:
+        try:
+            from backend.domains.playback.album_projects import (
+                apply_canonical_song_keys,
+                load_album_project_membership,
+            )
+
+            duration_with_keys = apply_canonical_song_keys(album_duration, conn, merge_level)
+            membership = load_album_project_membership(conn, merge_level, include_compilations)
+            if not membership.empty and "canonical_song_key" in duration_with_keys.columns:
+                membership_join = membership[
+                    ["canonical_song_key", "project_id", "album_project_name", "release_date"]
+                ].rename(
+                    columns={
+                        "project_id": "album_project_id",
+                        "release_date": "album_project_release_date",
+                    }
+                )
+                album_duration = duration_with_keys.merge(
+                    membership_join,
+                    on="canonical_song_key",
+                    how="left",
+                )
+                album_duration["album_project_id"] = album_duration["album_project_id"].fillna(
+                    album_duration["album_name"].astype(str)
+                )
+                album_duration["album_project_name"] = album_duration["album_project_name"].fillna(
+                    album_duration["album_name"]
+                )
+            else:
+                album_duration["album_project_id"] = album_duration["album_name"].astype(str)
+                album_duration["album_project_name"] = album_duration["album_name"]
+        except Exception as e:
+            logger.warning(
+                "Album duration project membership join failed, falling back to album_name: %s",
+                e,
+            )
+            album_duration["album_project_id"] = album_duration["album_name"].astype(str)
+            album_duration["album_project_name"] = album_duration["album_name"]
+    elif not album_duration.empty:
+        album_duration["album_project_id"] = album_duration["album_name"].astype(str)
+        album_duration["album_project_name"] = album_duration["album_name"]
+    attach_listening_duration_frame(album_frame, album_duration)
+
     # Fastest album milestones use a trustworthy formal release date to discard
     # prerelease plays. Prefer the canonical album-project date; only use a
     # source-album fallback when one high-confidence Spotify date is unambiguous.
@@ -166,17 +239,25 @@ def _build_entity_frames(
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
         )
-        # Filter to same date range as event_frame
-        if not artist_frame.empty and not event_frame.empty:
-            min_date = event_frame["ts_date"].min()
-            max_date = event_frame["ts_date"].max()
-            artist_frame = artist_frame[
-                (artist_frame["ts_date"] >= min_date) & (artist_frame["ts_date"] <= max_date)
-            ]
+        artist_frame = attach_scoped_records_duration(
+            artist_frame,
+            start_date=period_start,
+            end_date=period_end,
+        )
+        if not artist_frame.empty and (period_start or period_end):
+            dates = artist_frame["ts_date"].astype(str)
+            mask = pd.Series(True, index=artist_frame.index)
+            if period_start:
+                mask &= dates >= period_start
+            if period_end:
+                mask &= dates <= period_end
+            scoped_artist_duration = records_duration_frame(artist_frame)
+            artist_frame = artist_frame.loc[mask].copy()
+            attach_listening_duration_frame(artist_frame, scoped_artist_duration)
     except Exception as e:
         # Fallback: use primary artist from event_frame
         logger.warning("Artist fan-out failed, falling back to primary artist: %s", e)
-        artist_frame = event_frame.copy() if not event_frame.empty else event_frame
+        artist_frame = event_frame.copy()
 
     return track_frame, album_frame, artist_frame
 
@@ -221,16 +302,27 @@ def _get_analysis_records_uncached(
 
     # Period filtering
     period_start, period_end = resolve_period_dates(period, start_date, end_date)
+    event_frame = attach_scoped_records_duration(
+        event_frame,
+        start_date=period_start,
+        end_date=period_end,
+    )
+    scoped_duration = records_duration_frame(event_frame)
     if period_start or period_end:
         if period_start:
             event_frame = event_frame[event_frame["ts_date"].astype(str) >= period_start]
         if period_end:
             event_frame = event_frame[event_frame["ts_date"].astype(str) <= period_end]
+        event_frame = event_frame.copy()
+        attach_listening_duration_frame(event_frame, scoped_duration)
+
+    duration_frame = records_duration_frame(event_frame)
 
     # Resolved period for response
     if period == "lifetime":
-        p_start = str(event_frame["ts_date"].min()) if not event_frame.empty else None
-        p_end = str(event_frame["ts_date"].max()) if not event_frame.empty else None
+        range_source = event_frame if not event_frame.empty else duration_frame
+        p_start = str(range_source["ts_date"].min()) if not range_source.empty else None
+        p_end = str(range_source["ts_date"].max()) if not range_source.empty else None
     else:
         p_start = period_start
         p_end = period_end
@@ -243,7 +335,7 @@ def _get_analysis_records_uncached(
     }
 
     # Summary meta
-    if event_frame.empty:
+    if event_frame.empty and duration_frame.empty:
         meta = {
             "total_plays": 0,
             "total_hours": 0.0,
@@ -259,7 +351,7 @@ def _get_analysis_records_uncached(
         }
 
     total_plays = len(event_frame)
-    total_hours = round(float(event_frame["ms_played"].sum()) / 3_600_000, 1)
+    total_hours = round(float(duration_frame["ms_played"].sum()) / 3_600_000, 1)
     active_days = int(event_frame["ts_date"].nunique())
 
     meta = {
@@ -284,9 +376,18 @@ def _get_analysis_records_uncached(
             merge_enabled=merge_enabled,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            period_start=period_start,
+            period_end=period_end,
         )
     else:
-        track_frame, album_frame, artist_frame = preloaded_entity_frames
+        track_frame, album_frame, artist_frame = tuple(
+            attach_scoped_records_duration(
+                frame.copy(),
+                start_date=period_start,
+                end_date=period_end,
+            )
+            for frame in preloaded_entity_frames
+        )
 
     # Compute records
     raw_records = compute_playback_records(

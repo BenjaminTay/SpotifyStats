@@ -5,11 +5,19 @@ from __future__ import annotations
 import pandas as pd
 
 from backend.domains.playback.records_helpers import (
+    grouped_records_duration,
     safe_groupby_cols,
     safe_rename,
     unique_cols,
 )
 from backend.domains.playback.records_sorting import sort_and_limit
+
+
+def _duration_totals(frame: pd.DataFrame, group_col: str) -> dict[object, float]:
+    grouped = grouped_records_duration(frame, [group_col])
+    if grouped.empty:
+        return {}
+    return dict(zip(grouped[group_col], grouped["total_ms"].astype(float)))
 
 
 def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="track"):
@@ -22,6 +30,7 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
     sort_cols = unique_cols(group_col, "ts_date")
     presence = presence.sort_values(sort_cols)
     presence["ts_date"] = pd.to_datetime(presence["ts_date"])
+    duration_totals = _duration_totals(frame, group_col)
 
     results = []
     for entity_id, grp in presence.groupby(group_col):
@@ -39,7 +48,7 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
 
         entity_frame = frame[frame[group_col] == entity_id]
         total_plays = len(entity_frame)
-        total_ms = float(entity_frame["ms_played"].sum())
+        total_ms = duration_totals.get(entity_id, float(entity_frame["ms_played"].sum()))
         total_hours = round(total_ms / 3_600_000, 1)
 
         if len(dates) < 2:
@@ -119,10 +128,11 @@ def _longest_span(frame, group_col, name_col, artist_col, entity_type="track"):
             first_date=("ts_date", "min"),
             last_date=("ts_date", "max"),
             total_plays=("play_id", "count"),
-            total_ms=("ms_played", "sum"),
         )
         .reset_index()
     )
+    span = span.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    span["total_ms"] = span["total_ms"].fillna(0)
     span["first_date"] = pd.to_datetime(span["first_date"])
     span["last_date"] = pd.to_datetime(span["last_date"])
     span["span_days"] = (span["last_date"] - span["first_date"]).dt.days + 1
@@ -154,6 +164,7 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
     sort_cols = unique_cols(group_col, "ts_date")
     presence = presence.sort_values(sort_cols)
     presence["ts_date"] = pd.to_datetime(presence["ts_date"])
+    duration_totals = _duration_totals(frame, group_col)
 
     results = []
     for entity_id, grp in presence.groupby(group_col):
@@ -180,7 +191,8 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
             name = str(grp[name_col].iloc[0]) if name_col in grp.columns else str(entity_id)
             artist = str(grp[artist_col].iloc[0]) if artist_col in grp.columns else ""
             total_plays = len(frame[frame[group_col] == entity_id])
-            total_ms = float(frame[frame[group_col] == entity_id]["ms_played"].sum())
+            event_total_ms = float(frame[frame[group_col] == entity_id]["ms_played"].sum())
+            total_ms = duration_totals.get(entity_id, event_total_ms)
             total_hours = round(total_ms / 3_600_000, 1)
             results.append(
                 {
@@ -227,10 +239,11 @@ def _most_active_months(frame, group_col, name_col, artist_col, entity_type="tra
         .agg(
             active_months=("_ym", "nunique"),
             total_plays=("play_id", "count"),
-            total_ms=("ms_played", "sum"),
         )
         .reset_index()
     )
+    active = active.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    active["total_ms"] = active["total_ms"].fillna(0)
     active["entity_id"] = active[group_col].astype(str)
     active = sort_and_limit(
         active,

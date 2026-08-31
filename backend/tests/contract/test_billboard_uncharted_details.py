@@ -138,7 +138,9 @@ def test_effective_play_threshold_controls_detail_eligibility(client, monkeypatc
     )
     assert valid.status_code == 200
     assert valid.json()["chart_status"] == "not_charted"
-    assert filtered.status_code == 404
+    assert filtered.status_code == 200
+    assert filtered.json()["chart_status"] == "not_charted"
+    assert filtered.json()["effective_play_count"] == 0
 
 
 def test_charted_artist_detail_keeps_effective_play_count(client, monkeypatch):

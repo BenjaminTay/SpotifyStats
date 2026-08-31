@@ -5,6 +5,8 @@ from __future__ import annotations
 import pandas as pd
 
 from backend.domains.playback.records_helpers import (
+    grouped_records_duration,
+    records_duration_frame,
     safe_groupby_cols,
     safe_rename,
 )
@@ -20,11 +22,9 @@ def _daily_binge(frame, group_col, name_col, artist_col, entity_type="track"):
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_date"], group_col, name_col, artist_col or name_col)
-    daily = (
-        frame.groupby(gb_cols)
-        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
-    )
+    daily = frame.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
+    daily = daily.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    daily["total_ms"] = daily["total_ms"].fillna(0)
     if daily.empty:
         return pd.DataFrame()
     best = select_period_winners(
@@ -53,14 +53,18 @@ def _daily_binge(frame, group_col, name_col, artist_col, entity_type="track"):
 
 def _daily_duration(frame, group_col, name_col, artist_col, entity_type="track"):
     """單日聆聽時長：單日內某 entity 累計播放時長最高。"""
-    if frame.empty:
+    duration = records_duration_frame(frame)
+    if frame.empty and duration.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_date"], group_col, name_col, artist_col or name_col)
-    daily = (
-        frame.groupby(gb_cols)
-        .agg(total_ms=("ms_played", "sum"), plays=("play_id", "count"))
-        .reset_index()
+    daily = grouped_records_duration(frame, gb_cols)
+    plays = (
+        frame.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
+        if not frame.empty
+        else pd.DataFrame(columns=[*gb_cols, "plays"])
     )
+    daily = daily.merge(plays, on=gb_cols, how="left")
+    daily["plays"] = pd.to_numeric(daily["plays"], errors="coerce").fillna(0).astype(int)
     if daily.empty:
         return pd.DataFrame()
     best = select_period_winners(
@@ -167,7 +171,6 @@ def _top_daily_entity(frame, group_col, name_col, artist_col=None, prefix="track
 
     aggregations = {
         "entity_plays": ("play_id", "count"),
-        "entity_ms": ("ms_played", "sum"),
     }
     # A canonical track group is not itself a routable track detail ID. Keep a
     # real member track ID from the winning group so the daily snapshot can link
@@ -176,6 +179,9 @@ def _top_daily_entity(frame, group_col, name_col, artist_col=None, prefix="track
         aggregations["detail_track_id"] = ("track_id", "first")
 
     counts = frame.groupby(gb_cols, dropna=False).agg(**aggregations).reset_index()
+    counts = counts.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    counts = counts.rename(columns={"total_ms": "entity_ms"})
+    counts["entity_ms"] = counts["entity_ms"].fillna(0)
     if counts.empty:
         return {}
 
@@ -210,7 +216,8 @@ def _top_daily_entity(frame, group_col, name_col, artist_col=None, prefix="track
 
 def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_frame=None):
     """單日總量紀錄。"""
-    if event_frame.empty:
+    duration = records_duration_frame(event_frame)
+    if event_frame.empty and duration.empty:
         return pd.DataFrame()
 
     track_source = track_frame if track_frame is not None and not track_frame.empty else event_frame
@@ -221,18 +228,25 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
         "canonical_track_name" if "canonical_track_name" in track_source.columns else "track_name"
     )
 
-    daily = (
-        event_frame.groupby("ts_date")
-        .agg(
-            total_plays=("play_id", "count"),
-            total_ms=("ms_played", "sum"),
+    plays = (
+        event_frame.groupby("ts_date").agg(total_plays=("play_id", "count")).reset_index()
+        if not event_frame.empty
+        else pd.DataFrame(columns=["ts_date", "total_plays"])
+    )
+    daily = grouped_records_duration(event_frame, ["ts_date"])
+    daily = daily.merge(plays, on="ts_date", how="outer")
+    daily["total_plays"] = (
+        pd.to_numeric(daily["total_plays"], errors="coerce").fillna(0).astype(int)
+    )
+    if not track_source.empty:
+        unique_tracks = (
+            track_source.groupby("ts_date")[track_group_col]
+            .nunique()
+            .reset_index(name="unique_tracks")
         )
-        .reset_index()
-    )
-    unique_tracks = (
-        track_source.groupby("ts_date")[track_group_col].nunique().reset_index(name="unique_tracks")
-    )
-    daily = daily.merge(unique_tracks, on="ts_date", how="left")
+        daily = daily.merge(unique_tracks, on="ts_date", how="left")
+    else:
+        daily["unique_tracks"] = 0
     daily["unique_tracks"] = daily["unique_tracks"].fillna(0).astype(int)
     if daily.empty:
         return pd.DataFrame()
@@ -326,7 +340,7 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
 
 def _build_entity_records(frame, group_col, name_col, artist_col, entity_type):
     """為一個 entity type 構建三種記錄。"""
-    if frame.empty:
+    if frame.empty and records_duration_frame(frame).empty:
         return {
             "daily_binge": pd.DataFrame(),
             "daily_duration": pd.DataFrame(),
@@ -372,7 +386,7 @@ def compute_obsession_records(
         ("album", album_frame),
         ("artist", artist_frame),
     ]:
-        if frame.empty:
+        if frame.empty and records_duration_frame(frame).empty:
             tr = {
                 "daily_binge": pd.DataFrame(),
                 "daily_duration": pd.DataFrame(),

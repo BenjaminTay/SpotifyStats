@@ -254,6 +254,16 @@ def _logical_by_threshold(
     raw: pd.DataFrame,
     representative: MusicSearchFilterContext,
 ) -> dict[bool, pd.DataFrame]:
+    from backend.domains.playback.logical_timeline import (
+        attach_listening_duration_frame,
+        reconstruct_listening_intervals,
+    )
+
+    duration = reconstruct_listening_intervals(
+        raw,
+        max_gap_minutes=representative.max_merge_gap_minutes,
+        boundary_column=("source_album_id", "_credit_scope", "_global_segment"),
+    )
     result: dict[bool, pd.DataFrame] = {}
     for dynamic in (False, True):
         logical = reconstruct_logical_plays(
@@ -263,7 +273,7 @@ def _logical_by_threshold(
             max_gap_minutes=representative.max_merge_gap_minutes,
             boundary_column=("source_album_id", "_credit_scope", "_global_segment"),
         )
-        result[dynamic] = logical
+        result[dynamic] = attach_listening_duration_frame(logical, duration)
     return result
 
 
@@ -276,9 +286,21 @@ def _signed_artist_facts(
 ) -> tuple[dict[int, tuple[int, int]], dict[tuple[str, int], tuple[int, int]]]:
     lifetime: dict[int, list[int]] = defaultdict(lambda: [0, 0])
     weekly: dict[tuple[str, int], list[int]] = defaultdict(lambda: [0, 0])
-    if logical.empty:
+    from backend.domains.playback.logical_timeline import get_listening_duration_frame
+
+    duration = get_listening_duration_frame(logical)
+    if logical.empty and (duration is None or duration.empty):
         return {}, {}
-    for scope_id, frame in logical.groupby("_credit_scope", sort=False):
+    scope_ids = set(logical["_credit_scope"].unique()) if not logical.empty else set()
+    if duration is not None and not duration.empty:
+        scope_ids.update(duration["_credit_scope"].unique())
+    for scope_id in sorted(scope_ids):
+        frame = logical[logical["_credit_scope"] == scope_id]
+        duration_scope = (
+            duration[duration["_credit_scope"] == scope_id]
+            if duration is not None and not duration.empty
+            else frame
+        )
         scope = scopes[int(cast(Any, scope_id))]
         signs: dict[int, int] = defaultdict(int)
         for artist_id in scope.before_artist_ids:
@@ -289,11 +311,12 @@ def _signed_artist_facts(
         if not signs:
             continue
         plays = len(frame)
-        total_ms = int(pd.to_numeric(frame["ms_played"], errors="coerce").fillna(0).sum())
+        total_ms = int(pd.to_numeric(duration_scope["ms_played"], errors="coerce").fillna(0).sum())
         weighted = build_billboard_weighted_frame(
             frame,
             week_start_dow=week_start_dow,
             week_start_hour=week_start_hour,
+            duration_frame=duration_scope,
         )
         per_week = (
             weighted.groupby("billboard_week", sort=False)[["play_count", "total_ms"]].sum()

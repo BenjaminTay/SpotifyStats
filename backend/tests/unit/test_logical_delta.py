@@ -184,7 +184,9 @@ def test_tail_delta_distinguishes_static_and_dynamic_thresholds() -> None:
         assert fixed[["play_events", "total_ms"]].to_dict("records") == [
             {"play_events": 1, "total_ms": 30_000}
         ]
-        assert dynamic.empty
+        assert dynamic[["play_events", "total_ms"]].to_dict("records") == [
+            {"play_events": 0, "total_ms": 30_000}
+        ]
         assert tuple(dynamic.columns) == TRACK_LOGICAL_DELTA_COLUMNS
     finally:
         conn.close()

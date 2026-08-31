@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from backend.domains.playback.logical_timeline import attach_listening_duration_frame
 from backend.domains.yearly_review.season import build_monthly_fact_table, build_season
 from backend.models.yearly_review import YearlyFactSemantics, YearlyHighlightCandidate, YearlyMetric
 
@@ -73,6 +74,62 @@ def test_empty_month_is_preserved_without_false_turning_point() -> None:
     assert february.plays == 0
     assert february.leaders == {}
     assert february.event_ids == []
+
+
+def test_monthly_leader_tie_uses_attached_duration_not_event_duration() -> None:
+    track_frame = pd.DataFrame(
+        [
+            {
+                "play_id": 1,
+                "track_id": 1,
+                "canonical_track_id": 1,
+                "track_name": "A",
+                "canonical_track_name": "A",
+                "artist_name": "Artist",
+                "ms_played": 180_000,
+                "ts_date": "2025-01-01",
+                "ts_month": 1,
+            },
+            {
+                "play_id": 2,
+                "track_id": 2,
+                "canonical_track_id": 2,
+                "track_name": "B",
+                "canonical_track_name": "B",
+                "artist_name": "Artist",
+                "ms_played": 180_000,
+                "ts_date": "2025-01-02",
+                "ts_month": 1,
+            },
+        ]
+    )
+    duration = pd.concat(
+        [
+            track_frame.drop(columns=["canonical_track_id", "canonical_track_name"]),
+            pd.DataFrame(
+                [
+                    {
+                        "play_id": 3,
+                        "track_id": 2,
+                        "track_name": "B",
+                        "artist_name": "Artist",
+                        "ms_played": 20_000,
+                        "ts_date": "2025-01-02",
+                        "ts_month": 1,
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    attach_listening_duration_frame(track_frame, duration)
+
+    months = build_monthly_fact_table(
+        _stats(),
+        entity_frames=(track_frame, pd.DataFrame(), pd.DataFrame()),
+    )
+
+    assert months[0].leaders["play_track"].name == "B"
 
 
 def test_partial_current_month_compares_the_same_day_window() -> None:

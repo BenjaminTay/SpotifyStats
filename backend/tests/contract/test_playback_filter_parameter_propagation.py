@@ -47,7 +47,7 @@ class TestPlayFilterPropagation:
 
         assert static.status_code == 200
         assert dynamic.status_code == 200
-        assert static.json()["eligible_hours"] > dynamic.json()["eligible_hours"]
+        assert static.json()["eligible_hours"] == dynamic.json()["eligible_hours"]
         assert captured == [
             {**params, "dynamic_threshold": False},
             {**params, "dynamic_threshold": True},
@@ -120,7 +120,10 @@ class TestPlayFilterPropagation:
         ).json()
 
         assert static["found"] is True
-        assert dynamic["found"] is False
+        assert dynamic["found"] is True
+        assert static["summary"]["total_plays"] == 1
+        assert dynamic["summary"]["total_plays"] == 0
+        assert static["summary"]["total_hours"] == dynamic["summary"]["total_hours"]
 
 
 class TestReleaseCycleFilterPropagation:

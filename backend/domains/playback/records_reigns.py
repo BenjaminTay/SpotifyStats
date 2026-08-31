@@ -5,6 +5,7 @@ from __future__ import annotations
 import pandas as pd
 
 from backend.domains.playback.records_helpers import (
+    grouped_records_duration,
     safe_groupby_cols,
     safe_rename,
 )
@@ -18,11 +19,9 @@ def _daily_champion(frame, group_col, name_col, artist_col, entity_type="track")
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_date"], group_col, name_col, artist_col)
-    daily = (
-        frame.groupby(gb_cols)
-        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
-    )
+    daily = frame.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
+    daily = daily.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    daily["total_ms"] = daily["total_ms"].fillna(0)
     if daily.empty:
         return pd.DataFrame()
     champions = select_period_winners(
@@ -67,11 +66,15 @@ def _monthly_reign(frame, group_col, name_col, artist_col, entity_type="track"):
     fm = frame.copy()
     fm["_ym"] = fm["ts_date"].astype(str).str[:7]
     gb_cols = safe_groupby_cols(["_ym"], group_col, name_col, artist_col)
-    monthly = (
-        fm.groupby(gb_cols)
-        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
-    )
+    monthly = fm.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
+    duration = grouped_records_duration(frame, ["ts_date", *gb_cols[1:]])
+    if not duration.empty:
+        duration["_ym"] = duration["ts_date"].astype(str).str[:7]
+        duration = duration.groupby(gb_cols, dropna=False)["total_ms"].sum().reset_index()
+    else:
+        duration = grouped_records_duration(fm, gb_cols)
+    monthly = monthly.merge(duration, on=gb_cols, how="left")
+    monthly["total_ms"] = monthly["total_ms"].fillna(0)
     if monthly.empty:
         return pd.DataFrame()
     champions = select_period_winners(
@@ -113,11 +116,9 @@ def _yearly_reign(frame, group_col, name_col, artist_col, entity_type="track"):
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_year"], group_col, name_col, artist_col)
-    yearly = (
-        frame.groupby(gb_cols)
-        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
-    )
+    yearly = frame.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
+    yearly = yearly.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    yearly["total_ms"] = yearly["total_ms"].fillna(0)
     if yearly.empty:
         return pd.DataFrame()
     champions = select_period_winners(
@@ -246,11 +247,9 @@ def _consecutive_champion_days(frame, group_col, name_col, artist_col, entity_ty
 
     # Get daily champion for each day
     gb_cols = safe_groupby_cols(["ts_date"], group_col, name_col, artist_col)
-    daily = (
-        frame.groupby(gb_cols)
-        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
-    )
+    daily = frame.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
+    daily = daily.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    daily["total_ms"] = daily["total_ms"].fillna(0)
     if daily.empty:
         return pd.DataFrame()
     champions = select_period_winners(

@@ -498,6 +498,111 @@ class TestMergeSessionBoundaries:
             pd.Timestamp("2026-05-21").date(): 30_000,
         }
 
+    def test_unqualified_fragment_contributes_duration_but_not_count(self):
+        from backend.core.db import merge_consecutive_plays
+        from backend.domains.playback.logical_timeline import (
+            build_billboard_weighted_frame,
+            reconstruct_listening_intervals,
+        )
+
+        raw = pd.DataFrame(
+            [
+                {
+                    "play_id": 52,
+                    "ts": "2026-05-28T01:00:00Z",
+                    "track_id": 1,
+                    "ms_played": 20_000,
+                    "duration_ms": 180_000,
+                }
+            ]
+        )
+        events = merge_consecutive_plays(raw, min_ms=30_000, max_gap_minutes=5)
+        duration = reconstruct_listening_intervals(raw, max_gap_minutes=5)
+        weighted = build_billboard_weighted_frame(
+            events,
+            duration_frame=duration,
+            week_start_dow=3,
+            week_start_hour=0,
+        )
+
+        assert events.empty
+        assert int(weighted["play_count"].sum()) == 0
+        assert int(weighted["total_ms"].sum()) == 20_000
+
+    def test_below_threshold_remainder_stays_in_duration_track(self):
+        from backend.core.db import merge_consecutive_plays
+        from backend.domains.playback.logical_timeline import (
+            build_billboard_weighted_frame,
+            reconstruct_listening_intervals,
+        )
+
+        raw = pd.DataFrame(
+            [
+                {
+                    "play_id": 53,
+                    "ts": "2026-05-28T01:03:20Z",
+                    "track_id": 1,
+                    "ms_played": 200_000,
+                    "duration_ms": 180_000,
+                }
+            ]
+        )
+        events = merge_consecutive_plays(raw, min_ms=30_000, max_gap_minutes=5)
+        duration = reconstruct_listening_intervals(raw, max_gap_minutes=5)
+        weighted = build_billboard_weighted_frame(
+            events,
+            duration_frame=duration,
+            week_start_dow=3,
+            week_start_hour=0,
+        )
+
+        assert events["ms_played"].tolist() == [180_000]
+        assert int(weighted["play_count"].sum()) == 1
+        assert int(weighted["total_ms"].sum()) == 200_000
+
+    def test_duration_total_is_invariant_to_count_threshold(self):
+        from backend.core.db import merge_consecutive_plays
+        from backend.domains.playback.logical_timeline import (
+            build_billboard_weighted_frame,
+            reconstruct_listening_intervals,
+        )
+
+        raw = pd.DataFrame(
+            [
+                {
+                    "play_id": 54,
+                    "ts": "2026-05-28T01:00:00Z",
+                    "track_id": 1,
+                    "ms_played": 45_000,
+                    "duration_ms": 600_000,
+                }
+            ]
+        )
+        duration = reconstruct_listening_intervals(raw, max_gap_minutes=5)
+        fixed_events = merge_consecutive_plays(
+            raw, min_ms=30_000, max_gap_minutes=5, dynamic_threshold=False
+        )
+        dynamic_events = merge_consecutive_plays(
+            raw, min_ms=30_000, max_gap_minutes=5, dynamic_threshold=True
+        )
+        fixed = build_billboard_weighted_frame(
+            fixed_events,
+            duration_frame=duration,
+            week_start_dow=3,
+            week_start_hour=0,
+        )
+        dynamic = build_billboard_weighted_frame(
+            dynamic_events,
+            duration_frame=duration,
+            week_start_dow=3,
+            week_start_hour=0,
+        )
+
+        assert int(fixed["play_count"].sum()) == 1
+        assert int(dynamic["play_count"].sum()) == 0
+        assert int(fixed["total_ms"].sum()) == 45_000
+        assert int(dynamic["total_ms"].sum()) == 45_000
+
     def test_period_filter_is_invariant_for_cross_midnight_duration(self):
         from backend.core.db import merge_consecutive_plays
         from backend.services.analysis_stats_service import (
@@ -637,7 +742,7 @@ class TestEntityStatsPerformanceBoundaries:
         assert "listening_duration_slices" not in current_df.attrs
         assert resolved["start_date"] == "2026-06-27"
 
-    def test_play_ranks_reuse_scope_and_pass_no_duration_rows(self, monkeypatch):
+    def test_play_ranks_reuse_scope_and_pass_scoped_duration_rows(self, monkeypatch):
         from backend.services import entity_stats_service as service
         from backend.services.analysis_stats_service import resolve_period
 
@@ -674,5 +779,5 @@ class TestEntityStatsPerformanceBoundaries:
         }
         assert len(calls) == 3
         assert all(call[2] == "plays" for call in calls)
-        assert all(call[5].empty for call in calls)
-        assert all(set(call[5].columns) == {"ms_played", "ts_date"} for call in calls)
+        assert sorted(len(call[5]) for call in calls) == [2, 2, 3]
+        assert all("ts_date" in call[5].columns for call in calls)

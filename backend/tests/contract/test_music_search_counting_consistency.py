@@ -34,9 +34,11 @@ def test_music_search_uses_track_detail_counting_filters(client):
 
     assert static_detail["summary"]["total_plays"] == 1
     assert static_search["tracks"][0]["play_events"] == static_detail["summary"]["total_plays"]
-    assert dynamic_detail["found"] is False
-    assert dynamic_search["total"] == 0
-    assert dynamic_search["tracks"] == []
+    assert dynamic_detail["found"] is True
+    assert dynamic_detail["summary"]["total_plays"] == 0
+    assert dynamic_detail["summary"]["total_hours"] == static_detail["summary"]["total_hours"]
+    assert dynamic_search["tracks"][0]["play_events"] == 0
+    assert dynamic_search["tracks"][0]["total_ms"] == static_search["tracks"][0]["total_ms"]
 
     static_billboard_detail = client.get(
         "/api/billboard/track/902",
@@ -47,7 +49,9 @@ def test_music_search_uses_track_detail_counting_filters(client):
         params={**params, "dynamic_threshold": True, "bb_top_n": 5},
     )
     assert static_billboard_detail.status_code == 200
-    assert dynamic_billboard_detail.status_code == 404
+    assert dynamic_billboard_detail.status_code == 200
+    assert dynamic_billboard_detail.json()["chart_status"] == "not_charted"
+    assert dynamic_billboard_detail.json()["effective_play_count"] == 0
 
 
 def test_music_search_artist_count_matches_detail_stats(client):
@@ -262,8 +266,11 @@ def test_music_search_and_billboard_detail_share_merge_disabled_semantics(client
         merged_search["tracks"][0]["chart"]["peak_position"]
         == merged_detail.json()["summary"]["peak_position"]
     )
-    assert unmerged_search["tracks"] == []
-    assert unmerged_detail.status_code == 404
+    assert unmerged_search["tracks"][0]["play_events"] == 0
+    assert unmerged_search["tracks"][0]["total_ms"] > 0
+    assert unmerged_detail.status_code == 200
+    assert unmerged_detail.json()["chart_status"] == "not_charted"
+    assert unmerged_detail.json()["effective_play_count"] == 0
 
 
 def test_search_chart_lookup_respects_compilation_semantics(client):

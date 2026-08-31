@@ -46,7 +46,10 @@ from backend.domains.music_search.snapshot_lineage import (
 from backend.domains.music_search.variants import MUSIC_SEARCH_SNAPSHOT_VARIANTS
 from backend.domains.music_search.year_end_projection import clear_year_end_projection
 from backend.domains.playback.album_projects import compute_album_project_plays
-from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
+from backend.domains.playback.logical_timeline import (
+    build_billboard_weighted_frame,
+    get_listening_duration_frame,
+)
 from backend.domains.playback.track_groups import load_track_group_keys
 from backend.models.music_search import (
     MusicSearchChartSummary,
@@ -419,27 +422,16 @@ def _metric_maps(
         max_merge_gap_minutes=context.max_merge_gap_minutes,
     )
     plays_df = plays_df if plays_df is not None else pd.DataFrame()
-    if not plays_df.empty and context.merge_level > 1:
+    duration_df = _listening_duration_source(plays_df)
+    if context.merge_level > 1:
         group_keys = load_track_group_keys(conn, context.merge_level)
         if not group_keys.empty:
-            plays_df = plays_df.merge(
-                group_keys[["track_id", "track_agg_id"]],
-                on="track_id",
-                how="left",
-            )
-            plays_df["track_id"] = plays_df["track_agg_id"].fillna(plays_df["track_id"])
-    if plays_df.empty:
-        track_metrics = {}
-    else:
-        track_grouped = plays_df.groupby("track_id", sort=False)["ms_played"].agg(
-            play_events="size", total_ms="sum"
-        )
-        track_metrics = {
-            int(cast(Any, track_id)): (int(row.play_events), int(row.total_ms))
-            for track_id, row in track_grouped.iterrows()
-        }
+            plays_df = _apply_track_group_identity(plays_df, group_keys)
+            duration_df = _apply_track_group_identity(duration_df, group_keys)
+    track_metrics = _count_duration_metric_map(plays_df, duration_df, "track_id")
+    album_input = _build_metric_weighted_frame(plays_df, duration_df)
     album_frame = compute_album_project_plays(
-        plays_df,
+        album_input,
         conn,
         merge_level=context.merge_level,
         include_compilations=context.include_compilations,
@@ -452,7 +444,7 @@ def _metric_maps(
     # Artist fan-out can be substantially larger than the primary play frame.
     # The three metric maps are compact, so release the primary cache before
     # loading fan-out instead of holding both lifetime DataFrames concurrently.
-    del plays_df, album_frame
+    del plays_df, duration_df, album_input, album_frame
     invalidate("db")
     gc.collect()
     _plays_df, artist_df = _load_filtered_search_frames(
@@ -465,20 +457,88 @@ def _metric_maps(
         max_merge_gap_minutes=context.max_merge_gap_minutes,
     )
     artist_df = artist_df if artist_df is not None else pd.DataFrame()
-    if artist_df.empty:
-        artist_metrics = {}
-    else:
-        artist_grouped = artist_df.groupby("artist_id", sort=False)["ms_played"].agg(
-            play_events="size", total_ms="sum"
-        )
-        artist_metrics = {
-            int(cast(Any, artist_id)): (int(row.play_events), int(row.total_ms))
-            for artist_id, row in artist_grouped.iterrows()
-        }
-    del artist_df
+    artist_duration_df = _listening_duration_source(artist_df)
+    artist_metrics = _count_duration_metric_map(
+        artist_df,
+        artist_duration_df,
+        "artist_id",
+    )
+    del artist_df, artist_duration_df
     invalidate("db")
     gc.collect()
     return track_metrics, album_metrics, artist_metrics
+
+
+def _listening_duration_source(events: pd.DataFrame) -> pd.DataFrame:
+    """Return the unthresholded duration track attached to logical events.
+
+    Synthetic and legacy callers may not carry the attachment yet; retaining
+    the event-frame fallback keeps those inputs compatible while production
+    loaders use the explicit all-listening-duration frame.
+    """
+    attached = get_listening_duration_frame(events)
+    return attached if attached is not None else events
+
+
+def _apply_track_group_identity(
+    frame: pd.DataFrame,
+    group_keys: pd.DataFrame,
+) -> pd.DataFrame:
+    if frame.empty:
+        return frame.copy()
+    grouped = frame.merge(
+        group_keys[["track_id", "track_agg_id"]],
+        on="track_id",
+        how="left",
+    )
+    grouped["track_id"] = grouped["track_agg_id"].fillna(grouped["track_id"])
+    return grouped
+
+
+def _count_duration_metric_map(
+    events: pd.DataFrame,
+    duration: pd.DataFrame,
+    identity_column: str,
+) -> dict[int, tuple[int, int]]:
+    counts = (
+        events.groupby(identity_column, sort=False).size()
+        if not events.empty
+        else pd.Series(dtype="int64")
+    )
+    totals = (
+        duration.groupby(identity_column, sort=False)["ms_played"].sum()
+        if not duration.empty
+        else pd.Series(dtype="int64")
+    )
+    identities = counts.index.union(totals.index, sort=False)
+    return {
+        int(cast(Any, identity)): (
+            int(counts.get(identity, 0)),
+            int(totals.get(identity, 0)),
+        )
+        for identity in identities
+        if not pd.isna(identity)
+    }
+
+
+def _build_metric_weighted_frame(
+    events: pd.DataFrame,
+    duration: pd.DataFrame,
+) -> pd.DataFrame:
+    """Combine count-only events and duration-only intervals for aggregation."""
+    if events.empty and duration.empty:
+        return events.copy()
+    event_rows = events.copy()
+    event_rows.attrs = {}
+    event_rows["play_count"] = 1
+    event_rows["total_ms"] = 0
+    duration_rows = duration.copy()
+    duration_rows.attrs = {}
+    duration_rows["play_count"] = 0
+    duration_rows["total_ms"] = (
+        pd.to_numeric(duration_rows["ms_played"], errors="coerce").fillna(0).astype("int64")
+    )
+    return pd.concat((event_rows, duration_rows), ignore_index=True, sort=False)
 
 
 def _load_shared_logical_frames(
@@ -569,39 +629,29 @@ def _shared_metric_maps(
     metric_result: dict[tuple[int, bool], tuple[dict[int, tuple[int, int]], ...]] = {}
     for dynamic_threshold in dict.fromkeys(context.dynamic_threshold for context in contexts):
         primary, artists = frames[dynamic_threshold]
-        artist_metrics: dict[int, tuple[int, int]] = {}
-        if not artists.empty:
-            grouped = artists.groupby("artist_id", sort=False)["ms_played"].agg(
-                play_events="size", total_ms="sum"
-            )
-            artist_metrics = {
-                int(cast(Any, artist_id)): (int(row.play_events), int(row.total_ms))
-                for artist_id, row in grouped.iterrows()
-            }
+        primary_duration = _listening_duration_source(primary)
+        artist_duration = _listening_duration_source(artists)
+        artist_metrics = _count_duration_metric_map(
+            artists,
+            artist_duration,
+            "artist_id",
+        )
         for context in (item for item in contexts if item.dynamic_threshold == dynamic_threshold):
             primary_variant = primary.copy()
-            if not primary_variant.empty and context.merge_level > 1:
+            duration_variant = primary_duration.copy()
+            if context.merge_level > 1:
                 group_keys = load_track_group_keys(conn, context.merge_level)
                 if not group_keys.empty:
-                    primary_variant = primary_variant.merge(
-                        group_keys[["track_id", "track_agg_id"]],
-                        on="track_id",
-                        how="left",
-                    )
-                    primary_variant["track_id"] = primary_variant["track_agg_id"].fillna(
-                        primary_variant["track_id"]
-                    )
-            track_metrics: dict[int, tuple[int, int]] = {}
-            if not primary_variant.empty:
-                grouped = primary_variant.groupby("track_id", sort=False)["ms_played"].agg(
-                    play_events="size", total_ms="sum"
-                )
-                track_metrics = {
-                    int(cast(Any, track_id)): (int(row.play_events), int(row.total_ms))
-                    for track_id, row in grouped.iterrows()
-                }
-            album_frame = compute_album_project_plays(
+                    primary_variant = _apply_track_group_identity(primary_variant, group_keys)
+                    duration_variant = _apply_track_group_identity(duration_variant, group_keys)
+            track_metrics = _count_duration_metric_map(
                 primary_variant,
+                duration_variant,
+                "track_id",
+            )
+            album_input = _build_metric_weighted_frame(primary_variant, duration_variant)
+            album_frame = compute_album_project_plays(
+                album_input,
                 conn,
                 merge_level=context.merge_level,
                 include_compilations=context.include_compilations,
@@ -801,6 +851,8 @@ def _shared_chart_lookups(
         )
         ordinary_uses_aggregates = _ordinary_chart_uses_aggregates(conn, representative)
         ordinary_has_track_fallback = _ordinary_album_chart_has_track_fallback(conn, representative)
+        primary_duration = _listening_duration_source(primary)
+        artist_duration = _listening_duration_source(artists)
         # Period loaders may carry a DataFrame-valued weighted-frame attr.
         # pandas.concat compares attrs for equality, and DataFrame equality is
         # not scalar.  The chart builder consumes the explicit logical-event
@@ -820,6 +872,14 @@ def _shared_chart_lookups(
             )
         if not ordinary_has_track_fallback:
             primary_events = primary_events.drop(columns=["track_album_id"], errors="ignore")
+        primary_duration = primary_duration.copy(deep=False)
+        primary_duration.attrs = {}
+        if "source_album_name" in primary_duration.columns:
+            primary_duration["album_name"] = primary_duration["source_album_name"].fillna(
+                primary_duration.get("album_name")
+            )
+        if not ordinary_has_track_fallback:
+            primary_duration = primary_duration.drop(columns=["track_album_id"], errors="ignore")
         artist_events = artists.copy(deep=False)
         artist_events.attrs = {}
         if "source_album_name" in artist_events.columns:
@@ -828,10 +888,19 @@ def _shared_chart_lookups(
             )
         if not ordinary_has_track_fallback:
             artist_events = artist_events.drop(columns=["track_album_id"], errors="ignore")
+        artist_duration = artist_duration.copy(deep=False)
+        artist_duration.attrs = {}
+        if "source_album_name" in artist_duration.columns:
+            artist_duration["album_name"] = artist_duration["source_album_name"].fillna(
+                artist_duration.get("album_name")
+            )
+        if not ordinary_has_track_fallback:
+            artist_duration = artist_duration.drop(columns=["track_album_id"], errors="ignore")
         weighted = build_billboard_weighted_frame(
             primary_events,
             week_start_dow=representative.bb_week_start_dow,
             week_start_hour=representative.bb_week_start_hour,
+            duration_frame=primary_duration,
         )
         artist_pre_agg: pd.DataFrame | None = None
         if ordinary_uses_aggregates and not artist_events.empty:
@@ -847,6 +916,7 @@ def _shared_chart_lookups(
                 artist_events,
                 week_start_dow=representative.bb_week_start_dow,
                 week_start_hour=representative.bb_week_start_hour,
+                duration_frame=artist_duration,
             )
         open_week = current_open_billboard_week(
             week_start_dow=representative.bb_week_start_dow,
@@ -1021,7 +1091,7 @@ def _context_rows(
             entity_id = int(document["artist_id"])
             play_events, total_ms = artist_metrics.get(entity_id, (0, 0))
             chart = chart_lookup["artist"].get(str(document["artist_name"]))
-        if play_events <= 0 and not _chart_has_fact(chart):
+        if play_events <= 0 and total_ms <= 0 and not _chart_has_fact(chart):
             continue
         result.append(
             (

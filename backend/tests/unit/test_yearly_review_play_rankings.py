@@ -4,6 +4,7 @@ import sqlite3
 
 import pandas as pd
 
+from backend.domains.playback.logical_timeline import attach_listening_duration_frame
 from backend.domains.yearly_review import play_rankings
 from backend.models.yearly_review import YearlyReviewFilterContext
 
@@ -130,6 +131,68 @@ def test_empty_year_has_stable_empty_contract() -> None:
     assert result["empty"] is True
     assert result["charts"]["track"]["by_plays"] == []
     assert result["charts"]["album"]["available_count"] == 0
+
+
+def test_rankings_pass_scoped_attached_duration_separately_from_events(monkeypatch) -> None:
+    events = _events()
+    duration = pd.concat(
+        [
+            events,
+            pd.DataFrame(
+                [
+                    {
+                        **events.iloc[0].to_dict(),
+                        "play_id": 99,
+                        "ms_played": 20_000,
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    attach_listening_duration_frame(events, duration)
+    annual = events[events["ts_year"] == 2025].copy()
+    track_frame = annual.assign(canonical_track_id=10.0)
+    album_frame = annual.assign(album_project_id=99.0)
+    artist_frame = annual.copy()
+    attach_listening_duration_frame(artist_frame, duration)
+    seen: list[tuple[str, str, int, int]] = []
+
+    def fake_chart_rows(_conn, frame, entity, metric, **kwargs):
+        seen.append(
+            (
+                entity,
+                metric,
+                len(frame),
+                int(kwargs["duration_frame"]["ms_played"].sum()),
+            )
+        )
+        row = {"rank": 1, "plays": 2, "hours": 380_000 / 3_600_000}
+        if entity == "track":
+            row.update(track_id=10, track_name="Song", artist_name="Artist")
+        elif entity == "album":
+            row.update(album_project_id=99, album_name="Album", artist_name="Artist")
+        else:
+            row.update(artist_name="Artist")
+        return 1, [row]
+
+    monkeypatch.setattr(play_rankings, "chart_rows", fake_chart_rows)
+
+    result = play_rankings.build_play_rankings(
+        sqlite3.connect(":memory:"),
+        2025,
+        _context(),
+        event_frame=events,
+        entity_frames=(track_frame, album_frame, artist_frame),
+    )
+
+    assert {(entity, metric, rows) for entity, metric, rows, _ in seen} == {
+        (entity, metric, 2)
+        for entity in ("track", "album", "artist")
+        for metric in ("plays", "hours")
+    }
+    assert {total_ms for *_prefix, total_ms in seen} == {380_000}
+    assert result["charts"]["artist"]["by_hours"][0]["share_denominator"] == (380_000 / 3_600_000)
 
 
 def test_comparison_counts_use_canonical_album_project_aggregation(monkeypatch) -> None:

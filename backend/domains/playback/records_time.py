@@ -6,6 +6,8 @@ import pandas as pd
 
 from backend.domains.playback.records_helpers import (
     TOP_RECORD_LIMIT,
+    grouped_records_duration,
+    records_duration_frame,
     safe_groupby_cols,
     safe_rename,
 )
@@ -20,11 +22,9 @@ def _entity_hourly_dominance(frame, group_col, name_col, artist_col, entity_type
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_hour"], group_col, name_col, artist_col)
-    hourly = (
-        frame.groupby(gb_cols)
-        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
-    )
+    hourly = frame.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
+    hourly = hourly.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    hourly["total_ms"] = hourly["total_ms"].fillna(0)
     if hourly.empty:
         return pd.DataFrame()
     best = select_period_winners(
@@ -59,11 +59,17 @@ def _entity_monthly_peak(frame, group_col, name_col, artist_col, entity_type):
     fm = frame.copy()
     fm["_ym"] = fm["ts_date"].astype(str).str[:7]
     gb_cols = safe_groupby_cols(["_ym"], group_col, name_col, artist_col)
-    monthly = (
-        fm.groupby(gb_cols)
-        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
+    monthly = fm.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
+    duration = records_duration_frame(frame).copy()
+    if not duration.empty:
+        duration["_ym"] = duration["ts_date"].astype(str).str[:7]
+    duration_monthly = (
+        duration.groupby(gb_cols, dropna=False)["ms_played"].sum().reset_index(name="total_ms")
+        if not duration.empty and all(column in duration.columns for column in gb_cols)
+        else grouped_records_duration(fm, gb_cols)
     )
+    monthly = monthly.merge(duration_monthly, on=gb_cols, how="left")
+    monthly["total_ms"] = monthly["total_ms"].fillna(0)
     if monthly.empty:
         return pd.DataFrame()
     best = select_period_winners(
@@ -95,11 +101,9 @@ def _entity_yearly_peak(frame, group_col, name_col, artist_col, entity_type):
     if frame.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_year"], group_col, name_col, artist_col)
-    yearly = (
-        frame.groupby(gb_cols)
-        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
-    )
+    yearly = frame.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
+    yearly = yearly.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    yearly["total_ms"] = yearly["total_ms"].fillna(0)
     if yearly.empty:
         return pd.DataFrame()
     best = select_period_winners(
@@ -190,11 +194,13 @@ def _late_night_peak_day(event_frame):
     late = event_frame[event_frame["ts_hour"].between(0, 4)]
     if late.empty:
         return pd.DataFrame()
-    daily_total = (
-        event_frame.groupby("ts_date")
-        .agg(total_plays=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
+    daily_total = event_frame.groupby("ts_date").agg(total_plays=("play_id", "count")).reset_index()
+    daily_total = daily_total.merge(
+        grouped_records_duration(event_frame, ["ts_date"]),
+        on="ts_date",
+        how="left",
     )
+    daily_total["total_ms"] = daily_total["total_ms"].fillna(0)
     daily_late = late.groupby("ts_date").size().reset_index(name="late_plays")
     merged = daily_late.merge(daily_total, on="ts_date")
     merged = merged[merged["total_plays"] >= 20]
@@ -278,11 +284,12 @@ def _weekday_preference(event_frame):
         event_frame.groupby("ts_dow")
         .agg(
             plays=("play_id", "count"),
-            total_ms=("ms_played", "sum"),
             active_days=("ts_date", "nunique"),
         )
         .reset_index()
     )
+    dow = dow.merge(grouped_records_duration(event_frame, ["ts_dow"]), on="ts_dow", how="left")
+    dow["total_ms"] = dow["total_ms"].fillna(0)
     dow["name"] = dow["ts_dow"].map(dow_labels)
     dow["value"] = dow["plays"].astype(float)
     dow["unit"] = "次"
@@ -329,6 +336,30 @@ def _new_year_eve(event_frame):
         )
     )
 
+    duration = records_duration_frame(event_frame).copy()
+    if not duration.empty:
+        duration = duration[
+            ((duration["ts_date"].astype(str).str.endswith("-12-31")) & (duration["ts_hour"] >= 20))
+            | (
+                (duration["ts_date"].astype(str).str.endswith("-01-01"))
+                & (duration["ts_hour"] <= 4)
+            )
+        ].copy()
+        duration["_ny_year"] = (
+            duration["ts_date"]
+            .astype(str)
+            .apply(
+                lambda d: (
+                    str(int(d[:4]) - 1) + "-" + d[:4]
+                    if d.endswith("-01-01")
+                    else d[:4] + "-" + str(int(d[:4]) + 1)
+                )
+            )
+        )
+        duration_by_year = duration.groupby("_ny_year")["ms_played"].sum().to_dict()
+    else:
+        duration_by_year = {}
+
     results = []
     for ny_year, grp in nye.groupby("_ny_year"):
         if len(grp) < 3:
@@ -351,10 +382,12 @@ def _new_year_eve(event_frame):
                 "value": float(len(grp)),
                 "unit": "次跨年播放",
                 "date": ny_year,
-                "secondary_value": float(grp["ms_played"].sum() / 3_600_000),
+                "secondary_value": float(
+                    duration_by_year.get(ny_year, grp["ms_played"].sum()) / 3_600_000
+                ),
                 "secondary_unit": "小时",
                 "total_plays": int(len(grp)),
-                "total_ms": float(grp["ms_played"].sum()),
+                "total_ms": float(duration_by_year.get(ny_year, grp["ms_played"].sum())),
                 "caption": f"Top: {top_track.iloc[0]['track_name']} — {top_artist.iloc[0]['artist_name']}",
             }
         )

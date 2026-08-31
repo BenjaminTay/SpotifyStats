@@ -387,6 +387,16 @@ def _logical_events(
     dynamic_threshold: bool,
     max_gap_minutes: int,
 ) -> pd.DataFrame:
+    from backend.domains.playback.logical_timeline import (
+        attach_listening_duration_frame,
+        reconstruct_listening_intervals,
+    )
+
+    duration = reconstruct_listening_intervals(
+        raw,
+        max_gap_minutes=max_gap_minutes,
+        boundary_column="source_album_id",
+    )
     events = reconstruct_logical_plays(
         raw,
         min_ms,
@@ -400,7 +410,9 @@ def _logical_events(
             min_ms=min_ms,
             dynamic_threshold=dynamic_threshold,
         )
-    return canonicalize_artist_frame(events, conn, dedupe=False)
+    events = canonicalize_artist_frame(events, conn, dedupe=False)
+    duration = canonicalize_artist_frame(duration, conn, dedupe=False)
+    return attach_listening_duration_frame(events, duration)
 
 
 def _ranked_rows_for_context(
@@ -409,26 +421,40 @@ def _ranked_rows_for_context(
     logical: pd.DataFrame,
     complete_weeks: set[str],
 ) -> dict[str, pd.DataFrame]:
-    if logical.empty:
+    from backend.domains.playback.logical_timeline import get_listening_duration_frame
+
+    duration = get_listening_duration_frame(logical)
+    if logical.empty and (duration is None or duration.empty):
         return {"track": pd.DataFrame(), "album": pd.DataFrame(), "artist": pd.DataFrame()}
     primary = logical.copy()
     if "source_album_name" in primary.columns:
         primary["album_name"] = primary["source_album_name"].fillna(primary["album_name"])
+        if duration is not None and "source_album_name" in duration.columns:
+            duration = duration.copy()
+            duration["album_name"] = duration["source_album_name"].fillna(duration["album_name"])
     from backend.domains.music_search.snapshot import _ordinary_album_chart_has_track_fallback
 
     if not _ordinary_album_chart_has_track_fallback(conn, context):
         primary = primary.drop(columns=["track_album_id"], errors="ignore")
+        if duration is not None:
+            duration = duration.drop(columns=["track_album_id"], errors="ignore")
     weighted = build_billboard_weighted_frame(
         primary,
         week_start_dow=context.bb_week_start_dow,
         week_start_hour=context.bb_week_start_hour,
+        duration_frame=duration,
     )
     weighted = weighted[weighted["billboard_week"].astype(str).isin(complete_weeks)].copy()
 
     artist_events = assign_logical_event_id(logical.copy())
-    credits = get_effective_track_credit_frame(
-        conn, {int(value) for value in artist_events["track_id"].dropna().unique()}
+    credit_track_ids = (
+        {int(value) for value in artist_events["track_id"].dropna().unique()}
+        if not artist_events.empty
+        else set()
     )
+    if duration is not None and not duration.empty:
+        credit_track_ids.update(int(value) for value in duration["track_id"].dropna().unique())
+    credits = get_effective_track_credit_frame(conn, credit_track_ids)
     artist_events = artist_events.drop(
         columns=["artist_id", "artist_name", "raw_artist_id", "raw_artist_name"],
         errors="ignore",
@@ -441,10 +467,25 @@ def _ranked_rows_for_context(
     artist_events["artist_id"] = artist_events["raw_artist_id"]
     artist_events = artist_events.drop(columns=["raw_artist_id"])
     artist_events = canonicalize_artist_frame(artist_events, conn)
+    artist_duration = duration.copy() if duration is not None else pd.DataFrame()
+    if not artist_duration.empty:
+        artist_duration = artist_duration.drop(
+            columns=["artist_id", "artist_name", "raw_artist_id", "raw_artist_name"],
+            errors="ignore",
+        )
+        artist_duration = artist_duration.merge(
+            credits[["track_id", "artist_id", "raw_artist_id", "artist_name"]],
+            on="track_id",
+            how="inner",
+        )
+        artist_duration["artist_id"] = artist_duration["raw_artist_id"]
+        artist_duration = artist_duration.drop(columns=["raw_artist_id"])
+        artist_duration = canonicalize_artist_frame(artist_duration, conn)
     artist_weighted = build_billboard_weighted_frame(
         artist_events,
         week_start_dow=context.bb_week_start_dow,
         week_start_hour=context.bb_week_start_hour,
+        duration_frame=artist_duration,
     )
     artist_weighted = artist_weighted[
         artist_weighted["billboard_week"].astype(str).isin(complete_weeks)

@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 PLAYBACK_EVENT_POLICY_VERSION = "logical_event_time_v2"
+LISTENING_DURATION_POLICY_VERSION = "all_music_intervals_v1"
 PLAYBACK_TIMEZONE = "Asia/Shanghai"
 DEFAULT_MAX_MERGE_GAP_MINUTES = 5
 OVERLAP_TOLERANCE_SECONDS = 2
@@ -45,6 +46,32 @@ class BillboardWeightedFrameRef:
 
     def __eq__(self, other: object) -> bool:
         return self is other
+
+
+@dataclass(eq=False)
+class ListeningDurationFrameRef:
+    """Pandas-attrs-safe reference to the unthresholded listening timeline."""
+
+    frame: pd.DataFrame
+
+    def __eq__(self, other: object) -> bool:
+        return self is other
+
+
+def attach_listening_duration_frame(
+    events: pd.DataFrame, duration_frame: pd.DataFrame
+) -> pd.DataFrame:
+    """Attach all valid listening intervals to their qualified event frame."""
+    events.attrs["listening_duration_frame"] = ListeningDurationFrameRef(duration_frame)
+    return events
+
+
+def get_listening_duration_frame(events: pd.DataFrame) -> pd.DataFrame | None:
+    """Return the explicitly attached unthresholded listening timeline."""
+    payload = events.attrs.get("listening_duration_frame")
+    if isinstance(payload, ListeningDurationFrameRef):
+        return payload.frame
+    return None
 
 
 def attach_billboard_weighted_frame(events: pd.DataFrame, weighted: pd.DataFrame) -> pd.DataFrame:
@@ -210,6 +237,96 @@ def _build_segments(
         cumulative_ms += duration_ms
         previous_effective_end = effective_end
     return segments, adjusted
+
+
+def reconstruct_listening_intervals(
+    frame: pd.DataFrame,
+    *,
+    identity_column: str = "track_id",
+    max_gap_minutes: int | None = DEFAULT_MAX_MERGE_GAP_MINUTES,
+    boundary_column: str | Sequence[str] | None = None,
+    overlap_tolerance_seconds: int = OVERLAP_TOLERANCE_SECONDS,
+) -> pd.DataFrame:
+    """Retain every valid inferred music-listening interval before count filtering.
+
+    The result deliberately has no play-count meaning. It preserves positive
+    ``ms_played`` rows with valid timestamps, including isolated fragments and
+    below-threshold remainders. Small timestamp overlaps inside one merge run
+    receive the same monotonic correction as logical-event reconstruction.
+    """
+    if frame.empty:
+        result = frame.copy()
+        result[LISTENING_INTERVALS_COLUMN] = pd.Series(dtype=object)
+        return result
+
+    required = {identity_column, "ms_played", "ts"}
+    missing = required - set(frame.columns)
+    if missing:
+        raise ValueError(f"listening interval reconstruction missing columns: {sorted(missing)}")
+
+    df = frame.copy().reset_index(drop=True)
+    end_ns = _timestamp_ns(df["ts"])
+    nat_ns = np.iinfo("int64").min
+    valid_timestamp = end_ns != nat_ns
+    played_ms = pd.to_numeric(df["ms_played"], errors="coerce").fillna(0).clip(lower=0)
+    played_ms_np = played_ms.astype("int64").to_numpy()
+    start_ns = end_ns.copy()
+    start_ns[valid_timestamp] = end_ns[valid_timestamp] - played_ms_np[valid_timestamp] * 1_000_000
+
+    track_changed = _changed_rows(df[identity_column])
+    boundary_changed = np.zeros(len(df), dtype=bool)
+    for column in _normalise_boundary_columns(boundary_column):
+        if column in df.columns:
+            boundary_changed |= _changed_rows(df[column])
+
+    gap_changed = np.zeros(len(df), dtype=bool)
+    if len(df) > 1:
+        previous_end = np.roll(end_ns, 1)
+        gap_ns = start_ns - previous_end
+        valid_pair = valid_timestamp & np.roll(valid_timestamp, 1)
+        valid_pair[0] = False
+        if max_gap_minutes is not None:
+            gap_changed |= valid_pair & (gap_ns > int(max_gap_minutes) * 60 * 1_000_000_000)
+        gap_changed |= valid_pair & (gap_ns < -int(overlap_tolerance_seconds) * 1_000_000_000)
+        gap_changed |= ~valid_timestamp
+
+    starts_group = track_changed | boundary_changed | gap_changed
+    starts_group[0] = True
+    group_ids = np.cumsum(starts_group) - 1
+    group_starts = np.flatnonzero(starts_group)
+    group_ends = np.r_[group_starts[1:], len(df)]
+    group_sizes = group_ends - group_starts
+    group_totals = np.add.reduceat(played_ms_np, group_starts)
+    group_offsets = np.r_[0, np.cumsum(group_totals, dtype="int64")[:-1]]
+    row_group_offsets = np.repeat(group_offsets, group_sizes)
+    global_cumulative = np.cumsum(played_ms_np, dtype="int64")
+    row_cumulative_end = global_cumulative - row_group_offsets
+    row_cumulative_start = row_cumulative_end - played_ms_np
+    base_candidates = start_ns - row_cumulative_start * 1_000_000
+    effective_bases = (
+        pd.Series(base_candidates).groupby(group_ids, sort=False).cummax().to_numpy(dtype="int64")
+    )
+    effective_start_ns = effective_bases + row_cumulative_start * 1_000_000
+    effective_end_ns = effective_start_ns + played_ms_np * 1_000_000
+
+    keep = valid_timestamp & (played_ms_np > 0)
+    if not keep.any():
+        result = df.iloc[0:0].copy()
+        result[LISTENING_INTERVALS_COLUMN] = pd.Series(dtype=object)
+        return result
+
+    positions = np.flatnonzero(keep)
+    result = df.iloc[positions].copy().reset_index(drop=True)
+    starts = effective_start_ns[positions].astype("int64")
+    ends = effective_end_ns[positions].astype("int64")
+    result["ms_played"] = played_ms_np[positions].astype("int64")
+    result["interval_start_at"] = pd.to_datetime(starts, unit="ns", utc=True)
+    result["interval_end_at"] = pd.to_datetime(ends, unit="ns", utc=True)
+    result[LISTENING_INTERVALS_COLUMN] = [
+        ((int(start), int(end)),) for start, end in zip(starts, ends)
+    ]
+    result["listening_duration_policy_version"] = LISTENING_DURATION_POLICY_VERSION
+    return result
 
 
 def reconstruct_logical_plays(
@@ -662,6 +779,7 @@ def build_billboard_weighted_frame(
     *,
     week_start_dow: int,
     week_start_hour: int,
+    duration_frame: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Return a frame with independent play-count and duration weights.
 
@@ -670,7 +788,13 @@ def build_billboard_weighted_frame(
     listening occurred. Downstream groupers must sum ``play_count`` and
     ``total_ms`` when these columns are present.
     """
-    if events.empty:
+    attached_duration = get_listening_duration_frame(events)
+    duration_source = (
+        duration_frame
+        if duration_frame is not None
+        else (attached_duration if attached_duration is not None else events)
+    )
+    if events.empty and duration_source.empty:
         result = events.copy()
         result["play_count"] = pd.Series(dtype="int64")
         result["total_ms"] = pd.Series(dtype="int64")
@@ -678,16 +802,21 @@ def build_billboard_weighted_frame(
         return result
 
     event_rows = events.copy()
-    event_rows["billboard_week"] = billboard_week_for_timestamps(
-        event_rows["counted_at"] if "counted_at" in event_rows.columns else event_rows["ts"],
-        week_start_dow=week_start_dow,
-        week_start_hour=week_start_hour,
-    )
-    event_rows["play_count"] = 1
-    event_rows["total_ms"] = 0
+    if not event_rows.empty:
+        event_rows["billboard_week"] = billboard_week_for_timestamps(
+            event_rows["counted_at"] if "counted_at" in event_rows.columns else event_rows["ts"],
+            week_start_dow=week_start_dow,
+            week_start_hour=week_start_hour,
+        )
+        event_rows["play_count"] = 1
+        event_rows["total_ms"] = 0
+    else:
+        event_rows["play_count"] = pd.Series(dtype="int64")
+        event_rows["total_ms"] = pd.Series(dtype="int64")
+        event_rows["billboard_week"] = pd.Series(dtype=object)
 
     slices = listening_slices_for_billboard(
-        events,
+        duration_source,
         week_start_dow=week_start_dow,
         week_start_hour=week_start_hour,
     )

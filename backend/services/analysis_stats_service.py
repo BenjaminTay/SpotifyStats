@@ -211,20 +211,28 @@ def resolve_period_dates(
 def build_duration_frame(
     df: pd.DataFrame,
     resolved: dict | None = None,
+    *,
+    duration_source: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Build duration slices from an explicitly scoped logical-event frame.
+    """Build duration slices from an explicitly scoped listening source.
 
-    ``DataFrame.attrs`` is intentionally not consulted here.  Pandas preserves
-    attrs when filtering a frame, which previously allowed a track, album, or
-    artist detail response to inherit the full-library duration slices.
-    ``df`` must therefore already be scoped to the entity whose duration is
-    being calculated.  The full entity lifetime frame should be supplied when
-    a period boundary must retain a slice from a session crossing that
-    boundary.
+    ``duration_source`` takes precedence. Otherwise the loader-attached
+    all-listening frame is used, with ``df`` retained as a compatibility
+    fallback for synthetic callers. Because pandas preserves attrs through
+    filtering, entity consumers must explicitly filter and reattach the same
+    entity's duration source before calling this helper.
     """
-    from backend.domains.playback.logical_timeline import explode_listening_slices
+    from backend.domains.playback.logical_timeline import (
+        explode_listening_slices,
+        get_listening_duration_frame,
+    )
 
-    slices = explode_listening_slices(df, granularity="hour")
+    source = duration_source
+    if source is None:
+        source = get_listening_duration_frame(df)
+    if source is None:
+        source = df
+    slices = explode_listening_slices(source, granularity="hour")
     if slices.empty or resolved is None:
         return slices.reset_index(drop=True)
     start = resolved.get("start_date")
@@ -272,9 +280,16 @@ def _duration_frame(df: pd.DataFrame, *, granularity: str = "day") -> pd.DataFra
     slices = df.attrs.get("listening_duration_slices")
     if isinstance(slices, pd.DataFrame):
         return slices
-    from backend.domains.playback.logical_timeline import explode_listening_slices
+    from backend.domains.playback.logical_timeline import (
+        explode_listening_slices,
+        get_listening_duration_frame,
+    )
 
-    return explode_listening_slices(df, granularity=granularity)
+    duration_source = get_listening_duration_frame(df)
+    return explode_listening_slices(
+        duration_source if duration_source is not None else df,
+        granularity=granularity,
+    )
 
 
 def _analysis_weighted_frame(
@@ -348,12 +363,23 @@ def _summary(df: pd.DataFrame, duration_frame: pd.DataFrame | None = None) -> di
     )
     if df.empty and duration_frame.empty:
         return _zero_summary()
+    identity_frame = df if not df.empty else duration_frame
     return {
         "total_plays": int(len(df)),
         "total_hours": round(float(duration_frame["ms_played"].sum() / 3_600_000), 1),
-        "unique_tracks": int(df["track_id"].nunique()) if not df.empty else 0,
-        "unique_albums": int(df["album_name"].dropna().nunique()) if not df.empty else 0,
-        "unique_artists": int(df["artist_name"].dropna().nunique()) if not df.empty else 0,
+        "unique_tracks": (
+            int(identity_frame["track_id"].nunique()) if "track_id" in identity_frame.columns else 0
+        ),
+        "unique_albums": (
+            int(identity_frame["album_name"].dropna().nunique())
+            if "album_name" in identity_frame.columns
+            else 0
+        ),
+        "unique_artists": (
+            int(identity_frame["artist_name"].dropna().nunique())
+            if "artist_name" in identity_frame.columns
+            else 0
+        ),
         "active_days": int(duration_frame["ts_date"].nunique()),
     }
 

@@ -4,6 +4,7 @@ import sqlite3
 
 import pandas as pd
 
+from backend.domains.playback.logical_timeline import attach_listening_duration_frame
 from backend.domains.yearly_review import stats_adapter
 from backend.models.yearly_review import YearlyReviewFilterContext
 
@@ -136,6 +137,41 @@ def test_comparison_stats_only_builds_time_facts() -> None:
     assert len(result["monthly_distribution"]) == 12
     assert "taste_profile" not in result
     assert "taste_slices" not in result
+
+
+def test_yearly_stats_counts_events_but_sums_attached_short_listening(monkeypatch) -> None:
+    events = _frame()
+    duration = events.copy()
+    short_rows = []
+    template = events.iloc[0].to_dict()
+    for offset in range(180):
+        short_rows.append(
+            {
+                **template,
+                "play_id": 10_000 + offset,
+                "ms_played": 20_000,
+            }
+        )
+    duration = pd.concat([duration, pd.DataFrame(short_rows)], ignore_index=True)
+    attach_listening_duration_frame(events, duration)
+    monkeypatch.setattr(
+        stats_adapter,
+        "build_consumer_taste_profile",
+        lambda _conn, frame: {"rows_seen": len(frame)},
+    )
+
+    result = stats_adapter.build_yearly_stats(
+        sqlite3.connect(":memory:"),
+        2025,
+        _context(),
+        event_frame=events,
+    )
+
+    assert result["summary"]["total_plays"] == 4
+    assert result["summary"]["total_hours"] == 5.0
+    assert result["monthly_distribution"][0]["plays"] == 1
+    assert result["monthly_distribution"][0]["hours"] == 2.0
+    assert result["behavior_summary"]["primary_platform"] == "ios"
 
 
 def test_release_era_distribution_preserves_unknown_time(monkeypatch) -> None:

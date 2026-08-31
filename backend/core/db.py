@@ -1367,7 +1367,7 @@ _AGG_SHADOW_TABLES = {
     "agg_weekly_artists": "agg_weekly_artists_shadow",
 }
 
-_BILLBOARD_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v3_l1"
+_BILLBOARD_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v4_all_duration"
 
 
 def _prepare_aggregation_shadows(conn: sqlite3.Connection) -> None:
@@ -1628,11 +1628,15 @@ def _aggregation_fact_dependencies(
     *,
     excluded_generation_id: str | None = None,
 ) -> dict[str, str]:
-    from backend.domains.playback.logical_timeline import PLAYBACK_EVENT_POLICY_VERSION
+    from backend.domains.playback.logical_timeline import (
+        LISTENING_DURATION_POLICY_VERSION,
+        PLAYBACK_EVENT_POLICY_VERSION,
+    )
 
     return {
         "builder_version": _BILLBOARD_AGGREGATION_BUILDER_VERSION,
         "playback_policy_version": PLAYBACK_EVENT_POLICY_VERSION,
+        "listening_duration_policy_version": LISTENING_DURATION_POLICY_VERSION,
         "duration_revision": _played_track_duration_revision(
             conn,
             excluded_generation_id=excluded_generation_id,
@@ -1938,10 +1942,10 @@ def _load_plays_cached(
         params: list[Any] = []
 
         if filtered:
-            if merge_enabled:
-                f, fp = base_filters(min_ms=0, music_only=music_only)
-            else:
-                f, fp = base_filters(min_ms=min_ms, music_only=music_only)
+            # The minimum-play threshold is a count qualification only. Load
+            # every music interval so the attached duration track can retain
+            # short fragments even when event merging is disabled.
+            f, fp = base_filters(min_ms=0, music_only=music_only)
             where = f"WHERE {f}" if f else ""
         else:
             where = "WHERE p.track_id IS NOT NULL" if music_only else ""
@@ -2032,6 +2036,19 @@ def _load_plays_cached(
                 df["track_id"] = df["resolved_track_id"]
             df = df.drop(columns=["resolved_track_id"])
 
+        duration_df = None
+        if filtered:
+            from backend.domains.playback.logical_timeline import (
+                reconstruct_listening_intervals,
+            )
+
+            duration_df = reconstruct_listening_intervals(
+                df,
+                identity_column="l1_id" if "l1_id" in df.columns else "track_id",
+                max_gap_minutes=max_merge_gap_minutes,
+                boundary_column=boundary_column,
+            )
+
         if filtered and merge_enabled:
             df = merge_consecutive_plays(
                 df,
@@ -2044,6 +2061,10 @@ def _load_plays_cached(
                 from backend.domains.playback.counting import filter_effective_plays
 
                 df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
+        elif filtered and min_ms > 0:
+            from backend.domains.playback.counting import filter_effective_plays
+
+            df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
         # Primary-credit fields are still needed by track/album consumers,
         # but their identity and display must follow the same global resolver
@@ -2051,6 +2072,14 @@ def _load_plays_cached(
         from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
         df = canonicalize_artist_frame(df, conn, dedupe=False)
+
+        if duration_df is not None:
+            duration_df = canonicalize_artist_frame(duration_df, conn, dedupe=False)
+            from backend.domains.playback.logical_timeline import (
+                attach_listening_duration_frame,
+            )
+
+            attach_listening_duration_frame(df, _downcast_ints(duration_df))
 
         return _downcast_ints(df)
     finally:
@@ -2137,10 +2166,7 @@ def _load_plays_for_artists_cached(
         params: list[Any] = []
 
         if filtered:
-            if merge_enabled:
-                f, fp = base_filters(min_ms=0, music_only=music_only)
-            else:
-                f, fp = base_filters(min_ms=min_ms, music_only=music_only)
+            f, fp = base_filters(min_ms=0, music_only=music_only)
             where = f"WHERE {f}" if f else ""
         else:
             where = "WHERE p.track_id IS NOT NULL" if music_only else ""
@@ -2229,6 +2255,19 @@ def _load_plays_for_artists_cached(
                 df["track_id"] = df["resolved_track_id"]
             df = df.drop(columns=["resolved_track_id"])
 
+        duration_df = None
+        if filtered:
+            from backend.domains.playback.logical_timeline import (
+                reconstruct_listening_intervals,
+            )
+
+            duration_df = reconstruct_listening_intervals(
+                df,
+                identity_column="l1_id" if "l1_id" in df.columns else "track_id",
+                max_gap_minutes=max_merge_gap_minutes,
+                boundary_column=boundary_column,
+            )
+
         if filtered and merge_enabled:
             df = merge_consecutive_plays(
                 df,
@@ -2241,6 +2280,10 @@ def _load_plays_for_artists_cached(
                 from backend.domains.playback.counting import filter_effective_plays
 
                 df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
+        elif filtered and min_ms > 0:
+            from backend.domains.playback.counting import filter_effective_plays
+
+            df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
         # Step 2: Fan out through the raw + manual effective credit resolver.
         # Assign the event identity before the many-to-many merge.  A merged
@@ -2272,9 +2315,34 @@ def _load_plays_for_artists_cached(
         df["artist_id"] = df["raw_artist_id"]
         df = df.drop(columns=["raw_artist_id"])
 
+        if duration_df is not None:
+            duration_df = duration_df.drop(columns=["artist_name"], errors="ignore")
+            duration_df = duration_df.merge(
+                track_artists_df[
+                    [
+                        "representative_track_id",
+                        "artist_id",
+                        "raw_artist_id",
+                        "artist_name",
+                        "role",
+                    ]
+                ],
+                on="representative_track_id",
+                how="inner",
+            )
+            duration_df["artist_id"] = duration_df["raw_artist_id"]
+            duration_df = duration_df.drop(columns=["raw_artist_id"])
+
         from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
         df = canonicalize_artist_frame(df, conn)
+        if duration_df is not None:
+            duration_df = canonicalize_artist_frame(duration_df, conn)
+            from backend.domains.playback.logical_timeline import (
+                attach_listening_duration_frame,
+            )
+
+            attach_listening_duration_frame(df, _downcast_ints(duration_df))
 
         # Keep the stable logical-event ordinal after artist fan-out. A single
         # play can produce several credited-artist rows; consumers that reason
@@ -2531,11 +2599,15 @@ def _agg_param_hash(
     track_identity_revision: int = 0,
 ) -> str:
     """Compute a content-hash of the parameters that affect aggregation results."""
-    from backend.domains.playback.logical_timeline import PLAYBACK_EVENT_POLICY_VERSION
+    from backend.domains.playback.logical_timeline import (
+        LISTENING_DURATION_POLICY_VERSION,
+        PLAYBACK_EVENT_POLICY_VERSION,
+    )
 
     payload = json.dumps(
         [
             PLAYBACK_EVENT_POLICY_VERSION,
+            LISTENING_DURATION_POLICY_VERSION,
             min_ms,
             music_only,
             week_start_dow,
@@ -2700,8 +2772,20 @@ def build_aggregations(
     if progress_callback:
         progress_callback("合并连续播放...", 0.0)
 
+    # Preserve the complete positive listening timeline before the play-count
+    # threshold removes isolated fragments and below-threshold remainders.
+    from backend.domains.playback.logical_timeline import reconstruct_listening_intervals
+
+    duration_df = reconstruct_listening_intervals(
+        df,
+        identity_column="l1_id",
+        max_gap_minutes=max_merge_gap_minutes,
+        boundary_column="source_album_id",
+    )
+
     # Store source_album_id for album-level aggregation before dropping
     df["_source_album_id"] = df["source_album_id"].fillna(0).astype(int)
+    duration_df["_source_album_id"] = duration_df["source_album_id"].fillna(0).astype(int)
 
     # Merge consecutive same-track plays, then apply ms_played threshold
     df = merge_consecutive_plays(
@@ -2716,7 +2800,7 @@ def build_aggregations(
 
         df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
-    if df.empty:
+    if df.empty and duration_df.empty:
         _clear_aggregations_for_generation(
             conn,
             data_generation_id=build_generation_id,
@@ -2734,6 +2818,7 @@ def build_aggregations(
         event_df,
         week_start_dow=week_start_dow,
         week_start_hour=week_start_hour,
+        duration_frame=duration_df,
     )
 
     _prepare_aggregation_shadows(conn)
@@ -2860,10 +2945,21 @@ def build_aggregations(
     )
 
     df_artists = canonicalize_artist_frame(df_artists, conn)
+    duration_artists = duration_df.merge(
+        track_artists_df,
+        on="track_id",
+        how="inner",
+        suffixes=("_primary", ""),
+    )
+    if not duration_artists.empty:
+        duration_artists["artist_id"] = duration_artists["raw_artist_id"]
+        duration_artists = duration_artists.drop(columns=["raw_artist_id"])
+        duration_artists = canonicalize_artist_frame(duration_artists, conn)
     df_artists = build_billboard_weighted_frame(
         df_artists,
         week_start_dow=week_start_dow,
         week_start_hour=week_start_hour,
+        duration_frame=duration_artists,
     )
     artists_agg = (
         df_artists.groupby(["billboard_week", "artist_id"])
@@ -2961,7 +3057,10 @@ def _billboard_aggregate_maps(
         ),
         "agg_weekly_artists": ("billboard_week", "artist_id"),
     }
-    if events.empty:
+    from backend.domains.playback.logical_timeline import get_listening_duration_frame
+
+    duration_frame = get_listening_duration_frame(events)
+    if events.empty and (duration_frame is None or duration_frame.empty):
         return {table: (columns, {}) for table, columns in key_columns.items()}
 
     from backend.domains.playback.logical_timeline import build_billboard_weighted_frame
@@ -2970,6 +3069,7 @@ def _billboard_aggregate_maps(
         events,
         week_start_dow=week_start_dow,
         week_start_hour=week_start_hour,
+        duration_frame=duration_frame,
     )
     weighted["source_album_id"] = weighted["_source_album_id"].fillna(0).astype(int)
     track_map = _weekly_aggregate_map(weighted, ["billboard_week", "l1_id", "track_id"])
@@ -3001,16 +3101,32 @@ def _billboard_aggregate_maps(
         how="inner",
         suffixes=("_primary", ""),
     )
-    if artist_events.empty:
+    duration_artists = (
+        duration_frame.merge(
+            credits,
+            on="track_id",
+            how="inner",
+            suffixes=("_primary", ""),
+        )
+        if duration_frame is not None and not duration_frame.empty
+        else pd.DataFrame()
+    )
+    if not duration_artists.empty:
+        duration_artists["artist_id"] = duration_artists["raw_artist_id"]
+        duration_artists = duration_artists.drop(columns=["raw_artist_id"])
+        duration_artists = canonicalize_artist_frame(duration_artists, conn)
+    if artist_events.empty and duration_artists.empty:
         artist_map: dict[tuple[Any, ...], tuple[int, int]] = {}
     else:
-        artist_events["artist_id"] = artist_events["raw_artist_id"]
-        artist_events = artist_events.drop(columns=["raw_artist_id"])
-        artist_events = canonicalize_artist_frame(artist_events, conn)
+        if not artist_events.empty:
+            artist_events["artist_id"] = artist_events["raw_artist_id"]
+            artist_events = artist_events.drop(columns=["raw_artist_id"])
+            artist_events = canonicalize_artist_frame(artist_events, conn)
         artist_weighted = build_billboard_weighted_frame(
             artist_events,
             week_start_dow=week_start_dow,
             week_start_hour=week_start_hour,
+            duration_frame=duration_artists,
         )
         artist_map = _weekly_aggregate_map(
             artist_weighted,
@@ -3430,6 +3546,17 @@ def build_aggregations_for_replaced_weeks(
             events = raw
         else:
             raw["_source_album_id"] = raw["source_album_id"].fillna(0).astype(int)
+            from backend.domains.playback.logical_timeline import (
+                attach_listening_duration_frame,
+                reconstruct_listening_intervals,
+            )
+
+            duration = reconstruct_listening_intervals(
+                raw,
+                identity_column="l1_id",
+                max_gap_minutes=max_merge_gap_minutes,
+                boundary_column="source_album_id",
+            )
             events = merge_consecutive_plays(
                 raw,
                 min_ms,
@@ -3445,6 +3572,7 @@ def build_aggregations_for_replaced_weeks(
                     min_ms=min_ms,
                     dynamic_threshold=dynamic_threshold,
                 )
+            attach_listening_duration_frame(events, duration)
         maps = _billboard_aggregate_maps(
             conn,
             events,

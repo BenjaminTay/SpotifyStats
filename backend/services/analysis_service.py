@@ -109,9 +109,12 @@ def _listening_summary(df: pd.DataFrame, hourly: list[dict]) -> dict:
 
 
 def _top_tracks(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
+    from backend.services.analysis_stats_service import _analysis_weighted_frame
+
+    weighted = _analysis_weighted_frame(df)
     top = (
-        df.groupby(["track_id", "track_name", "artist_name"])
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
+        weighted.groupby(["track_id", "track_name", "artist_name"])
+        .agg(plays=("play_count", "sum"), hours=("total_ms", _hours))
         .sort_values("plays", ascending=False)
         .head(5)
         .reset_index()
@@ -143,10 +146,15 @@ def _top_tracks(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
 
 def _top_artists(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
     cover_map = _artist_cover_lookup(conn)
+    from backend.services.analysis_stats_service import _analysis_weighted_frame
+
+    weighted = _analysis_weighted_frame(df)
     top = (
-        df.groupby("artist_name")
+        weighted.groupby("artist_name")
         .agg(
-            plays=("play_id", "count"), hours=("ms_played", _hours), tracks=("track_id", "nunique")
+            plays=("play_count", "sum"),
+            hours=("total_ms", _hours),
+            tracks=("track_id", "nunique"),
         )
         .sort_values("plays", ascending=False)
         .head(5)
@@ -166,12 +174,15 @@ def _top_artists(conn: sqlite3.Connection, df: pd.DataFrame) -> list[dict]:
 
 def _top_albums(conn: sqlite3.Connection, df: pd.DataFrame, merge_level: int = 2) -> list[dict]:
     cover_map = _album_cover_lookup(conn)
+    from backend.services.analysis_stats_service import _analysis_weighted_frame
+
+    weighted = _analysis_weighted_frame(df)
 
     if merge_level > 1:
         from backend.domains.playback.album_projects import compute_album_project_plays
 
         project_agg = compute_album_project_plays(
-            df, conn, merge_level=merge_level, include_compilations=False
+            weighted, conn, merge_level=merge_level, include_compilations=False
         )
         if not project_agg.empty:
             top = (
@@ -192,8 +203,8 @@ def _top_albums(conn: sqlite3.Connection, df: pd.DataFrame, merge_level: int = 2
             ]
 
     top = (
-        df.groupby(["album_name", "artist_name"])
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
+        weighted.groupby(["album_name", "artist_name"])
+        .agg(plays=("play_count", "sum"), hours=("total_ms", _hours))
         .sort_values("plays", ascending=False)
         .head(5)
         .reset_index()

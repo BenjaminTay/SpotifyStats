@@ -149,7 +149,10 @@ def get_dashboard_summary(
         df = _load_filtered_plays(
             conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
         )
-    if df.empty:
+    from backend.services.analysis_stats_service import _duration_frame
+
+    duration_frame = _duration_frame(df, granularity="day")
+    if df.empty and duration_frame.empty:
         return {
             "total_plays": 0,
             "total_hours": 0.0,
@@ -160,11 +163,12 @@ def get_dashboard_summary(
             "avg_daily_hours": 0.0,
         }
     total_plays = int(len(df))
-    total_hours = float(df["ms_played"].sum() / 3_600_000)
-    total_tracks = int(df["track_id"].nunique())
-    total_artists = int(df["artist_name"].dropna().nunique())
-    total_albums = int(df["album_name"].dropna().nunique())
-    total_days = int(df["ts_date"].nunique())
+    total_hours = float(duration_frame["ms_played"].sum() / 3_600_000)
+    identity_frame = df if not df.empty else duration_frame
+    total_tracks = int(identity_frame["track_id"].nunique())
+    total_artists = int(identity_frame["artist_name"].dropna().nunique())
+    total_albums = int(identity_frame["album_name"].dropna().nunique())
+    total_days = int(duration_frame["ts_date"].nunique())
     avg_daily_hours = float(total_hours / total_days) if total_days > 0 else 0.0
     return {
         "total_plays": total_plays,
@@ -212,13 +216,25 @@ def get_monthly_trend(
         df = _load_filtered_plays(
             conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
         )
-    if df.empty:
+    from backend.services.analysis_stats_service import _duration_frame
+
+    duration_frame = _duration_frame(df, granularity="day")
+    if df.empty and duration_frame.empty:
         return []
-    monthly = (
-        df.groupby(["ts_year", "ts_month"])
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-        .reset_index()
+    counts = (
+        df.groupby(["ts_year", "ts_month"]).size().rename("plays")
+        if not df.empty
+        else pd.Series(dtype="int64", name="plays")
     )
+    hours = (
+        duration_frame.groupby(["ts_year", "ts_month"])["ms_played"]
+        .sum()
+        .div(3_600_000)
+        .rename("hours")
+        if not duration_frame.empty
+        else pd.Series(dtype="float64", name="hours")
+    )
+    monthly = pd.concat([counts, hours], axis=1).fillna(0).reset_index()
     monthly["period"] = (
         monthly["ts_year"].astype(str) + "-" + monthly["ts_month"].astype(str).str.zfill(2)
     )
@@ -742,31 +758,45 @@ def get_wrapped_data(
         conn, min_ms, music_only, merge_enabled, dynamic_threshold, max_merge_gap_minutes
     )
     year_df = df[df["ts_year"] == year]
-    if year_df.empty:
-        return {"year": year, "empty": True}
+    from backend.services.analysis_stats_service import (
+        _analysis_weighted_frame,
+        build_duration_frame,
+    )
 
-    total_minutes = year_df["ms_played"].sum() / 60_000
+    resolved_year = {
+        "start_date": f"{year:04d}-01-01",
+        "end_date": f"{year:04d}-12-31",
+    }
+    year_duration = build_duration_frame(df, resolved_year)
+    if year_df.empty and year_duration.empty:
+        return {"year": year, "empty": True}
+    weighted_year = _analysis_weighted_frame(year_df, duration_frame=year_duration)
+
+    total_minutes = weighted_year["total_ms"].sum() / 60_000
     total_plays = len(year_df)
-    unique_tracks = year_df["track_id"].nunique()
-    unique_artists = year_df["artist_name"].dropna().nunique()
-    total_days = year_df["ts_date"].nunique()
+    identity_year = pd.concat([year_df, year_duration], ignore_index=True, sort=False)
+    unique_tracks = identity_year["track_id"].nunique()
+    unique_artists = identity_year["artist_name"].dropna().nunique()
+    total_days = identity_year["ts_date"].nunique()
     avg_minutes_per_day = total_minutes / total_days if total_days > 0 else 0
     avg_hours_per_day = total_minutes / 60 / max(total_days, 1)
 
     # Top artists
     top_artists = (
-        year_df.groupby("artist_name")
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-        .sort_values("hours", ascending=False)
+        weighted_year.groupby("artist_name")
+        .agg(plays=("play_count", "sum"), total_ms=("total_ms", "sum"))
+        .assign(hours=lambda frame: frame["total_ms"] / 3_600_000)
+        .sort_values(["hours", "plays"], ascending=False)
         .head(5)
         .reset_index()
     )
 
     # Top tracks
     top_tracks = (
-        year_df.groupby(["track_name", "artist_name"])
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-        .sort_values("plays", ascending=False)
+        weighted_year.groupby(["track_name", "artist_name"])
+        .agg(plays=("play_count", "sum"), total_ms=("total_ms", "sum"))
+        .assign(hours=lambda frame: frame["total_ms"] / 3_600_000)
+        .sort_values(["plays", "hours"], ascending=False)
         .head(5)
         .reset_index()
     )
@@ -777,7 +807,7 @@ def get_wrapped_data(
         from backend.domains.playback.album_projects import compute_album_project_plays
 
         project_agg = compute_album_project_plays(
-            year_df, conn, merge_level=merge_level, include_compilations=False
+            weighted_year, conn, merge_level=merge_level, include_compilations=False
         )
         if not project_agg.empty:
             best = project_agg.sort_values("total_ms", ascending=False).iloc[0]
@@ -788,8 +818,9 @@ def get_wrapped_data(
             }
     else:
         top_album_row = (
-            year_df.groupby(["album_name", "artist_name"])
-            .agg(hours=("ms_played", _hour))
+            weighted_year.groupby(["album_name", "artist_name"])
+            .agg(total_ms=("total_ms", "sum"))
+            .assign(hours=lambda frame: frame["total_ms"] / 3_600_000)
             .sort_values("hours", ascending=False)
             .head(1)
             .reset_index()
@@ -802,7 +833,7 @@ def get_wrapped_data(
             }
 
     # Platform distribution
-    platform_hours = (year_df.groupby("platform")["ms_played"].sum() / 3_600_000).to_dict()
+    platform_hours = (weighted_year.groupby("platform")["total_ms"].sum() / 3_600_000).to_dict()
 
     # Peak hour
     peak_hour = int(year_df.groupby("ts_hour").size().idxmax()) if not year_df.empty else 0
@@ -829,7 +860,9 @@ def get_wrapped_data(
             season_tops[season] = ""
 
     # Monthly pulse
-    monthly_pulse = year_df.groupby("ts_month").agg(hours=("ms_played", _hour)).reset_index()
+    monthly_pulse = (
+        weighted_year.groupby("ts_month")["total_ms"].sum().div(3_600_000).reset_index(name="hours")
+    )
 
     # Personality scoring
     unique_ratio = unique_tracks / max(total_plays, 1) * 100
@@ -1301,10 +1334,23 @@ def get_artist_deep_dive(
         max_merge_gap_minutes,
         artist_fanout=True,
     )
-    artist_df = df[df["artist_name"] == artist_name]
-    if artist_df.empty:
+    from backend.services.analysis_stats_service import (
+        _analysis_weighted_frame,
+        build_duration_frame,
+        resolve_period,
+    )
+    from backend.services.entity_stats_service import _filter_entity_rows
+
+    artist_df = _filter_entity_rows(df, "artist", None, None, artist_name, conn=conn)
+    resolved = resolve_period(df, "lifetime", None, None)
+    artist_duration = build_duration_frame(artist_df, resolved)
+    if artist_df.empty and artist_duration.empty:
         return {"found": False}
-    track_cover_map = _track_cover_urls(conn, artist_df["track_id"])
+    weighted_artist = _analysis_weighted_frame(
+        artist_df,
+        duration_frame=artist_duration,
+    )
+    track_cover_map = _track_cover_urls(conn, weighted_artist["track_id"])
     album_cover_map = _album_cover_lookup(conn)
     artist_cover_map = _artist_cover_lookup(conn)
 
@@ -1322,16 +1368,18 @@ def get_artist_deep_dive(
 
     # Top tracks
     top_tracks = (
-        artist_df.groupby(["track_id", "track_name"])
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
-        .sort_values("plays", ascending=False)
+        weighted_artist.groupby(["track_id", "track_name"])
+        .agg(plays=("play_count", "sum"), total_ms=("total_ms", "sum"))
+        .assign(hours=lambda frame: frame["total_ms"] / 3_600_000)
+        .sort_values(["plays", "hours"], ascending=False)
         .reset_index()
     )
 
     # Monthly trend
     monthly = (
-        artist_df.groupby(["ts_year", "ts_month"])
-        .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
+        weighted_artist.groupby(["ts_year", "ts_month"])
+        .agg(plays=("play_count", "sum"), total_ms=("total_ms", "sum"))
+        .assign(hours=lambda frame: frame["total_ms"] / 3_600_000)
         .reset_index()
     )
     monthly["period"] = (
@@ -1343,7 +1391,7 @@ def get_artist_deep_dive(
         from backend.domains.playback.album_projects import compute_album_project_plays
 
         project_agg = compute_album_project_plays(
-            artist_df, conn, merge_level=merge_level, include_compilations=False
+            weighted_artist, conn, merge_level=merge_level, include_compilations=False
         )
         # Filter to this artist's projects
         artist_lower = artist_name.lower()
@@ -1359,8 +1407,9 @@ def get_artist_deep_dive(
         album_stats = album_stats.sort_values("hours", ascending=False).reset_index(drop=True)
     else:
         album_stats = (
-            artist_df.groupby("album_name")
-            .agg(plays=("play_id", "count"), hours=("ms_played", _hour))
+            weighted_artist.groupby("album_name")
+            .agg(plays=("play_count", "sum"), total_ms=("total_ms", "sum"))
+            .assign(hours=lambda frame: frame["total_ms"] / 3_600_000)
             .sort_values("hours", ascending=False)
             .reset_index()
         )
@@ -1371,8 +1420,8 @@ def get_artist_deep_dive(
         "cover_url": artist_cover_map.get(artist_name),
         "info": {
             "total_plays": len(artist_df),
-            "total_hours": round(artist_df["ms_played"].sum() / 3_600_000, 1),
-            "unique_tracks": artist_df["track_id"].nunique(),
+            "total_hours": round(weighted_artist["total_ms"].sum() / 3_600_000, 1),
+            "unique_tracks": weighted_artist["track_id"].nunique(),
             "unique_albums": (
                 len(album_stats) if merge_level > 1 else artist_df["album_name"].dropna().nunique()
             ),

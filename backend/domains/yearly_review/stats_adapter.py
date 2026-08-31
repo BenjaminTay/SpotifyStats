@@ -10,13 +10,16 @@ import pandas as pd
 
 from backend.core.db import load_plays
 from backend.domains.metadata.genre_display_taxonomy import build_consumer_taste_profile
+from backend.domains.yearly_review.duration import (
+    listening_duration_slices,
+    with_listening_duration_slices,
+)
 from backend.models.yearly_review import YearlyReviewFilterContext
 from backend.services.analysis_stats_service import (
     _behavior_summary,
     _cumulative_trend,
     _daily_metrics,
     _daily_trend,
-    _duration_frame,
     _hourly_distribution,
     _month_distribution,
     _summary,
@@ -61,12 +64,10 @@ def _monthly_distribution(
         int(row["month"]): dict(row)
         for row in _month_distribution(frame, duration_frame=duration_frame)
     }
+    activity_frame = duration_frame if duration_frame is not None else frame
     active_days = (
-        (duration_frame if duration_frame is not None else frame)
-        .groupby("ts_month")["ts_date"]
-        .nunique()
-        .to_dict()
-        if not frame.empty
+        activity_frame.groupby("ts_month")["ts_date"].nunique().to_dict()
+        if not activity_frame.empty
         else {}
     )
     return [
@@ -131,26 +132,43 @@ def build_release_era_distribution(
     }
 
 
-def _taste_slices(conn: sqlite3.Connection, frame: pd.DataFrame) -> list[dict[str, Any]]:
+def _taste_slices(
+    conn: sqlite3.Connection,
+    event_frame: pd.DataFrame,
+    duration_frame: pd.DataFrame,
+) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for key, label, months in TASTE_SLICES:
-        subset = frame[frame["ts_month"].isin(months)] if "ts_month" in frame else frame.copy()
+        event_subset = (
+            event_frame[event_frame["ts_month"].isin(months)]
+            if "ts_month" in event_frame
+            else event_frame.copy()
+        )
+        duration_subset = (
+            duration_frame[duration_frame["ts_month"].isin(months)]
+            if "ts_month" in duration_frame
+            else duration_frame.copy()
+        )
         hours = (
-            round(float(subset["ms_played"].sum()) / 3_600_000, 2) if "ms_played" in subset else 0.0
+            round(float(duration_subset["ms_played"].sum()) / 3_600_000, 2)
+            if "ms_played" in duration_subset
+            else 0.0
         )
         active_days = (
-            int(subset["ts_date"].nunique()) if not subset.empty and "ts_date" in subset else 0
+            int(duration_subset["ts_date"].nunique())
+            if not duration_subset.empty and "ts_date" in duration_subset
+            else 0
         )
         result.append(
             {
                 "slice_key": key,
                 "label": label,
                 "months": list(months),
-                "plays": int(len(subset)),
+                "plays": int(len(event_subset)),
                 "hours": hours,
                 "active_days": active_days,
-                "taste_profile": build_consumer_taste_profile(conn, subset),
-                "release_era": build_release_era_distribution(conn, subset),
+                "taste_profile": build_consumer_taste_profile(conn, duration_subset),
+                "release_era": build_release_era_distribution(conn, duration_subset),
             }
         )
     return result
@@ -173,23 +191,30 @@ def build_yearly_stats(
             dynamic_threshold=context.dynamic_threshold,
             max_merge_gap_minutes=context.max_merge_gap_minutes,
         )
-    annual = _ensure_month(_annual_frame(event_frame, year))
-    summary = _summary(annual)
-    daily = _daily_trend(annual)
+    annual_duration = _ensure_month(listening_duration_slices(event_frame, year=year))
+    annual = with_listening_duration_slices(
+        _ensure_month(_annual_frame(event_frame, year)),
+        annual_duration,
+    )
+    summary = _summary(annual, duration_frame=annual_duration)
+    daily = _daily_trend(annual, duration_frame=annual_duration)
     return {
         "year": year,
-        "empty": annual.empty,
+        "empty": annual.empty and annual_duration.empty,
         "summary": summary,
         "daily_metrics": _daily_metrics(summary),
         "daily_trend": daily,
         "cumulative_trend": _cumulative_trend(daily),
-        "hourly_distribution": _hourly_distribution(annual),
-        "weekday_distribution": _weekday_distribution(annual),
-        "monthly_distribution": _monthly_distribution(annual),
+        "hourly_distribution": _hourly_distribution(annual, duration_frame=annual_duration),
+        "weekday_distribution": _weekday_distribution(annual, duration_frame=annual_duration),
+        "monthly_distribution": _monthly_distribution(
+            annual,
+            duration_frame=annual_duration,
+        ),
         "behavior_summary": _behavior_summary(annual),
-        "taste_profile": build_consumer_taste_profile(conn, annual),
-        "release_era_profile": build_release_era_distribution(conn, annual),
-        "taste_slices": _taste_slices(conn, annual),
+        "taste_profile": build_consumer_taste_profile(conn, annual_duration),
+        "release_era_profile": build_release_era_distribution(conn, annual_duration),
+        "taste_slices": _taste_slices(conn, annual, annual_duration),
     }
 
 
@@ -204,12 +229,16 @@ def build_yearly_comparison_stats(
     adapter free of metadata/taste builders avoids duplicating the expensive
     annual report work merely to calculate a comparable baseline.
     """
-    annual = _ensure_month(_annual_frame(event_frame, year))
+    annual_duration = _ensure_month(listening_duration_slices(event_frame, year=year))
+    annual = with_listening_duration_slices(
+        _ensure_month(_annual_frame(event_frame, year)),
+        annual_duration,
+    )
     if {"track_id", "album_name", "artist_name", "ts_date", "ms_played"}.issubset(annual.columns):
         # Reuse one duration expansion across all comparison facts.  The
         # previous implementation expanded the same timeline independently
         # for summary, hourly, and monthly values.
-        duration_frame = _duration_frame(annual, granularity="hour")
+        duration_frame = annual_duration
         summary = _summary(annual, duration_frame=duration_frame)
         hourly_distribution = _hourly_distribution(
             annual,
@@ -223,8 +252,8 @@ def build_yearly_comparison_stats(
         summary = {
             "total_plays": int(len(annual)),
             "total_hours": round(
-                float(annual["ms_played"].sum()) / 3_600_000
-                if "ms_played" in annual.columns
+                float(annual_duration["ms_played"].sum()) / 3_600_000
+                if "ms_played" in annual_duration.columns
                 else 0.0,
                 1,
             ),
@@ -237,17 +266,24 @@ def build_yearly_comparison_stats(
             "unique_artists": int(annual["artist_name"].dropna().nunique())
             if "artist_name" in annual.columns
             else 0,
-            "active_days": int(annual["ts_date"].nunique()) if "ts_date" in annual.columns else 0,
+            "active_days": (
+                int(annual_duration["ts_date"].nunique())
+                if "ts_date" in annual_duration.columns
+                else 0
+            ),
         }
         hourly_distribution = (
-            _hourly_distribution(annual)
-            if "ts_hour" in annual.columns
+            _hourly_distribution(annual, duration_frame=annual_duration)
+            if "ts_hour" in annual.columns or "ts_hour" in annual_duration.columns
             else [{"hour": hour, "plays": 0, "hours": 0.0} for hour in range(24)]
         )
-        monthly_distribution = _monthly_distribution(annual)
+        monthly_distribution = _monthly_distribution(
+            annual,
+            duration_frame=annual_duration,
+        )
     return {
         "year": year,
-        "empty": annual.empty,
+        "empty": annual.empty and annual_duration.empty,
         "summary": summary,
         "hourly_distribution": hourly_distribution,
         "monthly_distribution": monthly_distribution,

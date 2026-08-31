@@ -7,6 +7,10 @@ from typing import Any
 import pandas as pd
 
 from backend.core.db import get_db
+from backend.domains.yearly_review.duration import (
+    listening_duration_slices,
+    with_listening_duration_slices,
+)
 from backend.services.ai_insights_service import _load_yearly_report_plays_frame
 
 
@@ -46,8 +50,12 @@ def chart_coverage(
     discovery = _dict(context.get("discovery_and_returns"))
     genre = _dict(context.get("genre_distribution"))
     highlight = _dict(context.get("highlight_day_detail"))
+    duration = listening_duration_slices(df)
     return {
-        "listening_calendar": not df.empty and "ts_date" in df.columns,
+        "listening_calendar": (
+            (not df.empty and "ts_date" in df.columns)
+            or (not duration.empty and "ts_date" in duration.columns)
+        ),
         "artist_monthly_trend": not df.empty and {"ts_date", "artist_name"}.issubset(df.columns),
         "album_duality_compare": bool(context.get("top_albums")) and bool(billboard.get("albums")),
         "highlight_day_timeline": bool(highlight.get("date")) and not df.empty,
@@ -75,19 +83,20 @@ def _load_plays_for_context(context: dict[str, Any]) -> pd.DataFrame:
         )
     finally:
         conn.close()
-    if df is None or getattr(df, "empty", True):
+    if df is None:
         return pd.DataFrame()
     return _filter_report_period(df, period, year)
 
 
 def _filter_report_period(df: pd.DataFrame, period: dict[str, Any], year: int) -> pd.DataFrame:
-    if "ts_date" not in df.columns:
-        return df.copy()
-    dates = df["ts_date"].astype(str).str[:10]
     start = str(period.get("start_date") or f"{year}-01-01")
     end = str(period.get("end_date") or f"{year}-12-31")
+    duration = listening_duration_slices(df, start_date=start, end_date=end)
+    if "ts_date" not in df.columns:
+        return with_listening_duration_slices(df, duration)
+    dates = df["ts_date"].astype(str).str[:10]
     mask = (dates >= start) & (dates <= end)
-    return df.loc[mask].copy()
+    return with_listening_duration_slices(df.loc[mask], duration)
 
 
 def _bool_filter(filters: dict[str, Any], key: str, default: bool) -> bool:
@@ -109,16 +118,27 @@ def _calendar_data(
     context: dict[str, Any], spec: dict[str, Any], df: pd.DataFrame
 ) -> dict[str, Any]:
     del context, spec
-    if df.empty or "ts_date" not in df.columns:
+    duration = listening_duration_slices(df)
+    if (df.empty or "ts_date" not in df.columns) and (
+        duration.empty or "ts_date" not in duration.columns
+    ):
         return {}
-    grouped = (
-        df.groupby("ts_date", dropna=False)
-        .agg(
-            plays=("ts_date", "size"),
-            minutes=("ms_played", lambda s: round(float(s.sum()) / 60000, 1)),
-        )
-        .reset_index()
+    counts = (
+        df.groupby("ts_date", dropna=False).size().rename("plays")
+        if not df.empty
+        else pd.Series(dtype="int64", name="plays")
     )
+    counts.index.name = "ts_date"
+    minutes = (
+        duration.groupby("ts_date", dropna=False)["ms_played"]
+        .sum()
+        .div(60_000)
+        .round(1)
+        .rename("minutes")
+        if not duration.empty
+        else pd.Series(dtype="float64", name="minutes")
+    )
+    grouped = pd.concat([counts, minutes], axis=1).fillna(0).reset_index()
     days: list[dict[str, Any]] = [
         {"date": str(row.ts_date), "plays": int(row.plays), "minutes": float(row.minutes)}
         for row in grouped.itertuples()

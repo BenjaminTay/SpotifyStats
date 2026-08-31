@@ -126,34 +126,50 @@ def project_track_logical_delta_levels(
 def _event_contributions(events: pd.DataFrame, *, sign: int) -> pd.DataFrame:
     if sign not in {-1, 1}:
         raise ValueError("contribution sign must be -1 or 1")
-    if events.empty:
-        return _empty_track_logical_delta()
-    identity_column = "l1_id" if "l1_id" in events.columns else "track_id"
-    missing = {identity_column, "ms_played"} - set(events.columns)
-    if missing:
-        raise ValueError(f"logical event frame missing columns: {sorted(missing)}")
+    from backend.domains.playback.logical_timeline import get_listening_duration_frame
 
-    contribution = pd.DataFrame(index=events.index)
-    track_ids = pd.to_numeric(events[identity_column], errors="coerce")
-    if track_ids.isna().any():
-        raise ValueError("logical event frame contains an invalid track_id")
-    contribution["track_id"] = track_ids.astype("int64")
-    if "source_album_id" in events.columns:
-        contribution["source_album_id"] = pd.to_numeric(
-            events["source_album_id"], errors="coerce"
-        ).astype("Int64")
-    else:
-        contribution["source_album_id"] = pd.Series(
-            pd.NA,
-            index=events.index,
-            dtype="Int64",
-        )
-    durations = pd.to_numeric(events["ms_played"], errors="coerce")
-    if durations.isna().any() or (durations < 0).any():
-        raise ValueError("logical event frame contains an invalid ms_played")
-    contribution["play_events"] = sign
-    contribution["total_ms"] = durations.astype("int64") * sign
-    return _coalesce_signed_contributions(contribution)
+    duration = get_listening_duration_frame(events)
+    duration = duration if duration is not None else events
+    if events.empty and duration.empty:
+        return _empty_track_logical_delta()
+
+    def base(frame: pd.DataFrame) -> pd.DataFrame:
+        identity_column = "l1_id" if "l1_id" in frame.columns else "track_id"
+        missing = {identity_column, "ms_played"} - set(frame.columns)
+        if missing:
+            raise ValueError(f"logical event frame missing columns: {sorted(missing)}")
+        contribution = pd.DataFrame(index=frame.index)
+        track_ids = pd.to_numeric(frame[identity_column], errors="coerce")
+        if track_ids.isna().any():
+            raise ValueError("logical event frame contains an invalid track_id")
+        contribution["track_id"] = track_ids.astype("int64")
+        if "source_album_id" in frame.columns:
+            contribution["source_album_id"] = pd.to_numeric(
+                frame["source_album_id"], errors="coerce"
+            ).astype("Int64")
+        else:
+            contribution["source_album_id"] = pd.Series(
+                pd.NA,
+                index=frame.index,
+                dtype="Int64",
+            )
+        return contribution
+
+    parts: list[pd.DataFrame] = []
+    if not events.empty:
+        counted = base(events)
+        counted["play_events"] = sign
+        counted["total_ms"] = 0
+        parts.append(counted)
+    if not duration.empty:
+        timed = base(duration)
+        durations = pd.to_numeric(duration["ms_played"], errors="coerce")
+        if durations.isna().any() or (durations < 0).any():
+            raise ValueError("listening duration frame contains an invalid ms_played")
+        timed["play_events"] = 0
+        timed["total_ms"] = durations.astype("int64") * sign
+        parts.append(timed)
+    return _coalesce_signed_contributions(pd.concat(parts, ignore_index=True))
 
 
 def _normalise_track_group_keys(

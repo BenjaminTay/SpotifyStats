@@ -21,13 +21,14 @@ from backend.domains.playback.album_projects import get_album_project_revision
 from backend.domains.playback.l3_album_attribution import (
     get_l3_album_attribution_revision,
 )
+from backend.domains.playback.logical_timeline import LISTENING_DURATION_POLICY_VERSION
 
-MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v9_l3_album_owner"
+MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v10_all_duration"
 # Compatibility name used by existing reports and API terminology.
 MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION
-MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v9_l3_album_owner"
-MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v9_l3_album_owner"
-MUSIC_SEARCH_SNAPSHOT_POLICY_VERSION = "music_search_snapshot_policy_v1"
+MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v10_all_duration"
+MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v10_all_duration"
+MUSIC_SEARCH_SNAPSHOT_POLICY_VERSION = "music_search_snapshot_policy_v2_all_duration"
 LEGACY_MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = "music_search_filter_v2"
 
 
@@ -128,6 +129,7 @@ def music_search_snapshot_policy_key(context: MusicSearchFilterContext) -> str:
             "version": MUSIC_SEARCH_SNAPSHOT_POLICY_VERSION,
             "snapshot_builder": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
             "chart_builder": MUSIC_SEARCH_CHART_BUILDER_VERSION,
+            "listening_duration_policy": LISTENING_DURATION_POLICY_VERSION,
             **{key: value for key, value in values.items() if key not in excluded},
         }
     )

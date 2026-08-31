@@ -11,6 +11,7 @@ from typing import Any, cast
 
 import pandas as pd
 
+from backend.domains.yearly_review.duration import listening_duration_slices
 from backend.domains.yearly_review.honors import entity_ref
 from backend.domains.yearly_review.policies import (
     SEASON_LEADER_CHANGE_CAP,
@@ -88,11 +89,42 @@ def _monthly_leaders(
         group_columns = list(dict.fromkeys(["_month", id_col, name_col]))
         if entity_type != "artist" and "artist_name" in frame.columns:
             group_columns.append("artist_name")
-        grouped = (
+        counted = (
             frame.dropna(subset=["_month", id_col, name_col])
             .groupby(group_columns, dropna=False)
-            .agg(plays=("play_id", "count"), hours=("ms_played", lambda s: s.sum() / 3_600_000))
+            .size()
+            .rename("plays")
             .reset_index()
+        )
+        duration = listening_duration_slices(source)
+        if not duration.empty:
+            duration = duration.copy()
+            missing_keys = [
+                column
+                for column in group_columns
+                if column != "_month" and column not in duration.columns
+            ]
+            if missing_keys and "track_id" in frame.columns and "track_id" in duration.columns:
+                mapping_columns = list(dict.fromkeys(["track_id", *missing_keys]))
+                mapping = frame[mapping_columns].drop_duplicates()
+                duration = duration.merge(mapping, on="track_id", how="left")
+            duration["_month"] = _month_column(duration)
+            if set(group_columns).issubset(duration.columns):
+                timed = (
+                    duration.dropna(subset=["_month", id_col, name_col])
+                    .groupby(group_columns, dropna=False)["ms_played"]
+                    .sum()
+                    .div(3_600_000)
+                    .rename("hours")
+                    .reset_index()
+                )
+            else:
+                timed = pd.DataFrame(columns=[*group_columns, "hours"])
+        else:
+            timed = pd.DataFrame(columns=[*group_columns, "hours"])
+        grouped = (
+            counted.merge(timed, on=group_columns, how="outer")
+            .fillna({"plays": 0, "hours": 0.0})
             .sort_values(
                 ["_month", "plays", "hours", name_col], ascending=[True, False, False, True]
             )

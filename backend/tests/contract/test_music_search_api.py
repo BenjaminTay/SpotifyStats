@@ -554,7 +554,12 @@ def _assert_search_context_matches_details(
     assert plays["total"] <= 200
     assert context_item["play_events"] == stats["summary"]["total_plays"]
     assert context_item["play_events"] == plays["total"]
-    assert context_item["total_ms"] == sum(row["ms_played"] for row in plays["rows"])
+    qualified_event_ms = sum(row["ms_played"] for row in plays["rows"])
+    assert context_item["total_ms"] >= qualified_event_ms
+    assert context_item["total_ms"] / 3_600_000 == pytest.approx(
+        stats["summary"]["total_hours"],
+        abs=0.051,
+    )
 
     summary = billboard["summary"] if kind == "track" else billboard["chart_summary"]
     if summary is None:

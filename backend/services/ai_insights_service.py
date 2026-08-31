@@ -647,19 +647,24 @@ def _hours(ms_series) -> float:
 
 def _top_entities(df, entity: str, n: int = 5, conn=None, merge_level: int = 2) -> list[dict]:
     """Return top-n entities from a plays DataFrame."""
-    if df.empty:
+    from backend.services.analysis_stats_service import _analysis_weighted_frame
+
+    weighted = _analysis_weighted_frame(df)
+    if weighted.empty:
         return []
 
     if entity == "artist":
         agg = (
-            df.groupby("artist_name")
-            .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
+            weighted.groupby("artist_name")
+            .agg(plays=("play_count", "sum"), total_ms=("total_ms", "sum"))
+            .assign(hours=lambda frame: frame["total_ms"] / 3_600_000)
             .reset_index()
         )
     elif entity == "track":
         agg = (
-            df.groupby(["track_name", "artist_name"])
-            .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
+            weighted.groupby(["track_name", "artist_name"])
+            .agg(plays=("play_count", "sum"), total_ms=("total_ms", "sum"))
+            .assign(hours=lambda frame: frame["total_ms"] / 3_600_000)
             .reset_index()
         )
     elif entity == "album":
@@ -667,7 +672,7 @@ def _top_entities(df, entity: str, n: int = 5, conn=None, merge_level: int = 2) 
             from backend.domains.playback.album_projects import compute_album_project_plays
 
             project_agg = compute_album_project_plays(
-                df, conn, merge_level=merge_level, include_compilations=False
+                weighted, conn, merge_level=merge_level, include_compilations=False
             )
             agg = project_agg.rename(
                 columns={
@@ -679,14 +684,15 @@ def _top_entities(df, entity: str, n: int = 5, conn=None, merge_level: int = 2) 
             agg["hours"] = agg["hours_raw"] / 3_600_000
         else:
             agg = (
-                df.groupby(["album_name", "artist_name"], dropna=False)
-                .agg(plays=("play_id", "count"), hours=("ms_played", _hours))
+                weighted.groupby(["album_name", "artist_name"], dropna=False)
+                .agg(plays=("play_count", "sum"), total_ms=("total_ms", "sum"))
+                .assign(hours=lambda frame: frame["total_ms"] / 3_600_000)
                 .reset_index()
             )
     else:
         return []
 
-    agg = agg.sort_values("plays", ascending=False).head(n)
+    agg = agg.sort_values(["plays", "hours"], ascending=False).head(n)
     return [
         {
             "name": (
@@ -1745,11 +1751,15 @@ def _fetch_data_for_intent(
     }
 
     if intent == "stat_overview" or intent == "general":
+        from backend.services.analysis_stats_service import _duration_frame
+
+        duration_frame = _duration_frame(df, granularity="day")
+        active_days = max(duration_frame["ts_date"].nunique(), 1)
         data["summary"] = _summary(df)
         data["daily_metrics"] = {
-            "avg_daily_plays": round(len(df) / max(df["ts_date"].nunique(), 1), 2),
+            "avg_daily_plays": round(len(df) / active_days, 2),
             "avg_daily_hours": round(
-                df["ms_played"].sum() / 3_600_000 / max(df["ts_date"].nunique(), 1), 2
+                duration_frame["ms_played"].sum() / 3_600_000 / active_days, 2
             ),
         }
         data["top_artists"] = _top_entities(df, "artist", 5)

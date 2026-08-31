@@ -11,6 +11,10 @@ from typing import Any, Callable, TypeVar, cast
 import pandas as pd
 
 from backend.core.db import load_plays
+from backend.domains.playback.logical_timeline import (
+    attach_listening_duration_frame,
+    get_listening_duration_frame,
+)
 from backend.domains.yearly_review.appendix import build_appendix
 from backend.domains.yearly_review.billboard_adapter import build_billboard_source
 from backend.domains.yearly_review.comparison_window import (
@@ -23,6 +27,10 @@ from backend.domains.yearly_review.coverage import (
     build_play_coverage,
     build_taste_coverage,
     build_yearly_review_coverage,
+)
+from backend.domains.yearly_review.duration import (
+    listening_duration_slices,
+    with_listening_duration_slices,
 )
 from backend.domains.yearly_review.entity_links import enrich_entity_ref_covers
 from backend.domains.yearly_review.epilogue import build_epilogue
@@ -213,11 +221,19 @@ def build_yearly_review_artifact(
             dynamic_threshold=context.dynamic_threshold,
             max_merge_gap_minutes=context.max_merge_gap_minutes,
         )
-    annual_events = _year_frame(event_frame, year)
-    baseline_year_events = _year_frame(event_frame, year - 1)
+    annual_duration = listening_duration_slices(event_frame, year=year)
+    baseline_year_duration = listening_duration_slices(event_frame, year=year - 1)
+    annual_events = with_listening_duration_slices(
+        _year_frame(event_frame, year),
+        annual_duration,
+    )
+    baseline_year_events = with_listening_duration_slices(
+        _year_frame(event_frame, year - 1),
+        baseline_year_duration,
+    )
 
     entity_frames: tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
-    if annual_events.empty:
+    if annual_events.empty and annual_duration.empty:
         entity_frames = (pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
     else:
         entity_frames = _safe_section(
@@ -236,10 +252,25 @@ def build_yearly_review_artifact(
             lambda: (pd.DataFrame(), pd.DataFrame(), pd.DataFrame()),
             limitations,
         )
-    annual_entity_frames = (
-        _year_frame(entity_frames[0], year),
-        _year_frame(entity_frames[1], year),
-        _year_frame(entity_frames[2], year),
+    primary_duration_source = get_listening_duration_frame(event_frame)
+    prepared_entity_frames: list[pd.DataFrame] = []
+    for frame in entity_frames:
+        if get_listening_duration_frame(frame) is None and primary_duration_source is not None:
+            frame = attach_listening_duration_frame(frame, primary_duration_source)
+        prepared_entity_frames.append(frame)
+    entity_frames = cast(
+        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
+        tuple(prepared_entity_frames),
+    )
+    annual_entity_frames = cast(
+        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame],
+        tuple(
+            with_listening_duration_slices(
+                _year_frame(frame, year),
+                listening_duration_slices(frame, year=year),
+            )
+            for frame in entity_frames
+        ),
     )
 
     # Stats and play coverage are the report spine; failure here should surface.
@@ -271,24 +302,46 @@ def build_yearly_review_artifact(
             baseline_start=comparison_coverage.baseline_start,
             baseline_end=comparison_coverage.baseline_end,
         )
-    baseline_events = aligned.baseline if aligned is not None else baseline_year_events.iloc[0:0]
+    baseline_events = (
+        with_listening_duration_slices(
+            aligned.baseline,
+            listening_duration_slices(
+                event_frame,
+                start_date=aligned.baseline_start,
+                end_date=aligned.baseline_end,
+            ),
+        )
+        if aligned is not None
+        else baseline_year_events.iloc[0:0]
+    )
     baseline_stats = (
         build_yearly_comparison_stats(year - 1, event_frame=baseline_events)
-        if not baseline_events.empty
+        if not baseline_events.empty or not listening_duration_slices(baseline_events).empty
         else None
     )
-    comparison_current_events = aligned.current if aligned is not None else annual_events.iloc[0:0]
+    comparison_current_events = (
+        with_listening_duration_slices(
+            aligned.current,
+            listening_duration_slices(
+                event_frame,
+                start_date=aligned.current_start,
+                end_date=aligned.current_end,
+            ),
+        )
+        if aligned is not None
+        else annual_events.iloc[0:0]
+    )
     comparison_current_stats = (
         stats
         if aligned is not None and comparison_current_events.equals(annual_events)
         else build_yearly_comparison_stats(year, event_frame=comparison_current_events)
         if not comparison_current_events.empty
+        or not listening_duration_slices(comparison_current_events).empty
         else None
     )
 
-    if annual_events.empty:
+    if annual_events.empty and annual_duration.empty:
         play_rankings = _empty_play_rankings(year)
-        billboard = _empty_billboard(year)
     else:
         play_rankings = _safe_section(
             "play_rankings",
@@ -302,6 +355,9 @@ def build_yearly_review_artifact(
             lambda: _empty_play_rankings(year),
             limitations,
         )
+    if annual_events.empty:
+        billboard = _empty_billboard(year)
+    else:
         billboard = _safe_section(
             "billboard",
             lambda: build_billboard_source(conn, year, context),
@@ -483,7 +539,10 @@ def build_yearly_review_artifact(
     ][:8]
     selected_records.catalog_counts["featured_total"] = len(selected_records.featured)
     taste_comparison = resolve_taste_comparison(stats, coverage)
-    taste_from_events, taste_to_events = taste_comparison_frames(annual_events, taste_comparison)
+    taste_from_events, taste_to_events = taste_comparison_frames(
+        annual_duration,
+        taste_comparison,
+    )
     taste_migration = _safe_section(
         "taste_migration",
         lambda: build_taste_migration(

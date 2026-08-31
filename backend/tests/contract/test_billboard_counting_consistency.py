@@ -546,15 +546,23 @@ class TestRawFallbackConsistency:
         assert int(agg_long["play_count"].sum()) == 3
         assert int((raw_long["billboard_week"].astype(str) == "2026-06-05").sum()) == 2
 
+        from backend.domains.playback.logical_timeline import get_billboard_weighted_frame
+
+        raw_weighted = get_billboard_weighted_frame(raw_artists)
+        assert raw_weighted is not None
         raw_artist_counts = (
-            raw_artists.groupby(["billboard_week", "artist_id"], as_index=False)
-            .agg(play_count=("ms_played", "count"), total_ms=("ms_played", "sum"))
+            raw_weighted.groupby(["billboard_week", "artist_id"], as_index=False)
+            .agg(play_count=("play_count", "sum"), total_ms=("total_ms", "sum"))
+            .loc[lambda frame: frame["play_count"] > 0]
             .assign(billboard_week=lambda frame: frame["billboard_week"].astype(str))
             .sort_values(["billboard_week", "artist_id"])
             .reset_index(drop=True)
         )
         agg_artist_counts = (
-            agg_artists[["billboard_week", "artist_id", "play_count", "total_ms"]]
+            agg_artists.loc[
+                agg_artists["play_count"] > 0,
+                ["billboard_week", "artist_id", "play_count", "total_ms"],
+            ]
             .assign(billboard_week=lambda frame: frame["billboard_week"].astype(str))
             .sort_values(["billboard_week", "artist_id"])
             .reset_index(drop=True)

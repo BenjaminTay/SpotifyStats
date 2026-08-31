@@ -267,6 +267,10 @@ def build_primary_artist_ms(
     plays_df: pd.DataFrame,
 ) -> tuple[dict[int, int], int]:
     """Aggregate play milliseconds by tracks.artist_id without collaborator fan-out."""
+    from backend.domains.playback.logical_timeline import get_listening_duration_frame
+
+    duration_source = get_listening_duration_frame(plays_df)
+    plays_df = duration_source if duration_source is not None else plays_df
     if plays_df.empty:
         return {}, 0
     required = {"track_id", "ms_played"}

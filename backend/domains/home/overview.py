@@ -11,9 +11,10 @@ from urllib.parse import quote
 import pandas as pd
 
 from backend.core.db import load_plays, load_plays_for_artists
+from backend.domains.playback.logical_timeline import get_listening_duration_frame
 from backend.domains.playback.track_groups import load_track_group_keys
 from backend.models.yearly_review import YearlyReviewFilterContext
-from backend.services.analysis_stats_service import chart_rows
+from backend.services.analysis_stats_service import build_duration_frame, chart_rows
 from backend.services.play_service import _track_cover_urls
 from backend.services.yearly_review_service import (
     get_cached_yearly_review_artifact,
@@ -49,6 +50,27 @@ def _today() -> date:
 
 def _round_hours(value: float | int) -> float:
     return round(float(value) / 3_600_000, 1)
+
+
+def _duration_source(frame: pd.DataFrame) -> pd.DataFrame:
+    """Return the unthresholded listening timeline attached to event rows."""
+    duration = get_listening_duration_frame(frame)
+    return duration if duration is not None else frame
+
+
+def _total_duration_ms(frame: pd.DataFrame) -> int:
+    if "ms_played" not in frame.columns:
+        return 0
+    return int(pd.to_numeric(frame["ms_played"], errors="coerce").fillna(0).sum())
+
+
+def _period_duration(frame: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
+    """Slice listening time by local date without changing event qualification."""
+    return build_duration_frame(
+        frame,
+        {"start_date": start.isoformat(), "end_date": end.isoformat()},
+        duration_source=_duration_source(frame),
+    )
 
 
 def _pct_delta(current: float, previous: float) -> float | None:
@@ -163,11 +185,23 @@ def _source_dates(conn: sqlite3.Connection) -> tuple[date | None, date | None]:
 
 
 def _recent_track_leader(
-    conn: sqlite3.Connection, frame: pd.DataFrame, merge_level: int
+    conn: sqlite3.Connection,
+    frame: pd.DataFrame,
+    merge_level: int,
+    duration_frame: pd.DataFrame,
 ) -> dict[str, Any] | None:
     if frame.empty:
         return None
-    _total, rows = chart_rows(conn, frame, "track", "plays", 1, 0, merge_level)
+    _total, rows = chart_rows(
+        conn,
+        frame,
+        "track",
+        "plays",
+        1,
+        0,
+        merge_level,
+        duration_frame=duration_frame,
+    )
     if not rows:
         return None
     row = rows[0]
@@ -184,10 +218,21 @@ def _recent_track_leader(
     }
 
 
-def _recent_artist_leader(conn: sqlite3.Connection, frame: pd.DataFrame) -> dict[str, Any] | None:
+def _recent_artist_leader(
+    conn: sqlite3.Connection,
+    frame: pd.DataFrame,
+    duration_frame: pd.DataFrame,
+) -> dict[str, Any] | None:
     if frame.empty:
         return None
-    _total, rows = chart_rows(conn, frame, "artist", "plays", 1)
+    _total, rows = chart_rows(
+        conn,
+        frame,
+        "artist",
+        "plays",
+        1,
+        duration_frame=duration_frame,
+    )
     if not rows:
         return None
     row = rows[0]
@@ -207,6 +252,7 @@ def _recent_album_leader(
     conn: sqlite3.Connection,
     frame: pd.DataFrame,
     context: YearlyReviewFilterContext,
+    duration_frame: pd.DataFrame,
 ) -> dict[str, Any] | None:
     if frame.empty:
         return None
@@ -219,6 +265,7 @@ def _recent_album_leader(
         0,
         context.merge_level,
         context.include_compilations,
+        duration_frame=duration_frame,
     )
     if not rows:
         return None
@@ -237,7 +284,13 @@ def _recent_payload(
     df: pd.DataFrame,
     artist_df: pd.DataFrame,
     context: YearlyReviewFilterContext,
-) -> tuple[dict[str, Any], pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[
+    dict[str, Any],
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+]:
     latest = pd.to_datetime(df["ts_date"]).max().date()
     current_start = latest - timedelta(days=27)
     previous_start = latest - timedelta(days=55)
@@ -248,16 +301,24 @@ def _recent_payload(
     artist_dates = pd.to_datetime(artist_df["ts_date"]).dt.date
     current_artists = artist_df[(artist_dates >= current_start) & (artist_dates <= latest)].copy()
 
+    current_duration = _period_duration(df, current_start, latest)
+    previous_duration = _period_duration(df, previous_start, previous_end)
+    current_artist_duration = _period_duration(artist_df, current_start, latest)
     current_tracks = _track_frame(conn, current, context.merge_level)
     previous_tracks = _track_frame(conn, previous, context.merge_level)
+    current_track_duration = _track_frame(conn, current_duration, context.merge_level)
+    previous_track_duration = _track_frame(conn, previous_duration, context.merge_level)
+
     comparison_available = dates.min() <= previous_start and not current.empty
-    current_ms = int(current["ms_played"].sum())
-    previous_ms = int(previous["ms_played"].sum())
+    current_ms = int(current_duration["ms_played"].sum())
+    previous_ms = int(previous_duration["ms_played"].sum())
     late_night = current["ts_hour"].isin([23, 0, 1, 2, 3, 4, 5]).mean() * 100
     weekend = (current["ts_dow"] >= 5).mean() * 100
+    daily_plays = current.groupby("ts_date")["play_id"].count().rename("plays")
+    daily_duration = current_duration.groupby("ts_date")["ms_played"].sum().rename("total_ms")
     daily = (
-        current.groupby("ts_date")
-        .agg(plays=("play_id", "count"), total_ms=("ms_played", "sum"))
+        pd.concat([daily_plays, daily_duration], axis=1)
+        .fillna(0)
         .reset_index()
         .sort_values("ts_date")
     )
@@ -291,12 +352,70 @@ def _recent_payload(
             for day in (current_start + timedelta(days=offset) for offset in range(28))
         ],
         "leaders": {
-            "track": _recent_track_leader(conn, current, context.merge_level),
-            "album": _recent_album_leader(conn, current, context),
-            "artist": _recent_artist_leader(conn, current_artists),
+            "track": _recent_track_leader(
+                conn,
+                current,
+                context.merge_level,
+                current_duration,
+            ),
+            "album": _recent_album_leader(
+                conn,
+                current,
+                context,
+                current_duration,
+            ),
+            "artist": _recent_artist_leader(
+                conn,
+                current_artists,
+                current_artist_duration,
+            ),
         },
     }
-    return payload, current_tracks, previous_tracks, current
+    return (
+        payload,
+        current_tracks,
+        previous_tracks,
+        current_track_duration,
+        previous_track_duration,
+    )
+
+
+def _aggregate_track_activity(
+    events: pd.DataFrame,
+    duration: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Group event counts and listening time without conflating their rows."""
+    duration = duration if duration is not None else events.iloc[0:0]
+    if events.empty and duration.empty:
+        return pd.DataFrame(
+            columns=["home_track_id", "name", "artist", "plays", "total_ms", "first_date"]
+        )
+
+    event_rows = (
+        events.groupby("home_track_id", dropna=False)
+        .agg(
+            name=("home_track_name", "first"),
+            artist=("artist_name", "first"),
+            plays=("play_id", "count"),
+            first_date=("ts_date", "min"),
+        )
+        .reset_index()
+    )
+    duration_rows = (
+        duration.groupby("home_track_id", dropna=False)
+        .agg(
+            duration_name=("home_track_name", "first"),
+            duration_artist=("artist_name", "first"),
+            total_ms=("ms_played", "sum"),
+        )
+        .reset_index()
+    )
+    grouped = event_rows.merge(duration_rows, on="home_track_id", how="outer")
+    grouped["name"] = grouped["name"].fillna(grouped.pop("duration_name"))
+    grouped["artist"] = grouped["artist"].fillna(grouped.pop("duration_artist"))
+    grouped["plays"] = grouped["plays"].fillna(0).astype(int)
+    grouped["total_ms"] = grouped["total_ms"].fillna(0).astype("int64")
+    return grouped
 
 
 def _headline(
@@ -305,23 +424,10 @@ def _headline(
     previous: pd.DataFrame,
     all_tracks: pd.DataFrame,
     recent: dict[str, Any],
+    current_duration: pd.DataFrame | None = None,
+    previous_duration: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    def aggregate(frame: pd.DataFrame) -> pd.DataFrame:
-        if frame.empty:
-            return pd.DataFrame(columns=["home_track_id", "plays", "total_ms"])
-        return (
-            frame.groupby("home_track_id")
-            .agg(
-                name=("home_track_name", "first"),
-                artist=("artist_name", "first"),
-                plays=("play_id", "count"),
-                total_ms=("ms_played", "sum"),
-                first_date=("ts_date", "min"),
-            )
-            .reset_index()
-        )
-
-    current_agg = aggregate(current)
+    current_agg = _aggregate_track_activity(current, current_duration)
     current_top_ids = set(
         current_agg.sort_values(
             ["plays", "total_ms", "home_track_id"], ascending=[False, False, True]
@@ -329,12 +435,20 @@ def _headline(
         .head(5)["home_track_id"]
         .tolist()
     )
-    previous_counts = aggregate(previous).set_index("home_track_id")["plays"].to_dict()
+    previous_counts = (
+        _aggregate_track_activity(previous, previous_duration)
+        .set_index("home_track_id")["plays"]
+        .to_dict()
+    )
     history = all_tracks[
         ~all_tracks.index.isin(current.index) & ~all_tracks.index.isin(previous.index)
     ]
-    history_counts = aggregate(history).set_index("home_track_id")["plays"].to_dict()
-    first_dates = aggregate(all_tracks).set_index("home_track_id")["first_date"].to_dict()
+    history_counts = (
+        _aggregate_track_activity(history).set_index("home_track_id")["plays"].to_dict()
+    )
+    first_dates = (
+        _aggregate_track_activity(all_tracks).set_index("home_track_id")["first_date"].to_dict()
+    )
     candidates: list[tuple[int, int, int, str, pd.Series]] = []
     period_start = current["ts_date"].min() if not current.empty else None
     for row in current_agg.itertuples(index=False):
@@ -604,7 +718,6 @@ def _rediscovery_candidates(
         .agg(
             total_plays=("play_id", "count"),
             last_played=("ts_date", "max"),
-            total_ms=("ms_played", "sum"),
         )
         .reset_index()
     )
@@ -668,6 +781,7 @@ def build_home_overview(
         dynamic_threshold=context.dynamic_threshold,
         max_merge_gap_minutes=context.max_merge_gap_minutes,
     )
+    duration_source = _duration_source(df)
     empty_archive = {
         "total_plays": 0,
         "total_hours": 0.0,
@@ -678,6 +792,7 @@ def build_home_overview(
     }
     if df.empty:
         has_source = latest_source is not None
+        total_duration_ms = _total_duration_ms(duration_source)
         return {
             "schema_version": "home_overview_v2",
             "generated_at": generated_at,
@@ -693,7 +808,10 @@ def build_home_overview(
                 "freshness": freshness,
                 "has_account_data": _account_data_exists(conn),
             },
-            "archive": empty_archive,
+            "archive": {
+                **empty_archive,
+                "total_hours": _round_hours(total_duration_ms),
+            },
             "headline": {
                 "kind": "archive",
                 "title": (
@@ -762,7 +880,12 @@ def build_home_overview(
         context.include_compilations,
         duration_frame=EMPTY_DURATION_FRAME,
     )
-    recent, current, previous, _raw_current = _recent_payload(conn, df, artist_df, context)
+    recent, current, previous, current_duration, previous_duration = _recent_payload(
+        conn,
+        df,
+        artist_df,
+        context,
+    )
     rediscovery_candidates = _rediscovery_candidates(conn, all_tracks, latest)
     return {
         "schema_version": "home_overview_v2",
@@ -781,13 +904,21 @@ def build_home_overview(
         },
         "archive": {
             "total_plays": len(df),
-            "total_hours": _round_hours(df["ms_played"].sum()),
+            "total_hours": _round_hours(_total_duration_ms(duration_source)),
             "unique_tracks": int(all_tracks["home_track_id"].nunique()),
             "unique_artists": all_artist_count,
             "unique_albums": album_count,
             "active_days": int(df["ts_date"].nunique()),
         },
-        "headline": _headline(conn, current, previous, all_tracks, recent),
+        "headline": _headline(
+            conn,
+            current,
+            previous,
+            all_tracks,
+            recent,
+            current_duration,
+            previous_duration,
+        ),
         "recent": recent,
         "billboard": _billboard(context),
         "yearly_review": _yearly(context),

@@ -47,6 +47,21 @@ from backend.services.play_service import (
 )
 
 
+def _duration_source(df: pd.DataFrame) -> pd.DataFrame:
+    """Return the explicit all-listening track attached by the play loader."""
+    from backend.domains.playback.logical_timeline import get_listening_duration_frame
+
+    attached = get_listening_duration_frame(df)
+    return attached if attached is not None else df
+
+
+def _track_duration_source(
+    df: pd.DataFrame, track_ids: list[int] | tuple[int, ...]
+) -> pd.DataFrame:
+    source = _duration_source(df)
+    return source[source["track_id"].isin(track_ids)].copy() if not source.empty else source
+
+
 def _entity_base(
     df: pd.DataFrame,
     entity_df: pd.DataFrame,
@@ -190,7 +205,6 @@ def _ranks(
         "last_4_weeks": resolve_period(all_df, "last_4_weeks", None, None),
     }
     rows_by_scope: dict[tuple[str | None, str | None], list[dict]] = {}
-    empty_duration = pd.DataFrame(columns=["ms_played", "ts_date"])
 
     def rows_for(resolved: dict, frame: pd.DataFrame | None = None) -> list[dict]:
         scope = (resolved.get("start_date"), resolved.get("end_date"))
@@ -204,7 +218,7 @@ def _ranks(
                 None,
                 0,
                 merge_level=merge_level,
-                duration_frame=empty_duration,
+                duration_frame=build_duration_frame(all_df, resolved),
             )
         return rows_by_scope[scope]
 
@@ -234,14 +248,12 @@ def _ranks(
 def _top250_count(
     conn: sqlite3.Connection,
     df: pd.DataFrame,
+    resolved: dict,
     *,
     album_name: str | None = None,
     album_names: list[str] | None = None,
     artist_name: str | None = None,
 ) -> int:
-    # This helper only consumes play rank and entity identity.  Supplying an
-    # explicit empty duration frame avoids an otherwise-unused full timeline
-    # slice expansion while preserving the counted-event ordering.
     _, rows = chart_rows(
         conn,
         df,
@@ -249,7 +261,7 @@ def _top250_count(
         "plays",
         250,
         0,
-        duration_frame=pd.DataFrame(columns=["ms_played", "ts_date"]),
+        duration_frame=build_duration_frame(df, resolved),
     )
     count = 0
     for row in rows:
@@ -274,20 +286,30 @@ def _top250_counts(
     album_names: list[str] | None = None,
     artist_name=None,
 ) -> dict:
+    lifetime = resolve_period(all_df, "lifetime", None, None)
+    last_6_months = resolve_period(all_df, "last_6_months", None, None)
+    last_4_weeks = resolve_period(all_df, "last_4_weeks", None, None)
     return {
         "lifetime": _top250_count(
-            conn, all_df, album_name=album_name, album_names=album_names, artist_name=artist_name
+            conn,
+            all_df,
+            lifetime,
+            album_name=album_name,
+            album_names=album_names,
+            artist_name=artist_name,
         ),
         "last_6_months": _top250_count(
             conn,
-            filter_period_events(all_df, resolve_period(all_df, "last_6_months", None, None)),
+            filter_period_events(all_df, last_6_months),
+            last_6_months,
             album_name=album_name,
             album_names=album_names,
             artist_name=artist_name,
         ),
         "last_4_weeks": _top250_count(
             conn,
-            filter_period_events(all_df, resolve_period(all_df, "last_4_weeks", None, None)),
+            filter_period_events(all_df, last_4_weeks),
+            last_4_weeks,
             album_name=album_name,
             album_names=album_names,
             artist_name=artist_name,
@@ -346,7 +368,8 @@ def _build_track_stats(
         current_df = filter_period_events(all_df, resolved)
     entity_all = all_df[all_df["track_id"].isin(member_track_ids)]
     entity_df = current_df[current_df["track_id"].isin(member_track_ids)]
-    if entity_all.empty:
+    entity_duration_source = _track_duration_source(all_df, member_track_ids)
+    if entity_all.empty and entity_duration_source.empty:
         return {"found": False}
     primary_track_id = aggregation_scope.primary_track_id
     info = conn.execute(
@@ -370,7 +393,12 @@ def _build_track_stats(
     all_artists = get_track_artist_names_map()
     artist_names = all_artists.get(primary_track_id, [primary_artist])
     display_artist = ", ".join(artist_names) if len(artist_names) > 1 else primary_artist
-    entity_duration = build_duration_frame(entity_all, resolved)
+    entity_duration = build_duration_frame(
+        entity_all,
+        resolved,
+        duration_source=entity_duration_source,
+    )
+    entity_time_source = entity_all if not entity_all.empty else entity_duration_source
     data = _entity_base(all_df, entity_df, resolved, entity_duration)
     data.update(
         {
@@ -387,8 +415,8 @@ def _build_track_stats(
                 "cover_url": presentation.cover_url,
                 "album_attribution": presentation.payload(),
             },
-            "first_played": str(entity_all["ts"].min()),
-            "last_played": str(entity_all["ts"].max()),
+            "first_played": str(entity_time_source["ts"].min()),
+            "last_played": str(entity_time_source["ts"].max()),
             "ranks": (
                 _ranks(
                     conn,
@@ -689,11 +717,16 @@ def _build_album_stats(
     else:
         project_keys = set()
 
+    duration_all = _duration_source(all_df)
     if project_keys:
         all_df = apply_canonical_song_keys(all_df, conn, merge_level)
         current_df = apply_canonical_song_keys(current_df, conn, merge_level)
+        duration_all = apply_canonical_song_keys(duration_all, conn, merge_level)
         entity_all = all_df[all_df["canonical_song_key"].isin(project_keys)]
         entity_df = current_df[current_df["canonical_song_key"].isin(project_keys)]
+        entity_duration_source = duration_all[
+            duration_all["canonical_song_key"].isin(project_keys)
+        ].copy()
         # Expand album_names to all source albums in the project so that
         # ranking/top250 lookups match any contributing version.
         album_names = _resolve_album_project_album_names(
@@ -714,9 +747,18 @@ def _build_album_stats(
             (current_df["album_name"].isin(album_names))
             & (current_df["artist_name"] == artist_name)
         ]
-    if entity_all.empty:
+        entity_duration_source = duration_all[
+            (duration_all["album_name"].isin(album_names))
+            & (duration_all["artist_name"] == artist_name)
+        ].copy()
+    if entity_all.empty and entity_duration_source.empty:
         return {"found": False}
-    entity_duration = build_duration_frame(entity_all, resolved)
+    entity_duration = build_duration_frame(
+        entity_all,
+        resolved,
+        duration_source=entity_duration_source,
+    )
+    entity_time_source = entity_all if not entity_all.empty else entity_duration_source
     data = _entity_base(all_df, entity_df, resolved, entity_duration)
     # Keep the legacy summary payload bounded; the detail UI uses the dedicated
     # rankings endpoint for every page instead of downloading the full project.
@@ -750,8 +792,8 @@ def _build_album_stats(
                 "requested_album_name": requested_album_name,
             },
             "album_project_identity": _album_project_response_identity(identity),
-            "first_played": str(entity_all["ts"].min()),
-            "last_played": str(entity_all["ts"].max()),
+            "first_played": str(entity_time_source["ts"].min()),
+            "last_played": str(entity_time_source["ts"].max()),
             "ranks": (
                 _ranks(
                     conn,
@@ -826,9 +868,12 @@ def get_album_personal_ranking(
         max_merge_gap_minutes=max_merge_gap_minutes,
         attach_duration_slices=False,
     )
+    duration_all = _duration_source(all_df)
     artist_name = artist
     if not artist_name:
         matches = all_df[all_df["album_name"] == album_name]
+        if matches.empty:
+            matches = duration_all[duration_all["album_name"] == album_name]
         if not matches.empty:
             artist_name = str(matches.iloc[0]["artist_name"])
 
@@ -846,8 +891,12 @@ def get_album_personal_ranking(
     if project_keys:
         all_df = apply_canonical_song_keys(all_df, conn, merge_level)
         current_df = apply_canonical_song_keys(current_df, conn, merge_level)
+        duration_all = apply_canonical_song_keys(duration_all, conn, merge_level)
         entity_all = all_df[all_df["canonical_song_key"].isin(project_keys)]
         entity_df = current_df[current_df["canonical_song_key"].isin(project_keys)]
+        entity_duration_source = duration_all[
+            duration_all["canonical_song_key"].isin(project_keys)
+        ].copy()
     else:
         entity_all = all_df[
             (all_df["album_name"] == album_name) & (all_df["artist_name"] == artist_name)
@@ -855,8 +904,12 @@ def get_album_personal_ranking(
         entity_df = current_df[
             (current_df["album_name"] == album_name) & (current_df["artist_name"] == artist_name)
         ]
+        entity_duration_source = duration_all[
+            (duration_all["album_name"] == album_name)
+            & (duration_all["artist_name"] == artist_name)
+        ].copy()
 
-    if entity_all.empty:
+    if entity_all.empty and entity_duration_source.empty:
         return {
             "found": False,
             "entity": "track",
@@ -872,7 +925,11 @@ def get_album_personal_ranking(
         metric,
         limit,
         offset,
-        duration_frame=build_duration_frame(entity_all, resolved),
+        duration_frame=build_duration_frame(
+            entity_all,
+            resolved,
+            duration_source=entity_duration_source,
+        ),
     )
     return {
         "found": True,
@@ -1003,11 +1060,18 @@ def _build_artist_stats(
         current_df = current_df[current_df["track_id"].isin(target_ids)].copy()
         all_df["artist_name"] = artist_name
         current_df["artist_name"] = artist_name
+    duration_all = _duration_source(all_df)
     entity_all = all_df[all_df["artist_name"] == artist_name]
     entity_df = current_df[current_df["artist_name"] == artist_name]
-    if entity_all.empty:
+    entity_duration_source = duration_all[duration_all["artist_name"] == artist_name].copy()
+    if entity_all.empty and entity_duration_source.empty:
         return {"found": False}
-    entity_duration = build_duration_frame(entity_all, resolved)
+    entity_duration = build_duration_frame(
+        entity_all,
+        resolved,
+        duration_source=entity_duration_source,
+    )
+    entity_time_source = entity_all if not entity_all.empty else entity_duration_source
     if include_rank_context:
         _, top_tracks = chart_rows(
             conn,
@@ -1020,7 +1084,14 @@ def _build_artist_stats(
         )
         owned_album_all = _filter_artist_owned_album_events(conn, entity_all, artist_name)
         owned_album_df = _filter_artist_owned_album_events(conn, entity_df, artist_name)
-        owned_album_duration = build_duration_frame(owned_album_all, resolved)
+        owned_album_duration_source = _filter_artist_owned_album_events(
+            conn, entity_duration_source, artist_name
+        )
+        owned_album_duration = build_duration_frame(
+            owned_album_all,
+            resolved,
+            duration_source=owned_album_duration_source,
+        )
         _, top_albums = chart_rows(
             conn,
             owned_album_df,
@@ -1059,8 +1130,8 @@ def _build_artist_stats(
                 "artist_name": artist_name,
                 "cover_url": _artist_cover_lookup(conn).get(artist_name),
             },
-            "first_played": str(entity_all["ts"].min()),
-            "last_played": str(entity_all["ts"].max()),
+            "first_played": str(entity_time_source["ts"].min()),
+            "last_played": str(entity_time_source["ts"].max()),
             "ranks": (
                 _ranks(
                     conn,
@@ -1122,7 +1193,9 @@ def get_artist_personal_ranking(
         attach_duration_slices=False,
         _loader=load_plays_for_artists,
     )
-    if all_df[all_df["artist_name"] == artist_name].empty:
+    duration_all = _duration_source(all_df)
+    artist_duration_source = duration_all[duration_all["artist_name"] == artist_name].copy()
+    if all_df[all_df["artist_name"] == artist_name].empty and artist_duration_source.empty:
         return {
             "found": False,
             "entity": entity,
@@ -1136,6 +1209,9 @@ def get_artist_personal_ranking(
     if entity == "album":
         artist_all = _filter_artist_owned_album_events(conn, artist_all, artist_name)
         artist_df = _filter_artist_owned_album_events(conn, artist_df, artist_name)
+        artist_duration_source = _filter_artist_owned_album_events(
+            conn, artist_duration_source, artist_name
+        )
     total, rows = chart_rows(
         conn,
         artist_df,
@@ -1143,7 +1219,11 @@ def get_artist_personal_ranking(
         metric,
         limit,
         offset,
-        duration_frame=build_duration_frame(artist_all, resolved),
+        duration_frame=build_duration_frame(
+            artist_all,
+            resolved,
+            duration_source=artist_duration_source,
+        ),
     )
     return {
         "found": True,
@@ -1335,37 +1415,48 @@ def _filter_entity_rows(
     conn: sqlite3.Connection | None = None,
     merge_level: int = 2,
 ) -> pd.DataFrame:
-    if df.empty:
-        return df
-    if entity == "track" and track_id is not None:
-        scope = resolve_track_aggregation_scope(conn, track_id, merge_level) if conn else None
-        member_ids = scope.member_track_ids if scope is not None else (track_id,)
-        return df[df["track_id"].isin(member_ids)]
-    if entity == "album" and album_name is not None:
-        # Try album project canonical_song_key attribution first
-        if conn is not None and artist_name is not None:
-            project_keys = _resolve_album_project_song_keys(
-                conn, album_name, artist_name, merge_level
-            )
-            if project_keys:
-                from backend.domains.playback.album_projects import apply_canonical_song_keys
+    from backend.domains.playback.logical_timeline import (
+        attach_listening_duration_frame,
+        get_listening_duration_frame,
+    )
 
-                df = apply_canonical_song_keys(df, conn, merge_level)
-                return df[df["canonical_song_key"].isin(project_keys)]
-        # Fallback: string match on album_name
-        out = df[df["album_name"] == album_name]
-        if artist_name is not None:
-            out = out[out["artist_name"] == artist_name]
-        return out
-    if entity == "artist" and artist_name is not None:
-        if conn is not None:
-            from backend.domains.metadata.artist_identity import resolve_artist_name
+    def filter_one(frame: pd.DataFrame) -> pd.DataFrame:
+        if frame.empty:
+            return frame
+        if entity == "track" and track_id is not None:
+            scope = resolve_track_aggregation_scope(conn, track_id, merge_level) if conn else None
+            member_ids = scope.member_track_ids if scope is not None else (track_id,)
+            return frame[frame["track_id"].isin(member_ids)]
+        if entity == "album" and album_name is not None:
+            if conn is not None and artist_name is not None:
+                project_keys = _resolve_album_project_song_keys(
+                    conn, album_name, artist_name, merge_level
+                )
+                if project_keys:
+                    from backend.domains.playback.album_projects import apply_canonical_song_keys
 
-            identity = resolve_artist_name(conn, artist_name)
-            if identity is not None:
-                artist_name = identity.display_name
-        return df[df["artist_name"] == artist_name]
-    return df.iloc[0:0]
+                    keyed = apply_canonical_song_keys(frame, conn, merge_level)
+                    return keyed[keyed["canonical_song_key"].isin(project_keys)]
+            out = frame[frame["album_name"] == album_name]
+            if artist_name is not None:
+                out = out[out["artist_name"] == artist_name]
+            return out
+        if entity == "artist" and artist_name is not None:
+            resolved_artist_name = artist_name
+            if conn is not None:
+                from backend.domains.metadata.artist_identity import resolve_artist_name
+
+                identity = resolve_artist_name(conn, artist_name)
+                if identity is not None:
+                    resolved_artist_name = identity.display_name
+            return frame[frame["artist_name"] == resolved_artist_name]
+        return frame.iloc[0:0]
+
+    duration_source = get_listening_duration_frame(df)
+    filtered = filter_one(df)
+    if duration_source is not None and duration_source is not df:
+        attach_listening_duration_frame(filtered, filter_one(duration_source))
+    return filtered
 
 
 def get_entity_play_dates(

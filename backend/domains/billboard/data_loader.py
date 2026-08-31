@@ -165,7 +165,7 @@ def load_billboard_raw(
     # Merge-enabled mode must preserve short fragments until the logical
     # timeline is reconstructed.  Merge-disabled mode follows the same raw
     # row eligibility used by ``load_plays(..., merge_enabled=False)``.
-    source_min_ms = 0 if merge_enabled else min_ms
+    source_min_ms = 0
     _f, _fp = base_filters(min_ms=source_min_ms, music_only=music_only)
     _w = f"WHERE {_f}" if _f else ""
     identity_columns, identity_joins, spotify_id_expr = _track_identity_sql(conn)
@@ -188,6 +188,14 @@ def load_billboard_raw(
         conn,
         params=_fp,
     )
+    from backend.domains.playback.logical_timeline import reconstruct_listening_intervals
+
+    duration_df = reconstruct_listening_intervals(
+        df,
+        identity_column="track_id",
+        max_gap_minutes=max_merge_gap_minutes,
+        boundary_column="source_album_id",
+    )
     if merge_enabled:
         # Reconstruct the global logical timeline first. Reporting boundaries
         # are attribution boundaries, never merge-session boundaries.
@@ -204,10 +212,15 @@ def load_billboard_raw(
             df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
     else:
         df = _attach_unmerged_listening_intervals(df)
+        if min_ms > 0:
+            from backend.domains.playback.counting import filter_effective_plays
+
+            df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
     from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
     df = canonicalize_artist_frame(df, conn, dedupe=False)
+    duration_df = canonicalize_artist_frame(duration_df, conn, dedupe=False)
     from backend.domains.playback.logical_timeline import (
         attach_billboard_weighted_frame,
         billboard_week_for_timestamps,
@@ -218,6 +231,7 @@ def load_billboard_raw(
         df,
         week_start_dow=week_start_dow,
         week_start_hour=week_start_hour,
+        duration_frame=duration_df,
     )
     df["billboard_week"] = billboard_week_for_timestamps(
         df["counted_at"],
@@ -246,7 +260,7 @@ def load_billboard_raw_for_artists(
     Only use for artist-grouped Billboard computations.
     """
     conn = get_db()
-    source_min_ms = 0 if merge_enabled else min_ms
+    source_min_ms = 0
     _f, _fp = base_filters(min_ms=source_min_ms, music_only=music_only)
     _w = f"WHERE {_f}" if _f else ""
     identity_columns, identity_joins, spotify_id_expr = _track_identity_sql(conn)
@@ -272,6 +286,15 @@ def load_billboard_raw_for_artists(
         params=_fp,
     )
 
+    from backend.domains.playback.logical_timeline import reconstruct_listening_intervals
+
+    duration_df = reconstruct_listening_intervals(
+        df,
+        identity_column="track_id",
+        max_gap_minutes=max_merge_gap_minutes,
+        boundary_column="source_album_id",
+    )
+
     if merge_enabled:
         # Merge before fan-out, then filter to align with pre-aggregation path.
         df = merge_consecutive_plays(
@@ -287,6 +310,10 @@ def load_billboard_raw_for_artists(
             df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
     else:
         df = _attach_unmerged_listening_intervals(df)
+        if min_ms > 0:
+            from backend.domains.playback.counting import filter_effective_plays
+
+            df = filter_effective_plays(df, min_ms=min_ms, dynamic_threshold=dynamic_threshold)
 
     # Step 2: Fan out through raw + manual effective credits. Keep each effective output row
     # distinct even when consecutive-play expansion reused a source play_id.
@@ -307,9 +334,19 @@ def load_billboard_raw_for_artists(
     df["artist_id"] = df["raw_artist_id"]
     df = df.drop(columns=["raw_artist_id"])
 
+    duration_df = duration_df.drop(columns=["artist_name"], errors="ignore")
+    duration_df = duration_df.merge(
+        track_artists_df[["representative_track_id", "artist_id", "raw_artist_id", "artist_name"]],
+        on="representative_track_id",
+        how="inner",
+    )
+    duration_df["artist_id"] = duration_df["raw_artist_id"]
+    duration_df = duration_df.drop(columns=["raw_artist_id"])
+
     from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 
     df = canonicalize_artist_frame(df, conn)
+    duration_df = canonicalize_artist_frame(duration_df, conn)
     from backend.domains.playback.logical_timeline import (
         attach_billboard_weighted_frame,
         billboard_week_for_timestamps,
@@ -320,6 +357,7 @@ def load_billboard_raw_for_artists(
         df,
         week_start_dow=week_start_dow,
         week_start_hour=week_start_hour,
+        duration_frame=duration_df,
     )
     df["billboard_week"] = billboard_week_for_timestamps(
         df["counted_at"],
