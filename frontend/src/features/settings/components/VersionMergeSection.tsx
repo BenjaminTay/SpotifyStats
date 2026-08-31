@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import type {
   DetectionResult,
   GroupMember,
+  L1IdentityRiskHealth,
   L3AlbumAttributionHealth,
   L3AlbumAttributionListResponse,
   ReleaseGroup,
@@ -564,6 +565,7 @@ function L3AlbumAttributionPanel({
   vm: ReturnType<typeof useVersionMerge>;
 }) {
   const [health, setHealth] = useState<L3AlbumAttributionHealth | null>(null);
+  const [l1Health, setL1Health] = useState<L1IdentityRiskHealth | null>(null);
   const [snapshot, setSnapshot] = useState<L3AlbumAttributionListResponse | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -576,10 +578,12 @@ function L3AlbumAttributionPanel({
   const load = (search = query) => {
     setLoading(true);
     return Promise.all([
+      vm.fetchL1IdentityRiskHealth(),
       vm.fetchL3AlbumAttributionHealth(),
       vm.fetchL3AlbumAttributions(search),
     ])
-      .then(([nextHealth, nextSnapshot]) => {
+      .then(([nextL1Health, nextHealth, nextSnapshot]) => {
+        setL1Health(nextL1Health);
         setHealth(nextHealth);
         setSnapshot(nextSnapshot);
       })
@@ -625,15 +629,28 @@ function L3AlbumAttributionPanel({
       title="L3 歌曲到原生专辑归属"
       helper="机器按歌曲作品逐项决定统计归属；Live、Acoustic、Remix 等实际来源仍保留在证据中。"
     >
+      {l1Health && l1Health.status !== "unavailable" && (
+        <div className="mb-4 rounded-xl border border-border bg-muted/10 p-3">
+          <p className="text-[11px] font-semibold">L1 provider identity 分类</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-4">
+            <MetricTile label="Provider relink 保留" value={String(l1Health.summary.keep_l1_count ?? 0)} />
+            <MetricTile label="机器高置信拆分" value={String(l1Health.summary.split_l1_count ?? 0)} />
+            <MetricTile label="待人工复核" value={String(l1Health.summary.review_l1_count ?? 0)} />
+            <MetricTile label="治理状态" value={l1Health.status} />
+          </div>
+        </div>
+      )}
       {loading && !health ? (
         <div className="grid gap-2 sm:grid-cols-4">
           {[0, 1, 2, 3].map((item) => <Skeleton key={item} className="h-16 rounded-xl" />)}
         </div>
       ) : health ? (
-        <div className="grid gap-2 sm:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-6">
           <MetricTile label="发布状态" value={health.healthy ? "健康" : health.status} />
           <MetricTile label="已归属歌曲" value={health.published_count.toLocaleString()} />
+          <MetricTile label="明确排除" value={health.published_exclusion_count.toLocaleString()} />
           <MetricTile label="待处理问题" value={health.issue_count.toLocaleString()} />
+          <MetricTile label="受影响播放" value={health.unresolved_raw_play_count.toLocaleString()} />
           <MetricTile label="归属 revision" value={String(health.current_revision)} />
         </div>
       ) : null}

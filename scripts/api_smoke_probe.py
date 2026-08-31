@@ -297,6 +297,10 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     ),
     SmokeCase("version_canonical_events", "/api/version-merge/canonical-tracks/events"),
     SmokeCase(
+        "version_l1_identity_risk_health",
+        "/api/version-merge/l1-identity-risks/health",
+    ),
+    SmokeCase(
         "version_l3_album_attribution_health",
         "/api/version-merge/l3-album-attributions/health",
     ),

@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 68
+LATEST_SCHEMA_VERSION = 69
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3775,6 +3775,41 @@ def migrate_068(conn: sqlite3.Connection):
         INSERT OR IGNORE INTO l3_album_attribution_revision_state(
             state_id, current_revision, policy_version
         ) VALUES (1, 0, 'l3_native_album_attribution_v1');
+        """
+    )
+
+
+@migration(69, "l3_album_attribution_coverage_v2")
+def migrate_069(conn: sqlite3.Connection):
+    """Track the complete L3 work universe, including explicit exclusions."""
+
+    state_columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(l3_album_attribution_revision_state)").fetchall()
+    }
+    if "scanned_count" not in state_columns:
+        conn.execute(
+            "ALTER TABLE l3_album_attribution_revision_state "
+            "ADD COLUMN scanned_count INTEGER NOT NULL DEFAULT 0"
+        )
+    if "excluded_count" not in state_columns:
+        conn.execute(
+            "ALTER TABLE l3_album_attribution_revision_state "
+            "ADD COLUMN excluded_count INTEGER NOT NULL DEFAULT 0"
+        )
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS l3_song_album_attribution_exclusions (
+            canonical_song_key       TEXT PRIMARY KEY,
+            representative_track_id  INTEGER REFERENCES tracks(track_id),
+            canonical_artist_key     TEXT,
+            reason_code              TEXT NOT NULL,
+            evidence_json            TEXT NOT NULL DEFAULT '{}',
+            policy_version           TEXT NOT NULL,
+            track_identity_revision  INTEGER NOT NULL,
+            album_project_revision   INTEGER NOT NULL,
+            created_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         """
     )
 

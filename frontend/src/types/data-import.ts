@@ -168,8 +168,11 @@ export interface ImportHealthResponse {
       track_identity_revision: number
       album_project_revision: number
       attributed_count: number
+      scanned_count: number
+      excluded_count: number
       conflict_count: number
       uncovered_count: number
+      coverage_reconciled: boolean
       healthy: boolean
     }
   }

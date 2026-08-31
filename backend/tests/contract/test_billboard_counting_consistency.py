@@ -328,12 +328,14 @@ class TestRawFallbackConsistency:
         isolated_seed_db,
         merge_level,
         dynamic_threshold,
+        monkeypatch,
     ):
         from fastapi.testclient import TestClient
 
         from backend.main import app
 
         _clear_billboard_runtime_caches()
+        monkeypatch.setenv("SPOTIFY_STATS_L3_STARTUP_RECONCILE", "1")
         params = {
             "min_ms": 30_000,
             "music_only": "true",

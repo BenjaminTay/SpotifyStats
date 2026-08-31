@@ -15,6 +15,7 @@ import pandas as pd
 
 SOURCE_BUCKET_ORDER = {
     "original_album": 0,
+    "soundtrack": 1,
     "deluxe": 1,
     "single": 2,
     "compilation": 3,
@@ -289,6 +290,16 @@ def rebuild_album_projects_for_impact(
             conn,
             seen_project_ids=seen_project_ids,
             album_ids=set(plan.album_ids),
+        )
+        _bootstrap_soundtrack_projects(
+            conn,
+            seen_project_ids=seen_project_ids,
+            album_ids=set(plan.album_ids | plan.compilation_album_ids),
+        )
+        _bootstrap_multi_artist_compilation_projects(
+            conn,
+            seen_project_ids=seen_project_ids,
+            album_ids=set(plan.album_ids | plan.compilation_album_ids),
         )
         _bootstrap_compilation_exclusive_projects(
             conn,
@@ -748,6 +759,8 @@ def _populate_album_projects(
     _bootstrap_from_release_groups(conn, seen_project_ids=seen_project_ids)
     _bootstrap_standalone_album_projects(conn, seen_project_ids=seen_project_ids)
     _bootstrap_l3_single_projects(conn, seen_project_ids=seen_project_ids)
+    _bootstrap_soundtrack_projects(conn, seen_project_ids=seen_project_ids)
+    _bootstrap_multi_artist_compilation_projects(conn, seen_project_ids=seen_project_ids)
     _bootstrap_compilation_exclusive_projects(conn, seen_project_ids=seen_project_ids)
 
 
@@ -1509,6 +1522,263 @@ def _best_spotify_album_for_local_album(conn: sqlite3.Connection, album_id: int)
         return None
 
 
+_SOUNDTRACK_NAME_MARKERS = (
+    "soundtrack",
+    "motion picture",
+    "music from the",
+    "original television",
+    "original series",
+    "broadway musical",
+    "broadway cast",
+    "電影原聲",
+    "电影原声",
+    "原聲帶",
+    "原声带",
+)
+
+
+def _is_soundtrack_release_name(value: str | None) -> bool:
+    normalized = " ".join(str(value or "").casefold().split())
+    return any(marker in normalized for marker in _SOUNDTRACK_NAME_MARKERS)
+
+
+def _ensure_album_artist(conn: sqlite3.Connection, album_artists: str | None) -> int | None:
+    """Resolve a provider album artist without reusing a track artist by accident."""
+
+    name = " ".join(str(album_artists or "").split())
+    if not name:
+        return None
+    rows = conn.execute(
+        "SELECT artist_id FROM artists WHERE lower(artist_name)=lower(?) ORDER BY artist_id",
+        (name,),
+    ).fetchall()
+    if rows:
+        return int(rows[0][0])
+    cursor = conn.execute("INSERT INTO artists(artist_name) VALUES (?)", (name,))
+    return int(cursor.lastrowid)
+
+
+def _bootstrap_soundtrack_projects(
+    conn: sqlite3.Connection,
+    *,
+    seen_project_ids: set[int] | None = None,
+    album_ids: set[int] | None = None,
+) -> None:
+    """Build one provider-backed project for multi-artist official soundtracks.
+
+    Local ``albums`` are keyed by track artist, so a Various Artists soundtrack
+    otherwise appears as many one-track containers.  The complete provider
+    release is the stable album identity; local containers remain source
+    members and no track/album playback fact is rewritten.
+    """
+
+    album_filter = ""
+    params: tuple[int, ...] = ()
+    if album_ids is not None:
+        params = tuple(sorted(album_ids))
+        if not params:
+            return
+        album_filter = f"AND al.album_id IN ({','.join('?' for _ in params)})"
+    rows = conn.execute(
+        f"""SELECT al.album_id, asl.spotify_album_id, asl.confidence,
+                   sam.album_name, sam.album_type, sam.release_date,
+                   sam.album_artists, sam.total_tracks
+              FROM albums al
+              JOIN album_spotify_links asl ON asl.album_id=al.album_id
+              JOIN spotify_album_meta sam ON sam.spotify_album_id=asl.spotify_album_id
+             WHERE sam.album_type IN ('album', 'compilation')
+               AND asl.confidence >= 0.9
+               {album_filter}
+             ORDER BY asl.spotify_album_id, al.album_id""",
+        params,
+    ).fetchall()
+    grouped: dict[str, list[sqlite3.Row]] = {}
+    for row in rows:
+        if not _is_soundtrack_release_name(row["album_name"]):
+            continue
+        grouped.setdefault(str(row["spotify_album_id"]), []).append(row)
+
+    for spotify_album_id, release_rows in grouped.items():
+        first = release_rows[0]
+        local_album_ids = sorted({int(row["album_id"]) for row in release_rows})
+        memberships = _tracks_for_albums(conn, local_album_ids)
+        if not memberships:
+            continue
+        album_artist_id = _ensure_album_artist(conn, first["album_artists"])
+        if album_artist_id is None:
+            continue
+        tracks_by_album: dict[int, int] = {}
+        for _track_id, source_album_id in memberships:
+            tracks_by_album[source_album_id] = tracks_by_album.get(source_album_id, 0) + 1
+        primary_album_id = sorted(
+            local_album_ids,
+            key=lambda album_id: (-tracks_by_album.get(album_id, 0), album_id),
+        )[0]
+        project_id = _upsert_project(
+            conn,
+            canonical_name=str(first["album_name"]),
+            artist_id=album_artist_id,
+            primary_album_id=primary_album_id,
+            release_date=first["release_date"],
+            scope="release",
+            project_type="soundtrack",
+            include_in_charts=1,
+            is_manual=0,
+        )
+        if project_id is None:
+            continue
+        if seen_project_ids is not None:
+            seen_project_ids.add(project_id)
+        for album_id in local_album_ids:
+            _insert_project_album(
+                conn,
+                project_id=project_id,
+                album_id=album_id,
+                primary_album_id=primary_album_id,
+            )
+            conn.execute(
+                """UPDATE album_project_albums SET source_bucket='soundtrack'
+                    WHERE project_id=? AND album_id=?""",
+                (project_id, album_id),
+            )
+        for track_id, source_album_id in memberships:
+            _insert_project_track(
+                conn,
+                project_id=project_id,
+                track_id=track_id,
+                source_album_id=source_album_id,
+                min_merge_level=2,
+                membership_role="soundtrack",
+            )
+        has_primary = conn.execute(
+            """SELECT 1 FROM album_project_external_ids
+                WHERE project_id=? AND provider='spotify' AND is_primary=1""",
+            (project_id,),
+        ).fetchone()
+        is_primary = 0 if has_primary is not None else 1
+        conn.execute(
+            """INSERT INTO album_project_external_ids(
+                   provider, external_album_id, project_id, evidence_type,
+                   confidence, is_primary
+               ) VALUES ('spotify', ?, ?, 'soundtrack_catalog', 1.0, ?)
+               ON CONFLICT(provider, external_album_id) DO UPDATE SET
+                   project_id=excluded.project_id,
+                   evidence_type=excluded.evidence_type,
+                   confidence=excluded.confidence,
+                   is_primary=excluded.is_primary,
+                   updated_at=CURRENT_TIMESTAMP""",
+            (spotify_album_id, project_id, is_primary),
+        )
+
+
+def _bootstrap_multi_artist_compilation_projects(
+    conn: sqlite3.Connection,
+    *,
+    seen_project_ids: set[int] | None = None,
+    album_ids: set[int] | None = None,
+) -> None:
+    """Group artist-split Various Artists containers into one residual project."""
+
+    album_filter = ""
+    params: tuple[int, ...] = ()
+    if album_ids is not None:
+        params = tuple(sorted(album_ids))
+        if not params:
+            return
+        album_filter = f"AND al.album_id IN ({','.join('?' for _ in params)})"
+    rows = conn.execute(
+        f"""SELECT al.album_id, al.album_name, asl.spotify_album_id,
+                   sam.album_name AS spotify_album_name, sam.release_date,
+                   sam.album_artists, asl.confidence
+              FROM albums al
+              JOIN album_spotify_links asl ON asl.album_id=al.album_id
+              JOIN spotify_album_meta sam ON sam.spotify_album_id=asl.spotify_album_id
+             WHERE sam.album_type='compilation'
+               AND lower(trim(sam.album_artists))='various artists'
+               AND asl.confidence >= 0.9
+               {album_filter}
+             ORDER BY lower(al.album_name), al.album_id, asl.spotify_album_id""",
+        params,
+    ).fetchall()
+    grouped: dict[str, list[sqlite3.Row]] = {}
+    for row in rows:
+        if _is_soundtrack_release_name(row["spotify_album_name"]):
+            continue
+        key = " ".join(str(row["album_name"] or "").casefold().split())
+        if key:
+            grouped.setdefault(key, []).append(row)
+
+    album_artist_id = _ensure_album_artist(conn, "Various Artists")
+    if album_artist_id is None:
+        return
+    for release_rows in grouped.values():
+        local_album_ids = sorted({int(row["album_id"]) for row in release_rows})
+        memberships = _tracks_for_albums(conn, local_album_ids)
+        if not memberships:
+            continue
+        exclusive_memberships = [
+            item for item in memberships if not _track_has_non_compilation_project(conn, item[0])
+        ]
+        if not exclusive_memberships:
+            continue
+        counts: dict[int, int] = {}
+        for _track_id, source_album_id in exclusive_memberships:
+            counts[source_album_id] = counts.get(source_album_id, 0) + 1
+        primary_album_id = sorted(
+            local_album_ids, key=lambda album_id: (-counts.get(album_id, 0), album_id)
+        )[0]
+        release_dates = sorted(
+            {str(row["release_date"]) for row in release_rows if row["release_date"]}
+        )
+        project_id = _upsert_project(
+            conn,
+            canonical_name=str(release_rows[0]["album_name"]),
+            artist_id=album_artist_id,
+            primary_album_id=primary_album_id,
+            release_date=release_dates[0] if release_dates else None,
+            scope="release",
+            project_type="compilation_residual",
+            include_in_charts=1,
+            is_manual=0,
+        )
+        if project_id is None:
+            continue
+        if seen_project_ids is not None:
+            seen_project_ids.add(project_id)
+        for album_id in local_album_ids:
+            _insert_project_album(
+                conn,
+                project_id=project_id,
+                album_id=album_id,
+                primary_album_id=primary_album_id,
+            )
+        for track_id, source_album_id in exclusive_memberships:
+            _insert_project_track(
+                conn,
+                project_id=project_id,
+                track_id=track_id,
+                source_album_id=source_album_id,
+                min_merge_level=2,
+                membership_role="compilation_exclusive",
+                is_exclusive=1,
+            )
+        spotify_ids = sorted({str(row["spotify_album_id"]) for row in release_rows})
+        for index, spotify_album_id in enumerate(spotify_ids):
+            conn.execute(
+                """INSERT INTO album_project_external_ids(
+                       provider, external_album_id, project_id, evidence_type,
+                       confidence, is_primary
+                   ) VALUES ('spotify', ?, ?, 'multi_artist_compilation', 1.0, ?)
+                   ON CONFLICT(provider, external_album_id) DO UPDATE SET
+                       project_id=excluded.project_id,
+                       evidence_type=excluded.evidence_type,
+                       confidence=excluded.confidence,
+                       is_primary=excluded.is_primary,
+                       updated_at=CURRENT_TIMESTAMP""",
+                (spotify_album_id, project_id, 1 if index == 0 else 0),
+            )
+
+
 def _bootstrap_compilation_exclusive_projects(
     conn: sqlite3.Connection,
     *,
@@ -1524,30 +1794,48 @@ def _bootstrap_compilation_exclusive_projects(
         placeholders = ",".join("?" for _ in album_params)
         album_filter = f"AND al.album_id IN ({placeholders})"
     compilations = conn.execute(
-        f"""SELECT al.album_id, al.album_name, al.artist_id, sam.release_date
-           FROM albums al
-           JOIN artists ar ON ar.artist_id = al.artist_id
-           JOIN spotify_album_meta sam
-             ON lower(sam.album_name) = lower(al.album_name)
-            AND sam.album_type = 'compilation'
-           WHERE 1=1 {album_filter}
-           ORDER BY al.album_id""",
+        f"""SELECT al.album_id, al.album_name, al.artist_id
+              FROM albums al
+             WHERE 1=1 {album_filter}
+             ORDER BY al.album_id""",
         album_params,
     ).fetchall()
     for album in compilations:
+        album_id = int(album["album_id"])
+        name_match = conn.execute(
+            """SELECT album_type, release_date
+                 FROM spotify_album_meta
+                WHERE lower(album_name)=lower(?) AND album_type='compilation'
+                ORDER BY release_date, spotify_album_id LIMIT 1""",
+            (str(album["album_name"]),),
+        ).fetchone()
+        if (
+            _resolve_standalone_album_type(
+                conn,
+                album_id,
+                str(name_match["album_type"]) if name_match is not None else None,
+            )
+            != "compilation"
+        ):
+            continue
         exclusive_tracks = [
             track_id
-            for track_id, _source_album_id in _tracks_for_albums(conn, [int(album["album_id"])])
+            for track_id, _source_album_id in _tracks_for_albums(conn, [album_id])
             if not _track_has_non_compilation_project(conn, track_id)
         ]
         if not exclusive_tracks:
             continue
+        linked = _best_spotify_album_for_local_album(conn, album_id)
         project_id = _upsert_project(
             conn,
             canonical_name=album["album_name"],
             artist_id=album["artist_id"],
-            primary_album_id=album["album_id"],
-            release_date=album["release_date"],
+            primary_album_id=album_id,
+            release_date=(
+                linked["release_date"]
+                if linked is not None
+                else (name_match["release_date"] if name_match is not None else None)
+            ),
             scope="release",
             project_type="compilation_exclusive",
             include_in_charts=1,
@@ -1560,15 +1848,15 @@ def _bootstrap_compilation_exclusive_projects(
         _insert_project_album(
             conn,
             project_id=project_id,
-            album_id=album["album_id"],
-            primary_album_id=album["album_id"],
+            album_id=album_id,
+            primary_album_id=album_id,
         )
         for track_id in exclusive_tracks:
             _insert_project_track(
                 conn,
                 project_id=project_id,
                 track_id=track_id,
-                source_album_id=album["album_id"],
+                source_album_id=album_id,
                 min_merge_level=2,
                 membership_role="compilation_exclusive",
                 is_exclusive=1,

@@ -335,6 +335,43 @@ def test_published_projection_rejects_stale_album_project_revision() -> None:
         conn.close()
 
 
+def test_work_without_album_membership_is_persisted_as_uncovered() -> None:
+    conn = _connection()
+    try:
+        conn.execute(
+            "INSERT INTO albums(album_id, album_name, artist_id) VALUES (100, 'Missing Album', 1)"
+        )
+        conn.execute(
+            """INSERT INTO tracks(track_id, track_name, artist_id, album_id)
+               VALUES (1, 'Missing Song', 1, 100)"""
+        )
+        conn.execute(
+            """INSERT INTO track_l1_identities(
+                   l1_id, fallback_track_id, representative_track_id, identity_status
+               ) VALUES (1, 1, 1, 'active')"""
+        )
+
+        plan = plan_l3_album_attributions(conn)
+
+        assert plan.scanned_song_count == 1
+        assert plan.decisions == ()
+        assert plan.uncovered_song_keys == ("l1:1",)
+        assert plan.exclusions == ()
+        report = apply_l3_album_attribution_plan(conn, plan)
+        assert report.scanned_count == 1
+        assert report.uncovered_count == 1
+        state = get_l3_album_attribution_state(conn)
+        assert state["scanned_count"] == 1
+        assert state["attributed_count"] == 0
+        assert state["uncovered_count"] == 1
+        assert (
+            conn.execute("SELECT COUNT(*) FROM l3_song_album_attribution_issues").fetchone()[0] == 1
+        )
+        assert plan_l3_album_attributions(conn).changed is False
+    finally:
+        conn.close()
+
+
 def test_live_source_explanation_separates_residual_transferred_and_raw_versions() -> None:
     conn = _connection()
     try:
@@ -403,6 +440,10 @@ def test_l3_attribution_read_api_exposes_health_decision_evidence_and_search() -
         health = l3_album_attribution_health(conn)
         assert health["healthy"] is True
         assert health["published_count"] == 1
+        assert health["scanned_count"] == 1
+        assert health["published_exclusion_count"] == 0
+        assert health["coverage_reconciled"] is True
+        assert health["unresolved_raw_play_count"] == 0
         assert health["issue_count"] == 0
 
         response = list_l3_album_attributions(q="Love", limit=20, offset=0, conn=conn)
@@ -411,5 +452,30 @@ def test_l3_attribution_read_api_exposes_health_decision_evidence_and_search() -
         assert response["items"][0]["target_project_name"] == "Fearless"
         assert "evidence_codes" in response["items"][0]["evidence"]
         assert list_l3_album_attributions(q="missing", limit=20, offset=0, conn=conn)["total"] == 0
+    finally:
+        conn.close()
+
+
+def test_l1_risk_health_reads_latest_persisted_governance_classification() -> None:
+    from backend.api.version_merge import l1_identity_risk_health
+
+    conn = _connection()
+    try:
+        conn.execute(
+            """INSERT INTO version_governance_runs(
+                   run_id, scope, policy_version, status, dry_run, summary_json
+               ) VALUES ('risk-run', 'l1+l2+l3', 'policy-v2', 'applied', 0, ?)""",
+            ('{"l1_audit":{"keep_l1_count":55,"split_l1_count":2,"review_l1_count":5}}',),
+        )
+        conn.commit()
+
+        health = l1_identity_risk_health(conn)
+        assert health["status"] == "applied"
+        assert health["run_id"] == "risk-run"
+        assert health["summary"] == {
+            "keep_l1_count": 55,
+            "split_l1_count": 2,
+            "review_l1_count": 5,
+        }
     finally:
         conn.close()

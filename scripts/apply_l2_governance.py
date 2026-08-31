@@ -203,10 +203,12 @@ def _l3_album_attribution_plan_json(plan: Any) -> dict[str, Any]:
             item.decision_source == "automatic" for item in plan.decisions
         ),
         "manual_count": sum(item.decision_source == "manual" for item in plan.decisions),
+        "excluded_count": len(plan.excluded_song_keys),
         "uncovered_count": len(plan.uncovered_song_keys),
         "conflict_count": len(plan.conflict_song_keys),
         "changed": plan.changed,
         "issues": [item.to_dict() for item in plan.issues],
+        "exclusions": [item.to_dict() for item in plan.exclusions],
     }
 
 

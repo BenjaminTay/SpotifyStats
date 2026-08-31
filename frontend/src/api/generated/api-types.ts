@@ -1796,6 +1796,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version-merge/l1-identity-risks/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * L1 Identity Risk Health
+         * @description Return the latest persisted L1 machine-classification summary.
+         *
+         *     Computing the full provider audit is intentionally not placed on a GET hot
+         *     path.  Governance dry-runs/applies persist the same deterministic summary,
+         *     which Settings can read without a 10+ second catalog scan.
+         */
+        get: operations["l1_identity_risk_health_api_version_merge_l1_identity_risks_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version-merge/l3-album-attributions/health": {
         parameters: {
             query?: never;
@@ -16859,6 +16883,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrackGroupCandidateResponse"][];
+                };
+            };
+        };
+    };
+    l1_identity_risk_health_api_version_merge_l1_identity_risks_health_get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

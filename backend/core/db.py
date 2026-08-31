@@ -610,23 +610,37 @@ CREATE TABLE IF NOT EXISTS l3_song_album_attribution_issues (
     PRIMARY KEY(canonical_song_key, issue_kind)
 );
 
+CREATE TABLE IF NOT EXISTS l3_song_album_attribution_exclusions (
+    canonical_song_key       TEXT PRIMARY KEY,
+    representative_track_id  INTEGER REFERENCES tracks(track_id),
+    canonical_artist_key     TEXT,
+    reason_code              TEXT NOT NULL,
+    evidence_json            TEXT NOT NULL DEFAULT '{}',
+    policy_version           TEXT NOT NULL,
+    track_identity_revision  INTEGER NOT NULL,
+    album_project_revision   INTEGER NOT NULL,
+    created_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS l3_album_attribution_revision_state (
     state_id          INTEGER PRIMARY KEY CHECK(state_id = 1),
     current_revision  INTEGER NOT NULL DEFAULT 0,
     status            TEXT NOT NULL DEFAULT 'empty'
                            CHECK(status IN ('empty', 'building', 'ready', 'failed')),
-    policy_version    TEXT NOT NULL DEFAULT 'l3_native_album_attribution_v1',
+    policy_version    TEXT NOT NULL DEFAULT 'l3_native_album_attribution_v2',
     track_identity_revision INTEGER NOT NULL DEFAULT 0,
     album_project_revision  INTEGER NOT NULL DEFAULT 0,
     mapping_digest    TEXT NOT NULL DEFAULT '',
     attributed_count  INTEGER NOT NULL DEFAULT 0,
     conflict_count    INTEGER NOT NULL DEFAULT 0,
     uncovered_count   INTEGER NOT NULL DEFAULT 0,
+    scanned_count     INTEGER NOT NULL DEFAULT 0,
+    excluded_count    INTEGER NOT NULL DEFAULT 0,
     updated_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 INSERT OR IGNORE INTO l3_album_attribution_revision_state(
     state_id, current_revision, policy_version
-) VALUES (1, 0, 'l3_native_album_attribution_v1');
+) VALUES (1, 0, 'l3_native_album_attribution_v2');
 
 CREATE TABLE IF NOT EXISTS version_governance_runs (
     run_id          TEXT PRIMARY KEY,

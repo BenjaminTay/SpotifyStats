@@ -277,6 +277,14 @@ def _external_items(conn: sqlite3.Connection, l1_id: int) -> list[dict[str, Any]
                 if (value := _canonical_artist_id(artist_map, row[2])) is not None
             }
         )
+        # Historical migration aliases often have provider metadata and plays
+        # but no independent local Track projection.  They are still attached
+        # to this L1 owner, whose representative artist is known.  Treat that
+        # owner artist as inherited evidence so same-ISRC reissues can be kept;
+        # do not turn the absence of a duplicate projection into 800+ false
+        # review items.
+        if not canonical_artists and source_canonical_artist_id is not None:
+            canonical_artists = [source_canonical_artist_id]
         album = None
         if meta is not None and meta[4] and album_metadata_available:
             album = conn.execute(
@@ -652,6 +660,7 @@ def build_l1_external_identity_risk_plan(
         ).fetchall()
     ]
     owners: list[dict[str, Any]] = []
+    all_owners: list[dict[str, Any]] = []
     operations: list[dict[str, Any]] = []
     for l1_id in l1_ids:
         items = _external_items(conn, l1_id)
@@ -703,15 +712,15 @@ def build_l1_external_identity_risk_plan(
             if recommendations["split"]
             else ("review" if recommendations["review"] else "keep")
         )
+        owner_result = {
+            "l1_id": l1_id,
+            "recommendation": owner_recommendation,
+            "reference_external_track_id": reference["spotify_track_id"],
+            "external_ids": item_results,
+        }
+        all_owners.append(owner_result)
         if include_keep or owner_recommendation != "keep":
-            owners.append(
-                {
-                    "l1_id": l1_id,
-                    "recommendation": owner_recommendation,
-                    "reference_external_track_id": reference["spotify_track_id"],
-                    "external_ids": item_results,
-                }
-            )
+            owners.append(owner_result)
 
     protected_l1_ids = {int(item["target_l1_id"]) for item in operations}
     shadow_identities, shadow_operations = _shadow_identity_plan(
@@ -722,9 +731,9 @@ def build_l1_external_identity_risk_plan(
     summary = {
         "multi_spotify_id_l1_count": len(l1_ids),
         "reported_l1_count": len(owners),
-        "keep_l1_count": sum(item["recommendation"] == "keep" for item in owners),
-        "split_l1_count": sum(item["recommendation"] == "split" for item in owners),
-        "review_l1_count": sum(item["recommendation"] == "review" for item in owners),
+        "keep_l1_count": sum(item["recommendation"] == "keep" for item in all_owners),
+        "split_l1_count": sum(item["recommendation"] == "split" for item in all_owners),
+        "review_l1_count": sum(item["recommendation"] == "review" for item in all_owners),
         "auto_split_operation_count": sum(
             item["operation"] != "supersede_shadow_identity" for item in operations
         ),
@@ -741,19 +750,19 @@ def build_l1_external_identity_risk_plan(
         ),
         "multiple_isrc_l1_count": sum(
             len({item["isrc"] for item in owner["external_ids"] if item["isrc"]}) > 1
-            for owner in owners
+            for owner in all_owners
         ),
         "duration_conflict_l1_count": sum(
             any("duration_conflict" in item["evidence"] for item in owner["external_ids"])
-            for owner in owners
+            for owner in all_owners
         ),
         "version_conflict_l1_count": sum(
             any("semantic_version_conflict" in item["evidence"] for item in owner["external_ids"])
-            for owner in owners
+            for owner in all_owners
         ),
         "video_conflict_l1_count": sum(
             any("audio_video_conflict" in item["evidence"] for item in owner["external_ids"])
-            for owner in owners
+            for owner in all_owners
         ),
     }
     token_payload = {
@@ -768,7 +777,7 @@ def build_l1_external_identity_risk_plan(
                     for item in owner["external_ids"]
                 ],
             }
-            for owner in owners
+            for owner in all_owners
         ],
         "operations": operations,
         "shadow_identities": shadow_identities,

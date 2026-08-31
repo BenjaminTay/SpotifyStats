@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryKeys } from '@/api/query-keys'
-import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type TrackGroup, type TrackGroupMember, type UngroupedAlbum, type DetectionResult, type TrackGroupCandidate, type TrackGroupConfirmResult, type TrackCreditTrackCandidate, type AlbumRelationConfirmResult, type CanonicalTrackEvent, type CanonicalTrackMutationResult, type L3AlbumAttributionHealth, type L3AlbumAttributionListResponse, type L3AlbumAttributionMutationResult, type TrackComparison, type RebuildResult, type VersionMergeScope, type TrackGroupScope, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
+import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type TrackGroup, type TrackGroupMember, type UngroupedAlbum, type DetectionResult, type TrackGroupCandidate, type TrackGroupConfirmResult, type TrackCreditTrackCandidate, type AlbumRelationConfirmResult, type CanonicalTrackEvent, type CanonicalTrackMutationResult, type L1IdentityRiskHealth, type L3AlbumAttributionHealth, type L3AlbumAttributionListResponse, type L3AlbumAttributionMutationResult, type TrackComparison, type RebuildResult, type VersionMergeScope, type TrackGroupScope, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
 import type { StreamingImportOptions } from '@/types/data-import'
 
 // ── useSettings ─────────────────────────────────────────────
@@ -358,6 +358,7 @@ interface UseVersionMergeResult {
   searchTracks: (query: string) => Promise<TrackCreditTrackCandidate[]>
   confirmTrackCandidate: (originalL1Id: number, candidateL1Id: number, scope?: TrackGroupScope) => Promise<TrackGroupConfirmResult>
   rebuildAlbumProjects: () => Promise<{ status: string }>
+  fetchL1IdentityRiskHealth: () => Promise<L1IdentityRiskHealth>
   fetchL3AlbumAttributionHealth: () => Promise<L3AlbumAttributionHealth>
   fetchL3AlbumAttributions: (query?: string) => Promise<L3AlbumAttributionListResponse>
   rebuildL3AlbumAttributions: () => Promise<{ status: string }>
@@ -419,6 +420,13 @@ export function useVersionMerge(): UseVersionMergeResult {
     return queryClient.fetchQuery({
       queryKey: queryKeys.versionMerge.l3AlbumAttributionHealth(),
       queryFn: () => api.get<L3AlbumAttributionHealth>('/version-merge/l3-album-attributions/health'),
+    })
+  }, [queryClient])
+
+  const fetchL1IdentityRiskHealth = useCallback(() => {
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.versionMerge.l1IdentityRiskHealth(),
+      queryFn: () => api.get<L1IdentityRiskHealth>('/version-merge/l1-identity-risks/health'),
     })
   }, [queryClient])
 
@@ -743,6 +751,7 @@ export function useVersionMerge(): UseVersionMergeResult {
     searchTracks,
     confirmTrackCandidate,
     rebuildAlbumProjects,
+    fetchL1IdentityRiskHealth,
     fetchL3AlbumAttributionHealth,
     fetchL3AlbumAttributions,
     rebuildL3AlbumAttributions,

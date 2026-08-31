@@ -375,12 +375,20 @@ def _build_derived_health(conn: sqlite3.Connection) -> dict[str, Any]:
     )
 
     attribution_state = get_l3_album_attribution_state(conn)
+    coverage_reconciled = int(attribution_state.get("scanned_count", 0)) == (
+        int(attribution_state.get("attributed_count", 0))
+        + int(attribution_state.get("excluded_count", 0))
+        + int(attribution_state.get("conflict_count", 0))
+        + int(attribution_state.get("uncovered_count", 0))
+    )
     derived["l3_album_attribution"] = {
         **attribution_state,
         "expected_policy_version": L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
+        "coverage_reconciled": coverage_reconciled,
         "healthy": bool(
             attribution_state["status"] == "ready"
             and attribution_state["policy_version"] == L3_ALBUM_ATTRIBUTION_POLICY_VERSION
+            and coverage_reconciled
             and int(attribution_state["conflict_count"]) == 0
             and int(attribution_state["uncovered_count"]) == 0
         ),

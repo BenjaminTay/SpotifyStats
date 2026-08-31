@@ -449,6 +449,44 @@ def canonical_track_events(
     ]
 
 
+@router.get("/l1-identity-risks/health")
+def l1_identity_risk_health(conn: Connection = Depends(get_conn)):
+    """Return the latest persisted L1 machine-classification summary.
+
+    Computing the full provider audit is intentionally not placed on a GET hot
+    path.  Governance dry-runs/applies persist the same deterministic summary,
+    which Settings can read without a 10+ second catalog scan.
+    """
+
+    tables = {
+        str(row[0])
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    if "version_governance_runs" not in tables:
+        return {"status": "unavailable", "run_id": None, "summary": {}}
+    row = conn.execute(
+        """SELECT run_id, status, policy_version, summary_json, completed_at, created_at
+             FROM version_governance_runs
+            WHERE scope LIKE '%l1%'
+            ORDER BY created_at DESC, run_id DESC LIMIT 1"""
+    ).fetchone()
+    if row is None:
+        return {"status": "unavailable", "run_id": None, "summary": {}}
+    try:
+        payload = json.loads(str(row[3] or "{}"))
+    except (TypeError, ValueError):
+        payload = {}
+    summary = payload.get("l1_audit") or payload.get("l1", {}).get("summary") or {}
+    return {
+        "status": str(row[1]),
+        "run_id": str(row[0]),
+        "policy_version": str(row[2]),
+        "completed_at": row[4],
+        "created_at": row[5],
+        "summary": summary if isinstance(summary, dict) else {},
+    }
+
+
 @router.get("/l3-album-attributions/health")
 def l3_album_attribution_health(conn: Connection = Depends(get_conn)):
     """Return the published projection state and unresolved governance counts."""
@@ -482,16 +520,47 @@ def l3_album_attribution_health(conn: Connection = Depends(get_conn)):
         if "l3_song_album_attribution_overrides" in tables
         else 0
     )
+    excluded = (
+        int(conn.execute("SELECT COUNT(*) FROM l3_song_album_attribution_exclusions").fetchone()[0])
+        if "l3_song_album_attribution_exclusions" in tables
+        else 0
+    )
+    unresolved_raw_play_count = 0
+    unresolved_raw_ms = 0
+    if "l3_song_album_attribution_issues" in tables:
+        for row in conn.execute(
+            "SELECT evidence_json FROM l3_song_album_attribution_issues"
+        ).fetchall():
+            try:
+                evidence = json.loads(str(row[0] or "{}"))
+            except (TypeError, ValueError):
+                evidence = {}
+            unresolved_raw_play_count += int(evidence.get("raw_play_count", 0) or 0)
+            unresolved_raw_ms += int(evidence.get("raw_ms", 0) or 0)
+    reconciled = int(state.get("scanned_count", 0)) == (
+        attributed
+        + excluded
+        + int(state.get("uncovered_count", 0))
+        + int(state.get("conflict_count", 0))
+    )
     return {
         **state,
         "expected_policy_version": L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
         "published_count": attributed,
+        "published_exclusion_count": excluded,
         "issue_count": issues,
+        "unresolved_raw_play_count": unresolved_raw_play_count,
+        "unresolved_raw_ms": unresolved_raw_ms,
         "active_override_count": overrides,
+        "coverage_reconciled": reconciled,
         "healthy": bool(
             state["status"] == "ready"
             and state["policy_version"] == L3_ALBUM_ATTRIBUTION_POLICY_VERSION
             and int(state["attributed_count"]) == attributed
+            and int(state.get("excluded_count", 0)) == excluded
+            and reconciled
+            and int(state.get("uncovered_count", 0)) == 0
+            and int(state.get("conflict_count", 0)) == 0
             and issues == 0
         ),
     }

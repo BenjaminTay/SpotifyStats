@@ -59,6 +59,17 @@ MUSIC_SEARCH_CANDIDATE_LKG = _get_bool("MUSIC_SEARCH_CANDIDATE_LKG", True)
 MUSIC_SEARCH_STATISTICS_LKG = _get_bool("MUSIC_SEARCH_STATISTICS_LKG", True)
 MUSIC_SEARCH_TRACK_CREDIT_DELTA = _get_bool("MUSIC_SEARCH_TRACK_CREDIT_DELTA", True)
 
+
+def l3_startup_reconcile_enabled() -> bool:
+    """Read the startup reconciliation switch at lifespan time.
+
+    Tests set this after module collection, so this one operational switch is
+    intentionally dynamic while still keeping environment access centralized.
+    """
+
+    return _get_bool("SPOTIFY_STATS_L3_STARTUP_RECONCILE", True)
+
+
 # ── Remote access auth (Task 5) ──────────────────────────────────────
 
 SPOTIFY_STATS_REQUIRE_AUTH = _get("SPOTIFY_STATS_REQUIRE_AUTH", "0")

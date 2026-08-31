@@ -241,13 +241,34 @@ export interface L3AlbumAttributionHealth {
   track_identity_revision: number;
   album_project_revision: number;
   attributed_count: number;
+  scanned_count: number;
+  excluded_count: number;
   published_count: number;
+  published_exclusion_count: number;
   conflict_count: number;
   uncovered_count: number;
   issue_count: number;
+  unresolved_raw_play_count: number;
+  unresolved_raw_ms: number;
+  coverage_reconciled: boolean;
   active_override_count: number;
   healthy: boolean;
   updated_at: string | null;
+}
+
+export interface L1IdentityRiskHealth {
+  status: "unavailable" | "planned" | "running" | "applied" | "failed";
+  run_id: string | null;
+  policy_version?: string;
+  completed_at?: string | null;
+  created_at?: string | null;
+  summary: {
+    multi_spotify_id_l1_count?: number;
+    keep_l1_count?: number;
+    split_l1_count?: number;
+    review_l1_count?: number;
+    auto_split_operation_count?: number;
+  };
 }
 
 export interface L3AlbumAttributionDecision {

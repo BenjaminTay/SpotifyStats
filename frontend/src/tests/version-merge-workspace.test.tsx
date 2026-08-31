@@ -77,6 +77,16 @@ const { versionMergeMock } = vi.hoisted(() => ({
       .fn()
       .mockResolvedValue({ status: "ok", member_count: 2 }),
     rebuildAlbumProjects: vi.fn(),
+    fetchL1IdentityRiskHealth: vi.fn().mockResolvedValue({
+      status: "applied",
+      run_id: "fixture-run",
+      summary: {
+        multi_spotify_id_l1_count: 62,
+        keep_l1_count: 55,
+        split_l1_count: 2,
+        review_l1_count: 5,
+      },
+    }),
     fetchL3AlbumAttributionHealth: vi.fn().mockResolvedValue({
       current_revision: 3,
       status: "ready",
@@ -85,10 +95,16 @@ const { versionMergeMock } = vi.hoisted(() => ({
       track_identity_revision: 9,
       album_project_revision: 5,
       attributed_count: 6226,
+      scanned_count: 6226,
+      excluded_count: 0,
       published_count: 6226,
+      published_exclusion_count: 0,
       conflict_count: 0,
       uncovered_count: 0,
       issue_count: 0,
+      unresolved_raw_play_count: 0,
+      unresolved_raw_ms: 0,
+      coverage_reconciled: true,
       active_override_count: 0,
       healthy: true,
       updated_at: "2026-08-31",

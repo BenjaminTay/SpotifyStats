@@ -14,6 +14,7 @@ def disable_warmup(monkeypatch):
     """Disable independent startup catch-up work unless a test opts in."""
     monkeypatch.setenv("SPOTIFY_STATS_WARMUP", "0")
     monkeypatch.setenv("SPOTIFY_STATS_SEARCH_STARTUP_REBUILD", "0")
+    monkeypatch.setenv("SPOTIFY_STATS_L3_STARTUP_RECONCILE", "0")
 
 
 @pytest.fixture(scope="function")
@@ -107,11 +108,12 @@ def seed_conn(use_seed_db):
 
 
 @pytest.fixture(scope="function")
-def client(use_seed_db):  # noqa: ARG001 — must activate before client
+def client(use_seed_db, monkeypatch):  # noqa: ARG001 — must activate before client
     """Lightweight TestClient — warmup disabled, no cache pollution."""
     from fastapi.testclient import TestClient
 
     from backend.main import app
 
+    monkeypatch.setenv("SPOTIFY_STATS_L3_STARTUP_RECONCILE", "1")
     with TestClient(app) as c:
         yield c

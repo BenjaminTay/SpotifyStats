@@ -465,15 +465,13 @@ def rebuild_current_music_search_derived_data(
 ) -> dict[str, Any]:
     from backend.domains.playback.l3_album_attribution import (
         apply_l3_album_attribution_plan,
-        ensure_l3_album_attribution_schema,
-        plan_l3_album_attributions,
+        reconcile_l3_album_attribution_dependencies,
     )
 
     # Maintenance is also used by compact test databases and by older local
     # databases during upgrade.  Materialise the derived attribution schema
     # before planning instead of assuming migration 68 has already run.
-    ensure_l3_album_attribution_schema(conn)
-    attribution_plan = plan_l3_album_attributions(conn)
+    attribution_plan = reconcile_l3_album_attribution_dependencies(conn)
     if attribution_plan.issues:
         raise RuntimeError("L3 album attribution must be resolved before rebuilding music search")
     has_album_catalog = all(

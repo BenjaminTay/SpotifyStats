@@ -16,6 +16,7 @@ def test_l3_album_attribution_openapi_contract_is_auditable_and_bounded() -> Non
     assert query["schema"]["maxLength"] == 200
     assert "200" in listing["responses"]
     assert "/api/version-merge/l3-album-attributions/health" in paths
+    assert "/api/version-merge/l1-identity-risks/health" in paths
     assert "/api/version-merge/l3-album-attributions/rebuild" in paths
     assert "/api/version-merge/l3-album-attributions/overrides" in paths
     assert "/api/version-merge/l3-album-attributions/overrides/{override_id}" in paths

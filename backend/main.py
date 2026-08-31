@@ -28,7 +28,7 @@ from backend.core.access_surface import (
     trusted_gateway_required,
     trusted_request_surface,
 )
-from backend.core.config import FRONTEND_ORIGIN
+from backend.core.config import FRONTEND_ORIGIN, l3_startup_reconcile_enabled
 from backend.core.logging_config import setup_logging
 from backend.core.migrations import run_migrations
 from backend.core.request_context import REQUEST_ID_HEADER, reset_request_id, set_request_id
@@ -60,30 +60,31 @@ async def lifespan(_app: FastAPI):
     # L3 album attribution is a small deterministic relationship projection,
     # not a playback aggregate.  Publish it immediately after additive schema
     # upgrades so the first L3 request cannot observe a stale owner map.  Any
-    # real governance conflict fails startup closed instead of serving mixed
-    # album semantics.
+    # real governance conflict leaves the projection unpublished; the app stays
+    # available so Settings can expose the unhealthy state and run remediation.
     from backend.core.db import get_db as get_startup_db
     from backend.domains.playback.l3_album_attribution import (
         apply_l3_album_attribution_plan,
-        plan_l3_album_attributions,
+        reconcile_l3_album_attribution_dependencies,
     )
 
-    startup_conn = get_startup_db(readonly=False)
-    try:
-        attribution_plan = plan_l3_album_attributions(startup_conn)
-        if attribution_plan.issues:
-            raise RuntimeError(
-                "L3 album attribution startup reconciliation has unresolved issues: "
-                f"{len(attribution_plan.issues)}"
-            )
-        if attribution_plan.changed:
-            apply_l3_album_attribution_plan(
-                startup_conn,
-                attribution_plan,
-                ensure_schema=False,
-            )
-    finally:
-        startup_conn.close()
+    if l3_startup_reconcile_enabled():
+        startup_conn = get_startup_db(readonly=False)
+        try:
+            attribution_plan = reconcile_l3_album_attribution_dependencies(startup_conn)
+            if attribution_plan.issues:
+                logger.error(
+                    "L3 album attribution remains unpublished: unresolved_issues=%s",
+                    len(attribution_plan.issues),
+                )
+            elif attribution_plan.changed:
+                apply_l3_album_attribution_plan(
+                    startup_conn,
+                    attribution_plan,
+                    ensure_schema=False,
+                )
+        finally:
+            startup_conn.close()
 
     # Start background job queue for async enrichment & cover downloads
     from backend.core.job_queue import get_job_queue

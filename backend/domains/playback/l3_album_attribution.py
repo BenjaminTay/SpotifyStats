@@ -27,7 +27,7 @@ from backend.domains.playback.album_composition_auto_merge import (
     normalize_album_composition_title,
 )
 
-L3_ALBUM_ATTRIBUTION_POLICY_VERSION = "l3_native_album_attribution_v1"
+L3_ALBUM_ATTRIBUTION_POLICY_VERSION = "l3_native_album_attribution_v2"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS l3_song_album_attributions (
@@ -82,23 +82,37 @@ CREATE TABLE IF NOT EXISTS l3_song_album_attribution_issues (
     PRIMARY KEY(canonical_song_key, issue_kind)
 );
 
+CREATE TABLE IF NOT EXISTS l3_song_album_attribution_exclusions (
+    canonical_song_key       TEXT PRIMARY KEY,
+    representative_track_id  INTEGER REFERENCES tracks(track_id),
+    canonical_artist_key     TEXT,
+    reason_code              TEXT NOT NULL,
+    evidence_json            TEXT NOT NULL DEFAULT '{}',
+    policy_version           TEXT NOT NULL,
+    track_identity_revision  INTEGER NOT NULL,
+    album_project_revision   INTEGER NOT NULL,
+    created_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS l3_album_attribution_revision_state (
     state_id         INTEGER PRIMARY KEY CHECK(state_id = 1),
     current_revision INTEGER NOT NULL DEFAULT 0,
     status            TEXT NOT NULL DEFAULT 'empty'
                           CHECK(status IN ('empty', 'building', 'ready', 'failed')),
-    policy_version   TEXT NOT NULL DEFAULT 'l3_native_album_attribution_v1',
+    policy_version   TEXT NOT NULL DEFAULT 'l3_native_album_attribution_v2',
     track_identity_revision INTEGER NOT NULL DEFAULT 0,
     album_project_revision  INTEGER NOT NULL DEFAULT 0,
     mapping_digest    TEXT NOT NULL DEFAULT '',
     attributed_count  INTEGER NOT NULL DEFAULT 0,
     conflict_count    INTEGER NOT NULL DEFAULT 0,
     uncovered_count   INTEGER NOT NULL DEFAULT 0,
+    scanned_count     INTEGER NOT NULL DEFAULT 0,
+    excluded_count    INTEGER NOT NULL DEFAULT 0,
     updated_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 INSERT OR IGNORE INTO l3_album_attribution_revision_state(
     state_id, current_revision, policy_version
-) VALUES (1, 0, 'l3_native_album_attribution_v1');
+) VALUES (1, 0, 'l3_native_album_attribution_v2');
 """
 
 
@@ -141,6 +155,20 @@ class L3AlbumAttributionIssue:
 
 
 @dataclass(frozen=True)
+class L3AlbumAttributionExclusion:
+    canonical_song_key: str
+    representative_track_id: int
+    canonical_song_name: str
+    canonical_artist_key: str
+    reason_code: str
+    evidence_codes: tuple[str, ...]
+    evidence: tuple[tuple[str, Any], ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class L3AlbumAttributionPlan:
     policy_version: str
     track_identity_revision: int
@@ -148,8 +176,10 @@ class L3AlbumAttributionPlan:
     input_digest: str
     decisions: tuple[L3AlbumAttributionDecision, ...]
     issues: tuple[L3AlbumAttributionIssue, ...]
+    exclusions: tuple[L3AlbumAttributionExclusion, ...]
     uncovered_song_keys: tuple[str, ...]
     conflict_song_keys: tuple[str, ...]
+    excluded_song_keys: tuple[str, ...]
     scanned_song_count: int
     changed: bool
 
@@ -164,6 +194,8 @@ class L3AlbumAttributionApplyReport:
     manual_count: int
     uncovered_count: int
     conflict_count: int
+    excluded_count: int
+    scanned_count: int
     rows_inserted: int
     attribution_revision: int
     changed: bool
@@ -221,6 +253,20 @@ def _controlled_project_role(name: str) -> str | None:
 
 def ensure_l3_album_attribution_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA)
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(l3_album_attribution_revision_state)").fetchall()
+    }
+    if "scanned_count" not in columns:
+        conn.execute(
+            """ALTER TABLE l3_album_attribution_revision_state
+               ADD COLUMN scanned_count INTEGER NOT NULL DEFAULT 0"""
+        )
+    if "excluded_count" not in columns:
+        conn.execute(
+            """ALTER TABLE l3_album_attribution_revision_state
+               ADD COLUMN excluded_count INTEGER NOT NULL DEFAULT 0"""
+        )
 
 
 def get_l3_album_attribution_revision(conn: sqlite3.Connection) -> int:
@@ -246,13 +292,15 @@ def get_l3_album_attribution_state(conn: sqlite3.Connection) -> dict[str, Any]:
             "attributed_count": 0,
             "conflict_count": 0,
             "uncovered_count": 0,
+            "scanned_count": 0,
+            "excluded_count": 0,
             "updated_at": None,
         }
     row = conn.execute(
         """SELECT current_revision, status, policy_version,
                   track_identity_revision, album_project_revision,
                   mapping_digest, attributed_count, conflict_count,
-                  uncovered_count, updated_at
+                  uncovered_count, scanned_count, excluded_count, updated_at
              FROM l3_album_attribution_revision_state WHERE state_id=1"""
     ).fetchone()
     if row is None:
@@ -266,6 +314,8 @@ def get_l3_album_attribution_state(conn: sqlite3.Connection) -> dict[str, Any]:
             "attributed_count": 0,
             "conflict_count": 0,
             "uncovered_count": 0,
+            "scanned_count": 0,
+            "excluded_count": 0,
             "updated_at": None,
         }
     return dict(row)
@@ -339,7 +389,107 @@ def _load_release_memberships(conn: sqlite3.Connection) -> pd.DataFrame:
     return apply_canonical_song_keys(raw, conn, merge_level=3)
 
 
+def _load_work_universe(conn: sqlite3.Connection) -> tuple[pd.DataFrame, dict[int, str]]:
+    """Return every active L3 work before Album Project membership is joined.
+
+    The previous attribution planner started from ``album_project_tracks`` and
+    therefore could not report works whose catalog membership was completely
+    missing.  This universe starts from active L1 identities and the shared L3
+    work-key resolver, then attaches raw-play evidence only for diagnostics.
+    """
+
+    from backend.domains.playback.song_work_keys import load_l3_song_work_keys
+
+    keys = load_l3_song_work_keys(conn)
+    if keys.empty:
+        return pd.DataFrame(), {}
+    required = {
+        "l1_id",
+        "canonical_song_key",
+        "canonical_song_name",
+        "representative_track_id",
+    }
+    if not required.issubset(keys.columns):
+        missing = sorted(required - set(keys.columns))
+        raise RuntimeError(f"L3 work-key resolver missing columns: {missing}")
+
+    track_to_key: dict[int, str] = {}
+    key_by_l1: dict[int, str] = {}
+    for row in keys.itertuples(index=False):
+        l1_id = int(row.l1_id)
+        key = str(row.canonical_song_key)
+        key_by_l1[l1_id] = key
+        track_to_key[l1_id] = key
+        track_to_key[int(row.representative_track_id)] = key
+    if _table_exists(conn, "track_l1_source_links"):
+        for row in conn.execute(
+            "SELECT l1_id, track_id FROM track_l1_source_links ORDER BY l1_id, track_id"
+        ).fetchall():
+            key = key_by_l1.get(int(row[0]))
+            if key is not None:
+                track_to_key[int(row[1])] = key
+
+    play_stats: dict[int, tuple[int, int, tuple[int, ...]]] = {}
+    if _table_exists(conn, "plays"):
+        play_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(plays)").fetchall()}
+        source_album_expression = (
+            "plays.source_album_id" if "source_album_id" in play_columns else "NULL"
+        )
+        if _table_exists(conn, "track_l1_source_links"):
+            rows = conn.execute(
+                f"""SELECT links.l1_id, COUNT(plays.play_id),
+                          COALESCE(SUM(plays.ms_played), 0),
+                          GROUP_CONCAT(DISTINCT {source_album_expression})
+                     FROM (
+                         SELECT DISTINCT l1_id, track_id
+                           FROM track_l1_source_links
+                     ) links
+                     LEFT JOIN plays ON plays.track_id=links.track_id
+                    GROUP BY links.l1_id"""
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                f"""SELECT tracks.track_id, COUNT(plays.play_id),
+                          COALESCE(SUM(plays.ms_played), 0),
+                          GROUP_CONCAT(DISTINCT {source_album_expression})
+                     FROM tracks
+                     LEFT JOIN plays ON plays.track_id=tracks.track_id
+                    GROUP BY tracks.track_id"""
+            ).fetchall()
+        for row in rows:
+            source_ids = tuple(
+                sorted({int(value) for value in str(row[3] or "").split(",") if value.strip()})
+            )
+            play_stats[int(row[0])] = (int(row[1] or 0), int(row[2] or 0), source_ids)
+
+    records: list[dict[str, Any]] = []
+    for key, frame in keys.groupby("canonical_song_key", sort=True):
+        representative = int(frame.iloc[0]["representative_track_id"])
+        l1_ids = tuple(sorted({int(value) for value in frame["l1_id"].tolist()}))
+        raw_play_count = sum(play_stats.get(l1_id, (0, 0, ()))[0] for l1_id in l1_ids)
+        raw_ms = sum(play_stats.get(l1_id, (0, 0, ()))[1] for l1_id in l1_ids)
+        source_album_ids = tuple(
+            sorted(
+                {album_id for l1_id in l1_ids for album_id in play_stats.get(l1_id, (0, 0, ()))[2]}
+            )
+        )
+        records.append(
+            {
+                "canonical_song_key": str(key),
+                "canonical_song_name": str(frame.iloc[0]["canonical_song_name"]),
+                "representative_track_id": representative,
+                "l1_ids": l1_ids,
+                "raw_play_count": raw_play_count,
+                "raw_ms": raw_ms,
+                "source_album_ids": source_album_ids,
+            }
+        )
+    return pd.DataFrame.from_records(records), track_to_key
+
+
 def _canonical_artist_ids(conn: sqlite3.Connection) -> dict[int, int]:
+    if not _table_exists(conn, "artists"):
+        return {}
     identity = get_artist_identity_map(conn)
     result: dict[int, int] = {}
     for row in conn.execute("SELECT artist_id FROM artists ORDER BY artist_id").fetchall():
@@ -364,6 +514,15 @@ def _composition_parent_map(
     conn: sqlite3.Connection,
     canonical_artists: dict[int, int],
 ) -> dict[int, tuple[int, str]]:
+    project_columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(album_projects)").fetchall()
+    }
+    # Compact contract fixtures and pre-composition databases model release
+    # projects without an artist/scope hierarchy.  In that shape there is no
+    # composition parent to resolve, so keep every release project as its own
+    # target instead of assuming columns that do not exist.
+    if not {"artist_id", "scope"}.issubset(project_columns):
+        return {}
     rows = conn.execute(
         """SELECT project_id, canonical_name, artist_id, scope
              FROM album_projects WHERE scope IN ('release', 'composition')
@@ -404,7 +563,7 @@ def _candidate_rank(candidate: _ProjectCandidate) -> tuple[Any, ...]:
     buckets = set(candidate.source_buckets)
     roles = set(candidate.membership_roles)
     relation = candidate.relation_tag
-    is_compilation = candidate.project_type == "compilation_exclusive"
+    is_compilation = candidate.project_type.startswith("compilation")
 
     if relation in {"live", "acoustic", "remix", "alternate"}:
         tier = 70
@@ -417,6 +576,8 @@ def _candidate_rank(candidate: _ProjectCandidate) -> tuple[Any, ...]:
         tier = 50
     elif candidate.is_manual and candidate.has_original_recording and not is_compilation:
         tier = 0
+    elif candidate.has_original_recording and candidate.project_type == "soundtrack":
+        tier = 15
     elif candidate.has_original_recording and "original_album" in buckets and not relation:
         tier = 10
     elif candidate.has_original_recording and "deluxe" in buckets and not relation:
@@ -444,6 +605,8 @@ def _candidate_rank(candidate: _ProjectCandidate) -> tuple[Any, ...]:
 def _attribution_kind(candidate: _ProjectCandidate) -> str:
     buckets = set(candidate.source_buckets)
     roles = set(candidate.membership_roles)
+    if candidate.project_type == "soundtrack":
+        return "soundtrack"
     if candidate.has_original_recording and candidate.relation_tag is None:
         if "single" in buckets:
             return "album_single"
@@ -464,13 +627,13 @@ def _attribution_kind(candidate: _ProjectCandidate) -> str:
         return "alternate_residual"
     if candidate.relation_tag == "compilation":
         return "compilation_residual"
-    if candidate.project_type == "compilation_exclusive":
+    if candidate.project_type.startswith("compilation"):
         return "compilation_exclusive"
     return "studio_album"
 
 
 def _representative_track_id(conn: sqlite3.Connection, key: str, frame: pd.DataFrame) -> int:
-    if key.startswith("composition:"):
+    if key.startswith(("composition:", "recording:")):
         group_id = int(key.split(":", 1)[1])
         row = conn.execute(
             "SELECT primary_track_id FROM track_groups WHERE group_id=?",
@@ -563,6 +726,19 @@ def _issue_json(item: L3AlbumAttributionIssue) -> str:
     )
 
 
+def _exclusion_json(item: L3AlbumAttributionExclusion) -> str:
+    return json.dumps(
+        {
+            "canonical_song_name": item.canonical_song_name,
+            "evidence_codes": item.evidence_codes,
+            "evidence": dict(item.evidence),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+    )
+
+
 def _current_issue_rows(conn: sqlite3.Connection) -> tuple[tuple[Any, ...], ...]:
     if not _table_exists(conn, "l3_song_album_attribution_issues"):
         return ()
@@ -578,6 +754,22 @@ def _current_issue_rows(conn: sqlite3.Connection) -> tuple[tuple[Any, ...], ...]
     )
 
 
+def _current_exclusion_rows(conn: sqlite3.Connection) -> tuple[tuple[Any, ...], ...]:
+    if not _table_exists(conn, "l3_song_album_attribution_exclusions"):
+        return ()
+    return tuple(
+        tuple(row)
+        for row in conn.execute(
+            """SELECT canonical_song_key, representative_track_id,
+                      canonical_artist_key, reason_code, evidence_json,
+                      policy_version, track_identity_revision,
+                      album_project_revision
+                 FROM l3_song_album_attribution_exclusions
+                ORDER BY canonical_song_key"""
+        ).fetchall()
+    )
+
+
 def _desired_projection_digest(plan_rows: list[tuple[Any, ...]]) -> str:
     return hashlib.sha256(
         json.dumps(plan_rows, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
@@ -589,8 +781,9 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
 
     track_revision = _track_identity_revision(conn)
     album_revision = _album_project_revision(conn)
+    work_universe, track_to_song_key = _load_work_universe(conn)
     memberships = _load_release_memberships(conn)
-    if memberships.empty:
+    if work_universe.empty:
         empty_digest = hashlib.sha256(b"[]").hexdigest()
         state = get_l3_album_attribution_state(conn)
         state_ready = (
@@ -602,6 +795,8 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
             and int(state["attributed_count"]) == 0
             and int(state["conflict_count"]) == 0
             and int(state["uncovered_count"]) == 0
+            and int(state["scanned_count"]) == 0
+            and int(state["excluded_count"]) == 0
         )
         return L3AlbumAttributionPlan(
             policy_version=L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
@@ -610,35 +805,45 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
             input_digest=empty_digest,
             decisions=(),
             issues=(),
+            exclusions=(),
             uncovered_song_keys=(),
             conflict_song_keys=(),
+            excluded_song_keys=(),
             scanned_song_count=0,
             changed=(
                 _current_projection_digest(conn) != empty_digest
                 or bool(_current_issue_rows(conn))
+                or bool(_current_exclusion_rows(conn))
                 or not state_ready
             ),
         )
 
     canonical_artists = _canonical_artist_ids(conn)
     parent_map = _composition_parent_map(conn, canonical_artists)
-    track_to_song_key = {
-        int(row.track_id): str(row.canonical_song_key)
-        for row in memberships[["track_id", "canonical_song_key"]]
-        .drop_duplicates("track_id")
-        .itertuples(index=False)
+    project_columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(album_projects)").fetchall()
     }
+    legacy_project_schema = not {"artist_id", "scope"}.issubset(project_columns)
     overrides, override_conflicts, invalid_overrides = _active_overrides(conn, track_to_song_key)
 
     decisions: list[L3AlbumAttributionDecision] = []
     issues: list[L3AlbumAttributionIssue] = []
+    exclusions: list[L3AlbumAttributionExclusion] = []
     uncovered: list[str] = []
     conflicts = set(override_conflicts)
 
-    for song_key, song_frame in memberships.groupby("canonical_song_key", sort=True):
-        key = str(song_key)
+    for work in work_universe.sort_values("canonical_song_key").itertuples(index=False):
+        key = str(work.canonical_song_key)
+        song_frame = (
+            memberships[memberships["canonical_song_key"].astype(str) == key]
+            if not memberships.empty
+            else pd.DataFrame()
+        )
         candidates: list[_ProjectCandidate] = []
-        for project_id, project_frame in song_frame.groupby("project_id", sort=True):
+        grouped_projects = (
+            song_frame.groupby("project_id", sort=True) if not song_frame.empty else ()
+        )
+        for project_id, project_frame in grouped_projects:
             project_id_int = int(project_id)
             first = project_frame.iloc[0]
             track_relations: set[str] = set()
@@ -675,18 +880,66 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
             )
 
         if not candidates:
+            representative = int(work.representative_track_id)
+            track_columns = {
+                str(row[1]) for row in conn.execute("PRAGMA table_info(tracks)").fetchall()
+            }
+            if "artist_id" in track_columns:
+                artist_row = conn.execute(
+                    "SELECT artist_id FROM tracks WHERE track_id=?", (representative,)
+                ).fetchone()
+            elif _table_exists(conn, "track_artists"):
+                track_artist_columns = {
+                    str(row[1])
+                    for row in conn.execute("PRAGMA table_info(track_artists)").fetchall()
+                }
+                ordering = (
+                    "is_primary DESC, artist_id"
+                    if "is_primary" in track_artist_columns
+                    else "artist_id"
+                )
+                artist_row = conn.execute(
+                    f"""SELECT artist_id FROM track_artists
+                        WHERE track_id=? ORDER BY {ordering} LIMIT 1""",
+                    (representative,),
+                ).fetchone()
+            else:
+                artist_row = None
+            artist_id = int(artist_row[0]) if artist_row is not None else 0
+            canonical_artist_id = canonical_artists.get(artist_id, artist_id)
+            if legacy_project_schema:
+                exclusions.append(
+                    L3AlbumAttributionExclusion(
+                        canonical_song_key=key,
+                        representative_track_id=representative,
+                        canonical_song_name=str(work.canonical_song_name),
+                        canonical_artist_key=str(canonical_artist_id or ""),
+                        reason_code="legacy_album_project_schema",
+                        evidence_codes=("album_project_ownership_unavailable",),
+                        evidence=_stable_evidence(
+                            raw_play_count=int(work.raw_play_count),
+                            raw_ms=int(work.raw_ms),
+                            source_album_ids=tuple(work.source_album_ids),
+                        ),
+                    )
+                )
+                continue
             uncovered.append(key)
             issues.append(
                 L3AlbumAttributionIssue(
                     canonical_song_key=key,
                     issue_kind="uncovered",
-                    representative_track_id=_representative_track_id(conn, key, song_frame),
-                    canonical_song_name=str(song_frame.iloc[0]["canonical_song_name"]),
-                    canonical_artist_key="",
+                    representative_track_id=representative,
+                    canonical_song_name=str(work.canonical_song_name),
+                    canonical_artist_key=str(canonical_artist_id or ""),
                     candidate_project_ids=(),
                     candidate_project_names=(),
                     evidence_codes=("no_album_project_membership",),
-                    evidence=(),
+                    evidence=_stable_evidence(
+                        raw_play_count=int(work.raw_play_count),
+                        raw_ms=int(work.raw_ms),
+                        source_album_ids=tuple(work.source_album_ids),
+                    ),
                 )
             )
             continue
@@ -815,6 +1068,7 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
 
     decisions.sort(key=lambda item: item.canonical_song_key)
     issues.sort(key=lambda item: (item.canonical_song_key, item.issue_kind))
+    exclusions.sort(key=lambda item: item.canonical_song_key)
     plan_rows: list[tuple[Any, ...]] = []
     for item in decisions:
         evidence_json = json.dumps(
@@ -853,6 +1107,7 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
         "album_revision": album_revision,
         "rows": plan_rows,
         "issues": [item.to_dict() for item in issues],
+        "exclusions": [item.to_dict() for item in exclusions],
         "uncovered": sorted(uncovered),
         "conflicts": sorted(conflicts),
     }
@@ -872,6 +1127,19 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
         )
         for item in issues
     )
+    expected_exclusion_rows = tuple(
+        (
+            item.canonical_song_key,
+            item.representative_track_id,
+            item.canonical_artist_key,
+            item.reason_code,
+            _exclusion_json(item),
+            L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
+            track_revision,
+            album_revision,
+        )
+        for item in exclusions
+    )
     state = get_l3_album_attribution_state(conn)
     state_ready = (
         state["status"] == "ready"
@@ -882,6 +1150,8 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
         and int(state["attributed_count"]) == len(decisions)
         and int(state["conflict_count"]) == len(conflicts)
         and int(state["uncovered_count"]) == len(uncovered)
+        and int(state["scanned_count"]) == len(work_universe)
+        and int(state["excluded_count"]) == len(exclusions)
     )
     return L3AlbumAttributionPlan(
         policy_version=L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
@@ -890,15 +1160,62 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
         input_digest=input_digest,
         decisions=tuple(decisions),
         issues=tuple(issues),
+        exclusions=tuple(exclusions),
         uncovered_song_keys=tuple(sorted(uncovered)),
         conflict_song_keys=tuple(sorted(conflicts)),
-        scanned_song_count=int(memberships["canonical_song_key"].nunique()),
+        excluded_song_keys=tuple(item.canonical_song_key for item in exclusions),
+        scanned_song_count=len(work_universe),
         changed=(
             _current_projection_digest(conn) != desired_digest
             or _current_issue_rows(conn) != expected_issue_rows
+            or _current_exclusion_rows(conn) != expected_exclusion_rows
             or not state_ready
         ),
     )
+
+
+def reconcile_l3_album_attribution_dependencies(
+    conn: sqlite3.Connection,
+) -> L3AlbumAttributionPlan:
+    """Repair only proven missing Album Project closures, then re-plan L3.
+
+    This is intentionally narrower than the governance pipeline's full album
+    rebuild.  It is safe for startup and search maintenance because it touches
+    only albums named by an ``uncovered`` attribution issue (plus the
+    representative track's own album when playback source metadata is absent).
+    Conflicts and invalid overrides are never auto-resolved here.
+    """
+
+    ensure_l3_album_attribution_schema(conn)
+    plan = plan_l3_album_attributions(conn)
+    uncovered_issues = tuple(issue for issue in plan.issues if issue.issue_kind == "uncovered")
+    if not uncovered_issues:
+        return plan
+
+    album_ids = {
+        int(album_id)
+        for issue in uncovered_issues
+        for album_id in dict(issue.evidence).get("source_album_ids", ())
+    }
+    album_ids.update(
+        int(row[0])
+        for issue in uncovered_issues
+        for row in conn.execute(
+            "SELECT album_id FROM tracks WHERE track_id=? AND album_id IS NOT NULL",
+            (issue.representative_track_id,),
+        ).fetchall()
+    )
+    if not album_ids:
+        return plan
+
+    from backend.domains.playback.album_projects import rebuild_album_projects_for_impact
+
+    rebuild_album_projects_for_impact(
+        conn,
+        local_album_ids=album_ids,
+        impact_scope_exact=True,
+    )
+    return plan_l3_album_attributions(conn)
 
 
 def apply_l3_album_attribution_plan(
@@ -926,6 +1243,8 @@ def apply_l3_album_attribution_plan(
             manual_count=sum(item.decision_source == "manual" for item in plan.decisions),
             uncovered_count=len(plan.uncovered_song_keys),
             conflict_count=len(plan.conflict_song_keys),
+            excluded_count=len(plan.exclusions),
+            scanned_count=plan.scanned_song_count,
             rows_inserted=0,
             attribution_revision=get_l3_album_attribution_revision(conn),
             changed=False,
@@ -948,6 +1267,7 @@ def apply_l3_album_attribution_plan(
         )
         conn.execute("DELETE FROM l3_song_album_attributions")
         conn.execute("DELETE FROM l3_song_album_attribution_issues")
+        conn.execute("DELETE FROM l3_song_album_attribution_exclusions")
         for decision in plan.decisions:
             evidence_json = json.dumps(
                 {
@@ -1005,6 +1325,25 @@ def apply_l3_album_attribution_plan(
                     plan.album_project_revision,
                 ),
             )
+        for exclusion in plan.exclusions:
+            conn.execute(
+                """INSERT INTO l3_song_album_attribution_exclusions(
+                       canonical_song_key, representative_track_id,
+                       canonical_artist_key, reason_code, evidence_json,
+                       policy_version, track_identity_revision,
+                       album_project_revision
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    exclusion.canonical_song_key,
+                    exclusion.representative_track_id,
+                    exclusion.canonical_artist_key,
+                    exclusion.reason_code,
+                    _exclusion_json(exclusion),
+                    L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
+                    plan.track_identity_revision,
+                    plan.album_project_revision,
+                ),
+            )
         mapping_digest = _current_projection_digest(conn)
         conn.execute(
             """UPDATE l3_album_attribution_revision_state
@@ -1012,7 +1351,8 @@ def apply_l3_album_attribution_plan(
                       status='ready', policy_version=?,
                       track_identity_revision=?, album_project_revision=?,
                       mapping_digest=?, attributed_count=?, conflict_count=?,
-                      uncovered_count=?, updated_at=CURRENT_TIMESTAMP
+                      uncovered_count=?, scanned_count=?, excluded_count=?,
+                      updated_at=CURRENT_TIMESTAMP
                 WHERE state_id=1""",
             (
                 L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
@@ -1022,6 +1362,8 @@ def apply_l3_album_attribution_plan(
                 len(plan.decisions),
                 len(plan.conflict_song_keys),
                 len(plan.uncovered_song_keys),
+                plan.scanned_song_count,
+                len(plan.exclusions),
             ),
         )
         conn.execute("RELEASE SAVEPOINT apply_l3_album_attribution")
@@ -1038,6 +1380,8 @@ def apply_l3_album_attribution_plan(
         manual_count=sum(item.decision_source == "manual" for item in plan.decisions),
         uncovered_count=len(plan.uncovered_song_keys),
         conflict_count=len(plan.conflict_song_keys),
+        excluded_count=len(plan.exclusions),
+        scanned_count=plan.scanned_song_count,
         rows_inserted=len(plan.decisions),
         attribution_revision=get_l3_album_attribution_revision(conn),
         changed=True,
