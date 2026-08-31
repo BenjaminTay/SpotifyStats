@@ -497,8 +497,13 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
     groups = _active_recording_groups(conn)
     noncanonical_candidate_rows = _noncanonical_candidate_rows(conn, noncanonical_l1_ids)
     force_separate, force_merge = _load_overrides(conn)
+    # The DSU adds policy-derived cannot-link edges while it evaluates the
+    # graph.  Keep that mutable working set separate from the durable manual
+    # overrides so the serialised plan does not misreport inferred conflicts
+    # as user-authored force-separate decisions.
+    explicit_force_separate = set(force_separate)
     node_ids = sorted(nodes)
-    dsu = _DisjointSets(node_ids, force_separate)
+    dsu = _DisjointSets(node_ids, set(force_separate))
     accepted_edges: list[dict[str, Any]] = []
     blocked_edges: list[dict[str, Any]] = []
     warning_edges: list[dict[str, Any]] = []
@@ -771,7 +776,8 @@ def build_l2_track_merge_plan(conn: sqlite3.Connection) -> dict[str, Any]:
         "groups_unchanged": sum(item["action"] == "unchanged" for item in desired),
         "groups_to_archive": len(archived_group_ids),
         "archived_group_ids": archived_group_ids,
-        "force_separate_pairs": [list(pair) for pair in sorted(force_separate)],
+        "force_separate_pairs": [list(pair) for pair in sorted(explicit_force_separate)],
+        "derived_cannot_link_pair_count": len(dsu.cannot_link - explicit_force_separate),
         "edge_status_counts": {
             "accepted": len(accepted_edges),
             **blocked_status_counts,

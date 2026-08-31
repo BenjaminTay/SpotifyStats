@@ -226,6 +226,8 @@ def test_known_semantic_versions_are_rejected_while_packaging_variants_merge() -
             (3, 4, "semantic_version_conflict"),
             (5, 6, "semantic_version_conflict"),
         }
+        assert plan["force_separate_pairs"] == []
+        assert plan["derived_cannot_link_pair_count"] == 3
 
         report = apply_l2_track_merge_plan(conn, plan, commit=True)
         assert report["status"] == "unchanged"
