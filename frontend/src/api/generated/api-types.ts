@@ -1856,6 +1856,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version-merge/track-overrides/{scope}/{left_l1_id}/{right_l1_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Track Merge Override
+         * @description Return one pair to machine governance on the next reconciliation run.
+         */
+        delete: operations["remove_track_merge_override_api_version_merge_track_overrides__scope___left_l1_id___right_l1_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version-merge/album-relations/confirm": {
         parameters: {
             query?: never;
@@ -10847,6 +10867,10 @@ export interface components {
              * @default active
              */
             group_status: string;
+            /** Identity Policy Version */
+            identity_policy_version?: string | null;
+            /** Automatic Version Tag */
+            automatic_version_tag?: string | null;
         };
         /** TrackHistoryResponse */
         TrackHistoryResponse: {
@@ -16792,6 +16816,39 @@ export interface operations {
             header?: never;
             path: {
                 group_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_track_merge_override_api_version_merge_track_overrides__scope___left_l1_id___right_l1_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                scope: string;
+                left_l1_id: number;
+                right_l1_id: number;
             };
             cookie?: never;
         };

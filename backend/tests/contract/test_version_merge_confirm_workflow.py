@@ -35,12 +35,15 @@ def isolated_seed_db(use_seed_db):
 def test_confirm_track_candidate_creates_l3_group_and_rebuilds(isolated_seed_db):
     """Confirmed candidates become L3 composition groups, not L2 groups."""
     from backend.core.db import get_db
+    from backend.core.migrations import run_migrations
     from backend.core.version_merge import confirm_track_group_candidate
     from backend.domains.playback.track_groups import load_track_group_keys
 
+    run_migrations()
     conn = get_db(readonly=False)
     try:
         conn.execute("DELETE FROM track_group_members WHERE group_id IN (920, 921)")
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id IN (920, 921)")
         conn.execute("DELETE FROM track_groups WHERE group_id IN (920, 921)")
         conn.commit()
     finally:
@@ -53,6 +56,16 @@ def test_confirm_track_candidate_creates_l3_group_and_rebuilds(isolated_seed_db)
 
     conn = get_db(readonly=True)
     try:
+        override = conn.execute(
+            """SELECT action, reason FROM track_merge_overrides
+                WHERE scope='composition'
+                  AND MIN(left_l1_id, right_l1_id)=920
+                  AND MAX(left_l1_id, right_l1_id)=926"""
+        ).fetchone()
+        assert (override["action"], override["reason"]) == (
+            "force_merge",
+            "manual_candidate_confirmation",
+        )
         l2_keys = load_track_group_keys(conn, merge_level=2)
         assert 926 not in set(l2_keys["track_id"])
         l3_keys = load_track_group_keys(conn, merge_level=3)
@@ -112,7 +125,9 @@ def test_confirm_track_candidate_unifies_existing_same_scope_groups(isolated_see
 def test_saved_track_group_management_uses_stable_track_ids(isolated_seed_db):
     """The shared saved-groups UI can list and maintain track groups by stable IDs."""
     from backend.core.db import get_db
+    from backend.core.migrations import run_migrations
     from backend.core.version_merge import (
+        clear_track_merge_override,
         delete_track_group,
         get_all_track_groups,
         get_track_group_members,
@@ -120,15 +135,50 @@ def test_saved_track_group_management_uses_stable_track_ids(isolated_seed_db):
         update_track_group_members,
     )
 
+    run_migrations()
     conn = get_db(readonly=False)
     try:
+        conflicting_group_ids = [
+            int(row["group_id"])
+            for row in conn.execute(
+                """SELECT DISTINCT groups.group_id
+                     FROM track_groups groups
+                     JOIN track_group_l1_members members
+                       ON members.group_id=groups.group_id
+                    WHERE groups.scope='composition'
+                      AND members.l1_id IN (920, 925, 926)"""
+            ).fetchall()
+        ]
+        for conflicting_group_id in conflicting_group_ids:
+            conn.execute(
+                "UPDATE track_groups SET parent_group_id=NULL WHERE parent_group_id=?",
+                (conflicting_group_id,),
+            )
+            conn.execute(
+                "DELETE FROM track_group_l1_members WHERE group_id=?",
+                (conflicting_group_id,),
+            )
+            conn.execute(
+                "UPDATE track_groups SET group_status='archived' WHERE group_id=?",
+                (conflicting_group_id,),
+            )
         conn.execute("DELETE FROM track_group_members WHERE group_id = 9930")
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id = 9930")
         conn.execute("DELETE FROM track_groups WHERE group_id = 9930")
         conn.execute(
-            "INSERT INTO track_groups (group_id, canonical_name, primary_track_id, scope, is_manual) VALUES (9930, 'UI CRUD group', 920, 'composition', 0)"
+            """INSERT INTO track_groups(
+                   group_id, canonical_name, primary_track_id, primary_l1_id,
+                   scope, is_manual, group_status, automatic_artist_id,
+                   automatic_title_key, automatic_version_tag,
+                   identity_policy_version
+               ) VALUES (
+                   9930, 'UI CRUD group', 920, 920, 'composition', 0, 'active',
+                   901, 'ui crud group', 'ordinary', 'test_composition_policy_v1'
+               )"""
         )
         conn.executemany(
-            "INSERT INTO track_group_members(group_id, track_id) VALUES (9930, ?)", [(920,), (926,)]
+            "INSERT INTO track_group_l1_members(group_id, l1_id) VALUES (9930, ?)",
+            [(920,), (926,)],
         )
         conn.commit()
     finally:
@@ -147,6 +197,8 @@ def test_saved_track_group_management_uses_stable_track_ids(isolated_seed_db):
     groups = get_all_track_groups().set_index("group_id")
     assert int(groups.loc[9930, "member_count"]) == 2
     assert groups.loc[9930, "scope"] == "composition"
+    assert groups.loc[9930, "identity_policy_version"] == "test_composition_policy_v1"
+    assert groups.loc[9930, "automatic_version_tag"] == "ordinary"
     assert int(groups.loc[9930, "primary_album_id"]) == 920
     assert groups.loc[9930, "artist_name"] == "Fixture Artist Alpha"
     members = get_track_group_members(9930).set_index("track_id")
@@ -160,8 +212,43 @@ def test_saved_track_group_management_uses_stable_track_ids(isolated_seed_db):
     assert set(members.index) == {925, 926}
     assert int(members.loc[926, "is_primary"]) == 1
     assert int(get_all_track_groups().set_index("group_id").loc[9930, "is_manual"]) == 1
+    conn = get_db(readonly=True)
+    try:
+        overrides = conn.execute(
+            """SELECT MIN(left_l1_id, right_l1_id) AS left_l1_id,
+                      MAX(left_l1_id, right_l1_id) AS right_l1_id,
+                      action, reason
+                 FROM track_merge_overrides
+                WHERE scope='composition'
+                  AND left_l1_id IN (920, 925, 926)
+                  AND right_l1_id IN (920, 925, 926)
+                ORDER BY left_l1_id, right_l1_id"""
+        ).fetchall()
+        assert [tuple(row) for row in overrides] == [
+            (920, 925, "force_separate", "manual_member_removal"),
+            (920, 926, "force_separate", "manual_member_removal"),
+            (925, 926, "force_merge", "manual_member_addition"),
+        ]
+    finally:
+        conn.close()
     assert delete_track_group(9930) is True
     assert 9930 not in set(get_all_track_groups()["group_id"])
+    conn = get_db(readonly=True)
+    try:
+        deleted_pair = conn.execute(
+            """SELECT action, reason FROM track_merge_overrides
+                WHERE scope='composition'
+                  AND MIN(left_l1_id, right_l1_id)=925
+                  AND MAX(left_l1_id, right_l1_id)=926"""
+        ).fetchone()
+        assert (deleted_pair["action"], deleted_pair["reason"]) == (
+            "force_separate",
+            "manual_group_deletion",
+        )
+    finally:
+        conn.close()
+    assert clear_track_merge_override("composition", 925, 926) is True
+    assert clear_track_merge_override("composition", 925, 926) is False
 
 
 def test_manual_candidate_search_and_confirmation_use_one_spotify_owner(isolated_seed_db):

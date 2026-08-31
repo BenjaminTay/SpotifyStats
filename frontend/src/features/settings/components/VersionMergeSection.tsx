@@ -318,7 +318,7 @@ function TrackAutoDetection({
       <WorkflowBlock
         number={2}
         title="审核候选结果"
-        helper="自动检测只提供候选；每一组仍需明确确认或忽略。"
+        helper="高置信关系由治理任务自动处理；这里只审核需要人工判断的异常候选。"
       >
         {candidates === null ? (
           <EmptyState text="尚未开始检测。" />
@@ -733,6 +733,7 @@ function TrackSavedGroupCard({
       subtitle={`${group.artist_name ? `${displayName(group.artist_name)} · ` : ""}${group.member_count} 个成员`}
       scope={group.scope === "recording" ? "L2 同一录音" : "L3 同一作品"}
       manual={Boolean(group.is_manual)}
+      policy={group.identity_policy_version}
       open={open}
       onToggle={load}
       confirmDelete={confirmDelete}
@@ -860,6 +861,7 @@ function SavedGroupShell({
   subtitle,
   scope,
   manual,
+  policy,
   open,
   onToggle,
   confirmDelete,
@@ -873,6 +875,7 @@ function SavedGroupShell({
   subtitle: string;
   scope: string;
   manual: boolean;
+  policy?: string | null;
   open: boolean;
   onToggle: () => void;
   confirmDelete: boolean;
@@ -894,7 +897,14 @@ function SavedGroupShell({
               {displayName(title)}
             </p>
             <Badge variant="secondary">{scope}</Badge>
-            <Badge variant="outline">{manual ? "手动" : "自动"}</Badge>
+            <Badge variant="outline">
+              {manual ? "人工治理" : "机器归并"}
+            </Badge>
+            {policy && (
+              <Badge variant="outline" title="内部归并策略版本">
+                策略 {policy}
+              </Badge>
+            )}
           </div>
           <p className="mt-1 truncate text-[11px] text-muted-foreground">
             {subtitle}

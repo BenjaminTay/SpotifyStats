@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Plan or atomically apply machine-first L2 governance.
+"""Plan or atomically apply machine-first version governance.
 
 Dry-run is the default and never writes the source database. Apply mode makes
 an online SQLite backup, performs only strongly evidenced L1 corrections,
-reconciles L2 recording groups, merges catalog-proven Album Projects, records
-an audit run, and optionally rebuilds all four exact music-search variants.
+reconciles L2 recording and L3 composition groups, maintains album relations,
+records an audit run, and rebuilds all four exact music-search variants.
 """
 
 from __future__ import annotations
@@ -32,6 +32,11 @@ from backend.domains.metadata.l2_track_auto_merge import (  # noqa: E402
     apply_l2_track_merge_plan,
     build_l2_track_merge_plan,
 )
+from backend.domains.metadata.l3_track_auto_merge import (  # noqa: E402
+    L3_AUTO_MERGE_POLICY_VERSION,
+    apply_l3_track_merge_plan,
+    build_l3_track_merge_plan,
+)
 from backend.domains.metadata.track_identity import (  # noqa: E402
     bump_track_identity_revision,
     validate_track_identity_invariants,
@@ -46,6 +51,11 @@ from backend.domains.music_search.context import (  # noqa: E402
 from backend.domains.music_search.year_end_projection import (  # noqa: E402
     YEAR_END_PROJECTION_BUILDER_VERSION,
 )
+from backend.domains.playback.album_composition_auto_merge import (  # noqa: E402
+    ALBUM_COMPOSITION_POLICY_VERSION,
+    apply_album_composition_plan,
+    plan_album_composition_merges,
+)
 from backend.domains.playback.album_project_auto_merge import (  # noqa: E402
     ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION,
     apply_album_project_auto_merge_plan,
@@ -58,14 +68,16 @@ from backend.services.music_search_maintenance_service import (  # noqa: E402
 )
 
 GOVERNANCE_POLICY_VERSION = (
-    f"l2_governance_v1:{L2_AUTO_MERGE_POLICY_VERSION}:{ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION}"
+    f"version_governance_v2:{L2_AUTO_MERGE_POLICY_VERSION}:"
+    f"{L3_AUTO_MERGE_POLICY_VERSION}:{ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION}:"
+    f"{ALBUM_COMPOSITION_POLICY_VERSION}"
 )
 RAW_FACT_TABLES = ("plays", "tracks", "track_artists")
 EXPECTED_SEARCH_VARIANTS = {(2, 0), (2, 1), (3, 0), (3, 1)}
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Plan or apply automatic L2 governance")
+    parser = argparse.ArgumentParser(description="Plan or apply automatic version governance")
     parser.add_argument("--db-path", type=Path, default=Path(db_mod.DB_PATH))
     parser.add_argument("--apply", action="store_true", help="Apply the current plan")
     parser.add_argument(
@@ -96,10 +108,11 @@ def _connect(path: Path, *, readonly: bool) -> sqlite3.Connection:
 def _online_backup(source_path: Path, backup_dir: Path) -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    target = backup_dir / f"spotify_stats_{timestamp}_before-l2-governance.db"
+    target = backup_dir / f"spotify_stats_{timestamp}_before-version-governance.db"
     if target.exists():
         target = (
-            backup_dir / f"spotify_stats_{timestamp}_{uuid.uuid4().hex[:8]}_before-l2-governance.db"
+            backup_dir
+            / f"spotify_stats_{timestamp}_{uuid.uuid4().hex[:8]}_before-version-governance.db"
         )
     # Open through SQLite (not a file copy) so committed WAL pages are included.
     # Read-write mode is required for WAL databases that need sidecar creation;
@@ -157,6 +170,17 @@ def _album_plan_json(plan: Any) -> dict[str, Any]:
         "strong_evidence_project_count": plan.strong_evidence_project_count,
         "skipped_reason_counts": dict(plan.skipped_reason_counts),
         "candidates": [asdict(candidate) for candidate in plan.candidates],
+    }
+
+
+def _album_composition_plan_json(plan: Any) -> dict[str, Any]:
+    return {
+        "policy_version": plan.policy_version,
+        "candidate_count": len(plan.candidates),
+        "archive_group_ids": list(plan.archive_group_ids),
+        "scanned_project_count": plan.scanned_project_count,
+        "skipped_reason_counts": dict(plan.skipped_reason_counts),
+        "candidates": [candidate.to_dict() for candidate in plan.candidates],
     }
 
 
@@ -236,7 +260,55 @@ def _plan_on_clone(source: sqlite3.Connection, *, apply_l1_safe_splits: bool) ->
             (not apply_l1_safe_splits or convergence["l1_operation_count"] == 0)
             and not convergence["l2_changed"]
         )
+        l2_digest_before_l3 = _l2_relationship_digest(clone)
+        composition_plan = build_l3_track_merge_plan(clone)
+        composition_report = apply_l3_track_merge_plan(
+            clone,
+            composition_plan,
+            commit=False,
+            bump_revision=False,
+        )
+        l2_digest_after_l3 = _l2_relationship_digest(clone)
+        l2_preserved_by_l3 = l2_digest_before_l3 == l2_digest_after_l3
+        convergence_composition_plan = build_l3_track_merge_plan(clone)
+        convergence["l3_changed"] = bool(convergence_composition_plan.get("changed"))
+        convergence["l2_preserved_by_l3"] = l2_preserved_by_l3
+
         album_plan = plan_album_project_auto_merges(clone)
+        album_report = apply_album_project_auto_merge_plan(
+            clone,
+            album_plan,
+            commit=False,
+            ensure_schema=False,
+        )
+        album_composition_plan = plan_album_composition_merges(clone)
+        album_composition_report = apply_album_composition_plan(
+            clone,
+            album_composition_plan,
+            commit=False,
+            ensure_schema=False,
+        )
+        if (
+            not album_plan.candidates
+            and not album_composition_report.requires_downstream_refresh
+            and (
+                any(bool(item["report"].get("changed")) for item in l2_rounds)
+                or bool(composition_report.get("changed"))
+                or bool(all_operations)
+            )
+        ):
+            rebuild_album_projects(clone, commit=False, ensure_schema=False)
+        convergence_album_composition = plan_album_composition_merges(clone)
+        convergence["album_l3_changed"] = bool(
+            any(item.action != "unchanged" for item in convergence_album_composition.candidates)
+            or convergence_album_composition.archive_group_ids
+        )
+        converged = bool(
+            converged
+            and l2_preserved_by_l3
+            and not convergence["l3_changed"]
+            and not convergence["album_l3_changed"]
+        )
         relation_gate = _relation_gate(clone, before_raw, before_identity)
         return {
             "l1": {
@@ -269,6 +341,25 @@ def _plan_on_clone(source: sqlite3.Connection, *, apply_l1_safe_splits: bool) ->
                 "convergence": convergence,
             },
             "album": _album_plan_json(album_plan),
+            "album_apply_simulation": asdict(album_report),
+            "composition": {
+                **composition_plan,
+                "apply_simulation": composition_report,
+                "l2_relationship_digest_before": l2_digest_before_l3,
+                "l2_relationship_digest_after": l2_digest_after_l3,
+                "l2_relationships_preserved": l2_preserved_by_l3,
+                "convergence": {
+                    "changed": bool(convergence_composition_plan.get("changed")),
+                    "groups_to_archive": len(
+                        convergence_composition_plan.get("archived_group_ids", [])
+                    ),
+                },
+            },
+            "album_composition": {
+                **_album_composition_plan_json(album_composition_plan),
+                "apply_simulation": album_composition_report.to_dict(),
+                "convergence": _album_composition_plan_json(convergence_album_composition),
+            },
         }
     finally:
         clone.rollback()
@@ -378,6 +469,7 @@ def _recording_group_state(
     *,
     group_id: int | None = None,
     member_l1_ids: list[int] | None = None,
+    scope: str = "recording",
 ) -> dict[str, Any]:
     resolved_group_id = int(group_id) if group_id is not None else None
     if resolved_group_id is None and member_l1_ids:
@@ -388,12 +480,12 @@ def _recording_group_state(
                   FROM track_groups groups
                   JOIN track_group_l1_members members
                     ON members.group_id=groups.group_id
-                 WHERE groups.scope='recording' AND groups.group_status='active'
+                 WHERE groups.scope=? AND groups.group_status='active'
                  GROUP BY groups.group_id
                 HAVING COUNT(DISTINCT members.l1_id)=?
                    AND SUM(members.l1_id IN ({placeholders}))=?
                  ORDER BY groups.group_id LIMIT 1""",
-            (len(members), *members, len(members)),
+            (scope, len(members), *members, len(members)),
         ).fetchone()
         resolved_group_id = int(row[0]) if row is not None else None
     if resolved_group_id is None:
@@ -419,15 +511,17 @@ def _recording_group_state(
     return {"exists": True, **dict(group), "member_l1_ids": members}
 
 
-def _candidate_state(conn: sqlite3.Connection, left: int, right: int) -> dict[str, Any]:
+def _candidate_state(
+    conn: sqlite3.Connection, left: int, right: int, *, scope: str = "recording"
+) -> dict[str, Any]:
     row = conn.execute(
         """SELECT candidate_id, scope, original_l1_id, candidate_l1_id,
                   confidence, evidence_json, status
              FROM track_group_candidates
-            WHERE scope='recording'
+            WHERE scope=?
               AND MIN(original_l1_id, candidate_l1_id)=?
               AND MAX(original_l1_id, candidate_l1_id)=?""",
-        (min(left, right), max(left, right)),
+        (scope, min(left, right), max(left, right)),
     ).fetchone()
     return {"exists": False} if row is None else {"exists": True, **dict(row)}
 
@@ -466,6 +560,60 @@ def _album_candidate_state(conn: sqlite3.Connection, candidate: Any) -> dict[str
         "projects": projects,
         "memberships": memberships,
         "external_identity": dict(external) if external is not None else None,
+    }
+
+
+def _album_composition_state(
+    conn: sqlite3.Connection,
+    *,
+    group_id: int | None = None,
+    album_ids: tuple[int, ...] | list[int] = (),
+) -> dict[str, Any]:
+    albums = sorted({int(value) for value in album_ids})
+    resolved_group_id = int(group_id) if group_id is not None else None
+    if resolved_group_id is None and albums:
+        placeholders = ",".join("?" for _ in albums)
+        row = conn.execute(
+            f"""SELECT groups.group_id
+                  FROM release_groups groups
+                  JOIN release_group_members members ON members.group_id=groups.group_id
+                 WHERE groups.scope='composition'
+                 GROUP BY groups.group_id
+                HAVING COUNT(DISTINCT members.album_id)=?
+                   AND SUM(members.album_id IN ({placeholders}))=?
+                 ORDER BY groups.group_id LIMIT 1""",
+            (len(albums), *albums, len(albums)),
+        ).fetchone()
+        resolved_group_id = int(row[0]) if row is not None else None
+    if resolved_group_id is None:
+        return {"exists": False, "album_ids": albums}
+    group = conn.execute(
+        """SELECT group_id, canonical_name, artist_id, primary_album_id,
+                  scope, parent_group_id, is_manual
+             FROM release_groups WHERE group_id=?""",
+        (resolved_group_id,),
+    ).fetchone()
+    if group is None:
+        return {"exists": False, "group_id": resolved_group_id, "album_ids": albums}
+    members = [
+        int(row[0])
+        for row in conn.execute(
+            "SELECT album_id FROM release_group_members WHERE group_id=? ORDER BY album_id",
+            (resolved_group_id,),
+        ).fetchall()
+    ]
+    children = [
+        int(row[0])
+        for row in conn.execute(
+            "SELECT group_id FROM release_groups WHERE parent_group_id=? ORDER BY group_id",
+            (resolved_group_id,),
+        ).fetchall()
+    ]
+    return {
+        "exists": True,
+        **dict(group),
+        "album_ids": members,
+        "child_release_group_ids": children,
     }
 
 
@@ -523,6 +671,214 @@ def _recording_group_health(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
+def _composition_group_health(conn: sqlite3.Connection) -> dict[str, int]:
+    overlap = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM (
+                   SELECT members.l1_id
+                     FROM track_group_l1_members members
+                     JOIN track_groups groups ON groups.group_id=members.group_id
+                    WHERE groups.scope='composition' AND groups.group_status='active'
+                    GROUP BY members.l1_id
+                   HAVING COUNT(DISTINCT groups.group_id)>1
+               )"""
+        ).fetchone()[0]
+    )
+    too_small = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM (
+                   SELECT groups.group_id
+                     FROM track_groups groups
+                     LEFT JOIN track_group_l1_members members
+                       ON members.group_id=groups.group_id
+                    WHERE groups.scope='composition' AND groups.group_status='active'
+                    GROUP BY groups.group_id
+                   HAVING COUNT(DISTINCT members.l1_id)<2
+               )"""
+        ).fetchone()[0]
+    )
+    invalid_primary = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM track_groups groups
+                WHERE groups.scope='composition' AND groups.group_status='active'
+                  AND (groups.primary_l1_id IS NULL OR NOT EXISTS (
+                      SELECT 1 FROM track_group_l1_members members
+                       WHERE members.group_id=groups.group_id
+                         AND members.l1_id=groups.primary_l1_id
+                  ))"""
+        ).fetchone()[0]
+    )
+    invalid_recording_parent = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM track_groups child
+                LEFT JOIN track_groups parent ON parent.group_id=child.parent_group_id
+               WHERE child.scope='recording' AND child.group_status='active'
+                 AND child.parent_group_id IS NOT NULL
+                 AND (parent.group_id IS NULL OR parent.scope!='composition'
+                      OR parent.group_status!='active')"""
+        ).fetchone()[0]
+    )
+    composition_parent_count = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM track_groups
+                WHERE scope='composition' AND group_status='active'
+                  AND parent_group_id IS NOT NULL"""
+        ).fetchone()[0]
+    )
+    incomplete_recording_parent_membership = int(
+        conn.execute(
+            """SELECT COUNT(*)
+                 FROM track_groups child
+                 JOIN track_group_l1_members child_member
+                   ON child_member.group_id=child.group_id
+                 LEFT JOIN track_group_l1_members parent_member
+                   ON parent_member.group_id=child.parent_group_id
+                  AND parent_member.l1_id=child_member.l1_id
+                WHERE child.scope='recording' AND child.group_status='active'
+                  AND child.parent_group_id IS NOT NULL
+                  AND parent_member.l1_id IS NULL"""
+        ).fetchone()[0]
+    )
+    parent_cycle_count = int(
+        conn.execute(
+            """WITH RECURSIVE chain(origin_group_id, current_group_id) AS (
+                   SELECT group_id, parent_group_id
+                     FROM track_groups WHERE parent_group_id IS NOT NULL
+                   UNION
+                   SELECT chain.origin_group_id, groups.parent_group_id
+                     FROM chain
+                     JOIN track_groups groups ON groups.group_id=chain.current_group_id
+                    WHERE groups.parent_group_id IS NOT NULL
+               )
+               SELECT COUNT(DISTINCT origin_group_id)
+                 FROM chain WHERE origin_group_id=current_group_id"""
+        ).fetchone()[0]
+    )
+    return {
+        "member_overlap_count": overlap,
+        "undersized_active_group_count": too_small,
+        "invalid_primary_count": invalid_primary,
+        "invalid_recording_parent_count": invalid_recording_parent,
+        "composition_parent_count": composition_parent_count,
+        "incomplete_recording_parent_membership_count": incomplete_recording_parent_membership,
+        "parent_cycle_count": parent_cycle_count,
+    }
+
+
+def _l2_relationship_digest(conn: sqlite3.Connection) -> str:
+    """Hash only L2 semantics; composition parent pointers are intentionally excluded."""
+
+    payload = {
+        "groups": _rows_as_dicts(
+            conn.execute(
+                """SELECT group_id, canonical_name, primary_track_id, primary_l1_id,
+                          is_manual, group_status, automatic_spotify_track_id,
+                          automatic_artist_id, automatic_title_key,
+                          automatic_version_tag, identity_policy_version
+                     FROM track_groups
+                    WHERE scope='recording' AND group_status='active'
+                    ORDER BY group_id"""
+            ).fetchall()
+        ),
+        "members": _rows_as_dicts(
+            conn.execute(
+                """SELECT members.group_id, members.l1_id
+                     FROM track_group_l1_members members
+                     JOIN track_groups groups ON groups.group_id=members.group_id
+                    WHERE groups.scope='recording' AND groups.group_status='active'
+                    ORDER BY members.group_id, members.l1_id"""
+            ).fetchall()
+        ),
+        "candidates": _rows_as_dicts(
+            conn.execute(
+                """SELECT original_l1_id, candidate_l1_id, confidence,
+                          evidence_json, status
+                     FROM track_group_candidates
+                    WHERE scope='recording'
+                    ORDER BY MIN(original_l1_id, candidate_l1_id),
+                             MAX(original_l1_id, candidate_l1_id)"""
+            ).fetchall()
+        ),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def _album_composition_health(conn: sqlite3.Connection) -> dict[str, int]:
+    overlap = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM (
+                   SELECT members.album_id
+                     FROM release_group_members members
+                     JOIN release_groups groups ON groups.group_id=members.group_id
+                    WHERE groups.scope='composition'
+                    GROUP BY members.album_id
+                   HAVING COUNT(DISTINCT groups.group_id)>1
+               )"""
+        ).fetchone()[0]
+    )
+    too_small = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM (
+                   SELECT groups.group_id
+                     FROM release_groups groups
+                     LEFT JOIN release_group_members members
+                       ON members.group_id=groups.group_id
+                    WHERE groups.scope='composition'
+                    GROUP BY groups.group_id
+                   HAVING COUNT(DISTINCT members.album_id)<2
+               )"""
+        ).fetchone()[0]
+    )
+    invalid_primary = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM release_groups groups
+                WHERE groups.scope='composition'
+                  AND (groups.primary_album_id IS NULL OR NOT EXISTS (
+                      SELECT 1 FROM release_group_members members
+                       WHERE members.group_id=groups.group_id
+                         AND members.album_id=groups.primary_album_id
+                  ))"""
+        ).fetchone()[0]
+    )
+    invalid_release_parent = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM release_groups child
+                LEFT JOIN release_groups parent ON parent.group_id=child.parent_group_id
+               WHERE child.scope='release' AND child.parent_group_id IS NOT NULL
+                 AND (parent.group_id IS NULL OR parent.scope!='composition')"""
+        ).fetchone()[0]
+    )
+    composition_parent_count = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM release_groups
+                WHERE scope='composition' AND parent_group_id IS NOT NULL"""
+        ).fetchone()[0]
+    )
+    incomplete_child_membership = int(
+        conn.execute(
+            """SELECT COUNT(*)
+                 FROM release_groups child
+                 JOIN release_group_members child_member
+                   ON child_member.group_id=child.group_id
+                 LEFT JOIN release_group_members parent_member
+                   ON parent_member.group_id=child.parent_group_id
+                  AND parent_member.album_id=child_member.album_id
+                WHERE child.scope='release' AND child.parent_group_id IS NOT NULL
+                  AND parent_member.album_id IS NULL"""
+        ).fetchone()[0]
+    )
+    return {
+        "member_overlap_count": overlap,
+        "undersized_group_count": too_small,
+        "invalid_primary_count": invalid_primary,
+        "invalid_release_parent_count": invalid_release_parent,
+        "composition_parent_count": composition_parent_count,
+        "incomplete_child_membership_count": incomplete_child_membership,
+    }
+
+
 def _relation_gate(
     conn: sqlite3.Connection,
     before_raw: dict[str, dict[str, Any]],
@@ -543,6 +899,7 @@ def _relation_gate(
         "source_link_orphan_count",
         "representative_missing_count",
         "external_owner_orphan_count",
+        "active_group_noncanonical_member_count",
         "active_group_too_small_count",
         "active_group_invalid_primary_count",
     }
@@ -552,6 +909,8 @@ def _relation_gate(
         if int(identity.get(key, 0)) > 0
     }
     recording = _recording_group_health(conn)
+    composition = _composition_group_health(conn)
+    album_composition = _album_composition_health(conn)
     integrity = str(conn.execute("PRAGMA integrity_check").fetchone()[0])
     foreign_key_issues = len(conn.execute("PRAGMA foreign_key_check").fetchall())
     passed = bool(
@@ -559,6 +918,8 @@ def _relation_gate(
         and not hard_identity_issues
         and not identity_regressions
         and not any(recording.values())
+        and not any(composition.values())
+        and not any(album_composition.values())
         and integrity == "ok"
         and foreign_key_issues == 0
     )
@@ -572,6 +933,8 @@ def _relation_gate(
         "identity_regressions": identity_regressions,
         "hard_identity_issues": hard_identity_issues,
         "recording_groups": recording,
+        "composition_groups": composition,
+        "album_composition_groups": album_composition,
         "integrity_check": integrity,
         "foreign_key_issue_count": foreign_key_issues,
     }
@@ -634,6 +997,8 @@ def _derived_database_state(conn: sqlite3.Connection) -> dict[str, Any]:
             and item["active_filter_fingerprint"] == item["target_filter_fingerprint"]
             and item["filter_fingerprint"] == item["active_filter_fingerprint"]
             and int(item["entity_count"] or 0) > 0
+            and int(item["year_count"] or 0) > 0
+            and int(item["projection_row_count"] or 0) > 0
             for item in variants
         )
     )
@@ -769,6 +1134,102 @@ def _apply_l2_round(
     return plan, report
 
 
+def _apply_l3_round(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    plan = build_l3_track_merge_plan(conn)
+    group_before = {
+        index: _recording_group_state(
+            conn,
+            group_id=group.get("target_group_id"),
+            member_l1_ids=group.get("member_l1_ids"),
+            scope="composition",
+        )
+        for index, group in enumerate(plan["groups"])
+    }
+    archived_before = {
+        int(group_id): _recording_group_state(conn, group_id=int(group_id), scope="composition")
+        for group_id in plan["archived_group_ids"]
+    }
+    decision_edges = [*plan["accepted_edges"], *plan["blocked_edges"]]
+    candidate_before = {
+        index: _candidate_state(
+            conn,
+            int(edge["left_l1_id"]),
+            int(edge["right_l1_id"]),
+            scope="composition",
+        )
+        for index, edge in enumerate(decision_edges)
+    }
+    report = apply_l3_track_merge_plan(
+        conn,
+        plan,
+        commit=False,
+        bump_revision=False,
+    )
+    if report.get("changed"):
+        for index, group in enumerate(plan["groups"]):
+            if group["action"] == "unchanged":
+                continue
+            after = _recording_group_state(
+                conn,
+                group_id=group.get("target_group_id"),
+                member_l1_ids=group["member_l1_ids"],
+                scope="composition",
+            )
+            _insert_event(
+                conn,
+                run_id=run_id,
+                entity_type="composition_group",
+                action=str(group["action"]),
+                survivor_id=int(after["group_id"]) if after.get("exists") else None,
+                affected_ids=[int(value) for value in group["member_l1_ids"]],
+                before=group_before[index],
+                after=after,
+                evidence={
+                    "policy_version": plan["policy_version"],
+                    "title_key": group["base_title"],
+                    "relation_tags": group["relation_tags"],
+                    "recording_group_ids": group["recording_group_ids"],
+                    "evidence_types": group["evidence_types"],
+                },
+            )
+        for group_id in plan["archived_group_ids"]:
+            _insert_event(
+                conn,
+                run_id=run_id,
+                entity_type="composition_group",
+                action="archive",
+                survivor_id=int(group_id),
+                affected_ids=[],
+                before=archived_before[int(group_id)],
+                after=_recording_group_state(conn, group_id=int(group_id), scope="composition"),
+                evidence={"policy_version": plan["policy_version"]},
+            )
+    for index, edge in enumerate(decision_edges):
+        left = int(edge["left_l1_id"])
+        right = int(edge["right_l1_id"])
+        after = _candidate_state(conn, left, right, scope="composition")
+        before = candidate_before[index]
+        if before == after:
+            continue
+        status = str(after.get("status") or edge.get("status") or "accepted")
+        _insert_event(
+            conn,
+            run_id=run_id,
+            entity_type="composition_candidate",
+            action=f"decision_{status}",
+            survivor_id=None,
+            affected_ids=[left, right],
+            before=before,
+            after=after,
+            evidence={"policy_version": plan["policy_version"], **edge},
+        )
+    return plan, report
+
+
 def _aggregate_l1_rounds(rounds: list[dict[str, Any]]) -> dict[str, Any]:
     reports = [dict(item["report"]) for item in rounds]
     operation_count = sum(int(report.get("operation_count", 0)) for report in reports)
@@ -843,7 +1304,7 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
     conn.execute(
         """INSERT INTO version_governance_runs(
                run_id, scope, policy_version, status, dry_run, summary_json
-           ) VALUES (?, 'l1+l2+album_project', ?, 'running', 0, ?)""",
+           ) VALUES (?, 'l1+l2+l3+album_project', ?, 'running', 0, ?)""",
         (
             run_id,
             GOVERNANCE_POLICY_VERSION,
@@ -912,6 +1373,25 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
         l1_report = _aggregate_l1_rounds(l1_rounds)
         track_report = _aggregate_l2_rounds(l2_rounds)
 
+        l2_digest_before_l3 = _l2_relationship_digest(conn)
+        composition_plan, composition_report = _apply_l3_round(conn, run_id=run_id)
+        l2_digest_after_l3 = _l2_relationship_digest(conn)
+        l2_preserved_by_l3 = l2_digest_before_l3 == l2_digest_after_l3
+        if not l2_preserved_by_l3:
+            raise RuntimeError("L3 reconciliation changed L2 recording semantics")
+        convergence_composition_plan = build_l3_track_merge_plan(conn)
+        convergence.update(
+            {
+                "l3_changed": bool(convergence_composition_plan.get("changed")),
+                "l3_groups_to_archive": len(
+                    convergence_composition_plan.get("archived_group_ids", [])
+                ),
+                "l2_preserved_by_l3": True,
+            }
+        )
+        if convergence["l3_changed"]:
+            raise RuntimeError(f"L3 governance did not converge: {convergence}")
+
         album_plan = plan_album_project_auto_merges(conn)
         album_before = [
             _album_candidate_state(conn, candidate) for candidate in album_plan.candidates
@@ -923,11 +1403,6 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
             ensure_schema=False,
         )
         forced_album_rebuild = False
-        if not album_plan.candidates and (
-            track_report.get("changed") or int(l1_report.get("operation_count", 0)) > 0
-        ):
-            rebuild_album_projects(conn, commit=False, ensure_schema=False)
-            forced_album_rebuild = True
         for index, candidate in enumerate(album_plan.candidates):
             _insert_event(
                 conn,
@@ -941,8 +1416,85 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
                 evidence=asdict(candidate),
             )
 
+        album_composition_plan = plan_album_composition_merges(conn)
+        album_composition_before = [
+            _album_composition_state(
+                conn,
+                group_id=album_composition_candidate.existing_group_id,
+                album_ids=album_composition_candidate.album_ids,
+            )
+            for album_composition_candidate in album_composition_plan.candidates
+        ]
+        album_composition_archived_before = {
+            int(group_id): _album_composition_state(conn, group_id=int(group_id))
+            for group_id in album_composition_plan.archive_group_ids
+        }
+        album_composition_report = apply_album_composition_plan(
+            conn,
+            album_composition_plan,
+            commit=False,
+            ensure_schema=False,
+        )
+        for index, album_composition_candidate in enumerate(
+            album_composition_plan.candidates
+        ):
+            if album_composition_candidate.action == "unchanged":
+                continue
+            after = _album_composition_state(
+                conn, album_ids=album_composition_candidate.album_ids
+            )
+            _insert_event(
+                conn,
+                run_id=run_id,
+                entity_type="album_composition",
+                action=str(album_composition_candidate.action),
+                survivor_id=int(after["group_id"]) if after.get("exists") else None,
+                affected_ids=[
+                    int(value) for value in album_composition_candidate.album_ids
+                ],
+                before=album_composition_before[index],
+                after=after,
+                evidence=album_composition_candidate.to_dict(),
+            )
+        for group_id in album_composition_plan.archive_group_ids:
+            _insert_event(
+                conn,
+                run_id=run_id,
+                entity_type="album_composition",
+                action="archive",
+                survivor_id=int(group_id),
+                affected_ids=[],
+                before=album_composition_archived_before[int(group_id)],
+                after=_album_composition_state(conn, group_id=int(group_id)),
+                evidence={
+                    "policy_version": album_composition_plan.policy_version,
+                    "automatic_ownership": True,
+                },
+            )
+        if (
+            not album_plan.candidates
+            and not album_composition_report.requires_downstream_refresh
+            and (
+                track_report.get("changed")
+                or composition_report.get("changed")
+                or int(l1_report.get("operation_count", 0)) > 0
+            )
+        ):
+            rebuild_album_projects(conn, commit=False, ensure_schema=False)
+            forced_album_rebuild = True
+        convergence_album_composition = plan_album_composition_merges(conn)
+        album_l3_changed = bool(
+            any(item.action != "unchanged" for item in convergence_album_composition.candidates)
+            or convergence_album_composition.archive_group_ids
+        )
+        convergence["album_l3_changed"] = album_l3_changed
+        if album_l3_changed:
+            raise RuntimeError(f"Album L3 governance did not converge: {convergence}")
+
         semantic_changed = bool(
-            int(l1_report.get("operation_count", 0)) > 0 or track_report.get("changed")
+            int(l1_report.get("operation_count", 0)) > 0
+            or track_report.get("changed")
+            or composition_report.get("changed")
         )
         if semantic_changed:
             revision_after = bump_track_identity_revision(conn)
@@ -962,8 +1514,28 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
             "l1": l1_report,
             "l1_audit": convergence_l1_plan.get("summary", {}),
             "track": track_report,
+            "composition": {
+                **composition_report,
+                "plan": {
+                    "policy_version": composition_plan["policy_version"],
+                    "desired_group_count": composition_plan["desired_group_count"],
+                    "groups_to_create": composition_plan["groups_to_create"],
+                    "groups_to_update": composition_plan["groups_to_update"],
+                    "groups_to_archive": composition_plan["groups_to_archive"],
+                    "accepted_edge_count": len(composition_plan["accepted_edges"]),
+                    "blocked_edge_count": len(composition_plan["blocked_edges"]),
+                    "warning_reason_counts": composition_plan["warning_reason_counts"],
+                },
+                "l2_relationship_digest_before": l2_digest_before_l3,
+                "l2_relationship_digest_after": l2_digest_after_l3,
+                "l2_relationships_preserved": l2_preserved_by_l3,
+            },
             "convergence": convergence,
             "album": asdict(album_report),
+            "album_composition": {
+                "plan": _album_composition_plan_json(album_composition_plan),
+                "report": album_composition_report.to_dict(),
+            },
             "forced_album_rebuild": forced_album_rebuild,
             "track_identity_revision": {
                 "before": revision_before,
@@ -992,7 +1564,10 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
         conn.commit()
 
         changed = bool(
-            semantic_changed or album_report.requires_downstream_refresh or forced_album_rebuild
+            semantic_changed
+            or album_report.requires_downstream_refresh
+            or album_composition_report.requires_downstream_refresh
+            or forced_album_rebuild
         )
         stage = "derived_maintenance"
         if changed:
@@ -1000,7 +1575,7 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
             invalidate("billboard")
             invalidate("yearly_review")
             mark_music_search_for_rebuild(
-                reason=f"automatic L2 governance run {run_id}",
+                reason=f"automatic version governance run {run_id}",
                 documents=True,
                 revision_kinds=("metadata", "candidate"),
                 conn=conn,
