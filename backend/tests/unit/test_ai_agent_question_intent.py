@@ -34,6 +34,13 @@ def test_detects_trend_question() -> None:
     assert "recent_window" in intent.requested_metrics
 
 
+def test_detects_spaced_six_month_scope() -> None:
+    intent = parse_question_intent("Taylor Swift 和 Olivia Rodrigo 最近 6 个月谁的播放量更高？")
+
+    assert intent.task_type == "comparison"
+    assert intent.time_scope == "last_6_months"
+
+
 def test_detects_late_night_favorite_tracks_question() -> None:
     intent = parse_question_intent("我深夜最爱听什么歌？")
 

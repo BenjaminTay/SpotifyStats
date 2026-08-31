@@ -15,7 +15,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MATRIX_PATH = ROOT / "docs" / "verification" / "2026-07-03-ai-question-test-matrix.md"
+DEFAULT_MATRIX_PATH = ROOT / "docs" / "reports" / "2026-07-03-ai-question-test-matrix.md"
 DEFAULT_GOLDEN_PATH = ROOT / "backend" / "tests" / "fixtures" / "ai_agent_golden_questions.json"
 
 _TABLE_ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|")
@@ -244,9 +244,17 @@ def _poll_task(
 
 def _task_events(backend_url: str, task_id: str) -> dict[str, Any]:
     try:
-        return _http_json("GET", _api_url(backend_url, f"/api/ai/tasks/{task_id}/events"))
+        payload = _http_json(
+            "GET", _api_url(backend_url, f"/api/ai/tasks/{task_id}/events")
+        )
+        trajectory = _http_json(
+            "GET",
+            _api_url(backend_url, f"/api/ai/tasks/{task_id}/trajectory"),
+        )
+        payload["trajectory"] = trajectory.get("events", [])
+        return payload
     except RuntimeError:
-        return {"found": False, "events": [], "tool_calls": []}
+        return {"found": False, "events": [], "tool_calls": [], "trajectory": []}
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -407,6 +415,18 @@ def _grade_case(
         )
     if not answer.strip():
         fail_issues.append("empty answer")
+    if result.get("agent_runtime") != "v2":
+        fail_issues.append(f"expected agent_runtime=v2, got {result.get('agent_runtime')!r}")
+    trajectory = _as_list(events_payload.get("trajectory"))
+    trajectory_types = {
+        str(event.get("event_type") or "")
+        for event in trajectory
+        if isinstance(event, dict)
+    }
+    if not {"turn_started", "turn_ended"}.issubset(trajectory_types):
+        fail_issues.append("missing replayable V2 turn_started/turn_ended trajectory")
+    if "model_message" not in trajectory_types:
+        fail_issues.append("trajectory does not contain model-visible messages")
 
     validation_issues = [str(issue) for issue in _as_list(result.get("validation_issues"))]
     if validation_issues:

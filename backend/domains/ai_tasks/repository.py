@@ -263,3 +263,18 @@ class AiTaskRepository:
             (task_id,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_agent_turn_events(self, task_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """SELECT event_id, task_id, session_id, turn_id, sequence,
+                      step_index, event_type, payload_json, created_at
+               FROM ai_agent_turn_events
+               WHERE task_id = ? ORDER BY event_id ASC""",
+            (task_id,),
+        ).fetchall()
+        events = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = _json_load(item.pop("payload_json", None)) or {}
+            events.append(item)
+        return events

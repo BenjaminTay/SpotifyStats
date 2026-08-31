@@ -73,6 +73,23 @@ export interface AiTaskEventsPayload {
   tool_calls: AiToolCall[]
 }
 
+export interface AiAgentTurnEvent {
+  event_id: number
+  task_id: string
+  session_id?: number | null
+  turn_id: string
+  sequence: number
+  step_index?: number | null
+  event_type: string
+  payload: AiTaskJsonPayload
+  created_at: string
+}
+
+export interface AiAgentTrajectoryPayload {
+  found: boolean
+  events: AiAgentTurnEvent[]
+}
+
 export interface AiTaskCreatePayload {
   task_id: string
   status: AiTaskStatus | string

@@ -2,6 +2,14 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-31 — AI Agent 原生工具调用运行时 V2
+
+- AI 问答从一次性文本规划升级为原生 tool calling 的 Turn/Step 循环：模型观察每次只读工具结果后继续决策，并由步骤数、工具数、回合时间及重复调用保护限制运行范围。
+- 新增结构化 Tool Runtime 和迁移 68 的可重放事件日志；工具结果区分 `ok/empty/partial/error`，大型上下文保持合法 JSON，任务 trajectory 可经只读 API 查询。
+- 年度视觉报告的补充研究阶段复用原生工具调用协议；确定性图表、统计 builder、evidence cards、时间门禁、回答校验和事实审核继续保留。
+- 偏好比较改为单次、时间窗一致的 `compare_entities`：普通比较跳过个人 Billboard 冷构建，并输出窗口周均强度；只有用户明确询问榜单指标时才计算 Billboard，避免重复单实体查询导致超时。
+- 默认 `AI_AGENT_RUNTIME=v2`，保留 `legacy` 显式回退；详细契约见 [`designs/2026-08-31-ai-agent-runtime-v2.md`](designs/2026-08-31-ai-agent-runtime-v2.md)。
+
 ## 2026-08-30 — L2 同名歌曲与 Album Project 别名统一
 
 - L2 产品语义调整为“同歌曲基础版本”：canonical primary artist 与规范化普通歌名相同时由机器直接

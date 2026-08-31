@@ -184,3 +184,46 @@ def test_handler_exception_does_not_overwrite_cancelled_task(
         "stage_started",
         "stage_completed",
     ]
+
+
+def test_start_chat_agent_uses_v2_by_default(monkeypatch: pytest.MonkeyPatch):
+    import backend.core.config as runtime_config
+    from backend.services import ai_agent_v2_service
+
+    captured: dict[str, Any] = {}
+
+    def fake_v2_handler(task_id: str, request: dict[str, Any]) -> None:
+        del task_id, request
+
+    def fake_create_task(**kwargs):
+        captured.update(kwargs)
+        return {"task_id": "v2", "status": "queued", "stage": kwargs["stage"]}
+
+    monkeypatch.setattr(runtime_config, "AI_AGENT_RUNTIME", "v2")
+    monkeypatch.setattr(ai_agent_v2_service, "run_chat_agent_task_v2", fake_v2_handler)
+    monkeypatch.setattr(ai_task_service, "create_task", fake_create_task)
+
+    result = ai_task_service.start_chat_agent_task({"question": "test"})
+
+    assert result["task_id"] == "v2"
+    assert captured["handler"] is fake_v2_handler
+    assert captured["message"] == "准备启动 Agent Chat V2"
+
+
+def test_start_chat_agent_keeps_explicit_legacy_rollback(monkeypatch: pytest.MonkeyPatch):
+    import backend.core.config as runtime_config
+    from backend.services import ai_agent_service
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_task(**kwargs):
+        captured.update(kwargs)
+        return {"task_id": "legacy", "status": "queued", "stage": kwargs["stage"]}
+
+    monkeypatch.setattr(runtime_config, "AI_AGENT_RUNTIME", "legacy")
+    monkeypatch.setattr(ai_task_service, "create_task", fake_create_task)
+
+    ai_task_service.start_chat_agent_task({"question": "test"})
+
+    assert captured["handler"] is ai_agent_service.run_chat_agent_task
+    assert "旧运行时" in captured["message"]

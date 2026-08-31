@@ -52,6 +52,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - AI 报告和问答采用 cache-first / 手动生成，不因打开页面自动调用 LLM。
 - 年度视觉报告默认使用 `visual_yearly_artifact` 与 `agent_synthesis_v2`；图表数据、统计事实和校验必须来自确定性后端 builder/validator，LLM 不生成事实或图表数据。
 - Agent 只能调用后端注册的 read-only 工具，禁止任意 SQL、任意 URL、设置/导入/缓存/歌单写入和未审核路由透传。
+- 问答和年度报告补充研究默认使用原生 tool calling 的 V2 Turn/Step 循环；模型可见消息必须写入可重放事件日志。`AI_AGENT_RUNTIME=legacy` 仅用于显式回退，不得重新把文本 JSON/正则解析作为主路径。
 - LLM API Key 永不返回前端；日志必须经过敏感信息脱敏。
 
 ## 后端约束

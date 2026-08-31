@@ -5,6 +5,7 @@ from fastapi.routing import APIRoute
 
 import backend.api.ai_tasks as ai_tasks_api
 from backend.core.db import get_db
+from backend.domains.agent_runtime.event_log import AgentEventLog
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.main import app
 
@@ -121,6 +122,40 @@ def test_task_events_include_events_and_tool_calls(client):
     assert payload["tool_calls"][0]["tool_name"] == "analysis_charts"
     assert payload["tool_calls"][0]["params_summary"] == "2026 artist plays top 10"
     assert payload["tool_calls"][0]["source_range"] == "2026-01-01 to 2026-12-31"
+
+
+def test_agent_trajectory_returns_replayable_turn_events(client):
+    _create_task("task-trajectory", status="running", stage="agent_deciding")
+    conn = get_db(readonly=False)
+    try:
+        log = AgentEventLog(
+            conn,
+            task_id="task-trajectory",
+            turn_id="turn-1",
+            session_id=None,
+        )
+        log.append("turn_started", {"runtime": "v2"})
+        log.append_model_message(
+            {"role": "user", "content": "我的年度冠军是谁？"},
+            origin="initial_context",
+        )
+    finally:
+        conn.close()
+
+    response = client.get("/api/ai/tasks/task-trajectory/trajectory")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["found"] is True
+    assert [event["sequence"] for event in payload["events"]] == [1, 2]
+    assert payload["events"][1]["payload"]["message"]["role"] == "user"
+
+
+def test_agent_trajectory_for_missing_task_returns_found_false(client):
+    response = client.get("/api/ai/tasks/not-real/trajectory")
+
+    assert response.status_code == 200
+    assert response.json() == {"found": False, "events": []}
 
 
 def test_cancel_queued_task_marks_it_cancelled(client):

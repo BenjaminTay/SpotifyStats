@@ -135,7 +135,7 @@ def _frame_and_recipe(question: str):
     return frame, recipe_for_frame(frame)
 
 
-def test_preference_comparison_requests_recent_followups_when_lifetime_compare_exists() -> None:
+def test_preference_comparison_is_sufficient_with_one_complete_compare() -> None:
     question = (
         "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl"
         "这两张专辑的喜爱程度哪张专辑更甚？"
@@ -178,18 +178,15 @@ def test_preference_comparison_requests_recent_followups_when_lifetime_compare_e
         coverage={"comparison": {"compare_entities": "found"}},
     )
 
-    assert review["sufficient"] is False
+    assert review["sufficient"] is True
     assert review["axis_coverage"]["cumulative"] == "covered"
-    assert review["axis_coverage"]["recency"] == "missing"
+    assert "recency" not in review["axis_coverage"]
     assert review["axis_coverage"]["intensity"] == "covered"
     assert review["axis_coverage"]["personal_billboard"] == "covered"
-    assert any(
-        call["params"]["period"] == "last_6_months" for call in review["followup_tool_calls"]
-    )
-    assert any(call["params"]["period"] == "last_4_weeks" for call in review["followup_tool_calls"])
+    assert review["followup_tool_calls"] == []
 
 
-def test_preference_comparison_keeps_missing_entity_recent_followups() -> None:
+def test_preference_comparison_retries_incomplete_compare_as_one_call() -> None:
     question = (
         "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl"
         "这两张专辑的喜爱程度哪张专辑更甚？"
@@ -221,14 +218,17 @@ def test_preference_comparison_keeps_missing_entity_recent_followups() -> None:
         coverage={"comparison": {"compare_entities": "found"}},
     )
 
-    assert {
-        "tool_name": "entity_stats",
-        "params": {
-            "entity": "album",
-            "album_name": "The Life of a Showgirl",
-            "period": "last_6_months",
-        },
-    } in review["followup_tool_calls"]
+    assert review["followup_tool_calls"] == [
+        {
+            "tool_name": "compare_entities",
+            "params": {
+                "entity_type": "album",
+                "names": ["GUTS", "The Life of a Showgirl"],
+                "period": "lifetime",
+                "include_billboard": True,
+            },
+        }
+    ]
 
 
 def test_time_of_day_ranking_is_sufficient_with_late_night_tool() -> None:
@@ -541,6 +541,8 @@ def test_compare_entities_for_wrong_objects_does_not_satisfy_preference_comparis
         "params": {
             "entity_type": "album",
             "names": ["GUTS", "The Life of a Showgirl"],
+            "period": "lifetime",
+            "include_billboard": True,
         },
     } in review["followup_tool_calls"]
 
@@ -608,7 +610,7 @@ def test_required_partial_axes_keep_identity_preference_insufficient() -> None:
     assert review["sufficient"] is False
 
 
-def test_preference_comparison_cold_start_followups_cover_compare_and_all_recent_windows() -> None:
+def test_preference_comparison_cold_start_uses_one_bounded_compare() -> None:
     question = (
         "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl"
         "这两张专辑的喜爱程度哪张专辑更甚？"
@@ -629,30 +631,8 @@ def test_preference_comparison_cold_start_followups_cover_compare_and_all_recent
             "params": {
                 "entity_type": "album",
                 "names": ["GUTS", "The Life of a Showgirl"],
-            },
-        },
-        {
-            "tool_name": "entity_stats",
-            "params": {"entity": "album", "album_name": "GUTS", "period": "last_6_months"},
-        },
-        {
-            "tool_name": "entity_stats",
-            "params": {
-                "entity": "album",
-                "album_name": "The Life of a Showgirl",
-                "period": "last_6_months",
-            },
-        },
-        {
-            "tool_name": "entity_stats",
-            "params": {"entity": "album", "album_name": "GUTS", "period": "last_4_weeks"},
-        },
-        {
-            "tool_name": "entity_stats",
-            "params": {
-                "entity": "album",
-                "album_name": "The Life of a Showgirl",
-                "period": "last_4_weeks",
+                "period": "lifetime",
+                "include_billboard": True,
             },
         },
     ]

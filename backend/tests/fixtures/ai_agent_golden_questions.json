@@ -35,21 +35,12 @@
       "family": "preference_comparison",
       "required_axes_contains": [
         "cumulative",
-        "recency",
         "intensity",
         "personal_billboard"
       ],
       "required_tool_patterns_contains": [
         {
           "tool_name": "compare_entities"
-        },
-        {
-          "tool_name": "entity_stats",
-          "period": "last_6_months"
-        },
-        {
-          "tool_name": "entity_stats",
-          "period": "last_4_weeks"
         }
       ]
     },

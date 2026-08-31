@@ -12,7 +12,8 @@ import json
 import logging
 from typing import Any
 
-from backend.domains.ai_agent.tool_registry import dispatch_tool, list_tools
+from backend.domains.agent_runtime.serialization import compact_json
+from backend.domains.ai_agent.tool_registry import dispatch_tool, get_default_registry, list_tools
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,139 @@ def _compile_research_from_tools(tool_results: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _native_report_research(
+    *,
+    planner_prompt: str,
+    planner_user: str,
+    base_filters: dict[str, Any],
+    year: int,
+    end_date: str,
+    emit_event: Any,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Run report research through the same native observation loop as chat."""
+
+    from backend.core.config import AI_AGENT_MAX_STEPS, AI_AGENT_MAX_TOOL_CALLS
+    from backend.services.ai_agent_v2_service import ConfiguredNativeToolModel
+
+    registry = get_default_registry()
+    schemas = [
+        {
+            "name": item["name"],
+            "description": item["description"],
+            "parameters": item["params_schema"],
+        }
+        for item in registry.list_tools()
+    ]
+    model = ConfiguredNativeToolModel()
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": planner_prompt},
+        {"role": "user", "content": planner_user},
+    ]
+    results: list[dict[str, Any]] = []
+    identities: set[str] = set()
+    tool_count = 0
+
+    for step in range(1, AI_AGENT_MAX_STEPS + 1):
+        completion = model.complete(messages, schemas, thinking=True)
+        assistant: dict[str, Any] = {
+            "role": "assistant",
+            "content": completion.content or "",
+        }
+        if completion.tool_calls:
+            assistant["tool_calls"] = [
+                {
+                    "id": call.call_id,
+                    "type": "function",
+                    "function": {
+                        "name": call.name,
+                        "arguments": json.dumps(call.arguments, ensure_ascii=False),
+                    },
+                }
+                for call in completion.tool_calls
+            ]
+        messages.append(assistant)
+        if not completion.tool_calls:
+            return completion.content.strip(), results
+
+        for call in completion.tool_calls:
+            if tool_count >= AI_AGENT_MAX_TOOL_CALLS:
+                return _compile_research_from_tools(results), results
+            model_result: dict[str, Any]
+            try:
+                definition = registry.get(call.name)
+                properties = definition.params_model.model_json_schema().get("properties") or {}
+                params = dict(call.arguments)
+                for key, value in base_filters.items():
+                    if key in properties and key not in params and value is not None:
+                        params[key] = value
+                if "year" in properties and "year" not in params:
+                    params["year"] = year
+                if "period" in properties:
+                    params.update(
+                        {
+                            "period": "custom",
+                            "start_date": f"{year}-01-01",
+                            "end_date": end_date,
+                        }
+                    )
+                identity = f"{call.name}:{json.dumps(params, ensure_ascii=False, sort_keys=True)}"
+                if identity in identities:
+                    model_result = {
+                        "status": "duplicate",
+                        "tool_name": call.name,
+                        "error": "相同参数已查询，请基于已有结果继续推理",
+                    }
+                else:
+                    identities.add(identity)
+                    raw = registry.dispatch(call.name, params)
+                    data = raw.get("data") if isinstance(raw.get("data"), dict) else {}
+                    status = "empty" if data.get("found") is False else "ok"
+                    item = {
+                        **raw,
+                        "status": status,
+                        "_tool_name": call.name,
+                        "_params": params,
+                    }
+                    results.append(item)
+                    tool_count += 1
+                    model_result = {
+                        "status": status,
+                        "tool_name": call.name,
+                        "result_summary": raw.get("result_summary"),
+                        "source_range": raw.get("source_range"),
+                        "data": data,
+                    }
+            except Exception as exc:
+                item = {
+                    "_tool_name": call.name,
+                    "_params": call.arguments,
+                    "status": "error",
+                    "error": str(exc) or exc.__class__.__name__,
+                }
+                results.append(item)
+                tool_count += 1
+                model_result = item
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call.call_id,
+                    "name": call.name,
+                    "content": compact_json(model_result),
+                }
+            )
+        if emit_event:
+            emit_event(
+                "stage_started",
+                f"研究步骤 {step}：累计调用 {tool_count} 个工具",
+                {
+                    "stage": "researching",
+                    "progress_pct": min(0.75, 0.25 + step * 0.08),
+                    "runtime": "v2",
+                },
+            )
+    return _compile_research_from_tools(results), results
+
+
 def run_report_agent(
     *,
     year: int,
@@ -192,67 +326,77 @@ def run_report_agent(
         except Exception:
             pass
 
-    # Phase 1: Multi-turn research (up to 5 rounds)
-    all_tool_results: list[dict[str, Any]] = []
-    research_text = ""
-    for round_num in range(1, 6):
-        planner_response = _llm_chat(planner_prompt, planner_user, temperature=0.35, thinking=True)
-        if not planner_response:
-            break
+    from backend.core.config import AI_AGENT_RUNTIME
 
-        # Try to extract tool calls from the planner response
-        tool_calls = _extract_tool_calls(planner_response)
-        if not tool_calls:
-            # No more tools to call — planner is done investigating
-            research_text = planner_response
-            break
+    if AI_AGENT_RUNTIME != "legacy":
+        research_text, all_tool_results = _native_report_research(
+            planner_prompt=planner_prompt,
+            planner_user=planner_user,
+            base_filters=base_filters,
+            year=year,
+            end_date=end_date,
+            emit_event=emit_event,
+        )
+    else:
+        # Explicit rollback path for providers without native tool calling.
+        all_tool_results = []
+        research_text = ""
+        for round_num in range(1, 6):
+            planner_response = _llm_chat(
+                planner_prompt,
+                planner_user,
+                temperature=0.35,
+                thinking=True,
+            )
+            if not planner_response:
+                break
 
-        # Execute tool calls
-        round_results = []
-        for tc in tool_calls[:6]:  # Max 6 tools per round
-            tool_name = tc.get("tool_name", "")
-            params = tc.get("params", {})
-            # Apply base filters
-            params = {**base_filters, **params}
-            # Add year context
-            if "year" not in params and tool_name in (
-                "wrapped_yearly",
-                "analysis_stats",
-                "analysis_charts",
-            ):
-                params["year"] = year
+            tool_calls = _extract_tool_calls(planner_response)
+            if not tool_calls:
+                research_text = planner_response
+                break
 
-            try:
-                result = dispatch_tool(tool_name, params)
-                result["_tool_name"] = tool_name
-                result["_params"] = params
-                round_results.append(result)
-                all_tool_results.append(result)
-            except Exception as exc:
-                logger.warning("Tool %s failed: %s", tool_name, exc)
-                round_results.append(
-                    {
-                        "_tool_name": tool_name,
-                        "_params": params,
-                        "status": "error",
-                        "error": str(exc),
-                    }
-                )
-                all_tool_results.append(round_results[-1])
+            round_results = []
+            for tc in tool_calls[:6]:
+                tool_name = tc.get("tool_name", "")
+                params = {**base_filters, **(tc.get("params", {}))}
+                if "year" not in params and tool_name in (
+                    "wrapped_yearly",
+                    "analysis_stats",
+                    "analysis_charts",
+                ):
+                    params["year"] = year
 
-        if emit_event:
-            try:
-                emit_event(
-                    "stage_started",
-                    f"研究轮次 {round_num}：已调用 {len(round_results)} 个工具",
-                    {"stage": "researching", "progress_pct": 0.25 + round_num * 0.10},
-                )
-            except Exception:
-                pass
+                try:
+                    result = dispatch_tool(tool_name, params)
+                    result["_tool_name"] = tool_name
+                    result["_params"] = params
+                    round_results.append(result)
+                    all_tool_results.append(result)
+                except Exception as exc:
+                    logger.warning("Tool %s failed: %s", tool_name, exc)
+                    round_results.append(
+                        {
+                            "_tool_name": tool_name,
+                            "_params": params,
+                            "status": "error",
+                            "error": str(exc),
+                        }
+                    )
+                    all_tool_results.append(round_results[-1])
 
-        # Feed results back to planner for next round
-        results_summary = _format_tool_results(round_results)
-        planner_user += f"\n\n## 第 {round_num} 轮工具结果\n{results_summary}\n\n请继续调查。如果所有维度都已充分覆盖，输出最终研究摘要（JSON 格式，包含 research_summary 字段）。"
+            if emit_event:
+                try:
+                    emit_event(
+                        "stage_started",
+                        f"研究轮次 {round_num}：已调用 {len(round_results)} 个工具",
+                        {"stage": "researching", "progress_pct": 0.25 + round_num * 0.10},
+                    )
+                except Exception:
+                    pass
+
+            results_summary = _format_tool_results(round_results)
+            planner_user += f"\n\n## 第 {round_num} 轮工具结果\n{results_summary}\n\n请继续调查。如果所有维度都已充分覆盖，输出最终研究摘要（JSON 格式，包含 research_summary 字段）。"
 
     # If no research text from planner, compile from tool results
     if not research_text:

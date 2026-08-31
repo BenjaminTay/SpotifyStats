@@ -58,6 +58,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 ## 已确认但仍有实现参考价值的设计
 
+- [`designs/2026-08-31-ai-agent-runtime-v2.md`](designs/2026-08-31-ai-agent-runtime-v2.md)：原生工具调用、Turn/Step 状态机、只读 Tool Runtime、可重放事件日志与 legacy 回退契约
 - [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md)：Settings 流派审核面板
 - [`designs/2026-08-12-yearly-review-v2-content-data-contract.md`](designs/2026-08-12-yearly-review-v2-content-data-contract.md)：年度总结 V2 内容与数据契约
 - [`designs/2026-08-23-yearly-artifact-key-invalidation-contract.md`](designs/2026-08-23-yearly-artifact-key-invalidation-contract.md)：年度事实等价、受影响年份失效与路径历史 key 契约

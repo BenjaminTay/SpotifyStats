@@ -9,6 +9,7 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture(autouse=True)
 def _disable_live_llm_for_unit_tests(monkeypatch):
+    import backend.core.config as runtime_config
     from backend.api import settings
 
     monkeypatch.setattr(
@@ -16,6 +17,7 @@ def _disable_live_llm_for_unit_tests(monkeypatch):
         "_current",
         {"llm_enabled": False, "llm_api_key": "", "llm_base_url": ""},
     )
+    monkeypatch.setattr(runtime_config, "AI_AGENT_RUNTIME", "legacy")
 
 
 def test_visual_yearly_artifact_service_generates_artifact(monkeypatch):

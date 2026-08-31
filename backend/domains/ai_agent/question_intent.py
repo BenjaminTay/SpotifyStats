@@ -88,7 +88,7 @@ def _task_type(question: str) -> TaskType:
 
 
 def _time_scope(question: str) -> str:
-    if _contains_any(question, ("六个月", "6个月", "半年")):
+    if _contains_any(question, ("六个月", "半年")) or re.search(r"6\s*个?\s*月", question):
         return "last_6_months"
     if _contains_any(question, ("今年", "本年", "2026")):
         return "this_year"

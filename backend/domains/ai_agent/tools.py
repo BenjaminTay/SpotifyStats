@@ -169,15 +169,11 @@ class ResolveEntityParams(BaseModel):
     limit: int = Field(default=5, ge=1, le=10)
 
 
-class CompareEntitiesParams(BaseModel):
+class CompareEntitiesParams(AnalysisStatsParams):
     entity_type: Literal["track", "album", "artist"] = "album"
     names: list[str] = Field(..., min_length=2, max_length=4)
-    min_ms: int = Field(default=30000, ge=0, le=3_600_000)
-    music_only: bool = True
-    merge_enabled: bool = True
-    dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
     merge_level: int = Field(default=2, ge=2, le=3)
+    include_billboard: bool = True
 
     @field_validator("names")
     @classmethod
@@ -943,6 +939,9 @@ def _compare_filter_kwargs(parsed: CompareEntitiesParams) -> dict[str, Any]:
         "dynamic_threshold": parsed.dynamic_threshold,
         "max_merge_gap_minutes": parsed.max_merge_gap_minutes,
         "merge_level": parsed.merge_level,
+        "period": parsed.period,
+        "start_date": parsed.start_date,
+        "end_date": parsed.end_date,
     }
 
 
@@ -1058,6 +1057,7 @@ def _comparison_row(
         or playback.get("latest_play_date")
         or summary.get("latest_play_date")
         or summary.get("last_played"),
+        "period": playback.get("period"),
         "power_score": metric_source.get("power_score"),
         "power_rank": metric_source.get("power_rank"),
         "no1_weeks": metric_source.get("no1_weeks")
@@ -1107,9 +1107,13 @@ def _compare_album_or_artist_row(parsed: CompareEntitiesParams, name: str) -> di
         billboard_params["artist_name"] = name
 
     playback = entity_stats_handler(EntityStatsParams.model_validate(base_params)).data
-    billboard = billboard_entity_detail_handler(
-        BillboardEntityDetailParams.model_validate(billboard_params)
-    ).data
+    billboard = (
+        billboard_entity_detail_handler(
+            BillboardEntityDetailParams.model_validate(billboard_params)
+        ).data
+        if parsed.include_billboard
+        else {}
+    )
     return _comparison_row(
         requested_name=name,
         entity_type=parsed.entity_type,
@@ -1143,15 +1147,19 @@ def _compare_track_row(parsed: CompareEntitiesParams, name: str) -> dict[str, An
             }
         )
     ).data
-    billboard = billboard_entity_detail_handler(
-        BillboardEntityDetailParams.model_validate(
-            {
-                "entity": "track",
-                "track_id": int(track_id),
-                **_compare_billboard_kwargs(parsed),
-            }
-        )
-    ).data
+    billboard = (
+        billboard_entity_detail_handler(
+            BillboardEntityDetailParams.model_validate(
+                {
+                    "entity": "track",
+                    "track_id": int(track_id),
+                    **_compare_billboard_kwargs(parsed),
+                }
+            )
+        ).data
+        if parsed.include_billboard
+        else {}
+    )
     return _comparison_row(
         requested_name=name,
         entity_type="track",
@@ -1174,10 +1182,21 @@ def compare_entities_handler(params: BaseModel) -> AgentToolResult:
         for name in parsed.names
     ]
     data = summarize_entity_comparison(entity_type=parsed.entity_type, entities=rows)
+    data["period"] = {
+        "period": parsed.period,
+        "start_date": parsed.start_date,
+        "end_date": parsed.end_date,
+    }
+    data["includes_personal_billboard"] = parsed.include_billboard
+    source_range = (
+        f"{parsed.start_date or ''}..{parsed.end_date or ''}"
+        if parsed.period == "custom"
+        else parsed.period
+    )
     return AgentToolResult(
         data=data,
         result_summary=_comparison_result_summary(data),
-        source_range="comparison",
+        source_range=source_range,
     )
 
 
@@ -1465,8 +1484,9 @@ RESOLVE_ENTITY_TOOL = AgentToolDefinition(
 COMPARE_ENTITIES_TOOL = AgentToolDefinition(
     name="compare_entities",
     description=(
-        "Compare two to four known tracks, albums, or artists using local playback "
-        "statistics and personal Billboard evidence."
+        "Compare two to four known tracks, albums, or artists in one requested period "
+        "using local playback statistics. Set include_billboard=true only when the user "
+        "explicitly asks about their personal Billboard, Power Score, ranks, or chart weeks."
     ),
     read_only=True,
     params_model=CompareEntitiesParams,

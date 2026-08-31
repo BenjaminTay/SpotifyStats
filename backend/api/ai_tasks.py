@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from backend.models.ai_tasks import (
+    AiAgentTrajectoryResponse,
     AiTaskCreateResponse,
     AiTaskEventsResponse,
     AiTaskStatusResponse,
@@ -18,6 +19,7 @@ from backend.models.ai_tasks import (
 )
 from backend.services.ai_task_service import (
     cancel_task,
+    get_agent_trajectory,
     get_task,
     get_task_events,
     start_album_enrichment_task,
@@ -105,6 +107,18 @@ def get_ai_task_events(task_id: str):
         return {"found": False, "events": [], "tool_calls": []}
     events, tool_calls = payload
     return {"found": True, "events": events, "tool_calls": tool_calls}
+
+
+@router.get(
+    "/{task_id}/trajectory",
+    response_model=AiAgentTrajectoryResponse,
+    response_model_exclude_none=True,
+)
+def get_ai_agent_trajectory(task_id: str):
+    events = get_agent_trajectory(task_id)
+    if events is None:
+        return {"found": False, "events": []}
+    return {"found": True, "events": events}
 
 
 @router.post(

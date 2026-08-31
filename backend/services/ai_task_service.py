@@ -58,6 +58,17 @@ def get_task_events(
         conn.close()
 
 
+def get_agent_trajectory(task_id: str) -> list[dict[str, Any]] | None:
+    conn = get_db(readonly=True)
+    try:
+        repo = AiTaskRepository(conn)
+        if repo.get_run(task_id) is None:
+            return None
+        return repo.list_agent_turn_events(task_id)
+    finally:
+        conn.close()
+
+
 def create_task(
     *,
     task_type: str,
@@ -288,12 +299,23 @@ def start_report_task(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def start_chat_agent_task(request: dict[str, Any]) -> dict[str, Any]:
-    from backend.services.ai_agent_service import run_chat_agent_task
+    from backend.core.config import AI_AGENT_RUNTIME
+
+    if AI_AGENT_RUNTIME == "legacy":
+        from backend.services.ai_agent_service import run_chat_agent_task
+    else:
+        from backend.services.ai_agent_v2_service import (
+            run_chat_agent_task_v2 as run_chat_agent_task,
+        )
 
     return create_task(
         task_type="ai_chat_agent",
         stage="queued",
-        message="准备启动 Agent Chat",
+        message=(
+            "准备启动 Agent Chat（旧运行时）"
+            if AI_AGENT_RUNTIME == "legacy"
+            else "准备启动 Agent Chat V2"
+        ),
         request=request,
         handler=run_chat_agent_task,
     )

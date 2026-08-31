@@ -59,6 +59,15 @@ MUSIC_SEARCH_CANDIDATE_LKG = _get_bool("MUSIC_SEARCH_CANDIDATE_LKG", True)
 MUSIC_SEARCH_STATISTICS_LKG = _get_bool("MUSIC_SEARCH_STATISTICS_LKG", True)
 MUSIC_SEARCH_TRACK_CREDIT_DELTA = _get_bool("MUSIC_SEARCH_TRACK_CREDIT_DELTA", True)
 
+# AI Agent V2 is the default chat runtime. ``legacy`` remains available as a
+# rollback switch while the new runtime is being exercised in production.
+AI_AGENT_RUNTIME = _get("AI_AGENT_RUNTIME", "v2").strip().lower()
+AI_AGENT_MAX_STEPS = max(1, int(_get("AI_AGENT_MAX_STEPS", "6")))
+AI_AGENT_MAX_TOOL_CALLS = max(1, int(_get("AI_AGENT_MAX_TOOL_CALLS", "12")))
+AI_AGENT_TURN_TIMEOUT_SECONDS = max(10, int(_get("AI_AGENT_TURN_TIMEOUT_SECONDS", "90")))
+AI_AGENT_LLM_TIMEOUT_SECONDS = max(10, int(_get("AI_AGENT_LLM_TIMEOUT_SECONDS", "45")))
+AI_AGENT_LLM_RETRIES = max(0, int(_get("AI_AGENT_LLM_RETRIES", "1")))
+
 # ── Remote access auth (Task 5) ──────────────────────────────────────
 
 SPOTIFY_STATS_REQUIRE_AUTH = _get("SPOTIFY_STATS_REQUIRE_AUTH", "0")

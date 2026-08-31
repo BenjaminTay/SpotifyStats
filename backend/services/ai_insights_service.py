@@ -42,6 +42,7 @@ from backend.domains.ai_reports.yearly_validator import validate_yearly_report
 from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
 from backend.domains.metadata.genre_display_taxonomy import GENRE_DISPLAY_TAXONOMY_VERSION
 from backend.domains.settings.repository import SettingsRepository
+from backend.providers.base import ProviderConfig
 from backend.providers.llm.client import LLMProvider
 from backend.services.llm_translator import PROVIDERS, _get_config
 
@@ -369,7 +370,10 @@ def _entity_metric(items: Any, index: int, key: str) -> Any:
 # ── LLM factory ─────────────────────────────────────────────────────────────
 
 
-def _get_llm(cfg: Optional[dict] = None) -> Optional[LLMProvider]:
+def _get_llm(
+    cfg: Optional[dict] = None,
+    provider_config: Optional[ProviderConfig] = None,
+) -> Optional[LLMProvider]:
     """Create an LLMProvider from DB config. Returns None if LLM disabled."""
     if cfg is None:
         cfg = _get_config()
@@ -390,7 +394,13 @@ def _get_llm(cfg: Optional[dict] = None) -> Optional[LLMProvider]:
             logger.warning("LLM enabled but base_url is empty for non-Anthropic provider")
             return None
 
-    return LLMProvider(provider=provider, api_key=api_key, model=model, base_url=base_url)
+    return LLMProvider(
+        provider=provider,
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+        config=provider_config,
+    )
 
 
 def _llm_chat(

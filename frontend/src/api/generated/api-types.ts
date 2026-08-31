@@ -2821,6 +2821,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/tasks/{task_id}/trajectory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Agent Trajectory */
+        get: operations["get_ai_agent_trajectory_api_ai_tasks__task_id__trajectory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/tasks/{task_id}/cancel": {
         parameters: {
             query?: never;
@@ -3704,6 +3721,36 @@ export interface components {
             content: string;
             /** Meta Json */
             meta_json?: string | null;
+        };
+        /** AiAgentTrajectoryResponse */
+        AiAgentTrajectoryResponse: {
+            /** Found */
+            found: boolean;
+            /** Events */
+            events: components["schemas"]["AiAgentTurnEvent"][];
+        };
+        /** AiAgentTurnEvent */
+        AiAgentTurnEvent: {
+            /** Event Id */
+            event_id: number;
+            /** Task Id */
+            task_id: string;
+            /** Session Id */
+            session_id?: number | null;
+            /** Turn Id */
+            turn_id: string;
+            /** Sequence */
+            sequence: number;
+            /** Step Index */
+            step_index?: number | null;
+            /** Event Type */
+            event_type: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            } | unknown[];
+            /** Created At */
+            created_at: string;
         };
         /** AiTaskCreateResponse */
         AiTaskCreateResponse: {
@@ -6699,6 +6746,8 @@ export interface components {
         ChatAgentTaskRequest: {
             /** Question */
             question: string;
+            /** Session Id */
+            session_id?: number | null;
             /** Conversation History */
             conversation_history?: {
                 [key: string]: string;
@@ -18884,6 +18933,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AiTaskEventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_agent_trajectory_api_ai_tasks__task_id__trajectory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAgentTrajectoryResponse"];
                 };
             };
             /** @description Validation Error */

@@ -179,6 +179,7 @@ describe('ChatInterface task-based agent flow', () => {
     await waitFor(() => {
       expect(postSpy).toHaveBeenCalledWith('/ai/tasks/chat', expect.objectContaining({
         question: '我今年听最多的艺人是谁？',
+        session_id: 7,
         conversation_history: [],
         question_time: expect.any(String),
         timezone: expect.any(String),

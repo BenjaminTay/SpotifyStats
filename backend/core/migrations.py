@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 67
+LATEST_SCHEMA_VERSION = 68
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3694,6 +3694,34 @@ def migrate_067(conn: sqlite3.Connection):
         """CREATE UNIQUE INDEX IF NOT EXISTS idx_album_project_external_primary
                ON album_project_external_ids(project_id, provider)
             WHERE is_primary=1"""
+    )
+
+
+@migration(68, "ai_agent_turn_event_log")
+def migrate_068(conn: sqlite3.Connection):
+    """Add the append-only event log used to reconstruct Agent V2 turns."""
+
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_agent_turn_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            session_id INTEGER REFERENCES chat_sessions(id) ON DELETE SET NULL,
+            turn_id TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            step_index INTEGER,
+            event_type TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(turn_id, sequence)
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_ai_agent_turn_events_task
+               ON ai_agent_turn_events(task_id, event_id)"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_ai_agent_turn_events_session
+               ON ai_agent_turn_events(session_id, event_id)"""
     )
 
 

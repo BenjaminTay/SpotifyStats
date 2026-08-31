@@ -377,6 +377,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         expected_json={"found": False, "events": [], "tool_calls": []},
     ),
     SmokeCase(
+        "ai_agent_trajectory_missing",
+        "/api/ai/tasks/nonexistent-smoke-task/trajectory",
+        expected_json={"found": False, "events": []},
+    ),
+    SmokeCase(
         "ai_suggested_questions", "/api/ai-insights/suggested-questions", {"context": "chat"}
     ),
     SmokeCase("chat_sessions", "/api/chat/sessions", {"limit": 5}),

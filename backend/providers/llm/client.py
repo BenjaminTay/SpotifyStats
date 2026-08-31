@@ -7,10 +7,36 @@ Uses the shared HttpClient for HTTP transport.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
+from typing import Any
 
 from backend.core.config import HTTP_PROXY, HTTPS_PROXY
 from backend.infrastructure.http.client import HttpClient
-from backend.providers.base import BaseProvider, ProviderConfig
+from backend.providers.base import (
+    BaseProvider,
+    ProviderConfig,
+    ProviderParseError,
+    provider_error_from_status,
+)
+
+
+@dataclass(frozen=True)
+class LLMToolCall:
+    """Provider-neutral native tool call."""
+
+    call_id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class LLMCompletion:
+    """Provider-neutral model turn used by the Agent V2 runtime."""
+
+    content: str = ""
+    tool_calls: list[LLMToolCall] = field(default_factory=list)
+    finish_reason: str = ""
+    usage: dict[str, Any] = field(default_factory=dict)
 
 
 class LLMProvider(BaseProvider):
@@ -128,6 +154,178 @@ class LLMProvider(BaseProvider):
         if resp.status == 200:
             return resp.json()
         return None
+
+    def complete_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        temperature: float = 0.2,
+        max_tokens: int = 4096,
+        thinking: bool = False,
+    ) -> LLMCompletion:
+        """Run one native tool-calling turn and fail with structured errors.
+
+        V2 deliberately does not parse tool calls from prose/JSON. A provider
+        must implement the OpenAI-compatible ``tools`` protocol or Anthropic's
+        native ``tool_use`` content blocks.
+        """
+
+        headers = self._auth_headers()
+        if self.provider == "anthropic":
+            system, anthropic_messages = self._anthropic_messages(messages)
+            body: dict[str, Any] = {
+                "model": self.model,
+                "max_tokens": max_tokens,
+                "messages": anthropic_messages,
+                "tools": [
+                    {
+                        "name": item["name"],
+                        "description": item.get("description", ""),
+                        "input_schema": item.get("parameters", {"type": "object"}),
+                    }
+                    for item in tools
+                ],
+            }
+            if system:
+                body["system"] = system
+            url = f"{self.base_url}/messages"
+        else:
+            body = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": item["name"],
+                            "description": item.get("description", ""),
+                            "parameters": item.get("parameters", {"type": "object"}),
+                        },
+                    }
+                    for item in tools
+                ],
+                "tool_choice": "auto",
+            }
+            if thinking:
+                body["thinking"] = {"type": "enabled"}
+            url = f"{self.base_url}/chat/completions"
+
+        resp = self._http.post(url, data=body, headers=headers)
+        if resp.status != 200:
+            detail = resp.text()[:500]
+            raise provider_error_from_status(self.provider, resp.status, detail)
+        try:
+            payload = resp.json()
+            if self.provider == "anthropic":
+                return self._parse_anthropic_completion(payload)
+            return self._parse_openai_completion(payload)
+        except ProviderParseError:
+            raise
+        except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ProviderParseError(self.provider, f"Invalid native tool response: {exc}") from exc
+
+    @staticmethod
+    def _decode_tool_arguments(raw: Any) -> dict[str, Any]:
+        if isinstance(raw, dict):
+            return raw
+        if raw in (None, ""):
+            return {}
+        parsed = json.loads(str(raw))
+        if not isinstance(parsed, dict):
+            raise ValueError("tool arguments must be a JSON object")
+        return parsed
+
+    def _parse_openai_completion(self, payload: dict[str, Any]) -> LLMCompletion:
+        choice = payload["choices"][0]
+        message = choice["message"]
+        calls = []
+        for index, item in enumerate(message.get("tool_calls") or []):
+            function = item.get("function") or {}
+            calls.append(
+                LLMToolCall(
+                    call_id=str(item.get("id") or f"call_{index}"),
+                    name=str(function["name"]),
+                    arguments=self._decode_tool_arguments(function.get("arguments")),
+                )
+            )
+        return LLMCompletion(
+            content=str(message.get("content") or ""),
+            tool_calls=calls,
+            finish_reason=str(choice.get("finish_reason") or ""),
+            usage=payload.get("usage") or {},
+        )
+
+    def _parse_anthropic_completion(self, payload: dict[str, Any]) -> LLMCompletion:
+        text_parts = []
+        calls = []
+        for index, block in enumerate(payload.get("content") or []):
+            if block.get("type") == "text":
+                text_parts.append(str(block.get("text") or ""))
+            elif block.get("type") == "tool_use":
+                calls.append(
+                    LLMToolCall(
+                        call_id=str(block.get("id") or f"toolu_{index}"),
+                        name=str(block["name"]),
+                        arguments=self._decode_tool_arguments(block.get("input")),
+                    )
+                )
+        return LLMCompletion(
+            content="\n".join(part for part in text_parts if part),
+            tool_calls=calls,
+            finish_reason=str(payload.get("stop_reason") or ""),
+            usage=payload.get("usage") or {},
+        )
+
+    @staticmethod
+    def _anthropic_messages(
+        messages: list[dict[str, Any]],
+    ) -> tuple[str, list[dict[str, Any]]]:
+        system_parts: list[str] = []
+        converted: list[dict[str, Any]] = []
+        pending_tool_results: list[dict[str, Any]] = []
+
+        def flush_tool_results() -> None:
+            if pending_tool_results:
+                converted.append({"role": "user", "content": list(pending_tool_results)})
+                pending_tool_results.clear()
+
+        for message in messages:
+            role = message.get("role")
+            if role == "system":
+                system_parts.append(str(message.get("content") or ""))
+                continue
+            if role == "tool":
+                pending_tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": str(message.get("tool_call_id") or ""),
+                        "content": str(message.get("content") or ""),
+                    }
+                )
+                continue
+            flush_tool_results()
+            if role == "assistant" and message.get("tool_calls"):
+                content: list[dict[str, Any]] = []
+                if message.get("content"):
+                    content.append({"type": "text", "text": str(message["content"])})
+                for item in message["tool_calls"]:
+                    function = item.get("function") or {}
+                    content.append(
+                        {
+                            "type": "tool_use",
+                            "id": str(item.get("id") or ""),
+                            "name": str(function.get("name") or ""),
+                            "input": LLMProvider._decode_tool_arguments(function.get("arguments")),
+                        }
+                    )
+                converted.append({"role": "assistant", "content": content})
+            else:
+                converted.append({"role": str(role), "content": str(message.get("content") or "")})
+        flush_tool_results()
+        return "\n\n".join(system_parts), converted
 
     def translate(
         self, text: str, target_lang: str = "zh-CN", source_lang: str = "en"

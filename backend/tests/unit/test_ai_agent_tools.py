@@ -816,7 +816,7 @@ def test_compare_entities_combines_playback_and_billboard_handlers(
     )
 
     assert result["tool_name"] == "compare_entities"
-    assert result["source_range"] == "comparison"
+    assert result["source_range"] == "lifetime"
     assert "entities=2" in result["result_summary"]
     assert "winner_by_plays=GUTS" in result["result_summary"]
     assert result["data"]["winner_by_cumulative_plays"] == "GUTS"
@@ -828,6 +828,55 @@ def test_compare_entities_combines_playback_and_billboard_handlers(
     ]
     assert all(item["merge_level"] == 3 for item in observed["billboard"])
     assert all(item["min_ms"] == 45000 for item in observed["playback"])
+
+
+def test_compare_entities_can_skip_billboard_and_use_one_bounded_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool_registry.get_default_registry.cache_clear()
+    observed: list[dict[str, Any]] = []
+
+    def fake_entity_stats_handler(params: tools.EntityStatsParams) -> tool_registry.AgentToolResult:
+        observed.append(params.model_dump())
+        plays = 260 if params.artist_name == "Taylor Swift" else 130
+        return tool_registry.AgentToolResult(
+            data={
+                "found": True,
+                "artist_name": params.artist_name,
+                "period": {
+                    "period": params.period,
+                    "start_date": "2026-03-01",
+                    "end_date": "2026-08-31",
+                },
+                "summary": {"total_plays": plays, "total_hours": plays / 20},
+            },
+            result_summary="found=true",
+            source_range="2026-03-01..2026-08-31",
+        )
+
+    monkeypatch.setattr(tools, "entity_stats_handler", fake_entity_stats_handler)
+    monkeypatch.setattr(
+        tools,
+        "billboard_entity_detail_handler",
+        lambda params: pytest.fail("普通时间窗比较不应计算个人 Billboard"),
+    )
+
+    result = tool_registry.dispatch_tool(
+        "compare_entities",
+        {
+            "entity_type": "artist",
+            "names": ["Taylor Swift", "Olivia Rodrigo"],
+            "period": "last_6_months",
+            "include_billboard": False,
+        },
+    )
+
+    assert result["source_range"] == "last_6_months"
+    assert result["data"]["includes_personal_billboard"] is False
+    assert result["data"]["winner_by_cumulative_plays"] == "Taylor Swift"
+    assert result["data"]["winner_by_intensity"] == "Taylor Swift"
+    assert result["data"]["intensity_basis"] == "comparison_window_weeks"
+    assert all(item["period"] == "last_6_months" for item in observed)
 
 
 def test_compare_entities_keeps_missing_entities(

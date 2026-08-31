@@ -311,8 +311,7 @@ def _compare_item_matches_names(
     row_names = _compare_entity_names(data)
     if row_names:
         return all(name in row_names for name in normalized_names)
-    text = _item_text(item).casefold()
-    return all(name in text for name in normalized_names)
+    return False
 
 
 def _compare_item_matches_frame(item: dict[str, Any], frame: dict[str, Any]) -> bool:
@@ -614,10 +613,18 @@ def _tool_calls_for_pattern(
         entities = _requested_frame_entities(frame)
         entity_type = str(frame.get("entity_type") or "unknown")
         if entity_type in {"album", "artist", "track"} and len(entities) >= 2:
+            include_billboard = "personal_billboard" in (
+                frame.get("analysis_axes") or frame.get("requested_metrics") or []
+            )
             return [
                 {
                     "tool_name": "compare_entities",
-                    "params": {"entity_type": entity_type, "names": entities[:4]},
+                    "params": {
+                        "entity_type": entity_type,
+                        "names": entities[:4],
+                        **_period_params_from_scope(frame.get("time_scope")),
+                        "include_billboard": include_billboard,
+                    },
                 }
             ]
         return []
@@ -1006,7 +1013,13 @@ def review_evidence_sufficiency(
         ):
             add_followup(call)
 
-    if "personal_billboard" in missing_axes:
+    compare_will_include_billboard = any(
+        call.get("tool_name") == "compare_entities"
+        and isinstance(call.get("params"), dict)
+        and call["params"].get("include_billboard") is True
+        for call in followups
+    )
+    if "personal_billboard" in missing_axes and not compare_will_include_billboard:
         for call in _entity_tool_calls("billboard_entity_detail", frame, {}):
             add_followup(call)
     if "time_of_day" in missing_axes:
@@ -1019,15 +1032,19 @@ def review_evidence_sufficiency(
         ):
             add_followup(call)
 
-    legacy_review = review_coverage(
-        question_intent={
-            "task_type": frame.get("task_type"),
-            "entity_type": frame.get("entity_type"),
-            "entities": frame.get("entities", []),
-            "requested_metrics": frame.get("requested_metrics", []),
-        },
-        coverage=coverage,
-    )
+    legacy_review: dict[str, Any]
+    if frame.get("family") == "preference_comparison":
+        legacy_review = {"sufficient": True, "reasons": [], "followup_tool_calls": []}
+    else:
+        legacy_review = review_coverage(
+            question_intent={
+                "task_type": frame.get("task_type"),
+                "entity_type": frame.get("entity_type"),
+                "entities": frame.get("entities", []),
+                "requested_metrics": frame.get("requested_metrics", []),
+            },
+            coverage=coverage,
+        )
     for call in legacy_review.get("followup_tool_calls", []):
         if isinstance(call, dict):
             add_followup(call)

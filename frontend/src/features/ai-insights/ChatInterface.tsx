@@ -120,6 +120,7 @@ export function ChatInterface({
         handledTaskIdRef.current = null
         const task = await startChatTask.mutateAsync({
           question,
+          ...(sid !== null ? { session_id: sid } : {}),
           conversation_history: history,
           question_time: new Date().toISOString(),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,

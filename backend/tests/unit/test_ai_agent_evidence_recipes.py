@@ -15,24 +15,28 @@ def _recipe(question: str):
     return recipe_for_frame(frame)
 
 
-def test_preference_comparison_recipe_requires_recent_windows_and_compare_tool() -> None:
+def test_preference_comparison_recipe_uses_one_comparison_and_optional_billboard() -> None:
     recipe = _recipe(
         "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl这两张专辑的喜爱程度哪张专辑更甚？"
     )
 
     assert recipe.family == "preference_comparison"
-    assert set(recipe.required_axes) >= {"cumulative", "recency", "intensity"}
+    assert set(recipe.required_axes) >= {"cumulative", "intensity"}
+    assert "recency" not in recipe.required_axes
     assert "personal_billboard" in recipe.required_axes
     assert "fairness" in recipe.conditional_axes
     assert {"tool_name": "compare_entities"} in recipe.required_tool_patterns
-    assert {
-        "tool_name": "entity_stats",
-        "period": "last_6_months",
-    } in recipe.required_tool_patterns
-    assert {
-        "tool_name": "entity_stats",
-        "period": "last_4_weeks",
-    } in recipe.required_tool_patterns
+    assert recipe.required_tool_patterns == [{"tool_name": "compare_entities"}]
+    assert recipe.required_context == {"time_scope": "lifetime"}
+    assert recipe.max_followup_calls == 2
+
+
+def test_recent_preference_comparison_recipe_requires_recency_without_duplicate_calls() -> None:
+    recipe = _recipe("Taylor Swift 和 Olivia Rodrigo 最近 6 个月谁的播放量更高，我更偏爱谁？")
+
+    assert "recency" in recipe.required_axes
+    assert recipe.required_tool_patterns == [{"tool_name": "compare_entities"}]
+    assert recipe.required_context == {"time_scope": "last_6_months"}
 
 
 def test_simple_ranking_recipe_stays_small() -> None:

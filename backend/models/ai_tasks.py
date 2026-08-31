@@ -68,6 +68,23 @@ class AiTaskEventsResponse(BaseModel):
     tool_calls: list[AiToolCall]
 
 
+class AiAgentTurnEvent(BaseModel):
+    event_id: int
+    task_id: str
+    session_id: int | None = None
+    turn_id: str
+    sequence: int
+    step_index: int | None = None
+    event_type: str
+    payload: JsonPayload
+    created_at: str
+
+
+class AiAgentTrajectoryResponse(BaseModel):
+    found: bool
+    events: list[AiAgentTurnEvent]
+
+
 class AiTaskCreateResponse(BaseModel):
     task_id: str
     task_type: str | None = None
@@ -118,6 +135,7 @@ class ReportTaskRequest(BaseModel):
 
 class ChatAgentTaskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500)
+    session_id: int | None = Field(default=None, ge=1)
     conversation_history: list[dict[str, str]] | None = None
     question_time: str | None = Field(default=None, max_length=80)
     timezone: str | None = Field(default=None, max_length=80)

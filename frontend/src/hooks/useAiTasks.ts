@@ -45,6 +45,7 @@ export interface ReportTaskRequest {
 
 export interface ChatAgentTaskRequest {
   question: string
+  session_id?: number
   conversation_history?: Array<{ role: string; content: string }>
   question_time?: string
   timezone?: string
