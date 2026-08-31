@@ -2,6 +2,21 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-31 — L3 曲目与专辑自动治理落地
+
+- 新增歌曲 composition 解析与自动归并：Acoustic、Live、Remix、Taylor's Version 等在 L2 保持
+  独立录音，同时按完整 L2 child 自动进入 L3；结构性标题、翻唱、翻译、采样、mashup、parody、
+  reprise、艺人不相容与歧义证据继续 fail closed。
+- 新增专辑 composition 自动任务，以完整 L2 release project、canonical album artist、受控版本后缀
+  和曲目作品重叠建立 L3 parent；标准/Deluxe 和现有 Album Project membership 保持 L2 语义，
+  compilation 策略继续冻结。
+- 联合治理工具在两份独立 Online Backup 副本完成全量与幂等演练后应用到本地主库；L2 的 46 组 /
+  93 membership 不变，新增歌曲 L3 380 组 / 873 membership、专辑 L3 2 组 / 4 release child，
+  原始三表行数与 hash 保持不变。
+- 四套 L2/L3 × fixed/dynamic 搜索快照与年榜投影原子发布；Settings 增加 L2/L3、机器/人工、
+  policy version 和覆盖清除能力，并修复 390px 下长策略与任务标签裁切。详细证据见
+  [`reports/2026-08-31-l3-governance-execution-and-acceptance.md`](reports/2026-08-31-l3-governance-execution-and-acceptance.md)。
+
 ## 2026-08-30 — L2 同名歌曲与 Album Project 别名统一
 
 - L2 产品语义调整为“同歌曲基础版本”：canonical primary artist 与规范化普通歌名相同时由机器直接

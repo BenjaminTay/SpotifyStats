@@ -35,11 +35,27 @@ rejected，不进入人工待审队列；只有显式 `force_merge` 才能覆盖
 艺人、语义版本和兼容时长均一致的保守 fallback。人工审核只处理显式 `force_merge` /
 `force_separate` 例外，且 `force_separate` 优先于 `force_merge` 和自动规则。
 
+L3 同样由机器维护，但不会拆散 L2。自动任务把完整活动 `recording` group 和未分组 L1 owner
+作为不可拆分输入，用 canonical primary artist 与受控作品基础标题识别 composition。Acoustic、
+Live、Remix、Taylor's Version、Radio Edit、Instrumental、Demo、Extended、Sped Up / Slowed、
+Karaoke、Acapella、Rehearsal 及允许的 alternate arrangement 在 L2 保持独立，满足 L3 门禁后自动
+accepted；L2 的 `semantic_version_conflict` 是层级分流，不是全局 rejected。translation、cover、
+mashup、parody、sample、reprise、结构性标题、艺人不相容和歧义证据在 L3 fail closed。ISRC、
+时长和 source context 差异只记 warning。人工 `force_merge` / `force_separate` 通过独立覆盖表持久化，
+可在 Settings 清除；`force_separate` 始终优先，所有机器与人工决定都记录 scope、policy version、
+evidence 和 before/after 审计。
+
 Album Project 同样优先机器归并同名大小写差异和 catalog 证据完整的标准/豪华/expanded 发行。
 共享 `album_spotify_links` 不是充分条件，必须同时核对 canonical album artist、发行日期/类型与完整
 track list。一个项目可以包含不同 recording key 的 Acoustic、Long Pond 或 rehearsal 额外曲目；
 这只改变专辑项目 membership，不会把这些歌曲在 L2 曲目榜合成原版录音。精选集策略未定期间，
 自动任务不得改变 compilation project 的现有 membership 或榜单资格。
+
+L3 Album composition 只把完整 L2 release project 作为 child。canonical album artist、受控的
+重录/live/remix/acoustic 基础项目名和至少 60% 的曲目作品重叠必须同时成立，最小交集为
+`min(5, max(2, ceil(smaller_project_track_count * 0.6)))`。标准版/Deluxe 继续由 L2 处理；
+compilation、manual project、歧义基础名和弱重叠均 fail closed。L3 parent 不改写 L2 项目及
+membership，详情从任一 child 进入都解析到同一 composition project。
 
 Album Project 的规范项目名、所有成员发行名及其 Unicode/大小写/空白等价形式都是同一项目的只读
 别名，但项目身份始终是稳定 `album_project_id`。新搜索结果和详情深链必须使用
@@ -48,7 +64,9 @@ canonical album artist 消歧，L2 优先 `release`、L3 优先 `composition`，
 摘要、排行、播放明细、日历和 Billboard 不得各自实现名称匹配，也不得因为从成员发行名进入就退回
 具体来源专辑的局部统计。
 
-Phone 当前把归并、署名和元数据维护明确归入“高级数据管理 · 电脑端管理”，不能静默显示不完整的移动版操作；后续若开放 Phone 写入，必须直接挂载同一套响应式工作台、API 与 owner 语义，不得复制另一套治理逻辑。
+Phone 深链与 Desktop 直接挂载同一套响应式治理工作台、API 和 owner 语义，不复制移动端写逻辑。
+390px 视口下对象切换、任务标签、分组卡片和完整 policy version 必须可读并在容器内换行，不能横向
+裁切；同一操作在 Desktop 与 Phone 上产生完全相同的 scope、覆盖记录和审计事件。
 
 人工治理不得重写或删除 `plays`、`tracks`、`track_artists`。这些表继续表达导入时的原始事实；人工判断存放在独立覆盖层并保留审计链。
 

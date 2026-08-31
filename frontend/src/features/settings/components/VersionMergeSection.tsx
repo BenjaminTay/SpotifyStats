@@ -85,10 +85,10 @@ export function VersionMergeSection({
   const vm = useVersionMerge();
 
   return (
-    <section className="space-y-5" aria-label="归并与版本工作区">
+    <section className="min-w-0 space-y-5" aria-label="归并与版本工作区">
       <ObjectTypeSwitch value={objectType} onChange={setObjectType} />
       <div
-        className="grid grid-cols-3 gap-1 rounded-2xl border border-border bg-muted/20 p-1"
+        className="grid min-w-0 grid-cols-3 gap-1 rounded-2xl border border-border bg-muted/20 p-1"
         aria-label="归并工作方式"
       >
         {MERGE_TABS.map((tab) => (
@@ -98,7 +98,7 @@ export function VersionMergeSection({
             aria-label={tab.label}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              "min-h-12 rounded-xl px-2 py-2 text-center transition sm:min-h-14 sm:px-3",
+              "min-h-12 min-w-0 rounded-xl px-2 py-2 text-center transition sm:min-h-14 sm:px-3",
               activeTab === tab.key
                 ? "bg-background text-foreground shadow-sm ring-1 ring-border"
                 : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
@@ -113,7 +113,7 @@ export function VersionMergeSection({
           </button>
         ))}
       </div>
-      <div className="rounded-2xl border border-border bg-background p-4 sm:p-5">
+      <div className="min-w-0 rounded-2xl border border-border bg-background p-4 sm:p-5">
         {activeTab === "detect" && (
           <AutoDetectionTab vm={vm} objectType={objectType} />
         )}
@@ -683,8 +683,8 @@ function SavedGroupsTab({
       <EmptyState text={`暂无已保存的${OBJECT_COPY[objectType].label}分组。`} />
     );
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
+    <div className="min-w-0 space-y-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
         <p className="text-[12px] text-muted-foreground">
           共 {groups.length} 个分组
         </p>
@@ -886,7 +886,7 @@ function SavedGroupShell({
 }) {
   useChineseTextVersion();
   return (
-    <div className="rounded-2xl border border-border bg-background p-4">
+    <div className="min-w-0 rounded-2xl border border-border bg-background p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
           {icon}
@@ -901,7 +901,11 @@ function SavedGroupShell({
               {manual ? "人工治理" : "机器归并"}
             </Badge>
             {policy && (
-              <Badge variant="outline" title="内部归并策略版本">
+              <Badge
+                variant="outline"
+                title="内部归并策略版本"
+                className="h-auto max-w-full shrink whitespace-normal break-all text-left leading-tight"
+              >
                 策略 {policy}
               </Badge>
             )}

@@ -1,6 +1,6 @@
 # 播放统计与版本合并规则：最新版
 
-> 创建日期：2026-06-18；最近修订：2026-08-30
+> 创建日期：2026-06-18；最近修订：2026-08-31
 > 状态：规则源文件，作为后续实现与验收依据
 > 来源：整合 [`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md)、[`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md)，以及后续对歌曲/专辑多版本语义的确认。
 
@@ -274,6 +274,13 @@ Version、Extended、Sped Up/Slowed 和参与艺人变化等语义标签必须�
 
 ### R11. L3 同作品判断
 
+L3 自动治理以活动 L2 `recording` 组为不可拆分单元，并把未进入 L2 组的单个 L1 owner 作为
+singleton 单元；它不会拆散或改写已经发布的 L2 关系。候选以 canonical primary artist 和受控的
+作品基础标题解析器生成。L2 因 `semantic_version_conflict` 保持分离的 Acoustic、Live、Remix、
+Taylor's Version 等候选可以在 L3 自动 accepted，而不是被全局丢弃。ISRC 不相交、时长差异和
+source context 差异只形成审计 warning，不阻止同作品归并；未知或未受控后缀保留在基础标题中，
+避免仅凭模糊去后缀误并。
+
 以下版本只在 L3 合并：
 
 | 类型 | L2 | L3 | 说明 |
@@ -286,6 +293,11 @@ Version、Extended、Sped Up/Slowed 和参与艺人变化等语义标签必须�
 | Demo | 否 | 是 | 小样或早期录音 |
 | Taylor's Version / 重录 | 否 | 是 | 不同录音 session，同作品 |
 | 合作版 | 否 | 是 | 需满足 R12 |
+
+受控关系还包括 Original / Single / Album Version、Extended、Sped Up / Slowed、Karaoke、
+Acapella、Rehearsal 及允许的 alternate arrangement。translation、cover、mashup、parody、sample、
+reprise 和结构性标题继续 fail closed；合作版还必须满足 R12 的原主艺人参与条件。覆盖优先级固定为
+`force_separate` 高于人工 `force_merge`，人工覆盖高于自动规则。
 
 ### R12. 合作版合并条件
 
@@ -394,6 +406,12 @@ L2 album project 自动归并使用稳定发行证据：规范化项目名和 ca
 才能成为项目 owner 证据。`album_spotify_links` 是多对多的播放来源线索，单独共享一个 link 不能
 触发合并。同专辑名仅大小写、Unicode 或空白不同应机器合并；标准版、Deluxe、Expanded、
 Anniversary 等通过曲目包含关系归并。跨 artist、同名不同专辑或证据冲突的组件保持独立并进入审计。
+
+L3 album composition 自动任务只消费完整活动 L2 release project，以受控的重录、live、remix、
+acoustic 等发行后缀解析基础项目名，并要求 canonical album artist 一致、基础名唯一且曲目作品重叠
+至少 60%。最小交集为 `min(5, max(2, ceil(smaller_project_track_count * 0.6)))`；歧义标题、
+compilation、人工项目、弱重叠或其他证据冲突均 fail closed。标准版与 Deluxe 仍在 L2 归并；L3
+只新建 composition parent 并挂接完整 release child，不改写 L2 project 或其 membership。
 
 ### R18. 标准版与豪华版
 
@@ -874,6 +892,10 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 - 同 ISRC / Spotify relink 且标题缺失时，其他强证据仍一致的保守 recording fallback。
 - 同专辑大小写/Unicode/空白差异，以及 catalog/曲目包含关系明确的标准版、豪华版、expanded
   album project。
+- canonical artist + 受控作品基础标题一致的 L3 track composition；L2 的版本冲突是 L3 的输入，
+  不等于全局 rejected。L3 使用完整 L2 recording child，不能选择性拆组。
+- canonical album artist、受控项目基础名和曲目作品重叠门禁同时成立的 L3 album composition；
+  composition parent 只挂接完整 L2 release child。
 
 以下关系不会被 L2 自动任务合并；若要跨录音归并，应进入 L3 或显式覆盖：
 
@@ -883,6 +905,10 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 - 同名不同歌。
 - `Intro`、`Outro`、`Interlude` 等结构性通用标题及其编号/副标题形式。
 - 翻唱、采样、mashup。
+
+上述列表是对应自动层级的分流结果：Acoustic / Live / Remix / Taylor's Version 等仅在 L2 保持
+分离，满足 L3 门禁时应自动进入 composition；结构性标题、翻唱、translation、采样、mashup、
+parody、reprise、artist 不相容和歧义证据才是 L3 的确定性 blocker。
 
 ### R42. 历史 backfill 标注
 
@@ -987,6 +1013,13 @@ GUTS (spilled) / 2024-03-22
 ---
 
 ## 17. Implementation Status
+
+截至 2026-08-31，L1→L2→L3 联合治理已经在两份独立 Online Backup 副本完成全量演练并应用到
+本地主库：L2 保持 46 个活动 recording group / 93 个 membership，L3 新建 380 个活动 composition
+group / 873 个 membership；L3 album composition 新建 2 个父项目并挂接 4 个完整 release child。
+原始 `plays`、`tracks`、`track_artists` 的行数和 hash 均保持不变，四套 L2/L3 × fixed/dynamic
+精确搜索快照及详情年榜投影共同发布。实现、真实数据、API、响应式 UI 与门禁证据见
+[`docs/reports/2026-08-31-l3-governance-execution-and-acceptance.md`](../reports/2026-08-31-l3-governance-execution-and-acceptance.md)。
 
 截至 2026-08-30，Billboard Records 的 6 个家族共 51 个列表已使用完整候选集排序、业务二级/后续指标和稳定实体键；冠军单曲/专辑名人堂分别按对应冠周排序，专辑名人堂只接受冠军专辑数大于 0 的艺人。实现与真实 API/浏览器验收证据见 [`docs/reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)。
 

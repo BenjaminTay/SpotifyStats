@@ -326,6 +326,14 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_version_merge_confirm_workflow.py",
         "Track group confirmation is exercised against an isolated seed database.",
     ),
+    (
+        "DELETE",
+        "/api/version-merge/track-overrides/{scope}/{left_l1_id}/{right_l1_id}",
+    ): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_version_merge_confirm_workflow.py",
+        "Manual track override clearing and its scope/id validation are exercised against an isolated seed database.",
+    ),
     **{
         (method, path): OperationEvidence(
             "targeted_contract",

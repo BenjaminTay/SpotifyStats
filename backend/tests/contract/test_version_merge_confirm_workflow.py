@@ -432,6 +432,43 @@ def test_track_group_confirm_api_returns_rebuild_status(isolated_seed_db):
     assert payload["album_projects_rebuilt"] is True
 
 
+def test_track_override_clear_api_restores_machine_governance(isolated_seed_db):
+    from fastapi.testclient import TestClient
+
+    from backend.core.db import get_db
+    from backend.core.migrations import run_migrations
+    from backend.main import app
+
+    run_migrations()
+    conn = get_db(readonly=False)
+    try:
+        conn.execute(
+            """INSERT INTO track_merge_overrides(
+                   scope, left_l1_id, right_l1_id, action, reason
+               ) VALUES ('composition', 920, 926, 'force_separate', 'contract')
+               ON CONFLICT DO UPDATE SET action='force_separate', reason='contract'"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    with TestClient(app) as client:
+        invalid_scope = client.delete("/api/version-merge/track-overrides/invalid/920/926")
+        invalid_left = client.delete("/api/version-merge/track-overrides/composition/not-an-id/926")
+        invalid_right = client.delete(
+            "/api/version-merge/track-overrides/composition/920/not-an-id"
+        )
+        cleared = client.delete("/api/version-merge/track-overrides/composition/920/926")
+        missing = client.delete("/api/version-merge/track-overrides/composition/920/926")
+
+    assert invalid_scope.status_code == 400
+    assert invalid_left.status_code == 422
+    assert invalid_right.status_code == 422
+    assert cleared.status_code == 200
+    assert cleared.json() == {"status": "ok"}
+    assert missing.status_code == 404
+
+
 def test_artist_release_groups_api_matches_response_model(isolated_seed_db):
     """Artist-filtered groups must include all ReleaseGroupResponse fields."""
     from fastapi.testclient import TestClient

@@ -435,7 +435,7 @@ export function MobileSettingsExperience({
         ? 'album'
         : 'track'
       return (
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <div className="mobile-settings-deep-link">
             <ShieldCheck className="h-5 w-5" />
             <div><strong>已定位归并任务</strong><span>{metadataSummary}</span></div>

@@ -76,6 +76,24 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("path", "left_l1_id", "integer"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "track override clearing rejects non-integer left-side canonical IDs",
+        ("backend/tests/contract/test_version_merge_confirm_workflow.py",),
+    ),
+    ("path", "right_l1_id", "integer"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "track override clearing rejects non-integer right-side canonical IDs",
+        ("backend/tests/contract/test_version_merge_confirm_workflow.py",),
+    ),
+    ("path", "scope", "string"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "track override clearing enforces the recording/composition scope allowlist",
+        ("backend/tests/contract/test_version_merge_confirm_workflow.py",),
+    ),
     ("path", "l1_id", "integer"): ParameterEvidence(
         "boundary_probe",
         ("music_track_canonical_identity_path_nonint",),
