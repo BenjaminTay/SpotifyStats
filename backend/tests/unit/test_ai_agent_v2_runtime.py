@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -248,6 +250,63 @@ def test_agent_v2_runs_observation_loop_and_persists_replayable_events(
     assert shadow_payloads[0]["matches"] is True
 
 
+def test_agent_v2_replaces_repeated_unsupported_numbers_with_grounded_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "agent-grounded-fallback.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    registry = AgentToolRegistry()
+    registry.register(
+        AgentToolDefinition(
+            name="analysis_charts",
+            description="Read rankings",
+            read_only=True,
+            params_model=ChartParams,
+            handler=_chart_handler,
+        )
+    )
+
+    class UnsupportedNumberModel(FakeModel):
+        def complete(self, messages, tools, *, thinking):
+            if self.calls == 0:
+                return super().complete(messages, tools, thinking=thinking)
+            self.calls += 1
+            return LLMCompletion(
+                content=(
+                    "Artist A 共播放 12 次，但我还推断你听了 250 首歌。"
+                    "数据范围为 2020-01-01 至 2026-08-30。"
+                ),
+                finish_reason="stop",
+            )
+
+    model = UnsupportedNumberModel()
+    AgentRuntime(model=model, registry=registry, max_steps=4).run(
+        "task-v2",
+        {
+            "question": "谁是我听得最多的艺人？",
+            "question_time": "2026-08-31T12:00:00+08:00",
+        },
+    )
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    result = json.loads(task["result_json"])
+    conn.close()
+
+    assert task["status"] == "done"
+    assert result["grounded_fallback_used"] is True
+    assert result["evidence_coverage"] == 1.0
+    assert "250" not in result["answer"]
+    assert result["claim_ledger"]["unsupported_literals"] == []
+
+
 def test_agent_v2_safety_boundary_does_not_call_model(tmp_path, monkeypatch):
     db_path = tmp_path / "agent-safety.db"
     _create_runtime_db(db_path)
@@ -413,6 +472,29 @@ def test_agent_v2_defaults_comparison_to_requested_window_without_billboard() ->
     assert filters["include_billboard"] is False
 
 
+def test_agent_v2_clips_explicit_year_default_to_local_data_cutoff(monkeypatch) -> None:
+    monkeypatch.setattr(
+        ai_agent_v2_service,
+        "_temporal_context",
+        lambda request: {
+            "today": "2026-08-31",
+            "data_start_date": "2022-07-01",
+            "data_end_date": "2026-08-21",
+            "latest_play_date": "2026-08-21",
+        },
+    )
+    request: dict[str, Any] = {"question": "2026年我听得最多的艺人是谁？"}
+
+    filters = ai_agent_v2_service._agent_default_filters(request)
+
+    assert filters["start_date"] == "2026-01-01"
+    assert filters["end_date"] == "2026-08-21"
+    interpretation = request["_temporal_guard"]["time_interpretation"]
+    assert interpretation["requested_end_date"] == "2026-12-31"
+    assert interpretation["effective_end_date"] == "2026-08-21"
+    assert interpretation["coverage_clipped"] is True
+
+
 def test_agent_v2_enables_billboard_only_when_question_requests_it() -> None:
     filters = ai_agent_v2_service._agent_default_filters(
         {"question": ("从个人 Billboard 和 Power Score 看，GUTS 和 SOUR 哪张专辑更强？")}
@@ -420,6 +502,14 @@ def test_agent_v2_enables_billboard_only_when_question_requests_it() -> None:
 
     assert filters["period"] == "lifetime"
     assert filters["include_billboard"] is True
+
+
+def test_agent_v2_does_not_enable_billboard_for_generic_ranking_word() -> None:
+    filters = ai_agent_v2_service._agent_default_filters(
+        {"question": "Taylor Swift 和 Olivia Rodrigo 的本地播放排名谁更高？"}
+    )
+
+    assert filters["include_billboard"] is False
 
 
 def test_agent_profile_exposes_only_family_specific_tool_schemas() -> None:
@@ -439,12 +529,36 @@ def test_agent_profile_exposes_only_family_specific_tool_schemas() -> None:
     assert comparison.family == "preference_comparison"
     assert 3 <= len(comparison.tool_names) <= 6
     assert comparison.tool_names[0] == "compare_entities"
+    assert "billboard_entity_detail" not in comparison.tool_names
     all_schema_chars = len(json.dumps(registry.list_tools(), ensure_ascii=False))
     selected_schema_chars = len(
         json.dumps(tool_schemas_for_profile(registry, ranking), ensure_ascii=False)
     )
     assert selected_schema_chars < all_schema_chars * 0.6
+    comparison_schemas = tool_schemas_for_profile(registry, comparison)
+    compare_schema = next(item for item in comparison_schemas if item["name"] == "compare_entities")
+    assert "ROUTING_METADATA=" in compare_schema["description"]
+    assert '"best_for"' in compare_schema["description"]
+    assert '"parallel_safe":true' in compare_schema["description"]
     assert "我今年" not in ai_agent_v2_service._system_prompt()
+
+
+def test_agent_profile_exposes_billboard_tool_only_for_explicit_billboard() -> None:
+    registry = get_default_registry()
+    ordinary = ai_agent_service._question_context(
+        {"question": "Taylor Swift 和 Olivia Rodrigo 的本地播放次数谁更多？"}
+    )
+    billboard = ai_agent_service._question_context(
+        {"question": "比较 Taylor Swift 和 Olivia Rodrigo 的个人 Billboard 在榜周"}
+    )
+
+    ordinary_profile = select_agent_profile(ordinary, registry)
+    billboard_profile = select_agent_profile(billboard, registry)
+
+    assert ordinary_profile.tool_names[0] == "compare_entities"
+    assert "billboard_entity_detail" not in ordinary_profile.tool_names
+    assert billboard_profile.tool_names[0] == "compare_entities"
+    assert "billboard_entity_detail" in billboard_profile.tool_names
 
 
 def test_agent_v2_records_runtime_metrics_and_patches_mechanical_obligations(
@@ -590,6 +704,7 @@ def test_agent_executes_two_independent_readonly_tools_in_parallel_with_stable_o
                 state["active"] += 1
                 state["max_active"] = max(state["max_active"], state["active"])
             barrier.wait(timeout=2)
+            time.sleep(0.03)
             with lock:
                 state["active"] -= 1
             return AgentToolResult(
@@ -642,17 +757,38 @@ def test_agent_executes_two_independent_readonly_tools_in_parallel_with_stable_o
     )
 
     conn = factory()
-    event_types = [
-        row[0]
-        for row in conn.execute("SELECT event_type FROM ai_agent_turn_events ORDER BY sequence")
-    ]
-    task = conn.execute("SELECT status, error FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    events = conn.execute(
+        "SELECT turn_id, step_index, event_type, payload_json "
+        "FROM ai_agent_turn_events ORDER BY sequence"
+    ).fetchall()
+    event_types = [row["event_type"] for row in events]
+    task = conn.execute(
+        "SELECT status, error, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
     conn.close()
     assert task["status"] == "done", task["error"]
     assert state["max_active"] == 2
     assert model.tool_order == ["analysis_charts", "analysis_stats"]
     assert "parallel_tool_batch_started" in event_types
     assert "parallel_tool_batch_ended" in event_types
+    metrics = json.loads(task["result_json"])["runtime_metrics"]
+    assert metrics["tool_call_count"] == 2
+    assert metrics["tool_wall_elapsed_ms"] < metrics["tool_cumulative_elapsed_ms"]
+    turn_id = str(events[0]["turn_id"])
+    model_events = [
+        json.loads(row["payload_json"])
+        for row in events
+        if row["event_type"] in {"model_request", "assistant_message"}
+    ]
+    assert model_events[0]["model_call_id"] == f"{turn_id}:step:1:model"
+    assert model_events[1]["model_call_id"] == f"{turn_id}:step:1:model"
+    tool_events = [
+        json.loads(row["payload_json"]) for row in events if row["event_type"] == "tool_result"
+    ]
+    assert [item["tool_execution_id"] for item in tool_events] == [
+        f"{turn_id}:step:1:tool:first",
+        f"{turn_id}:step:1:tool:second",
+    ]
 
 
 def test_agent_consumes_session_inbox_before_next_model_step(tmp_path, monkeypatch) -> None:

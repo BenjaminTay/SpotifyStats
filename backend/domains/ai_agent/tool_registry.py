@@ -33,6 +33,11 @@ class AgentToolDefinition:
     timeout_seconds: float = 30.0
     cacheability: Literal["none", "revision"] = "none"
     supports_parallel: bool = True
+    best_for: tuple[str, ...] = ()
+    covers: tuple[str, ...] = ()
+    cold_build_risk: Literal["none", "low", "medium", "high"] = "none"
+    avoid_when: tuple[str, ...] = ()
+    fallback: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.timeout_seconds <= 0:
@@ -44,6 +49,19 @@ class AgentToolDefinition:
             "timeout_seconds": self.timeout_seconds,
             "cacheability": self.cacheability,
             "supports_parallel": self.supports_parallel,
+        }
+
+    def routing_metadata(self) -> dict[str, Any]:
+        """Return machine-readable guidance safe to expose to the model."""
+
+        return {
+            "best_for": list(self.best_for),
+            "covers": list(self.covers),
+            "cost": self.cost,
+            "parallel_safe": self.supports_parallel,
+            "cold_build_risk": self.cold_build_risk,
+            "avoid_when": list(self.avoid_when),
+            "fallback": list(self.fallback),
         }
 
 
@@ -86,6 +104,7 @@ class AgentToolRegistry:
                 "read_only": definition.read_only,
                 "params_schema": definition.params_model.model_json_schema(),
                 "runtime": definition.runtime_metadata(),
+                "routing": definition.routing_metadata(),
             }
             for definition in self._tools.values()
         ]

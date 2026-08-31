@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,7 @@ import pandas as pd
 import pytest
 
 from backend.domains.ai_agent import entity_comparison_service, tool_registry, tools
-from backend.domains.ai_agent.tool_cache import clear_agent_tool_cache
+from backend.domains.ai_agent.tool_cache import clear_agent_tool_cache, make_cache_key
 
 pytestmark = pytest.mark.unit
 
@@ -32,6 +33,16 @@ def _revision_db(path: Path) -> None:
             current_revision INTEGER NOT NULL
         );
         INSERT INTO track_identity_state VALUES (1, 6);
+        CREATE TABLE artist_identity_state (
+            state_id INTEGER PRIMARY KEY,
+            current_revision INTEGER NOT NULL
+        );
+        INSERT INTO artist_identity_state VALUES (1, 8);
+        CREATE TABLE track_credit_state (
+            state_id INTEGER PRIMARY KEY,
+            current_revision INTEGER NOT NULL
+        );
+        INSERT INTO track_credit_state VALUES (1, 9);
         CREATE TABLE album_project_revision_state (
             state_id INTEGER PRIMARY KEY,
             current_revision INTEGER NOT NULL
@@ -94,6 +105,71 @@ def test_revision_cache_reuses_result_and_invalidates_after_revision_change(
     third = tools.analysis_stats_handler(params)
     assert calls == 2
     assert third.data["summary"]["total_plays"] == 2
+
+
+def test_cache_key_tracks_metadata_revisions_and_normalized_filters(tmp_path: Path) -> None:
+    database = tmp_path / "agent-cache-metadata.db"
+    _revision_db(database)
+    conn = sqlite3.connect(database)
+    base_params = tools.AnalysisChartsParams(entity="artist", period="this_year")
+    base = make_cache_key(conn, tool_name="analysis_charts", params=base_params)
+    same = make_cache_key(
+        conn,
+        tool_name="analysis_charts",
+        params=tools.AnalysisChartsParams(period="this_year", entity="artist"),
+    )
+    different_filter = make_cache_key(
+        conn,
+        tool_name="analysis_charts",
+        params=tools.AnalysisChartsParams(entity="artist", period="this_year", min_ms=45_000),
+    )
+
+    assert base is not None
+    assert base == same
+    assert different_filter is not None
+    assert base.normalized_params != different_filter.normalized_params
+
+    conn.execute("UPDATE artist_identity_state SET current_revision=current_revision+1")
+    artist_identity_changed = make_cache_key(
+        conn,
+        tool_name="analysis_charts",
+        params=base_params,
+    )
+    conn.execute("UPDATE track_credit_state SET current_revision=current_revision+1")
+    track_credit_changed = make_cache_key(
+        conn,
+        tool_name="analysis_charts",
+        params=base_params,
+    )
+    conn.close()
+
+    assert artist_identity_changed is not None
+    assert track_credit_changed is not None
+    assert artist_identity_changed.revision != base.revision
+    assert track_credit_changed.revision != artist_identity_changed.revision
+
+
+def test_cache_key_does_not_cross_same_path_database_replacement(tmp_path: Path) -> None:
+    database = tmp_path / "agent-cache-replaced.db"
+    replacement = tmp_path / "agent-cache-new.db"
+    _revision_db(database)
+    _revision_db(replacement)
+    params = tools.AnalysisStatsParams()
+    conn = sqlite3.connect(database)
+    before = make_cache_key(conn, tool_name="analysis_stats", params=params)
+    conn.close()
+
+    os.replace(replacement, database)
+    conn = sqlite3.connect(database)
+    after = make_cache_key(conn, tool_name="analysis_stats", params=params)
+    conn.close()
+
+    assert before is not None
+    assert after is not None
+    assert (before.database_device, before.database_inode) != (
+        after.database_device,
+        after.database_inode,
+    )
 
 
 def test_comparison_batches_playback_and_billboard_sources_once(
@@ -200,3 +276,10 @@ def test_registry_exposes_runtime_scheduling_metadata() -> None:
     }
     listed = {item["name"]: item for item in tool_registry.list_tools()}
     assert listed["analysis_stats"]["runtime"]["cacheability"] == "revision"
+    routing = listed["compare_entities"]["routing"]
+    assert routing["cost"] == "high"
+    assert routing["parallel_safe"] is True
+    assert routing["cold_build_risk"] == "medium"
+    assert "比较 2-4 个同类实体" in routing["best_for"]
+    assert {"cumulative", "recency", "intensity", "fairness"}.issubset(routing["covers"])
+    assert routing["fallback"] == ["entity_stats", "resolve_entity"]

@@ -13,6 +13,8 @@ from dataclasses import dataclass, replace
 from pydantic import BaseModel
 
 from backend.domains.ai_agent.tool_registry import AgentToolResult
+from backend.domains.metadata.artist_identity import get_identity_revision
+from backend.domains.metadata.track_credits import get_track_credit_revision
 from backend.domains.metadata.track_identity import get_track_identity_revision
 from backend.domains.music_search.revisions import get_music_search_revision_state
 from backend.domains.playback.album_projects import get_album_project_revision
@@ -24,6 +26,8 @@ _MAX_ENTRIES = 128
 class AgentToolCacheKey:
     tool_name: str
     database_path: str
+    database_device: int
+    database_inode: int
     revision: tuple[int, ...]
     normalized_params: str
 
@@ -50,7 +54,7 @@ class AgentToolRevisionCache:
 
     def put(self, key: AgentToolCacheKey, value: AgentToolResult) -> None:
         # Operational failures and not-ready gates must be retried instead of cached.
-        if value.data.get("error"):
+        if value.data.get("error") or value.data.get("status") == "error":
             return
         with self._lock:
             self._entries[key] = replace(copy.deepcopy(value), cache_hit=False)
@@ -81,7 +85,7 @@ def agent_tool_data_revision(
     conn: sqlite3.Connection,
     *,
     include_billboard: bool = False,
-) -> tuple[str, tuple[int, ...]] | None:
+) -> tuple[str, int, int, tuple[int, ...]] | None:
     """Return a cheap revision fingerprint, or ``None`` for non-file test DBs."""
     if not isinstance(conn, sqlite3.Connection):
         return None
@@ -90,18 +94,22 @@ def agent_tool_data_revision(
         database_path = str(database_row[2] or "") if database_row is not None else ""
         if not database_path:
             return None
+        canonical_path = os.path.realpath(database_path)
+        file_state = os.stat(canonical_path)
         state = get_music_search_revision_state(conn)
         revision = (
             state.playback_revision,
             state.metadata_revision,
             state.settings_revision,
             state.candidate_revision,
+            get_identity_revision(conn),
+            get_track_credit_revision(conn),
             get_track_identity_revision(conn),
             get_album_project_revision(conn),
             state.billboard_revision if include_billboard else 0,
         )
-        return os.path.realpath(database_path), revision
-    except (AttributeError, IndexError, KeyError, sqlite3.Error, TypeError, ValueError):
+        return canonical_path, int(file_state.st_dev), int(file_state.st_ino), revision
+    except (AttributeError, IndexError, KeyError, OSError, sqlite3.Error, TypeError, ValueError):
         # Lightweight fakes and pre-migration databases remain directly executable.
         return None
 
@@ -125,10 +133,12 @@ def make_cache_key(
     state = agent_tool_data_revision(conn, include_billboard=include_billboard)
     if state is None:
         return None
-    database_path, revision = state
+    database_path, database_device, database_inode, revision = state
     return AgentToolCacheKey(
         tool_name=tool_name,
         database_path=database_path,
+        database_device=database_device,
+        database_inode=database_inode,
         revision=revision,
         normalized_params=normalized_tool_params(params),
     )

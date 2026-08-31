@@ -97,6 +97,14 @@ class ToolRuntime:
         self.allowed_tool_names = allowed_tool_names
         self._outcomes_by_identity: dict[str, ToolOutcome] = {}
 
+    def _trace_payload(self, call_id: str, step_index: int) -> dict[str, Any]:
+        return {
+            "turn_id": self.event_log.turn_id,
+            "step_index": step_index,
+            "tool_call_id": call_id,
+            "tool_execution_id": (f"{self.event_log.turn_id}:step:{step_index}:tool:{call_id}"),
+        }
+
     def seed_outcomes(self, outcomes: list[dict[str, Any]]) -> None:
         """Seed durable completed calls so recovery never executes them twice."""
 
@@ -104,7 +112,12 @@ class ToolRuntime:
             tool_name = str(item.get("tool_name") or "")
             params = item.get("params")
             data = item.get("data")
-            if not tool_name or not isinstance(params, dict) or not isinstance(data, dict):
+            if (
+                not tool_name
+                or item.get("status") == "error"
+                or not isinstance(params, dict)
+                or not isinstance(data, dict)
+            ):
                 continue
             outcome = ToolOutcome(
                 call_id="recovered",
@@ -167,6 +180,7 @@ class ToolRuntime:
             self.event_log.append(
                 "tool_result",
                 {
+                    **self._trace_payload(call_id, step_index),
                     "call_id": call_id,
                     "tool_name": tool_name,
                     "params": params,
@@ -205,19 +219,29 @@ class ToolRuntime:
                 self.metrics.record_tool(
                     elapsed_ms=0,
                     result_bytes=0,
-                    cache_hit=True,
+                    deduplicated=True,
                     executed=False,
                 )
             self.event_log.append(
                 "tool_call_deduplicated",
-                {"call_id": call_id, "tool_name": tool_name, "params": prepared},
+                {
+                    **self._trace_payload(call_id, step_index),
+                    "call_id": call_id,
+                    "tool_name": tool_name,
+                    "params": prepared,
+                },
                 step_index=step_index,
             )
             return duplicate
 
         self.event_log.append(
             "tool_call",
-            {"call_id": call_id, "tool_name": tool_name, "params": prepared},
+            {
+                **self._trace_payload(call_id, step_index),
+                "call_id": call_id,
+                "tool_name": tool_name,
+                "params": prepared,
+            },
             step_index=step_index,
         )
         try:
@@ -263,7 +287,10 @@ class ToolRuntime:
                 elapsed_ms=round((self.clock() - started_at) * 1000),
             )
 
-        self._outcomes_by_identity[identity] = outcome
+        # Failed calls are never memoized: a transient provider/validation
+        # failure may be safely retried after steering or a later model step.
+        if outcome.status != "error":
+            self._outcomes_by_identity[identity] = outcome
         if self.metrics is not None:
             self.metrics.record_tool(
                 elapsed_ms=outcome.elapsed_ms,
@@ -282,6 +309,7 @@ class ToolRuntime:
         self.event_log.append(
             "tool_result",
             {
+                **self._trace_payload(call_id, step_index),
                 "call_id": call_id,
                 "tool_name": tool_name,
                 "params": prepared,
@@ -336,12 +364,14 @@ class ToolRuntime:
 
     def _persist_parallel_outcome(self, outcome: ToolOutcome, *, step_index: int) -> None:
         identity = self.identity(outcome.tool_name, outcome.params)
-        self._outcomes_by_identity[identity] = outcome
+        if outcome.status != "error":
+            self._outcomes_by_identity[identity] = outcome
         if self.metrics is not None:
             self.metrics.record_tool(
                 elapsed_ms=outcome.elapsed_ms,
                 result_bytes=outcome.result_size_bytes,
                 cache_hit=outcome.cache_hit,
+                include_wall_time=False,
             )
         self.task_repo.add_tool_call_if_not_terminal(
             task_id=self.task_id,
@@ -355,6 +385,7 @@ class ToolRuntime:
         self.event_log.append(
             "tool_result",
             {
+                **self._trace_payload(outcome.call_id, step_index),
                 "call_id": outcome.call_id,
                 "tool_name": outcome.tool_name,
                 "params": outcome.params,
@@ -373,6 +404,7 @@ class ToolRuntime:
     ) -> list[ToolOutcome]:
         """Run independent read-only calls two at a time with stable writeback."""
 
+        batch_started_at = self.clock()
         if len(calls) < 2 or max_parallel < 2:
             return [
                 self.execute(
@@ -417,7 +449,13 @@ class ToolRuntime:
         outcomes: list[ToolOutcome] = []
         self.event_log.append(
             "parallel_tool_batch_started",
-            {"call_count": len(prepared_calls), "max_parallel": 2},
+            {
+                "turn_id": self.event_log.turn_id,
+                "step_index": step_index,
+                "batch_id": f"{self.event_log.turn_id}:step:{step_index}:tool-batch",
+                "call_count": len(prepared_calls),
+                "max_parallel": 2,
+            },
             step_index=step_index,
         )
         for offset in range(0, len(prepared_calls), 2):
@@ -425,7 +463,11 @@ class ToolRuntime:
             for item in chunk:
                 self.event_log.append(
                     "tool_call",
-                    {**item, "parallel": True},
+                    {
+                        **self._trace_payload(item["call_id"], step_index),
+                        **item,
+                        "parallel": True,
+                    },
                     step_index=step_index,
                 )
             with ThreadPoolExecutor(max_workers=min(2, len(chunk))) as executor:
@@ -442,9 +484,19 @@ class ToolRuntime:
             for outcome in chunk_outcomes:
                 self._persist_parallel_outcome(outcome, step_index=step_index)
                 outcomes.append(outcome)
+        batch_elapsed_ms = round((self.clock() - batch_started_at) * 1000)
+        if self.metrics is not None:
+            self.metrics.record_tool_batch_wall(batch_elapsed_ms)
         self.event_log.append(
             "parallel_tool_batch_ended",
-            {"call_count": len(outcomes)},
+            {
+                "turn_id": self.event_log.turn_id,
+                "step_index": step_index,
+                "batch_id": f"{self.event_log.turn_id}:step:{step_index}:tool-batch",
+                "call_count": len(outcomes),
+                "wall_elapsed_ms": batch_elapsed_ms,
+                "cumulative_elapsed_ms": sum(item.elapsed_ms for item in outcomes),
+            },
             step_index=step_index,
         )
         return outcomes

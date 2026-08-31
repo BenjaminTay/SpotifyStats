@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -60,12 +61,57 @@ def select_agent_profile(
     frame = frame if isinstance(frame, dict) else {}
     family = str(frame.get("family") or "habit_summary")
     preferred = _FAMILY_TOOLS.get(family, _FAMILY_TOOLS["habit_summary"])
-    available = {item["name"] for item in registry.list_tools()}
-    selected = tuple(name for name in preferred if name in available)
+    definitions = {item["name"]: registry.get(item["name"]) for item in registry.list_tools()}
+    frame_axes = {
+        str(axis) for axis in (frame.get("analysis_axes") or []) if isinstance(axis, str) and axis
+    }
+    recipe = question_context.get("evidence_recipe")
+    recipe = recipe if isinstance(recipe, dict) else {}
+    required_names = {
+        str(pattern.get("tool_name"))
+        for pattern in (recipe.get("required_tool_patterns") or [])
+        if isinstance(pattern, dict) and pattern.get("tool_name")
+    }
+    signals = question_context.get("routing_signals")
+    signals = signals if isinstance(signals, dict) else {}
+    explicit_billboard = signals.get("explicit_billboard") is True
+    comparison_shape = (
+        frame.get("task_type") == "comparison" and 2 <= len(frame.get("entities") or []) <= 4
+    )
+
+    candidate_names = list(preferred)
+    primary_names: set[str] = set()
+    if comparison_shape and "compare_entities" not in candidate_names:
+        candidate_names.insert(0, "compare_entities")
+    if comparison_shape:
+        primary_names.add("compare_entities")
+    if explicit_billboard and "billboard_entity_detail" not in candidate_names:
+        candidate_names.append("billboard_entity_detail")
+    candidates = [
+        name
+        for name in candidate_names
+        if name in definitions and (name != "billboard_entity_detail" or explicit_billboard)
+    ]
+    cost_rank = {"low": 0, "medium": 1, "high": 2}
+    risk_rank = {"none": 0, "low": 1, "medium": 2, "high": 3}
+    preferred_index = {name: index for index, name in enumerate(candidate_names)}
+
+    def routing_key(name: str) -> tuple[int, int, int, int, int]:
+        definition = definitions[name]
+        coverage = len(frame_axes.intersection(definition.covers))
+        return (
+            0 if name in primary_names else 1 if name in required_names else 2,
+            -coverage,
+            cost_rank[definition.cost],
+            risk_rank[definition.cold_build_risk],
+            preferred_index[name],
+        )
+
+    selected = tuple(sorted(candidates, key=routing_key))
     if not selected and family != "safety_boundary":
         # Custom/test registries may only expose one safe tool. Keep routing usable
         # without broadening the production profile beyond the registry allowlist.
-        selected = tuple(sorted(available)[:6])
+        selected = tuple(sorted(definitions)[:6])
     return AgentProfile(name=f"chat:{family}", family=family, tool_names=selected[:6])
 
 
@@ -74,15 +120,20 @@ def tool_schemas_for_profile(
     profile: AgentProfile,
 ) -> list[dict[str, Any]]:
     by_name = {item["name"]: item for item in registry.list_tools()}
-    return [
+    schemas = [
         {
             "name": item["name"],
-            "description": item["description"],
+            "description": (
+                f"{item['description']}\n"
+                "ROUTING_METADATA="
+                + json.dumps(item["routing"], ensure_ascii=False, separators=(",", ":"))
+            ),
             "parameters": item["params_schema"],
         }
         for name in profile.tool_names
         if (item := by_name.get(name)) is not None
     ]
+    return schemas
 
 
 def select_report_profile(registry: AgentToolRegistry) -> AgentProfile:

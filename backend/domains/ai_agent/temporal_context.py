@@ -246,6 +246,86 @@ def infer_time_interpretation(
     )
 
 
+def clip_time_interpretation_to_data_range(
+    interpretation: dict[str, Any] | None,
+    temporal_context: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Intersect a requested time window with the locally observed data range.
+
+    ``start_date``/``end_date`` remain the effective query window for backwards
+    compatibility.  The requested window is retained separately so the final
+    answer can explain coverage instead of pretending that unobserved dates
+    were analysed.
+    """
+
+    if not isinstance(interpretation, dict):
+        return None
+    clipped = copy.deepcopy(interpretation)
+    requested_start = _iso_date(clipped.get("start_date"))
+    requested_end = _iso_date(clipped.get("end_date"))
+    data_start = _iso_date(temporal_context.get("data_start_date"))
+    data_end = _iso_date(temporal_context.get("data_end_date"))
+    clipped.update(
+        {
+            "requested_start_date": requested_start,
+            "requested_end_date": requested_end,
+            "data_start_date": data_start,
+            "data_end_date": data_end,
+            "coverage_clipped": False,
+            "clip_reasons": [],
+            "no_observed_overlap": False,
+        }
+    )
+    if not requested_start or not requested_end:
+        return clipped
+
+    effective_start = max(value for value in (requested_start, data_start) if value)
+    effective_end = min(value for value in (requested_end, data_end) if value)
+    if effective_start > effective_end:
+        clipped.update(
+            {
+                "effective_start_date": None,
+                "effective_end_date": None,
+                "coverage_clipped": True,
+                "no_observed_overlap": True,
+                "clip_reasons": ["requested_window_outside_local_data"],
+            }
+        )
+        return clipped
+
+    reasons: list[str] = []
+    if effective_start != requested_start:
+        reasons.append("data_starts_after_requested_window")
+    if effective_end != requested_end:
+        reasons.append("data_ends_before_requested_window")
+    clipped.update(
+        {
+            "start_date": effective_start,
+            "end_date": effective_end,
+            "effective_start_date": effective_start,
+            "effective_end_date": effective_end,
+            "coverage_clipped": bool(reasons),
+            "clip_reasons": reasons,
+        }
+    )
+    return clipped
+
+
+def clip_custom_range_to_data(
+    start_date: Any,
+    end_date: Any,
+    temporal_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Return requested/effective ranges for explicit custom tool filters."""
+
+    interpretation = {
+        "label": "自定义范围",
+        "start_date": _iso_date(start_date),
+        "end_date": _iso_date(end_date),
+    }
+    return clip_time_interpretation_to_data_range(interpretation, temporal_context) or {}
+
+
 def _range_label(params: dict[str, Any]) -> str:
     start = params.get("start_date")
     end = params.get("end_date")
@@ -336,7 +416,10 @@ def apply_temporal_guard(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Correct obvious relative-date planning mistakes before tools run."""
 
-    interpretation = infer_time_interpretation(question, temporal_context)
+    interpretation = clip_time_interpretation_to_data_range(
+        infer_time_interpretation(question, temporal_context),
+        temporal_context,
+    )
     guarded_plan = copy.deepcopy(plan)
     corrections: list[dict[str, Any]] = []
     if interpretation is None:
@@ -397,6 +480,22 @@ def temporal_answer_issues(answer: str, guard: dict[str, Any]) -> list[str]:
     interpretation = guard.get("time_interpretation") if isinstance(guard, dict) else None
     if not isinstance(interpretation, dict):
         return []
+    requested_end = str(interpretation.get("requested_end_date") or "")
+    effective_end = str(interpretation.get("effective_end_date") or "")
+    if (
+        interpretation.get("coverage_clipped") is True
+        and requested_end
+        and effective_end
+        and requested_end != effective_end
+    ):
+        for sentence in _answer_sentences(answer):
+            if requested_end not in sentence or effective_end in sentence:
+                continue
+            if any(token in sentence for token in ("分析范围", "数据范围", "统计范围", "覆盖到")):
+                return [
+                    f"回答把请求截止日 {requested_end} 当作实际分析截止日；"
+                    f"本地数据实际只到 {effective_end}"
+                ]
     expected_year = interpretation.get("expected_year")
     if not isinstance(expected_year, int):
         return []

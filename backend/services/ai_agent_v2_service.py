@@ -32,7 +32,10 @@ from backend.domains.agent_runtime.tool_selector import (
     tool_schemas_for_profile,
 )
 from backend.domains.ai_agent.project_context import PROJECT_CONTEXT_VERSION
-from backend.domains.ai_agent.temporal_context import apply_temporal_guard
+from backend.domains.ai_agent.temporal_context import (
+    apply_temporal_guard,
+    clip_custom_range_to_data,
+)
 from backend.domains.ai_agent.tool_registry import AgentToolRegistry, get_default_registry
 from backend.domains.ai_tasks.cancellation import cancellation_registry
 from backend.domains.ai_tasks.repository import AiTaskRepository
@@ -43,6 +46,7 @@ from backend.services.ai_agent_service import (
     ChatAgentError,
     _apply_obligation_fallback_notes,
     _combined_answer_issues,
+    _ensure_grounded_answer,
     _final_payload,
     _is_terminal,
     _mark_done,
@@ -116,12 +120,41 @@ def _agent_default_filters(request: dict[str, Any]) -> dict[str, Any]:
     intent = question_context.get("question_intent") or {}
     time_scope = str(intent.get("time_scope") or "lifetime")
     period_filters: dict[str, Any]
-    if time_scope.startswith("year:") and time_scope[5:].isdigit():
-        year = time_scope[5:]
+    explicit_year = time_scope[5:] if time_scope.startswith("year:") else ""
+    temporal_context = (
+        _temporal_context(request) if explicit_year.isdigit() or time_scope == "this_year" else {}
+    )
+    current_year = str(temporal_context.get("today") or "")[:4]
+    selected_year = (
+        explicit_year
+        if explicit_year.isdigit()
+        else current_year
+        if time_scope == "this_year" and current_year.isdigit()
+        else ""
+    )
+    if selected_year:
+        year = selected_year
+        clipped = clip_custom_range_to_data(
+            f"{year}-01-01",
+            f"{year}-12-31",
+            temporal_context,
+        )
+        clipped.update(
+            {
+                "label": f"{year}年",
+                "expected_year": int(year),
+                "anchor_date": temporal_context.get("today"),
+            }
+        )
+        request["_temporal_guard"] = {
+            "time_interpretation": clipped,
+            "had_corrections": clipped.get("coverage_clipped") is True,
+            "corrections": [],
+        }
         period_filters = {
             "period": "custom",
-            "start_date": f"{year}-01-01",
-            "end_date": f"{year}-12-31",
+            "start_date": clipped.get("effective_start_date") or f"{year}-01-01",
+            "end_date": clipped.get("effective_end_date") or f"{year}-12-31",
         }
     elif time_scope in {
         "lifetime",
@@ -135,7 +168,7 @@ def _agent_default_filters(request: dict[str, Any]) -> dict[str, Any]:
         period_filters = {"period": time_scope}
     else:
         period_filters = {"period": "lifetime"}
-    requested_metrics = intent.get("requested_metrics") or []
+    routing_signals = question_context.get("routing_signals") or {}
     return {
         "min_ms": request.get("min_ms", 30000),
         "music_only": request.get("music_only", True),
@@ -143,7 +176,7 @@ def _agent_default_filters(request: dict[str, Any]) -> dict[str, Any]:
         "dynamic_threshold": request.get("dynamic_threshold", True),
         "max_merge_gap_minutes": request.get("max_merge_gap_minutes"),
         "merge_level": request.get("merge_level", 2),
-        "include_billboard": "personal_billboard" in requested_metrics,
+        "include_billboard": routing_signals.get("explicit_billboard") is True,
         **period_filters,
     }
 
@@ -165,7 +198,9 @@ SpotifyStats 只分析用户本地 Spotify Extended Streaming History、账号�
 5. 最终用中文直接回答，引用关键数字和时间范围；证据不足就明确限制。不要输出工具调用流水账，也不要透露内部思维链。
 6. 用户要求删除、修改、写入、导入、任意外部访问或密钥操作时，直接说明只读边界，不调用工具。
 7. 比较 2-4 个同类实体时，优先只调用一次 compare_entities，并让时间范围与用户问题一致；除非该结果 empty/error 或用户明确要求多个窗口，不要再对每个对象重复调用 entity_stats。
-8. compare_entities 只有在用户明确询问个人 Billboard、Power Score、排名、冠军周或在榜周时才设置 include_billboard=true。
+8. compare_entities 只有在用户明确询问个人 Billboard、Power Score、个人榜排名、冠军周或在榜周时才设置 include_billboard=true。
+9. 每个工具描述末尾的 ROUTING_METADATA 是后端可信路由提示：优先选择覆盖当前分析维度最多且成本、冷构建风险更低的单个工具；avoid_when 命中时不要调用，只有主工具 empty/error 才按 fallback 选择替代工具。
+10. billboard_entity_detail 的冷构建风险高，只有用户明确点名个人 Billboard、Power Score、冠军周或在榜周时才允许调用；普通本地播放排行和偏好比较不得调用。
 """
 
 
@@ -286,14 +321,10 @@ def _apply_deterministic_answer_patches(
 
 
 def _validate_answer(
-    metrics: RuntimeMetrics,
     answer: str,
     final_payload: dict[str, Any],
 ) -> list[str]:
-    started_at = metrics.clock()
-    issues = _combined_answer_issues(answer, final_payload)
-    metrics.record_validation(round((metrics.clock() - started_at) * 1000))
-    return issues
+    return _combined_answer_issues(answer, final_payload)
 
 
 def _session_id(conn, request: dict[str, Any]) -> int | None:
@@ -503,13 +534,12 @@ class AgentRuntime:
             )
 
             if profile.family == "safety_boundary":
-                validation_started_at = self.clock()
-                final_payload = _final_payload(request, [])
-                answer = _safety_boundary_answer(request)
-                issues = _combined_answer_issues(answer, final_payload)
-                answer = _apply_deterministic_answer_patches(answer, final_payload, issues, [])
-                validation_issues = _combined_answer_issues(answer, final_payload)
-                metrics.record_validation(round((self.clock() - validation_started_at) * 1000))
+                with metrics.measure_validation():
+                    final_payload = _final_payload(request, [])
+                    answer = _safety_boundary_answer(request)
+                    issues = _combined_answer_issues(answer, final_payload)
+                    answer = _apply_deterministic_answer_patches(answer, final_payload, issues, [])
+                    validation_issues = _combined_answer_issues(answer, final_payload)
                 result = _result_payload(
                     answer=answer,
                     tool_results=[],
@@ -608,9 +638,13 @@ class AgentRuntime:
                 model_input_chars = len(
                     json.dumps(messages, ensure_ascii=False, default=str)
                 ) + len(json.dumps(schemas, ensure_ascii=False, default=str))
+                model_call_id = f"{turn_id}:step:{step_index}:model"
                 log.append(
                     "model_request",
                     {
+                        "turn_id": turn_id,
+                        "step_index": step_index,
+                        "model_call_id": model_call_id,
                         "message_count": len(messages),
                         "tool_count": len(schemas),
                         "thinking": _thinking_mode_enabled(request),
@@ -649,6 +683,9 @@ class AgentRuntime:
                 log.append(
                     "assistant_message",
                     {
+                        "turn_id": turn_id,
+                        "step_index": step_index,
+                        "model_call_id": model_call_id,
                         "has_content": bool(completion.content.strip()),
                         "tool_call_count": len(completion.tool_calls),
                         "finish_reason": completion.finish_reason,
@@ -736,17 +773,16 @@ class AgentRuntime:
                 if not proposed_answer:
                     raise ChatAgentError("模型未返回回答或工具调用")
 
-                validation_started_at = self.clock()
-                final_payload = _final_payload(request, tool_results)
-                metrics.record_validation(round((self.clock() - validation_started_at) * 1000))
-                issues = _validate_answer(metrics, proposed_answer, final_payload)
-                proposed_answer = _apply_deterministic_answer_patches(
-                    proposed_answer,
-                    final_payload,
-                    issues,
-                    tool_results,
-                )
-                issues = _validate_answer(metrics, proposed_answer, final_payload)
+                with metrics.measure_validation():
+                    final_payload = _final_payload(request, tool_results)
+                    issues = _validate_answer(proposed_answer, final_payload)
+                    proposed_answer = _apply_deterministic_answer_patches(
+                        proposed_answer,
+                        final_payload,
+                        issues,
+                        tool_results,
+                    )
+                    issues = _validate_answer(proposed_answer, final_payload)
                 if issues and not answer_retried and step_index < self.max_steps:
                     answer_retried = True
                     correction = {
@@ -770,13 +806,19 @@ class AgentRuntime:
                     )
                     continue
 
-                answer = _apply_deterministic_answer_patches(
-                    proposed_answer,
-                    final_payload,
-                    issues,
-                    tool_results,
-                )
-                validation_issues = _validate_answer(metrics, answer, final_payload)
+                with metrics.measure_validation():
+                    answer = _apply_deterministic_answer_patches(
+                        proposed_answer,
+                        final_payload,
+                        issues,
+                        tool_results,
+                    )
+                    validation_issues = _validate_answer(answer, final_payload)
+                    answer, validation_issues, grounded_fallback_used = _ensure_grounded_answer(
+                        answer,
+                        final_payload,
+                        validation_issues,
+                    )
                 result = _result_payload(
                     answer=answer,
                     tool_results=tool_results,
@@ -784,6 +826,7 @@ class AgentRuntime:
                     final_payload=final_payload,
                     answer_retried=answer_retried,
                     validation_issues=validation_issues,
+                    grounded_fallback_used=grounded_fallback_used,
                 )
                 runtime_metrics = metrics.snapshot()
                 result.update(

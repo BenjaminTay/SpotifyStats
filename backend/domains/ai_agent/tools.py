@@ -1482,6 +1482,11 @@ ANALYSIS_STATS_TOOL = AgentToolDefinition(
     cost="medium",
     timeout_seconds=45,
     cacheability="revision",
+    best_for=("周期概览", "播放习惯摘要", "轻量统计核对"),
+    covers=("cumulative", "period", "behavior"),
+    cold_build_risk="low",
+    avoid_when=("需要实体排行明细", "需要单个实体详情"),
+    fallback=("analysis_charts",),
 )
 
 ANALYSIS_CHARTS_TOOL = AgentToolDefinition(
@@ -1493,6 +1498,11 @@ ANALYSIS_CHARTS_TOOL = AgentToolDefinition(
     cost="high",
     timeout_seconds=60,
     cacheability="revision",
+    best_for=("Top N 排行", "周期排行", "排行趋势核对"),
+    covers=("ranking", "cumulative", "recency", "period", "trend"),
+    cold_build_risk="medium",
+    avoid_when=("比较 2-4 个已知实体", "只需要轻量总览"),
+    fallback=("analysis_stats",),
 )
 
 PLAYBACK_RECORDS_TOOL = AgentToolDefinition(
@@ -1501,6 +1511,11 @@ PLAYBACK_RECORDS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=PlaybackRecordsParams,
     handler=playback_records_handler,
+    best_for=("冠军记录", "连续播放纪录", "播放里程碑"),
+    covers=("consistency", "peak", "behavior"),
+    cold_build_risk="low",
+    avoid_when=("普通排行", "实体间比较"),
+    fallback=("analysis_stats",),
 )
 
 WRAPPED_YEARLY_TOOL = AgentToolDefinition(
@@ -1509,6 +1524,13 @@ WRAPPED_YEARLY_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=WrappedYearlyParams,
     handler=wrapped_yearly_handler,
+    cost="medium",
+    cacheability="revision",
+    best_for=("单个完整年份总结", "年度排行与习惯"),
+    covers=("cumulative", "ranking", "period", "behavior"),
+    cold_build_risk="medium",
+    avoid_when=("非完整自然年窗口", "实体间比较"),
+    fallback=("analysis_stats", "analysis_charts"),
 )
 
 ENTITY_STATS_TOOL = AgentToolDefinition(
@@ -1520,6 +1542,11 @@ ENTITY_STATS_TOOL = AgentToolDefinition(
     cost="high",
     timeout_seconds=60,
     cacheability="revision",
+    best_for=("单个歌曲专辑或艺人详情", "实体内部歌曲或专辑排行", "单实体趋势"),
+    covers=("scope", "detail", "cumulative", "recency", "intensity", "ranking", "trend"),
+    cold_build_risk="medium",
+    avoid_when=("比较 2-4 个已知同类实体",),
+    fallback=("resolve_entity", "analysis_charts"),
 )
 
 BILLBOARD_ENTITY_DETAIL_TOOL = AgentToolDefinition(
@@ -1531,6 +1558,11 @@ BILLBOARD_ENTITY_DETAIL_TOOL = AgentToolDefinition(
     cost="high",
     timeout_seconds=120,
     cacheability="revision",
+    best_for=("明确询问个人 Billboard", "Power Score", "峰值与在榜周"),
+    covers=("personal_billboard", "consistency", "peak", "detail"),
+    cold_build_risk="high",
+    avoid_when=("用户未明确询问个人 Billboard", "只比较本地播放次数或时长"),
+    fallback=("entity_stats",),
 )
 
 LISTENING_HOURS_TOOL = AgentToolDefinition(
@@ -1539,6 +1571,13 @@ LISTENING_HOURS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=ListeningHoursParams,
     handler=listening_hours_handler,
+    cost="medium",
+    cacheability="revision",
+    best_for=("时段热力图", "深夜或小时偏好", "工作日与周末时段"),
+    covers=("time_of_day", "behavior", "ranking"),
+    cold_build_risk="low",
+    avoid_when=("不涉及收听时段",),
+    fallback=("analysis_stats",),
 )
 
 RESOLVE_ENTITY_TOOL = AgentToolDefinition(
@@ -1547,6 +1586,11 @@ RESOLVE_ENTITY_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=ResolveEntityParams,
     handler=resolve_entity_handler,
+    best_for=("实体名称模糊", "需要稳定实体标识", "同名消歧"),
+    covers=("entity_resolution", "scope"),
+    cold_build_risk="none",
+    avoid_when=("实体名称已明确且下游工具可直接解析",),
+    fallback=("entity_stats",),
 )
 
 COMPARE_ENTITIES_TOOL = AgentToolDefinition(
@@ -1562,6 +1606,18 @@ COMPARE_ENTITIES_TOOL = AgentToolDefinition(
     cost="high",
     timeout_seconds=120,
     cacheability="revision",
+    best_for=("比较 2-4 个同类实体", "一次获取比较所需播放次数时长与强度", "公平性比较"),
+    covers=(
+        "cumulative",
+        "recency",
+        "intensity",
+        "fairness",
+        "ranking",
+        "personal_billboard",
+    ),
+    cold_build_risk="medium",
+    avoid_when=("只查询单个实体", "比较不同实体类型"),
+    fallback=("entity_stats", "resolve_entity"),
 )
 
 ACCOUNT_SUMMARY_TOOL = AgentToolDefinition(
@@ -1573,6 +1629,11 @@ ACCOUNT_SUMMARY_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=AccountSummaryParams,
     handler=account_summary_handler,
+    best_for=("音乐档案概览", "收藏规模与覆盖范围"),
+    covers=("collection", "behavior", "cumulative"),
+    cold_build_risk="none",
+    avoid_when=("需要单项收藏旅程明细",),
+    fallback=("account_collection_insights",),
 )
 
 ACCOUNT_COLLECTION_INSIGHTS_TOOL = AgentToolDefinition(
@@ -1584,6 +1645,12 @@ ACCOUNT_COLLECTION_INSIGHTS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=AccountCollectionInsightsParams,
     handler=account_collection_insights_handler,
+    cost="medium",
+    best_for=("收藏旅程", "收藏后播放关系", "回访与沉睡收藏"),
+    covers=("collection", "behavior", "recency", "detail"),
+    cold_build_risk="low",
+    avoid_when=("只需要账户收藏计数概览",),
+    fallback=("account_summary",),
 )
 
 SEARCH_HISTORY_TOOL = AgentToolDefinition(
@@ -1592,6 +1659,11 @@ SEARCH_HISTORY_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=SearchHistoryParams,
     handler=search_history_handler,
+    best_for=("搜索历史", "高频搜索词", "搜索行为"),
+    covers=("search", "behavior", "ranking"),
+    cold_build_risk="none",
+    avoid_when=("播放排行或播放趋势",),
+    fallback=(),
 )
 
 COMMUNITY_FEED_SEARCH_TOOL = AgentToolDefinition(
@@ -1600,6 +1672,11 @@ COMMUNITY_FEED_SEARCH_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=CommunityFeedSearchParams,
     handler=community_feed_search_handler,
+    best_for=("按文本或日期查社区动态", "社区帖子详情"),
+    covers=("community", "detail", "period"),
+    cold_build_risk="none",
+    avoid_when=("只需要社区趋势排行",),
+    fallback=("community_trending",),
 )
 
 COMMUNITY_TRENDING_TOOL = AgentToolDefinition(
@@ -1608,4 +1685,9 @@ COMMUNITY_TRENDING_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=CommunityTrendingParams,
     handler=community_trending_handler,
+    best_for=("社区趋势", "社区热门艺人与歌曲", "最新冠军或空降信号"),
+    covers=("community", "ranking", "peak"),
+    cold_build_risk="none",
+    avoid_when=("按关键词查找特定帖子",),
+    fallback=("community_feed_search",),
 )

@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from backend.domains.agent_runtime.tool_selector import select_agent_profile
 from backend.domains.ai_agent.question_intent import parse_question_intent
-from backend.domains.ai_agent.tool_registry import list_tools
+from backend.domains.ai_agent.tool_registry import get_default_registry, list_tools
 from backend.services import ai_agent_service
 from scripts import evaluate_ai_agent_harness
 
@@ -123,6 +124,26 @@ def test_golden_harness_reports_all_cases_pass() -> None:
 
     assert result["failed"] == 0
     assert result["passed"] == result["total"] >= 4
+
+
+def test_golden_comparisons_route_to_one_high_coverage_tool_first() -> None:
+    registry = get_default_registry()
+    comparison_cases: list[dict[str, object]] = []
+    for case in _load_cases():
+        expected_frame = case.get("expected_frame")
+        if (
+            isinstance(expected_frame, dict)
+            and expected_frame.get("family") == "preference_comparison"
+        ):
+            comparison_cases.append(case)
+
+    assert comparison_cases
+    for case in comparison_cases:
+        context = ai_agent_service._question_context({"question": case["question"]})
+        profile = select_agent_profile(context, registry)
+        assert profile.tool_names[0] == "compare_entities", case["id"]
+        explicit_billboard = "billboard" in str(case["question"]).casefold()
+        assert ("billboard_entity_detail" in profile.tool_names) is explicit_billboard, case["id"]
 
 
 def test_golden_harness_rejects_missing_required_tool_call() -> None:

@@ -105,6 +105,26 @@ def build_answer_obligations(
             },
         )
 
+    if interpretation.get("coverage_clipped") is True:
+        effective_start = interpretation.get("effective_start_date")
+        effective_end = interpretation.get("effective_end_date")
+        effective_values = [
+            value for value in (effective_start, effective_end) if isinstance(value, str) and value
+        ]
+        if len(effective_values) == 2:
+            _append_once(
+                obligations,
+                {
+                    "kind": "effective_data_range",
+                    "description": (
+                        "请求范围超出本地数据覆盖时，必须明确说明实际分析范围，"
+                        "不能把未观察到的日期写成已分析范围。"
+                    ),
+                    "required_tokens_any": ["实际分析范围", "实际数据范围", "只覆盖到"],
+                    "required_values": effective_values,
+                },
+            )
+
     if interpretation.get("is_cross_year_season") is True:
         values = [
             value
