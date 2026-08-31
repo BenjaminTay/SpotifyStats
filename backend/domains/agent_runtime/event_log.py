@@ -3,8 +3,41 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from typing import Any
+
+_SENSITIVE_KEYS = {
+    "api_key",
+    "apikey",
+    "authorization",
+    "cookie",
+    "password",
+    "access_token",
+    "refresh_token",
+    "secret",
+}
+_BEARER_PATTERN = re.compile(r"(?i)bearer\s+[a-z0-9._~+/-]+")
+_API_KEY_PATTERN = re.compile(r"(?i)\b(?:sk|ds|key)-[a-z0-9_-]{12,}\b")
+
+
+def _sanitize_payload(value: Any, *, key: str = "") -> Any:
+    """Redact credentials while preserving replayable local evidence."""
+
+    if key.casefold() in _SENSITIVE_KEYS:
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return {
+            str(item_key): _sanitize_payload(item, key=str(item_key))
+            for item_key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_payload(item) for item in value]
+    if isinstance(value, str):
+        return _API_KEY_PATTERN.sub("[REDACTED]", _BEARER_PATTERN.sub("Bearer [REDACTED]", value))
+    return value
 
 
 class AgentEventLog:
@@ -46,7 +79,7 @@ class AgentEventLog:
                 sequence,
                 step_index,
                 event_type,
-                json.dumps(payload or {}, ensure_ascii=False),
+                json.dumps(_sanitize_payload(payload or {}), ensure_ascii=False),
             ),
         )
         self.conn.commit()

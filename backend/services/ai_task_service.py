@@ -13,6 +13,7 @@ from typing import Any
 
 from backend.core.db import get_db
 from backend.domains.ai_reports.visual_artifact_models import VISUAL_YEARLY_REPORT_MODE
+from backend.domains.ai_tasks.cancellation import cancellation_registry
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.services import ai_insights_service, wikipedia_service
 
@@ -123,10 +124,13 @@ def _run_handler_safely(
     request: dict[str, Any],
     handler: TaskHandler,
 ) -> None:
+    cancellation_registry.token_for(task_id)
     try:
         handler(task_id, request)
     except Exception as exc:
         mark_task_error(task_id, exc)
+    finally:
+        cancellation_registry.discard(task_id)
 
 
 def mark_task_done(
@@ -985,10 +989,10 @@ def cancel_task(task_id: str) -> dict[str, Any] | None:
 
         updated = repo.update_run_if_not_terminal(
             task_id=task_id,
-            status="cancelled",
-            stage="cancelled",
+            status="cancelling",
+            stage="cancelling",
             progress_pct=float(task.get("progress_pct") or 0.0),
-            message="任务已取消",
+            message="正在取消任务",
             result=None,
             error=None,
         )
@@ -996,11 +1000,33 @@ def cancel_task(task_id: str) -> dict[str, Any] | None:
             return repo.get_run(task_id)
         repo.add_event(
             task_id=task_id,
-            event_type="stage_completed",
-            stage="cancelled",
-            message="任务已取消",
+            event_type="cancellation_requested",
+            stage="cancelling",
+            message="正在取消任务",
             payload=None,
         )
+        cancellation_registry.request_cancel(task_id)
+
+        # Persist the terminal state in the same short request.  A worker that
+        # is blocked in provider I/O will observe either the token or this
+        # durable state before it can start another tool call.
+        cancelled = repo.update_run_if_not_terminal(
+            task_id=task_id,
+            status="cancelled",
+            stage="cancelled",
+            progress_pct=float(task.get("progress_pct") or 0.0),
+            message="任务已取消",
+            result=None,
+            error=None,
+        )
+        if cancelled:
+            repo.add_event(
+                task_id=task_id,
+                event_type="cancellation_completed",
+                stage="cancelled",
+                message="任务已取消",
+                payload=None,
+            )
         return repo.get_run(task_id)
     finally:
         conn.close()

@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
+import { streamAiTask } from '@/api/ai-task-stream'
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import type { AiTaskCreatePayload, AiTaskEventsPayload, AiTaskRun } from '@/types/ai-tasks'
@@ -10,7 +11,7 @@ import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 const POLL_INTERVAL_MS = 1_000
 
 function isActiveStatus(status: AiTaskRun['status'] | null | undefined): boolean {
-  return status === 'queued' || status === 'running'
+  return status === 'queued' || status === 'running' || status === 'cancelling'
 }
 
 function isTerminalStatus(status: AiTaskRun['status'] | null | undefined): boolean {
@@ -123,6 +124,11 @@ export function useCancelAiTask() {
 
 export function useAiTask(taskId: string | null) {
   const enabled = Boolean(taskId)
+  const [streamState, setStreamState] = useState<'idle' | 'connecting' | 'open' | 'failed'>('idle')
+  const [streamTask, setStreamTask] = useState<AiTaskRun | null>(null)
+  const [streamEvents, setStreamEvents] = useState<AiTaskEventsPayload['events']>([])
+  const [streamToolCalls, setStreamToolCalls] = useState<AiTaskEventsPayload['tool_calls']>([])
+  const [streamedAnswer, setStreamedAnswer] = useState('')
   const previousTaskStateRef = useRef<{ taskId: string | null; status: AiTaskRun['status'] | null }>({
     taskId: null,
     status: null,
@@ -135,14 +141,18 @@ export function useAiTask(taskId: string | null) {
     queryFn: () => api.get<AiTaskRun>(`/ai/tasks/${taskId}`),
     enabled,
     refetchInterval: (query) =>
-      isActiveTask(query.state.data as AiTaskRun | null | undefined) ? POLL_INTERVAL_MS : false,
+      streamState !== 'open' && isActiveTask(query.state.data as AiTaskRun | null | undefined)
+        ? POLL_INTERVAL_MS
+        : false,
   })
 
   const eventsQuery = useQuery({
     queryKey: eventsKey,
     queryFn: () => api.get<AiTaskEventsPayload>(`/ai/tasks/${taskId}/events`),
     enabled,
-    refetchInterval: () => (isActiveTask(taskQuery.data) ? POLL_INTERVAL_MS : false),
+    refetchInterval: () => (
+      streamState !== 'open' && isActiveTask(taskQuery.data) ? POLL_INTERVAL_MS : false
+    ),
   })
   const refetchEvents = eventsQuery.refetch
 
@@ -158,10 +168,71 @@ export function useAiTask(taskId: string | null) {
     }
   }, [refetchEvents, taskId, taskQuery.data?.status])
 
+  useEffect(() => {
+    // A task id change is an external stream identity change; stale data must
+    // be cleared before opening the next connection.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamTask(null)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamEvents([])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamToolCalls([])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamedAnswer('')
+    if (!taskId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStreamState('idle')
+      return
+    }
+
+    const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamState('connecting')
+    void streamAiTask(taskId, {
+      onEvent: (event) => {
+        setStreamState('open')
+        if (event.type === 'stream.error') {
+          setStreamState('failed')
+          return
+        }
+        if (event.type === 'task.snapshot' || event.type === 'task.completed') {
+          setStreamTask(event.data)
+          return
+        }
+        if (event.type === 'task.progress') {
+          setStreamEvents((current) => current.some((item) => item.event_id === event.data.event_id)
+            ? current
+            : [...current, { ...event.data, payload: null }])
+          return
+        }
+        if (event.type === 'task.tool') {
+          setStreamToolCalls((current) => current.some((item) => item.tool_call_id === event.data.tool_call_id)
+            ? current
+            : [...current, event.data])
+          return
+        }
+        if (event.type === 'task.answer_delta') {
+          setStreamedAnswer((current) => current + event.data.delta)
+        }
+      },
+    }, controller.signal).catch(() => {
+      if (!controller.signal.aborted) setStreamState('failed')
+    })
+    return () => controller.abort()
+  }, [taskId])
+
+  const task = streamTask ?? taskQuery.data ?? null
+  const events = streamEvents.length > 0 ? streamEvents : (eventsQuery.data?.events ?? [])
+  const toolCalls = streamToolCalls.length > 0
+    ? streamToolCalls
+    : (eventsQuery.data?.tool_calls ?? [])
+
   return {
-    task: taskQuery.data ?? null,
-    events: eventsQuery.data?.events ?? [],
-    toolCalls: eventsQuery.data?.tool_calls ?? [],
+    task,
+    events,
+    toolCalls,
+    streamedAnswer,
+    transport: streamState === 'open' ? 'sse' as const : 'polling' as const,
     loading: taskQuery.isLoading || eventsQuery.isLoading,
     fetching: taskQuery.isFetching || eventsQuery.isFetching,
     error: queryErrorMessage(taskQuery.error ?? eventsQuery.error),

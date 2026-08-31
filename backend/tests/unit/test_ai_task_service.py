@@ -112,7 +112,8 @@ def test_mark_task_done_keeps_cancelled_task_cancelled(ai_task_db: Path):
     assert events is not None
     assert [event["event_type"] for event in events[0]] == [
         "stage_started",
-        "stage_completed",
+        "cancellation_requested",
+        "cancellation_completed",
     ]
 
 
@@ -182,7 +183,8 @@ def test_handler_exception_does_not_overwrite_cancelled_task(
     assert events is not None
     assert [event["event_type"] for event in events[0]] == [
         "stage_started",
-        "stage_completed",
+        "cancellation_requested",
+        "cancellation_completed",
     ]
 
 

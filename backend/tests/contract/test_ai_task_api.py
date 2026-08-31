@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 from fastapi.routing import APIRoute
 
@@ -190,9 +192,74 @@ def test_cancel_task_writes_cancel_event(client):
     assert events_response.status_code == 200
     payload = events_response.json()
     assert payload["found"] is True
-    assert [event["event_type"] for event in payload["events"]] == ["stage_completed"]
-    assert payload["events"][0]["stage"] == "cancelled"
-    assert payload["events"][0]["message"] == "任务已取消"
+    assert [event["event_type"] for event in payload["events"]] == [
+        "cancellation_requested",
+        "cancellation_completed",
+    ]
+    assert payload["events"][0]["stage"] == "cancelling"
+    assert payload["events"][1]["stage"] == "cancelled"
+    assert payload["events"][1]["message"] == "任务已取消"
+
+
+def test_cancel_ack_is_fast_and_persists_cancelling_transition(client):
+    _create_task("task-cancel-fast", status="running", stage="agent_deciding")
+
+    started = time.monotonic()
+    response = client.post("/api/ai/tasks/task-cancel-fast/cancel")
+    elapsed = time.monotonic() - started
+
+    assert response.status_code == 200
+    assert elapsed < 0.5
+    assert response.json()["status"] == "cancelled"
+    events = client.get("/api/ai/tasks/task-cancel-fast/events").json()["events"]
+    assert [(event["stage"], event["event_type"]) for event in events] == [
+        ("cancelling", "cancellation_requested"),
+        ("cancelled", "cancellation_completed"),
+    ]
+
+
+def test_task_stream_projects_progress_and_final_answer_without_internal_payload(client):
+    _create_task("task-stream", status="running", stage="agent_deciding")
+    repo = _repo()
+    try:
+        repo.add_event(
+            task_id="task-stream",
+            event_type="step_started",
+            stage="agent_deciding",
+            message="正在选择本地数据工具",
+            payload={"hidden_reasoning": "不得通过 SSE 暴露"},
+        )
+        repo.add_tool_call(
+            task_id="task-stream",
+            tool_name="analysis_stats",
+            status="done",
+            params_summary="2026",
+            result_summary="共 128 次播放",
+            source_range="2026-01-01 to 2026-08-31",
+        )
+        repo.update_run(
+            task_id="task-stream",
+            status="done",
+            stage="done",
+            progress_pct=1.0,
+            message="Agent Chat 已完成",
+            result={"answer": "最终答案：128 次播放。"},
+        )
+    finally:
+        _close_repo(repo)
+
+    with client.stream("GET", "/api/ai/tasks/task-stream/stream") as response:
+        body = "".join(response.iter_text())
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: task.progress" in body
+    assert "event: task.tool" in body
+    assert "event: task.answer_delta" in body
+    assert "event: task.completed" in body
+    assert "最终答案：128 次播放。" in body
+    assert "hidden_reasoning" not in body
+    assert "不得通过 SSE 暴露" not in body
 
 
 def test_cancel_done_task_keeps_existing_state(client):

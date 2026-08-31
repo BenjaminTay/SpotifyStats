@@ -7,7 +7,7 @@ from typing import Any, Literal, Union
 from pydantic import BaseModel, Field, model_validator
 
 JsonPayload = Union[dict[str, Any], list[Any]]
-AiTaskStatus = Literal["queued", "running", "done", "error", "cancelled"]
+AiTaskStatus = Literal["queued", "running", "cancelling", "done", "error", "cancelled"]
 
 
 class AiTaskRun(BaseModel):

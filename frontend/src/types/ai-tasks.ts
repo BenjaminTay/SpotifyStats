@@ -1,4 +1,4 @@
-export type AiTaskStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled'
+export type AiTaskStatus = 'queued' | 'running' | 'cancelling' | 'done' | 'error' | 'cancelled'
 
 export type AiTaskJsonPayload = Record<string, unknown> | unknown[]
 

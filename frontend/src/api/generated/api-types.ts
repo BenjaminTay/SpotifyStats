@@ -2838,6 +2838,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/tasks/{task_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Ai Task
+         * @description Stream a safe projection of durable task progress via SSE.
+         */
+        get: operations["stream_ai_task_api_ai_tasks__task_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/tasks/{task_id}/cancel": {
         parameters: {
             query?: never;
@@ -3762,7 +3782,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "done" | "error" | "cancelled";
+            status: "queued" | "running" | "cancelling" | "done" | "error" | "cancelled";
             /** Stage */
             stage: string;
             /**
@@ -3820,7 +3840,7 @@ export interface components {
             /** Task Type */
             task_type?: string | null;
             /** Status */
-            status?: ("queued" | "running" | "done" | "error" | "cancelled") | null;
+            status?: ("queued" | "running" | "cancelling" | "done" | "error" | "cancelled") | null;
             /** Stage */
             stage?: string | null;
             /** Progress Pct */
@@ -18964,6 +18984,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AiAgentTrajectoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_ai_task_api_ai_tasks__task_id__stream_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
                 };
             };
             /** @description Validation Error */

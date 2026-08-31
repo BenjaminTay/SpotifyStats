@@ -7,8 +7,9 @@ Uses the shared HttpClient for HTTP transport.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from backend.core.config import HTTP_PROXY, HTTPS_PROXY
 from backend.infrastructure.http.client import HttpClient
@@ -37,6 +38,22 @@ class LLMCompletion:
     tool_calls: list[LLMToolCall] = field(default_factory=list)
     finish_reason: str = ""
     usage: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LLMStreamEvent:
+    """Provider-neutral, public-safe event emitted from a completed turn.
+
+    Reasoning fields are intentionally absent.  Content deltas are emitted
+    only for a final text response (never alongside tool calls), so callers do
+    not accidentally expose intermediate model prose.
+    """
+
+    event_type: Literal["content_delta", "tool_call", "completed"]
+    delta: str = ""
+    call_id: str = ""
+    tool_name: str = ""
+    finish_reason: str = ""
 
 
 class LLMProvider(BaseProvider):
@@ -226,6 +243,38 @@ class LLMProvider(BaseProvider):
             raise
         except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ProviderParseError(self.provider, f"Invalid native tool response: {exc}") from exc
+
+    @staticmethod
+    def iter_public_stream_events(
+        completion: LLMCompletion,
+        *,
+        chunk_size: int = 160,
+    ) -> Iterator[LLMStreamEvent]:
+        """Adapt OpenAI/Anthropic normalized output to safe stream events.
+
+        Native provider payloads can contain reasoning or provider-specific
+        blocks.  This adapter accepts only the already-normalized completion,
+        never forwards raw blocks, and withholds text when the same turn asks
+        for tools.
+        """
+
+        if completion.tool_calls:
+            for call in completion.tool_calls:
+                yield LLMStreamEvent(
+                    event_type="tool_call",
+                    call_id=call.call_id,
+                    tool_name=call.name,
+                )
+        else:
+            for index in range(0, len(completion.content), max(1, chunk_size)):
+                yield LLMStreamEvent(
+                    event_type="content_delta",
+                    delta=completion.content[index : index + max(1, chunk_size)],
+                )
+        yield LLMStreamEvent(
+            event_type="completed",
+            finish_reason=completion.finish_reason,
+        )
 
     @staticmethod
     def _decode_tool_arguments(raw: Any) -> dict[str, Any]:

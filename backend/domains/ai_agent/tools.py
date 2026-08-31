@@ -16,7 +16,13 @@ from backend.domains.account_archive.journey import get_collection_journey
 from backend.domains.account_archive.overview import get_archive_overview
 from backend.domains.account_archive.returns import get_archive_returns
 from backend.domains.ai_agent.comparison import summarize_entity_comparison
+from backend.domains.ai_agent.entity_comparison_service import build_entity_comparison_rows
 from backend.domains.ai_agent.entity_resolver import resolve_entities
+from backend.domains.ai_agent.tool_cache import (
+    cache_tool_result,
+    get_cached_tool_result,
+    make_cache_key,
+)
 from backend.domains.ai_agent.tool_registry import AgentToolDefinition, AgentToolResult
 from backend.domains.billboard import details as billboard_details
 from backend.domains.community import feed_generator as community_feed_generator
@@ -627,14 +633,19 @@ def analysis_stats_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
+        cache_key = make_cache_key(conn, tool_name="analysis_stats", params=parsed)
+        if cached := get_cached_tool_result(cache_key):
+            return cached
         data = analysis_stats_service.get_analysis_stats(conn, **_filter_kwargs(parsed))
     finally:
         conn.close()
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_stats_result_summary(data),
         source_range=_source_range(data),
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def analysis_charts_handler(params: BaseModel) -> AgentToolResult:
@@ -645,6 +656,9 @@ def analysis_charts_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
+        cache_key = make_cache_key(conn, tool_name="analysis_charts", params=parsed)
+        if cached := get_cached_tool_result(cache_key):
+            return cached
         if parsed.entity == "album" and parsed.merge_level > 1 and not _album_projects_ready(conn):
             return _album_projects_unavailable("analysis_charts")
         data = analysis_stats_service.get_analysis_charts(
@@ -666,11 +680,13 @@ def analysis_charts_handler(params: BaseModel) -> AgentToolResult:
         )
     finally:
         conn.close()
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_charts_result_summary(data),
         source_range=_source_range(data),
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def playback_records_handler(params: BaseModel) -> AgentToolResult:
@@ -735,6 +751,9 @@ def entity_stats_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
+        cache_key = make_cache_key(conn, tool_name="entity_stats", params=parsed)
+        if cached := get_cached_tool_result(cache_key):
+            return cached
         if parsed.entity == "album" and not _album_projects_ready(conn):
             return _album_projects_unavailable("entity_stats")
         if parsed.entity == "track":
@@ -760,11 +779,13 @@ def entity_stats_handler(params: BaseModel) -> AgentToolResult:
             )
     finally:
         conn.close()
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_entity_result_summary(data),
         source_range=_source_range(data),
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
@@ -775,6 +796,14 @@ def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
+        cache_key = make_cache_key(
+            conn,
+            tool_name="billboard_entity_detail",
+            params=parsed,
+            include_billboard=True,
+        )
+        if cached := get_cached_tool_result(cache_key):
+            return cached
         if parsed.entity == "album" and parsed.merge_level > 1 and not _album_projects_ready(conn):
             return _album_projects_unavailable("billboard_entity_detail")
         if parsed.entity == "track":
@@ -827,11 +856,13 @@ def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
             )
     finally:
         conn.close()
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_billboard_detail_result_summary(data),
         source_range=_year_bounds_source_range(parsed.year_start, parsed.year_end),
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def listening_hours_handler(params: BaseModel) -> AgentToolResult:
@@ -1175,12 +1206,35 @@ def compare_entities_handler(params: BaseModel) -> AgentToolResult:
         if isinstance(params, CompareEntitiesParams)
         else CompareEntitiesParams.model_validate(params)
     )
-    rows = [
-        _compare_track_row(parsed, name)
-        if parsed.entity_type == "track"
-        else _compare_album_or_artist_row(parsed, name)
-        for name in parsed.names
-    ]
+    conn = get_db(readonly=True)
+    try:
+        cache_key = make_cache_key(
+            conn,
+            tool_name="compare_entities",
+            params=parsed,
+            include_billboard=parsed.include_billboard,
+        )
+        if cached := get_cached_tool_result(cache_key):
+            return cached
+        if parsed.entity_type == "album" and not _album_projects_ready(conn):
+            return _album_projects_unavailable("compare_entities")
+        rows = build_entity_comparison_rows(
+            conn,
+            entity_type=parsed.entity_type,
+            names=parsed.names,
+            min_ms=parsed.min_ms,
+            music_only=parsed.music_only,
+            merge_enabled=parsed.merge_enabled,
+            period=parsed.period,
+            start_date=parsed.start_date,
+            end_date=parsed.end_date,
+            dynamic_threshold=parsed.dynamic_threshold,
+            max_merge_gap_minutes=parsed.max_merge_gap_minutes,
+            merge_level=parsed.merge_level,
+            include_billboard=parsed.include_billboard,
+        )
+    finally:
+        conn.close()
     data = summarize_entity_comparison(entity_type=parsed.entity_type, entities=rows)
     data["period"] = {
         "period": parsed.period,
@@ -1193,11 +1247,13 @@ def compare_entities_handler(params: BaseModel) -> AgentToolResult:
         if parsed.period == "custom"
         else parsed.period
     )
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_comparison_result_summary(data),
         source_range=source_range,
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def account_summary_handler(params: BaseModel) -> AgentToolResult:
@@ -1423,6 +1479,9 @@ ANALYSIS_STATS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=AnalysisStatsParams,
     handler=analysis_stats_handler,
+    cost="medium",
+    timeout_seconds=45,
+    cacheability="revision",
 )
 
 ANALYSIS_CHARTS_TOOL = AgentToolDefinition(
@@ -1431,6 +1490,9 @@ ANALYSIS_CHARTS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=AnalysisChartsParams,
     handler=analysis_charts_handler,
+    cost="high",
+    timeout_seconds=60,
+    cacheability="revision",
 )
 
 PLAYBACK_RECORDS_TOOL = AgentToolDefinition(
@@ -1455,6 +1517,9 @@ ENTITY_STATS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=EntityStatsParams,
     handler=entity_stats_handler,
+    cost="high",
+    timeout_seconds=60,
+    cacheability="revision",
 )
 
 BILLBOARD_ENTITY_DETAIL_TOOL = AgentToolDefinition(
@@ -1463,6 +1528,9 @@ BILLBOARD_ENTITY_DETAIL_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=BillboardEntityDetailParams,
     handler=billboard_entity_detail_handler,
+    cost="high",
+    timeout_seconds=120,
+    cacheability="revision",
 )
 
 LISTENING_HOURS_TOOL = AgentToolDefinition(
@@ -1491,6 +1559,9 @@ COMPARE_ENTITIES_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=CompareEntitiesParams,
     handler=compare_entities_handler,
+    cost="high",
+    timeout_seconds=120,
+    cacheability="revision",
 )
 
 ACCOUNT_SUMMARY_TOOL = AgentToolDefinition(

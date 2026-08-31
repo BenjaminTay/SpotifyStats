@@ -47,6 +47,7 @@ interface Props {
     task: AiTaskRun | null
     events: AiTaskEvent[]
     toolCalls: AiToolCall[]
+    streamedAnswer?: string
   }
   retryingIdx: number | null
   reportContext?: ReportType
@@ -163,6 +164,14 @@ export function ChatMessageList({
               <div className="max-w-[80%] space-y-3 rounded-r-2xl border-l-2 border-accent-foreground/20 bg-card/40 backdrop-blur-[8px] px-4 py-3">
                 <AITaskProgress task={activeTask?.task ?? null} events={activeTask?.events ?? []} />
                 <AIToolTrace toolCalls={activeTask?.toolCalls ?? []} />
+                {activeTask?.streamedAnswer && (
+                  <div
+                    className="prose prose-sm max-w-none border-t border-border/40 pt-3 text-[13px] leading-relaxed [&_strong]:text-foreground"
+                    aria-label="正在接收回答"
+                  >
+                    <AiMarkdown>{activeTask.streamedAnswer}</AiMarkdown>
+                  </div>
+                )}
                 <button
                   onClick={onCancel}
                   className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.6px] text-muted-foreground/40 transition-colors hover:text-destructive"

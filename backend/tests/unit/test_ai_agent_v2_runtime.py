@@ -6,10 +6,17 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from backend.domains.agent_runtime.event_log import AgentEventLog
+from backend.domains.agent_runtime.observation import compact_observation
+from backend.domains.agent_runtime.tool_selector import (
+    select_agent_profile,
+    tool_schemas_for_profile,
+)
 from backend.domains.ai_agent.tool_registry import (
     AgentToolDefinition,
     AgentToolRegistry,
     AgentToolResult,
+    get_default_registry,
 )
 from backend.providers.llm.client import LLMCompletion, LLMToolCall
 from backend.services import ai_agent_service, ai_agent_v2_service
@@ -394,3 +401,151 @@ def test_agent_v2_enables_billboard_only_when_question_requests_it() -> None:
 
     assert filters["period"] == "lifetime"
     assert filters["include_billboard"] is True
+
+
+def test_agent_profile_exposes_only_family_specific_tool_schemas() -> None:
+    registry = get_default_registry()
+    ranking_context = ai_agent_service._question_context({"question": "我今年听得最多的艺人是谁？"})
+    comparison_context = ai_agent_service._question_context(
+        {"question": "Taylor Swift 和 Olivia Rodrigo 哪位艺人我更喜欢？"}
+    )
+
+    ranking = select_agent_profile(ranking_context, registry)
+    comparison = select_agent_profile(comparison_context, registry)
+
+    assert ranking.family == "simple_ranking"
+    assert 3 <= len(ranking.tool_names) <= 6
+    assert "analysis_charts" in ranking.tool_names
+    assert "web_search" not in ranking.tool_names
+    assert comparison.family == "preference_comparison"
+    assert 3 <= len(comparison.tool_names) <= 6
+    assert comparison.tool_names[0] == "compare_entities"
+    all_schema_chars = len(json.dumps(registry.list_tools(), ensure_ascii=False))
+    selected_schema_chars = len(
+        json.dumps(tool_schemas_for_profile(registry, ranking), ensure_ascii=False)
+    )
+    assert selected_schema_chars < all_schema_chars * 0.6
+    assert "我今年" not in ai_agent_v2_service._system_prompt()
+
+
+def test_agent_v2_records_runtime_metrics_and_patches_mechanical_obligations(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "agent-metrics.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+    registry = AgentToolRegistry()
+
+    def cached_chart_handler(params: BaseModel) -> AgentToolResult:
+        result = _chart_handler(params)
+        return AgentToolResult(
+            data=result.data,
+            result_summary=result.result_summary,
+            source_range=result.source_range,
+            cache_hit=True,
+        )
+
+    registry.register(
+        AgentToolDefinition(
+            name="analysis_charts",
+            description="Read rankings",
+            read_only=True,
+            params_model=ChartParams,
+            handler=cached_chart_handler,
+        )
+    )
+
+    class MetricsModel:
+        def __init__(self):
+            self.calls = 0
+            self.schema_counts: list[int] = []
+
+        def complete(self, messages, tools, *, thinking):
+            self.calls += 1
+            self.schema_counts.append(len(tools))
+            if self.calls == 1:
+                return LLMCompletion(
+                    tool_calls=[
+                        LLMToolCall(
+                            call_id="metrics-tool",
+                            name="analysis_charts",
+                            arguments={"entity": "artist", "metric": "plays"},
+                        )
+                    ],
+                    usage={"prompt_tokens": 80, "completion_tokens": 10},
+                )
+            return LLMCompletion(
+                content="Artist A 是你今年听得最多的艺人，共 12 次。",
+                usage={"input_tokens": 100, "output_tokens": 20},
+            )
+
+    model = MetricsModel()
+    AgentRuntime(model=model, registry=registry, max_steps=4).run(
+        "task-v2",
+        {
+            "question": "我今年听得最多的艺人是谁？",
+            "question_time": "2026-08-31T12:00:00+08:00",
+            "timezone": "Asia/Shanghai",
+        },
+    )
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    result = json.loads(task["result_json"])
+    turn_ended = conn.execute(
+        "SELECT payload_json FROM ai_agent_turn_events "
+        "WHERE event_type='turn_ended' ORDER BY sequence DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+
+    metrics = result["runtime_metrics"]
+    assert task["status"] == "done"
+    assert model.calls == 2
+    assert model.schema_counts == [1, 1]
+    assert metrics["model_call_count"] == 2
+    assert metrics["tool_call_count"] == 1
+    assert metrics["cache_hit_count"] == 1
+    assert metrics["tool_cache_hit_count"] == 1
+    assert metrics["input_tokens"] == 180
+    assert metrics["output_tokens"] == 30
+    assert metrics["tool_result_bytes"] > 0
+    assert "2026-08-30" in result["answer"]
+    assert "修正回答" not in result["answer"]
+    assert json.loads(turn_ended["payload_json"])["runtime_metrics"]["model_call_count"] == 2
+
+
+def test_agent_event_log_redacts_credentials_but_keeps_usage(tmp_path) -> None:
+    db_path = tmp_path / "agent-redaction.db"
+    _create_runtime_db(db_path)
+    conn = _connection_factory(db_path)()
+    log = AgentEventLog(conn, task_id="task-v2", turn_id="redaction", session_id=None)
+
+    log.append(
+        "provider_debug",
+        {
+            "api_key": "sk-1234567890abcdef",  # pragma: allowlist secret
+            "authorization": "Bearer very-secret-token",
+            "usage": {"input_tokens": 12, "output_tokens": 3},
+        },
+    )
+    payload = log.list_events()[0]["payload"]
+    conn.close()
+
+    assert payload["api_key"] == "[REDACTED]"
+    assert payload["authorization"] == "[REDACTED]"
+    assert payload["usage"] == {"input_tokens": 12, "output_tokens": 3}
+
+
+def test_compact_observation_bounds_large_rows_without_invalid_json() -> None:
+    observation = compact_observation(
+        {"rows": [{"rank": index, "name": f"Artist {index}"} for index in range(50)]}
+    )
+
+    assert len(observation["rows"]) == 13
+    assert observation["rows"][-1]["omitted_items"] == 38
+    assert json.loads(json.dumps(observation, ensure_ascii=False)) == observation

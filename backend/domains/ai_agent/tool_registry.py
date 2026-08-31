@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -19,6 +19,7 @@ class AgentToolResult:
     data: dict[str, Any]
     result_summary: str
     source_range: str
+    cache_hit: bool = False
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,22 @@ class AgentToolDefinition:
     read_only: bool
     params_model: type[BaseModel]
     handler: Callable[[BaseModel], AgentToolResult]
+    cost: Literal["low", "medium", "high"] = "low"
+    timeout_seconds: float = 30.0
+    cacheability: Literal["none", "revision"] = "none"
+    supports_parallel: bool = True
+
+    def __post_init__(self) -> None:
+        if self.timeout_seconds <= 0:
+            raise ValueError("AI agent tool timeout_seconds must be positive")
+
+    def runtime_metadata(self) -> dict[str, Any]:
+        return {
+            "cost": self.cost,
+            "timeout_seconds": self.timeout_seconds,
+            "cacheability": self.cacheability,
+            "supports_parallel": self.supports_parallel,
+        }
 
 
 def summarize_params(params: BaseModel) -> str:
@@ -68,6 +85,7 @@ class AgentToolRegistry:
                 "description": definition.description,
                 "read_only": definition.read_only,
                 "params_schema": definition.params_model.model_json_schema(),
+                "runtime": definition.runtime_metadata(),
             }
             for definition in self._tools.values()
         ]
@@ -75,6 +93,10 @@ class AgentToolRegistry:
     def describe_for_model(self) -> list[dict[str, Any]]:
         """Return tool descriptions in the compact shape sent to the planner LLM."""
         return self.list_tools()
+
+    def runtime_metadata(self, tool_name: str) -> dict[str, Any]:
+        """Return scheduling metadata without exposing the executable handler."""
+        return self.get(tool_name).runtime_metadata()
 
     def dispatch(self, tool_name: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         definition = self.get(tool_name)
@@ -85,6 +107,7 @@ class AgentToolRegistry:
             "params_summary": summarize_params(parsed_params),
             "result_summary": result.result_summary,
             "source_range": result.source_range,
+            "cache_hit": result.cache_hit,
             "data": result.data,
         }
 

@@ -735,7 +735,7 @@ def test_resolve_entity_rejects_empty_query() -> None:
         tool_registry.dispatch_tool("resolve_entity", {"query": ""})
 
 
-def test_compare_entities_combines_playback_and_billboard_handlers(
+def test_compare_entities_combines_playback_and_billboard_batch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tool_registry.get_default_registry.cache_clear()
@@ -798,12 +798,34 @@ def test_compare_entities_combines_playback_and_billboard_handlers(
             source_range="all_years",
         )
 
-    monkeypatch.setattr(tools, "entity_stats_handler", fake_entity_stats_handler)
-    monkeypatch.setattr(
-        tools,
-        "billboard_entity_detail_handler",
-        fake_billboard_entity_detail_handler,
-    )
+    def fake_batch(_conn: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        rows = []
+        for name in kwargs["names"]:
+            playback_params = tools.EntityStatsParams(
+                entity="album",
+                album_name=name,
+                merge_level=kwargs["merge_level"],
+                min_ms=kwargs["min_ms"],
+            )
+            billboard_params = tools.BillboardEntityDetailParams(
+                entity="album",
+                album_name=name,
+                merge_level=kwargs["merge_level"],
+                min_ms=kwargs["min_ms"],
+            )
+            playback = fake_entity_stats_handler(playback_params).data
+            billboard = fake_billboard_entity_detail_handler(billboard_params).data
+            rows.append(
+                tools._comparison_row(
+                    requested_name=name,
+                    entity_type="album",
+                    playback=playback,
+                    billboard=billboard,
+                )
+            )
+        return rows
+
+    monkeypatch.setattr(tools, "build_entity_comparison_rows", fake_batch)
 
     result = tool_registry.dispatch_tool(
         "compare_entities",
@@ -836,30 +858,26 @@ def test_compare_entities_can_skip_billboard_and_use_one_bounded_window(
     tool_registry.get_default_registry.cache_clear()
     observed: list[dict[str, Any]] = []
 
-    def fake_entity_stats_handler(params: tools.EntityStatsParams) -> tool_registry.AgentToolResult:
-        observed.append(params.model_dump())
-        plays = 260 if params.artist_name == "Taylor Swift" else 130
-        return tool_registry.AgentToolResult(
-            data={
+    def fake_batch(_conn: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        observed.append(kwargs)
+        return [
+            {
                 "found": True,
-                "artist_name": params.artist_name,
+                "name": name,
+                "requested_name": name,
+                "entity_type": "artist",
                 "period": {
-                    "period": params.period,
+                    "period": kwargs["period"],
                     "start_date": "2026-03-01",
                     "end_date": "2026-08-31",
                 },
-                "summary": {"total_plays": plays, "total_hours": plays / 20},
-            },
-            result_summary="found=true",
-            source_range="2026-03-01..2026-08-31",
-        )
+                "plays": 260 if name == "Taylor Swift" else 130,
+                "hours": 13 if name == "Taylor Swift" else 6.5,
+            }
+            for name in kwargs["names"]
+        ]
 
-    monkeypatch.setattr(tools, "entity_stats_handler", fake_entity_stats_handler)
-    monkeypatch.setattr(
-        tools,
-        "billboard_entity_detail_handler",
-        lambda params: pytest.fail("普通时间窗比较不应计算个人 Billboard"),
-    )
+    monkeypatch.setattr(tools, "build_entity_comparison_rows", fake_batch)
 
     result = tool_registry.dispatch_tool(
         "compare_entities",
@@ -876,7 +894,22 @@ def test_compare_entities_can_skip_billboard_and_use_one_bounded_window(
     assert result["data"]["winner_by_cumulative_plays"] == "Taylor Swift"
     assert result["data"]["winner_by_intensity"] == "Taylor Swift"
     assert result["data"]["intensity_basis"] == "comparison_window_weeks"
-    assert all(item["period"] == "last_6_months" for item in observed)
+    assert observed == [
+        {
+            "entity_type": "artist",
+            "names": ["Taylor Swift", "Olivia Rodrigo"],
+            "min_ms": 30000,
+            "music_only": True,
+            "merge_enabled": True,
+            "period": "last_6_months",
+            "start_date": None,
+            "end_date": None,
+            "dynamic_threshold": True,
+            "max_merge_gap_minutes": 5,
+            "merge_level": 2,
+            "include_billboard": False,
+        }
+    ]
 
 
 def test_compare_entities_keeps_missing_entities(
@@ -884,42 +917,25 @@ def test_compare_entities_keeps_missing_entities(
 ) -> None:
     tool_registry.get_default_registry.cache_clear()
 
-    def fake_entity_stats_handler(params: tools.EntityStatsParams) -> tool_registry.AgentToolResult:
-        found = params.album_name == "GUTS"
-        return tool_registry.AgentToolResult(
-            data={
+    def fake_batch(_conn: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        return [
+            {
                 "found": found,
-                "album_name": params.album_name,
+                "name": name,
+                "requested_name": name,
+                "entity_type": "album",
                 "error": None if found else "not found",
-                "summary": {"total_plays": 12, "total_hours": 1.5} if found else {},
-            },
-            result_summary=f"found={str(found).lower()}",
-            source_range="lifetime",
-        )
+                "plays": 12 if found else None,
+                "hours": 1.5 if found else None,
+                "power_score": 20 if found else None,
+                "power_rank": 2 if found else None,
+                "weeks_on_chart": 4 if found else None,
+            }
+            for name in kwargs["names"]
+            for found in [name == "GUTS"]
+        ]
 
-    def fake_billboard_entity_detail_handler(
-        params: tools.BillboardEntityDetailParams,
-    ) -> tool_registry.AgentToolResult:
-        found = params.album_name == "GUTS"
-        return tool_registry.AgentToolResult(
-            data={
-                "found": found,
-                "album_name": params.album_name,
-                "error": None if found else "not found",
-                "chart_summary": {"power_score": 20, "power_rank": 2, "weeks_on_chart": 4}
-                if found
-                else {},
-            },
-            result_summary=f"found={str(found).lower()}",
-            source_range="all_years",
-        )
-
-    monkeypatch.setattr(tools, "entity_stats_handler", fake_entity_stats_handler)
-    monkeypatch.setattr(
-        tools,
-        "billboard_entity_detail_handler",
-        fake_billboard_entity_detail_handler,
-    )
+    monkeypatch.setattr(tools, "build_entity_comparison_rows", fake_batch)
 
     result = tool_registry.dispatch_tool(
         "compare_entities",
@@ -937,55 +953,29 @@ def test_compare_track_entities_preserves_track_names(
 ) -> None:
     tool_registry.get_default_registry.cache_clear()
 
-    candidates = {
-        "vampire": {"name": "vampire", "track_id": 100},
-        "drivers license": {"name": "drivers license", "track_id": 200},
-    }
-
-    def fake_resolve_entities(conn: FakeReadonlyConn, *, query: str, entity_type: str, limit: int):
-        del conn, entity_type, limit
-        return {"found": True, "candidates": [candidates[query]]}
-
     def fake_get_db(readonly: bool = True) -> FakeReadonlyConn:
         assert readonly is True
         return FakeReadonlyConn()
 
-    def fake_entity_stats_handler(params: tools.EntityStatsParams) -> tool_registry.AgentToolResult:
-        track_name = "vampire" if params.track_id == 100 else "drivers license"
-        plays = 435 if params.track_id == 100 else 400
-        return tool_registry.AgentToolResult(
-            data={
+    def fake_batch(_conn: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        return [
+            {
                 "found": True,
-                "entity": {"track_id": params.track_id, "track_name": track_name},
-                "summary": {"total_plays": plays, "total_hours": 20.0},
-            },
-            result_summary="found=true",
-            source_range="lifetime",
-        )
-
-    def fake_billboard_entity_detail_handler(
-        params: tools.BillboardEntityDetailParams,
-    ) -> tool_registry.AgentToolResult:
-        track_name = "vampire" if params.track_id == 100 else "drivers license"
-        return tool_registry.AgentToolResult(
-            data={
-                "found": True,
-                "track_name": track_name,
-                "artist_name": "Olivia Rodrigo",
-                "summary": {"weeks_on_chart": 30, "power_score": 100, "power_rank": 1},
-            },
-            result_summary="found=true",
-            source_range="all_years",
-        )
+                "name": name,
+                "requested_name": name,
+                "entity_type": "track",
+                "track_id": 100 if name == "vampire" else 200,
+                "plays": 435 if name == "vampire" else 400,
+                "hours": 20,
+                "weeks_on_chart": 30,
+                "power_score": 100,
+                "power_rank": 1,
+            }
+            for name in kwargs["names"]
+        ]
 
     monkeypatch.setattr(tools, "get_db", fake_get_db)
-    monkeypatch.setattr(tools, "resolve_entities", fake_resolve_entities)
-    monkeypatch.setattr(tools, "entity_stats_handler", fake_entity_stats_handler)
-    monkeypatch.setattr(
-        tools,
-        "billboard_entity_detail_handler",
-        fake_billboard_entity_detail_handler,
-    )
+    monkeypatch.setattr(tools, "build_entity_comparison_rows", fake_batch)
 
     result = tool_registry.dispatch_tool(
         "compare_entities",

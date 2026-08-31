@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
 
 from backend.domains.agent_runtime.event_log import AgentEventLog
+from backend.domains.agent_runtime.metrics import RuntimeMetrics, json_size_bytes
+from backend.domains.agent_runtime.observation import compact_observation
 from backend.domains.agent_runtime.serialization import compact_value
 from backend.domains.ai_agent.tool_registry import AgentToolRegistry
 from backend.domains.ai_tasks.repository import AiTaskRepository
@@ -26,6 +30,9 @@ class ToolOutcome:
     data: dict[str, Any]
     error: str | None = None
     duplicate: bool = False
+    elapsed_ms: int = 0
+    result_size_bytes: int = 0
+    cache_hit: bool = False
 
     def model_payload(self) -> dict[str, Any]:
         return compact_value(
@@ -34,9 +41,12 @@ class ToolOutcome:
                 "tool_name": self.tool_name,
                 "result_summary": self.result_summary,
                 "source_range": self.source_range,
-                "data": self.data,
+                "data": compact_observation(self.data),
                 "error": self.error,
                 "duplicate": self.duplicate,
+                "elapsed_ms": self.elapsed_ms,
+                "result_size_bytes": self.result_size_bytes,
+                "cache_hit": self.cache_hit,
             }
         )
 
@@ -72,15 +82,23 @@ class ToolRuntime:
         event_log: AgentEventLog,
         task_id: str,
         default_filters: dict[str, Any],
+        metrics: RuntimeMetrics | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        allowed_tool_names: set[str] | None = None,
     ) -> None:
         self.registry = registry
         self.task_repo = task_repo
         self.event_log = event_log
         self.task_id = task_id
         self.default_filters = default_filters
+        self.metrics = metrics
+        self.clock = clock
+        self.allowed_tool_names = allowed_tool_names
         self._outcomes_by_identity: dict[str, ToolOutcome] = {}
 
     def prepare_params(self, tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
+        if self.allowed_tool_names is not None and tool_name not in self.allowed_tool_names:
+            raise ValueError(f"Tool is outside the selected Agent profile: {tool_name}")
         definition = self.registry.get(tool_name)
         properties = definition.params_model.model_json_schema().get("properties") or {}
         merged = dict(params)
@@ -101,6 +119,7 @@ class ToolRuntime:
         params: dict[str, Any],
         step_index: int,
     ) -> ToolOutcome:
+        started_at = self.clock()
         try:
             prepared = self.prepare_params(tool_name, params)
         except (ValidationError, ValueError, TypeError, KeyError) as exc:
@@ -114,7 +133,13 @@ class ToolRuntime:
                 source_range="",
                 data={},
                 error=str(exc),
+                elapsed_ms=round((self.clock() - started_at) * 1000),
             )
+            if self.metrics is not None:
+                self.metrics.record_tool(
+                    elapsed_ms=outcome.elapsed_ms,
+                    result_bytes=0,
+                )
             self.event_log.append(
                 "tool_result",
                 {
@@ -147,7 +172,17 @@ class ToolRuntime:
                 data=previous.data,
                 error=previous.error,
                 duplicate=True,
+                elapsed_ms=0,
+                result_size_bytes=previous.result_size_bytes,
+                cache_hit=True,
             )
+            if self.metrics is not None:
+                self.metrics.record_tool(
+                    elapsed_ms=0,
+                    result_bytes=0,
+                    cache_hit=True,
+                    executed=False,
+                )
             self.event_log.append(
                 "tool_call_deduplicated",
                 {"call_id": call_id, "tool_name": tool_name, "params": prepared},
@@ -172,6 +207,9 @@ class ToolRuntime:
                 result_summary=str(result.get("result_summary") or ""),
                 source_range=str(result.get("source_range") or ""),
                 data=data,
+                elapsed_ms=round((self.clock() - started_at) * 1000),
+                result_size_bytes=json_size_bytes(data),
+                cache_hit=result.get("cache_hit") is True,
             )
         except (ValidationError, ValueError, TypeError, KeyError) as exc:
             outcome = ToolOutcome(
@@ -184,6 +222,7 @@ class ToolRuntime:
                 source_range="",
                 data={},
                 error=str(exc),
+                elapsed_ms=round((self.clock() - started_at) * 1000),
             )
         except Exception as exc:
             outcome = ToolOutcome(
@@ -196,9 +235,16 @@ class ToolRuntime:
                 source_range="",
                 data={},
                 error=str(exc) or exc.__class__.__name__,
+                elapsed_ms=round((self.clock() - started_at) * 1000),
             )
 
         self._outcomes_by_identity[identity] = outcome
+        if self.metrics is not None:
+            self.metrics.record_tool(
+                elapsed_ms=outcome.elapsed_ms,
+                result_bytes=outcome.result_size_bytes,
+                cache_hit=outcome.cache_hit,
+            )
         self.task_repo.add_tool_call_if_not_terminal(
             task_id=self.task_id,
             tool_name=tool_name,

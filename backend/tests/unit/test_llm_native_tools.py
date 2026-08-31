@@ -7,7 +7,7 @@ import pytest
 
 from backend.infrastructure.http.client import HttpResponse
 from backend.providers.base import ProviderConfig, ProviderHTTPError
-from backend.providers.llm.client import LLMProvider
+from backend.providers.llm.client import LLMCompletion, LLMProvider, LLMToolCall
 
 
 class FakeHttpClient:
@@ -150,3 +150,26 @@ def test_native_tool_http_failure_is_not_silently_swallowed():
         llm.complete_with_tools([], [])
 
     assert caught.value.status == 400
+
+
+def test_public_stream_adapter_never_exposes_intermediate_text_with_tool_calls():
+    completion = LLMCompletion(
+        content="这段中间文字不应该展示",
+        tool_calls=[LLMToolCall(call_id="call-1", name="analysis_stats", arguments={})],
+        finish_reason="tool_calls",
+    )
+
+    events = list(LLMProvider.iter_public_stream_events(completion, chunk_size=4))
+
+    assert [event.event_type for event in events] == ["tool_call", "completed"]
+    assert events[0].tool_name == "analysis_stats"
+    assert all("中间文字" not in event.delta for event in events)
+
+
+def test_public_stream_adapter_chunks_only_final_text():
+    completion = LLMCompletion(content="abcdef", finish_reason="stop")
+
+    events = list(LLMProvider.iter_public_stream_events(completion, chunk_size=2))
+
+    assert [event.delta for event in events[:-1]] == ["ab", "cd", "ef"]
+    assert events[-1].event_type == "completed"

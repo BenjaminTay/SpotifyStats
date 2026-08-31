@@ -30,7 +30,7 @@ interface ActiveChatTask {
 }
 
 function isActiveStatus(status: AiTaskRun['status'] | null | undefined): boolean {
-  return status === 'queued' || status === 'running'
+  return status === 'queued' || status === 'running' || status === 'cancelling'
 }
 
 function isTerminalStatus(status: AiTaskRun['status'] | null | undefined): boolean {
@@ -300,7 +300,12 @@ export function ChatInterface({
           messages={messages}
           asking={asking}
           sessionLoading={sessionLoading}
-          activeTask={{ task: displayedTask, events: activeTaskState.events, toolCalls: activeTaskState.toolCalls }}
+          activeTask={{
+            task: displayedTask,
+            events: activeTaskState.events,
+            toolCalls: activeTaskState.toolCalls,
+            streamedAnswer: activeTaskState.streamedAnswer,
+          }}
           retryingIdx={retryingIdx}
           reportContext={reportContext}
           onRetry={handleRetry}

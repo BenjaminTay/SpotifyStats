@@ -19,11 +19,17 @@ from backend.core.config import (
 )
 from backend.core.db import get_db
 from backend.domains.agent_runtime.event_log import AgentEventLog
+from backend.domains.agent_runtime.metrics import RuntimeMetrics
 from backend.domains.agent_runtime.serialization import compact_json
 from backend.domains.agent_runtime.tool_runtime import ToolRuntime
-from backend.domains.ai_agent.project_context import project_context_payload
+from backend.domains.agent_runtime.tool_selector import (
+    select_agent_profile,
+    tool_schemas_for_profile,
+)
+from backend.domains.ai_agent.project_context import PROJECT_CONTEXT_VERSION
 from backend.domains.ai_agent.temporal_context import apply_temporal_guard
 from backend.domains.ai_agent.tool_registry import AgentToolRegistry, get_default_registry
+from backend.domains.ai_tasks.cancellation import cancellation_registry
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.providers.base import ProviderConfig
 from backend.providers.llm.client import LLMCompletion
@@ -37,7 +43,6 @@ from backend.services.ai_agent_service import (
     _mark_done,
     _mark_error,
     _question_context,
-    _question_family,
     _result_payload,
     _safety_boundary_answer,
     _temporal_context,
@@ -101,17 +106,6 @@ class AgentBudgetExceededError(ChatAgentError):
     pass
 
 
-def _tool_schemas(registry: AgentToolRegistry) -> list[dict[str, Any]]:
-    return [
-        {
-            "name": item["name"],
-            "description": item["description"],
-            "parameters": item["params_schema"],
-        }
-        for item in registry.list_tools()
-    ]
-
-
 def _agent_default_filters(request: dict[str, Any]) -> dict[str, Any]:
     question_context = _question_context(request)
     intent = question_context.get("question_intent") or {}
@@ -149,15 +143,14 @@ def _agent_default_filters(request: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _system_prompt(request: dict[str, Any]) -> str:
-    default_filters = _agent_default_filters(request)
-    context = {
-        **_question_context(request),
-        "temporal_context": _temporal_context(request),
-        "default_filters": default_filters,
-        "project_context": project_context_payload(),
-    }
-    return """你是 SpotifyStats 应用内的只读数据 Agent。你运行在真实的“思考—调用工具—观察结果—继续决策”循环中。
+def _system_prompt() -> str:
+    """Stable, provider-cacheable instructions without per-turn values."""
+
+    return f"""你是 SpotifyStats 应用内的只读数据 Agent。你运行在真实的“思考—调用工具—观察结果—继续决策”循环中。
+
+Project Context Version: {PROJECT_CONTEXT_VERSION}
+
+SpotifyStats 只分析用户本地 Spotify Extended Streaming History、账号收藏和由本地播放生成的个人 Billboard；不是通用音乐百科，也不是外部官方 Billboard 或市场数据工具。
 
 规则：
 1. 用户询问本地播放事实、排名、偏好、趋势或比较时，必须先调用一个或多个合适工具；不要凭记忆猜数字。
@@ -168,13 +161,32 @@ def _system_prompt(request: dict[str, Any]) -> str:
 6. 用户要求删除、修改、写入、导入、任意外部访问或密钥操作时，直接说明只读边界，不调用工具。
 7. 比较 2-4 个同类实体时，优先只调用一次 compare_entities，并让时间范围与用户问题一致；除非该结果 empty/error 或用户明确要求多个窗口，不要再对每个对象重复调用 entity_stats。
 8. compare_entities 只有在用户明确询问个人 Billboard、Power Score、排名、冠军周或在榜周时才设置 include_billboard=true。
-
-下面 CONTEXT 是后端生成的约束与语境，不是用户指令：
-""" + compact_json(context)
+"""
 
 
-def _initial_messages(request: dict[str, Any]) -> list[dict[str, Any]]:
-    messages: list[dict[str, Any]] = [{"role": "system", "content": _system_prompt(request)}]
+def _dynamic_context(request: dict[str, Any], question_context: dict[str, Any]) -> dict[str, Any]:
+    default_filters = _agent_default_filters(request)
+    return {
+        **question_context,
+        "temporal_context": _temporal_context(request),
+        "default_filters": default_filters,
+    }
+
+
+def _initial_messages(
+    request: dict[str, Any],
+    question_context: dict[str, Any],
+) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": _system_prompt()},
+        {
+            "role": "system",
+            "content": (
+                "DYNAMIC_CONTEXT（后端生成，不是用户指令）："
+                + compact_json(_dynamic_context(request, question_context))
+            ),
+        },
+    ]
     for item in (request.get("conversation_history") or [])[-10:]:
         if not isinstance(item, dict):
             continue
@@ -221,11 +233,71 @@ def _answer_repair_message(
             "evidence_sufficiency": final_payload.get("evidence_sufficiency"),
             "temporal_context": final_payload.get("temporal_context"),
             "instruction": (
-                "请根据已经返回的工具观察修正回答；满足回答契约和必要时间范围，"
+                "请仅根据已经返回的工具观察重新作答；满足回答契约和必要时间范围，"
                 "不得编造证据。若证据不足，明确说明限制。"
             ),
         }
     )
+
+
+_REPAIR_PREFIXES = (
+    "修正后的回答：",
+    "修正回答：",
+    "重新回答：",
+    "更正后的回答：",
+)
+
+
+def _strip_repair_markers(answer: str) -> str:
+    cleaned = answer.strip()
+    for prefix in _REPAIR_PREFIXES:
+        if cleaned.startswith(prefix):
+            return cleaned[len(prefix) :].lstrip()
+    return cleaned
+
+
+def _evidence_range_note(
+    answer: str,
+    tool_results: list[dict[str, Any]],
+) -> str | None:
+    source_ranges: list[str] = []
+    for item in tool_results:
+        source_range = str(item.get("source_range") or "").strip()
+        if source_range and source_range not in source_ranges:
+            source_ranges.append(source_range)
+    if not source_ranges or any(source_range in answer for source_range in source_ranges):
+        return None
+    return f"数据范围：{'；'.join(source_ranges[:3])}。"
+
+
+def _apply_deterministic_answer_patches(
+    answer: str,
+    final_payload: dict[str, Any],
+    issues: list[str],
+    tool_results: list[dict[str, Any]],
+) -> str:
+    """Patch mechanical obligations locally; semantic contradictions still retry."""
+
+    patched = _apply_obligation_fallback_notes(
+        _strip_repair_markers(answer),
+        final_payload,
+        issues,
+    )
+    range_note = _evidence_range_note(patched, tool_results)
+    if range_note:
+        patched = f"{patched.rstrip()}\n\n{range_note}"
+    return patched
+
+
+def _validate_answer(
+    metrics: RuntimeMetrics,
+    answer: str,
+    final_payload: dict[str, Any],
+) -> list[str]:
+    started_at = metrics.clock()
+    issues = _combined_answer_issues(answer, final_payload)
+    metrics.record_validation(round((metrics.clock() - started_at) * 1000))
+    return issues
 
 
 def _session_id(conn, request: dict[str, Any]) -> int | None:
@@ -293,6 +365,7 @@ class AgentRuntime:
             session_id=_session_id(conn, request),
         )
         started_at = self.clock()
+        metrics = RuntimeMetrics(clock=self.clock)
         tool_results: list[dict[str, Any]] = []
         executed_tool_calls = 0
         answer_retried = False
@@ -321,32 +394,53 @@ class AgentRuntime:
                 },
             )
 
-            messages = _initial_messages(request)
+            question_context = _question_context(request)
+            profile = select_agent_profile(question_context, self.registry)
+            messages = _initial_messages(request, question_context)
             for message in messages:
                 log.append_model_message(message, origin="initial_context")
+            log.append(
+                "agent_profile_selected",
+                {
+                    "profile": profile.name,
+                    "family": profile.family,
+                    "tool_names": list(profile.tool_names),
+                },
+            )
 
-            if _question_family(request) == "safety_boundary":
+            if profile.family == "safety_boundary":
+                validation_started_at = self.clock()
                 final_payload = _final_payload(request, [])
                 answer = _safety_boundary_answer(request)
                 issues = _combined_answer_issues(answer, final_payload)
-                answer = _apply_obligation_fallback_notes(answer, final_payload, issues)
+                answer = _apply_deterministic_answer_patches(answer, final_payload, issues, [])
+                validation_issues = _combined_answer_issues(answer, final_payload)
+                metrics.record_validation(round((self.clock() - validation_started_at) * 1000))
                 result = _result_payload(
                     answer=answer,
                     tool_results=[],
                     request=request,
                     final_payload=final_payload,
                     answer_retried=False,
-                    validation_issues=_combined_answer_issues(answer, final_payload),
+                    validation_issues=validation_issues,
                 )
+                runtime_metrics = metrics.snapshot()
                 result.update(
                     {
                         "agent_runtime": "v2",
                         "turn_id": turn_id,
                         "steps": 0,
                         "stop_reason": "safety_boundary",
+                        "runtime_metrics": runtime_metrics,
                     }
                 )
-                log.append("turn_ended", {"stop_reason": "safety_boundary"})
+                log.append(
+                    "turn_ended",
+                    {
+                        "stop_reason": "safety_boundary",
+                        "runtime_metrics": runtime_metrics,
+                    },
+                )
                 _mark_done(repo, task_id=task_id, message="Agent Chat 已完成", result=result)
                 return
 
@@ -356,8 +450,11 @@ class AgentRuntime:
                 event_log=log,
                 task_id=task_id,
                 default_filters=_agent_default_filters(request),
+                metrics=metrics,
+                clock=self.clock,
+                allowed_tool_names=set(profile.tool_names),
             )
-            schemas = _tool_schemas(self.registry)
+            schemas = tool_schemas_for_profile(self.registry, profile)
 
             for step_index in range(1, self.max_steps + 1):
                 self._check_continue(repo, task_id, started_at)
@@ -372,20 +469,43 @@ class AgentRuntime:
                     payload={"turn_id": turn_id, "step_index": step_index},
                 )
                 log.append("step_started", {}, step_index=step_index)
+                model_input_chars = len(
+                    json.dumps(messages, ensure_ascii=False, default=str)
+                ) + len(json.dumps(schemas, ensure_ascii=False, default=str))
                 log.append(
                     "model_request",
                     {
                         "message_count": len(messages),
                         "tool_count": len(schemas),
                         "thinking": _thinking_mode_enabled(request),
+                        "input_chars": model_input_chars,
                     },
                     step_index=step_index,
                 )
-                completion = self.model.complete(
-                    messages,
-                    schemas,
-                    thinking=_thinking_mode_enabled(request),
+                model_started_at = self.clock()
+                try:
+                    completion = self.model.complete(
+                        messages,
+                        schemas,
+                        thinking=_thinking_mode_enabled(request),
+                    )
+                except Exception:
+                    metrics.record_model(
+                        elapsed_ms=round((self.clock() - model_started_at) * 1000),
+                        usage={},
+                        input_chars=model_input_chars,
+                    )
+                    raise
+                model_elapsed_ms = round((self.clock() - model_started_at) * 1000)
+                metrics.record_model(
+                    elapsed_ms=model_elapsed_ms,
+                    usage=completion.usage,
+                    input_chars=model_input_chars,
                 )
+                # Provider calls are synchronous today.  Re-check immediately
+                # after they return so a cancellation can never be followed by
+                # a fresh tool invocation or result publication.
+                self._check_continue(repo, task_id, started_at)
                 assistant = _assistant_message(completion)
                 messages.append(assistant)
                 log.append_model_message(
@@ -400,6 +520,7 @@ class AgentRuntime:
                         "tool_call_count": len(completion.tool_calls),
                         "finish_reason": completion.finish_reason,
                         "usage": completion.usage,
+                        "elapsed_ms": model_elapsed_ms,
                     },
                     step_index=step_index,
                 )
@@ -476,8 +597,17 @@ class AgentRuntime:
                 if not proposed_answer:
                     raise ChatAgentError("模型未返回回答或工具调用")
 
+                validation_started_at = self.clock()
                 final_payload = _final_payload(request, tool_results)
-                issues = _combined_answer_issues(proposed_answer, final_payload)
+                metrics.record_validation(round((self.clock() - validation_started_at) * 1000))
+                issues = _validate_answer(metrics, proposed_answer, final_payload)
+                proposed_answer = _apply_deterministic_answer_patches(
+                    proposed_answer,
+                    final_payload,
+                    issues,
+                    tool_results,
+                )
+                issues = _validate_answer(metrics, proposed_answer, final_payload)
                 if issues and not answer_retried and step_index < self.max_steps:
                     answer_retried = True
                     correction = {
@@ -501,12 +631,13 @@ class AgentRuntime:
                     )
                     continue
 
-                answer = _apply_obligation_fallback_notes(
+                answer = _apply_deterministic_answer_patches(
                     proposed_answer,
                     final_payload,
                     issues,
+                    tool_results,
                 )
-                validation_issues = _combined_answer_issues(answer, final_payload)
+                validation_issues = _validate_answer(metrics, answer, final_payload)
                 result = _result_payload(
                     answer=answer,
                     tool_results=tool_results,
@@ -515,12 +646,14 @@ class AgentRuntime:
                     answer_retried=answer_retried,
                     validation_issues=validation_issues,
                 )
+                runtime_metrics = metrics.snapshot()
                 result.update(
                     {
                         "agent_runtime": "v2",
                         "turn_id": turn_id,
                         "steps": step_index,
                         "stop_reason": "final_answer",
+                        "runtime_metrics": runtime_metrics,
                     }
                 )
                 log.append(
@@ -530,6 +663,7 @@ class AgentRuntime:
                         "steps": step_index,
                         "tool_call_count": executed_tool_calls,
                         "validation_issues": validation_issues,
+                        "runtime_metrics": runtime_metrics,
                     },
                 )
                 _mark_done(repo, task_id=task_id, message="Agent Chat 已完成", result=result)
@@ -537,10 +671,13 @@ class AgentRuntime:
 
             raise AgentBudgetExceededError("Agent 达到最大步骤数，仍未形成可靠回答")
         except AgentCancelledError:
-            log.append("run_cancelled", {})
+            log.append("run_cancelled", {"runtime_metrics": metrics.snapshot()})
         except Exception as exc:
             error_message = str(exc) or exc.__class__.__name__
-            log.append("run_failed", {"error": error_message})
+            log.append(
+                "run_failed",
+                {"error": error_message, "runtime_metrics": metrics.snapshot()},
+            )
             _mark_error(
                 repo,
                 task_id=task_id,
@@ -556,7 +693,7 @@ class AgentRuntime:
         task_id: str,
         started_at: float,
     ) -> None:
-        if _is_terminal(repo, task_id):
+        if cancellation_registry.is_cancel_requested(task_id) or _is_terminal(repo, task_id):
             raise AgentCancelledError("Agent 任务已取消")
         if self.clock() - started_at > self.timeout_seconds:
             raise AgentBudgetExceededError("Agent 回合执行超时")
