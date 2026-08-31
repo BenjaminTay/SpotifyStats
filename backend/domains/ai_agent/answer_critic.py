@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.domains.ai_agent.answer_contract import evaluate_answer_contract
+from backend.domains.ai_agent.claim_ledger import build_claim_ledger
+
 EXTERNAL_BILLBOARD_TOKENS = (
     "Billboard 市场",
     "市场影响力",
@@ -437,6 +440,18 @@ def critique_answer(answer: str, final_payload: dict[str, Any]) -> dict[str, Any
         )
     )
     issues.extend(_check_answer_obligations(answer, final_payload))
+    fact_catalog = final_payload.get("fact_catalog")
+    claim_ledger = (
+        build_claim_ledger(answer, fact_catalog)
+        if isinstance(fact_catalog, list) and fact_catalog
+        else None
+    )
+    answer_contract = evaluate_answer_contract(
+        answer,
+        final_payload,
+        claim_ledger=claim_ledger,
+    )
+    issues.extend(str(issue) for issue in answer_contract.get("issues", []))
 
     for sentence in _sentences(answer):
         if not _has_unnegated_any(sentence, EXTERNAL_BILLBOARD_TOKENS):
@@ -469,4 +484,12 @@ def critique_answer(answer: str, final_payload: dict[str, Any]) -> dict[str, Any
             issues.append("compare_entities 已 found，但回答声称数据不足、未查询或无法比较。")
             break
 
-    return {"ok": len(issues) == 0, "issues": issues}
+    deduped_issues: list[str] = []
+    for issue in issues:
+        if issue not in deduped_issues:
+            deduped_issues.append(issue)
+    return {
+        "ok": len(deduped_issues) == 0,
+        "issues": deduped_issues,
+        "answer_contract": answer_contract,
+    }

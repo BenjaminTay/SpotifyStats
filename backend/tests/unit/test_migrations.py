@@ -567,3 +567,16 @@ def test_migration_060_preserves_legacy_active_candidate_serving(
         "candidate-old",
         "legacy error" if legacy_status == "failed" else None,
     )
+
+
+def test_migration_070_adds_idempotent_ai_task_worker_leases(empty_db) -> None:
+    from backend.core import migrations
+
+    migrations.migrate_022(empty_db)
+    migrations.migrate_070(empty_db)
+    migrations.migrate_070(empty_db)
+
+    columns = {row[1] for row in empty_db.execute("PRAGMA table_info(ai_task_runs)")}
+    indexes = {row[1] for row in empty_db.execute("PRAGMA index_list(ai_task_runs)")}
+    assert {"lease_owner", "lease_expires_at", "attempt_count"} <= columns
+    assert "idx_ai_task_runs_recovery_lease" in indexes

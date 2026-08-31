@@ -214,7 +214,7 @@ def test_final_user_content_includes_project_context_version() -> None:
     assert payload["project_context_version"] == "spotify-stats-project-context-v2"
 
 
-def test_final_payload_projects_temporal_guard_into_simple_ranking_recipe() -> None:
+def test_final_payload_projects_temporal_guard_into_taste_profile_recipe() -> None:
     payload = ai_agent_service._final_payload(
         {
             "question": "去年夏天我最常听什么类型的音乐？",
@@ -237,20 +237,25 @@ def test_final_payload_projects_temporal_guard_into_simple_ranking_recipe() -> N
         },
         [
             {
-                "tool_name": "analysis_charts",
+                "tool_name": "taste_profile",
                 "status": "done",
-                "params_summary": "entity=track, metric=plays, period=custom",
-                "result_summary": "track plays rows=10/1083",
+                "params_summary": "period=custom",
+                "result_summary": "styles=3, languages=2",
                 "source_range": "2025-06-01..2025-08-31",
                 "data": {
-                    "entity": "track",
-                    "metric": "plays",
                     "period": {
                         "period": "custom",
                         "start_date": "2025-06-01",
                         "end_date": "2025-08-31",
                     },
-                    "rows": [{"rank": 1, "track_name": "Manchild", "plays": 53}],
+                    "taste_profile": {
+                        "primary_styles": {
+                            "buckets": [{"label": "流行", "hours": 12.3, "share_pct": 52.0}]
+                        },
+                        "language_dist": {
+                            "buckets": [{"label": "英语", "hours": 10.1, "share_pct": 43.0}]
+                        },
+                    },
                 },
             }
         ],
@@ -259,7 +264,11 @@ def test_final_payload_projects_temporal_guard_into_simple_ranking_recipe() -> N
     assert payload["evidence_recipe"]["required_context"]["period"] == "custom"
     assert payload["evidence_recipe"]["required_context"]["start_date"] == "2025-06-01"
     assert payload["evidence_sufficiency"]["sufficient"] is True
-    assert payload["analytical_brief"]["recommended_conclusion"]["top_result"] == "Manchild"
+    assert payload["question_frame"]["family"] == "taste_profile"
+    assert payload["analytical_brief"]["recommended_conclusion"]["required_axes"] == [
+        "taste",
+        "period",
+    ]
 
 
 def test_explicit_detail_request_uses_detailed_answer_style() -> None:

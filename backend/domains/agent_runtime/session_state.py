@@ -8,6 +8,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from backend.domains.agent_runtime.constraint_patch import (
+    CONSTRAINT_PATCH_SCHEMA_VERSION,
+    build_constraint_patch,
+    constraint_fingerprint,
+    merge_constraint_patch,
+)
 from backend.domains.ai_agent.question_intent import parse_question_intent
 from backend.domains.ai_agent.temporal_context import (
     clip_custom_range_to_data,
@@ -174,13 +180,17 @@ def _semantic_action(input_type: str, content: str) -> SteeringAction:
 
 @dataclass
 class AgentSessionState:
-    version: int = 1
+    version: int = CONSTRAINT_PATCH_SCHEMA_VERSION
     active_question: str = ""
     entities: list[str] = field(default_factory=list)
     time_range: dict[str, Any] = field(default_factory=dict)
     metrics: list[str] = field(default_factory=list)
+    dimensions: list[str] = field(default_factory=list)
     excluded_dimensions: list[str] = field(default_factory=list)
     filters: dict[str, Any] = field(default_factory=dict)
+    output_format: str | None = None
+    comparison_mode: str | None = None
+    constraint_fingerprint: str = ""
     pending_requirements: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -190,14 +200,19 @@ class AgentSessionState:
             "entities": list(self.entities),
             "time_range": copy.deepcopy(self.time_range),
             "metrics": list(self.metrics),
+            "dimensions": list(self.dimensions),
             "excluded_dimensions": list(self.excluded_dimensions),
             "filters": copy.deepcopy(self.filters),
+            "output_format": self.output_format,
+            "comparison_mode": self.comparison_mode,
+            "constraint_fingerprint": self.constraint_fingerprint
+            or constraint_fingerprint(self.__dict__),
             "pending_requirements": list(self.pending_requirements),
         }
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> AgentSessionState:
-        return cls(
+        state = cls(
             version=int(value.get("version") or 1),
             active_question=str(value.get("active_question") or ""),
             entities=_unique(
@@ -211,6 +226,9 @@ class AgentSessionState:
             metrics=_unique(
                 [str(item) for item in value.get("metrics", []) if isinstance(item, str)]
             ),
+            dimensions=_unique(
+                [str(item) for item in value.get("dimensions", []) if isinstance(item, str)]
+            ),
             excluded_dimensions=_unique(
                 [
                     str(item)
@@ -221,6 +239,11 @@ class AgentSessionState:
             filters=(
                 copy.deepcopy(value["filters"]) if isinstance(value.get("filters"), dict) else {}
             ),
+            output_format=(str(value["output_format"]) if value.get("output_format") else None),
+            comparison_mode=(
+                str(value["comparison_mode"]) if value.get("comparison_mode") else None
+            ),
+            constraint_fingerprint=str(value.get("constraint_fingerprint") or ""),
             pending_requirements=_unique(
                 [
                     str(item)
@@ -229,6 +252,9 @@ class AgentSessionState:
                 ]
             ),
         )
+        if not state.constraint_fingerprint:
+            state.constraint_fingerprint = constraint_fingerprint(state.__dict__)
+        return state
 
     def effective_question(self) -> str:
         parts = [self.active_question, *self.pending_requirements]
@@ -251,8 +277,12 @@ class AgentSessionState:
             "entities": list(self.entities),
             "time_range": copy.deepcopy(self.time_range),
             "metrics": list(self.metrics),
+            "dimensions": list(self.dimensions),
             "excluded_dimensions": list(self.excluded_dimensions),
             "filters": copy.deepcopy(self.filters),
+            "output_format": self.output_format,
+            "comparison_mode": self.comparison_mode,
+            "constraint_fingerprint": self.constraint_fingerprint,
         }
 
 
@@ -280,7 +310,7 @@ def initial_session_state(
     metrics = [
         metric for metric in intent.requested_metrics if metric not in {"summary", "recent_window"}
     ]
-    return AgentSessionState(
+    state = AgentSessionState(
         active_question=question,
         entities=_unique(intent.entities),
         time_range=time_range
@@ -290,8 +320,19 @@ def initial_session_state(
             if key in {"period", "start_date", "end_date"} and value is not None
         },
         metrics=_unique(metrics),
+        dimensions=_dimensions(question),
         filters=filters,
     )
+    initial_patch = build_constraint_patch(
+        input_type="replace",
+        content=question,
+        temporal_context=temporal_context,
+        current_state=state.__dict__,
+    )
+    state.output_format = initial_patch.output_format
+    state.comparison_mode = initial_patch.comparison_mode
+    state.constraint_fingerprint = constraint_fingerprint(state.__dict__)
+    return state
 
 
 def restore_session_state(
@@ -328,14 +369,6 @@ def apply_session_input(
 
     replacement = _REPLACE_TASK_PATTERN.search(content)
     requirement = replacement.group("question").strip() if replacement else content
-    intent = parse_question_intent(requirement)
-    detected_time = _time_range(requirement, temporal_context)
-    detected_metrics = [
-        metric for metric in intent.requested_metrics if metric not in {"summary", "recent_window"}
-    ]
-    dimensions = _dimensions(requirement)
-    removal_dimensions = _removal_dimensions(requirement)
-
     if action == "replace_task":
         updated = initial_session_state(
             {"question": requirement},
@@ -343,59 +376,37 @@ def apply_session_input(
             temporal_context=temporal_context,
         )
         patch["active_question"] = requirement
-    elif action == "remove_requirements":
-        removed = removal_dimensions or dimensions
-        updated.excluded_dimensions = _unique([*updated.excluded_dimensions, *removed])
-        updated.metrics = [item for item in updated.metrics if item not in removed]
-        if "personal_billboard" in removed:
-            updated.filters["include_billboard"] = False
-        patch["excluded_dimensions"] = removed
     else:
-        if detected_time:
-            updated.time_range = detected_time
-            patch["time_range"] = detected_time
-        if intent.entities:
-            updated.entities = (
-                _unique(intent.entities)
-                if action == "replace_constraints"
-                else _unique([*updated.entities, *intent.entities])
-            )
-            patch["entities"] = list(updated.entities)
-        if detected_metrics:
-            updated.metrics = (
-                _unique(detected_metrics)
-                if action == "replace_constraints"
-                else _unique([*updated.metrics, *detected_metrics])
-            )
-            patch["metrics"] = list(updated.metrics)
-        if "personal_billboard" in detected_metrics:
-            updated.filters["include_billboard"] = True
-            updated.excluded_dimensions = [
-                item for item in updated.excluded_dimensions if item != "personal_billboard"
-            ]
-        if removal_dimensions:
-            updated.excluded_dimensions = _unique(
-                [*updated.excluded_dimensions, *removal_dimensions]
-            )
-            updated.metrics = [item for item in updated.metrics if item not in removal_dimensions]
-            if "personal_billboard" in removal_dimensions:
-                updated.filters["include_billboard"] = False
-            patch["excluded_dimensions"] = removal_dimensions
-        updated.pending_requirements = _unique([*updated.pending_requirements, requirement])
-        patch["pending_requirements"] = list(updated.pending_requirements)
-
-    if "不合并" in requirement:
-        updated.filters["merge_enabled"] = False
-        patch.setdefault("filters", {})["merge_enabled"] = False
-    elif "合并" in requirement:
-        updated.filters["merge_enabled"] = True
-        patch.setdefault("filters", {})["merge_enabled"] = True
-    if any(token in requirement for token in ("包含播客", "包括播客", "不要只看音乐")):
-        updated.filters["music_only"] = False
-        patch.setdefault("filters", {})["music_only"] = False
-    elif "只看音乐" in requirement:
-        updated.filters["music_only"] = True
-        patch.setdefault("filters", {})["music_only"] = True
+        patch_v2 = build_constraint_patch(
+            input_type=input_type,
+            content=requirement,
+            temporal_context=temporal_context,
+            current_state=state.to_dict(),
+        )
+        reset_state = initial_session_state(
+            {"question": state.active_question},
+            default_filters=state.filters,
+            temporal_context=temporal_context,
+        ).to_dict()
+        merged = merge_constraint_patch(
+            state.to_dict(),
+            patch_v2,
+            reset_state=reset_state,
+        )
+        updated = AgentSessionState.from_dict(merged.state)
+        patch["constraint_patch"] = patch_v2.model_dump(mode="json")
+        patch["validation"] = merged.validation.model_dump(mode="json")
+        patch["previous_constraint_fingerprint"] = merged.previous_fingerprint
+        patch["constraint_fingerprint"] = merged.constraint_fingerprint
+        patch["constraints_changed"] = merged.constraints_changed
+        patch["evidence_invalidated"] = merged.evidence_invalidated
+        if merged.validation.decision == "apply" and patch_v2.operation != "reset":
+            updated.pending_requirements = _unique([*updated.pending_requirements, requirement])
+            patch["pending_requirements"] = list(updated.pending_requirements)
+        elif patch_v2.operation == "reset" and merged.validation.decision == "apply":
+            updated.pending_requirements = []
+        if patch_v2.operation == "reset":
+            action = "replace_constraints"
     return SessionStateUpdate(action=action, state=updated, patch=patch)
 
 

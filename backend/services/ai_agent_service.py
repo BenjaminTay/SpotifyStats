@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.core.db import get_db
 from backend.domains.ai_agent.analytical_brief import build_analytical_brief
+from backend.domains.ai_agent.answer_contract import evaluate_answer_contract
 from backend.domains.ai_agent.answer_critic import critique_answer
 from backend.domains.ai_agent.answer_obligations import build_answer_obligations
 from backend.domains.ai_agent.claim_ledger import (
@@ -32,6 +33,7 @@ from backend.domains.ai_agent.temporal_context import (
     build_temporal_context,
     temporal_answer_issues,
 )
+from backend.domains.ai_agent.tool_evidence import build_tool_evidence_envelopes
 from backend.domains.ai_agent.tool_registry import describe_for_model, dispatch_tool
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.services import ai_insights_service
@@ -1285,6 +1287,15 @@ def _final_payload(
         temporal_context=temporal_context,
         temporal_guard=temporal_guard,
     )
+    tool_evidence = build_tool_evidence_envelopes(
+        tool_results,
+        fact_catalog=fact_catalog,
+        constraint_state=(
+            request.get("_agent_session_state")
+            if isinstance(request.get("_agent_session_state"), dict)
+            else context.get("question_frame")
+        ),
+    )
     return {
         "question": request.get("question", ""),
         "conversation_history": (request.get("conversation_history") or [])[-6:],
@@ -1299,6 +1310,7 @@ def _final_payload(
         "answer_obligations": answer_obligations,
         "evidence_cards": compact_cards,
         "fact_catalog": fact_catalog,
+        "tool_evidence": tool_evidence,
         "tool_results": compact_results,
     }
 
@@ -1479,6 +1491,11 @@ def _result_payload(
     grounded_fallback_used: bool = False,
 ) -> dict[str, Any]:
     claim_ledger = build_claim_ledger(answer, final_payload.get("fact_catalog") or [])
+    answer_contract = evaluate_answer_contract(
+        answer,
+        final_payload,
+        claim_ledger=claim_ledger,
+    )
     return {
         "answer": answer,
         "tool_call_count": len(tool_results),
@@ -1496,7 +1513,9 @@ def _result_payload(
         "answer_obligations": final_payload["answer_obligations"],
         "evidence_cards": final_payload["evidence_cards"],
         "claim_ledger": claim_ledger,
+        "answer_contract": answer_contract,
         "evidence_coverage": claim_ledger["evidence_coverage"],
+        "tool_evidence": final_payload.get("tool_evidence", []),
         "tools": [
             {
                 "tool_name": item["tool_name"],
@@ -1537,9 +1556,6 @@ def _retry_user_content(
     issues: list[str],
 ) -> str:
     retry_payload = {
-        **payload,
-        "previous_answer": previous_answer,
-        "validation_issues": issues,
         "instruction": (
             "上一版回答与工具证据或回答契约矛盾。请只基于 coverage、"
             "evidence_sufficiency、analytical_brief 和 tool_results 重新回答；"
@@ -1547,6 +1563,20 @@ def _retry_user_content(
             "必须满足 answer_obligations，并严格遵守 project_context_version、answer_style "
             "和 Project Context 的项目语境要求。"
         ),
+        "previous_answer": previous_answer,
+        "validation_issues": issues,
+        "question": payload.get("question"),
+        "project_context_version": payload.get("project_context_version"),
+        "project_context": payload.get("project_context"),
+        "answer_style": payload.get("answer_style"),
+        "coverage": payload.get("coverage"),
+        "evidence_sufficiency": payload.get("evidence_sufficiency"),
+        "analytical_brief": payload.get("analytical_brief"),
+        "answer_obligations": payload.get("answer_obligations"),
+        # Keep compact tool summaries before optional evidence projections so
+        # size bounding can never remove the facts needed for a correction.
+        "tool_results": payload.get("tool_results"),
+        "tool_evidence": payload.get("tool_evidence"),
     }
     return _compact_json(retry_payload, limit=16000)
 

@@ -176,6 +176,33 @@ def generate_visual_yearly_artifact(
         evidence=evidence if isinstance(evidence, list) else [],
         emit_event=emit_event,
     )
+    checkpoints = agent_result.get("section_checkpoints") or []
+    tool_evidence = agent_result.get("tool_evidence") or []
+    checkpoint_passed = bool(checkpoints) and all(
+        isinstance(item, dict) and item.get("status") != "fail" for item in checkpoints
+    )
+    result["section_checkpoints"] = checkpoints
+    result["tool_evidence"] = tool_evidence
+    artifact = result.get("artifact")
+    if isinstance(artifact, dict):
+        artifact["section_checkpoints"] = checkpoints
+        artifact["tool_evidence"] = tool_evidence
+        artifact_metadata = artifact.get("metadata")
+        if isinstance(artifact_metadata, dict):
+            artifact_metadata.update(
+                {
+                    "section_checkpoint_count": len(checkpoints),
+                    "section_checkpoints_passed": checkpoint_passed,
+                }
+            )
+    metadata = result.get("metadata")
+    if isinstance(metadata, dict):
+        metadata.update(
+            {
+                "section_checkpoint_count": len(checkpoints),
+                "section_checkpoints_passed": checkpoint_passed,
+            }
+        )
     return result
 
 

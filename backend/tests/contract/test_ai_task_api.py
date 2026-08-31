@@ -291,6 +291,58 @@ def test_task_stream_projects_progress_and_final_answer_without_internal_payload
     assert "不应公开的原始补充" not in body
 
 
+def test_task_stream_replays_only_events_after_composite_cursor(client):
+    _create_task("task-stream-replay", status="running", stage="agent_deciding")
+    repo = _repo()
+    try:
+        repo.add_event(
+            task_id="task-stream-replay",
+            event_type="step_started",
+            stage="agent_deciding",
+            message="已经接收过的进度",
+        )
+        repo.add_tool_call(
+            task_id="task-stream-replay",
+            tool_name="analysis_stats",
+            status="done",
+            params_summary="2026",
+            result_summary="已经接收过的工具",
+            source_range="2026-01-01 to 2026-08-31",
+        )
+        event_id = repo.list_events("task-stream-replay")[-1]["event_id"]
+        tool_call_id = repo.list_tool_calls("task-stream-replay")[-1]["tool_call_id"]
+        first_chunk = "FIRST" * 32
+        second_chunk = "SECOND" * 30
+        repo.update_run(
+            task_id="task-stream-replay",
+            status="done",
+            stage="done",
+            progress_pct=1.0,
+            message="完成",
+            result={"answer": first_chunk + second_chunk},
+        )
+    finally:
+        _close_repo(repo)
+
+    cursor = f"v1:p{event_id}:t{tool_call_id}:a1"
+    with client.stream(
+        "GET",
+        "/api/ai/tasks/task-stream-replay/stream",
+        headers={"Last-Event-ID": cursor},
+    ) as response:
+        body = "".join(response.iter_text())
+
+    assert "已经接收过的进度" not in body
+    assert "已经接收过的工具" not in body
+    answer_delta_blocks = "\n".join(
+        block for block in body.split("\n\n") if "event: task.answer_delta" in block
+    )
+    assert first_chunk not in answer_delta_blocks
+    assert "SECOND" in answer_delta_blocks
+    assert "event: task.completed" in body
+    assert f"id: v1:p{event_id}:t{tool_call_id}:a2" in body
+
+
 def test_agent_inbox_accepts_running_turn_steering_and_persists_it(client):
     _create_task(
         "task-inbox",

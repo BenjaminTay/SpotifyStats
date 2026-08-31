@@ -719,6 +719,25 @@ def build_analytical_brief(
         return _entity_detail_brief(frame=frame, recipe=recipe, tool_results=results)
     if family == "habit_summary":
         return _habit_summary_brief(frame=frame, recipe=recipe)
+    if family == "taste_profile":
+        return {
+            "family": family,
+            "answer_contract": frame.get("answer_contract"),
+            "main_question": "概括指定时间范围内的曲风、地区流行与语种分布",
+            "dimension_winners": {},
+            "conflict": False,
+            "recommended_conclusion": {"required_axes": ["taste", "period"]},
+            "must_explain": [
+                "明确有效时间范围",
+                "区分已归类与尚未归类的收听时长",
+                "仅使用结构化曲风与语种标签，不按艺人名称猜测",
+            ],
+            "forbidden_claims": [
+                "把未知分类当作零",
+                "凭艺人常识补写曲风或语种",
+            ],
+            "evidence_recipe": recipe,
+        }
 
     return {
         "family": family,

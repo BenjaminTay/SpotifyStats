@@ -22,6 +22,9 @@ def make_conn() -> sqlite3.Connection:
             request_json TEXT,
             result_json TEXT,
             error TEXT,
+            lease_owner TEXT,
+            lease_expires_at TEXT,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -155,3 +158,34 @@ def test_repository_writes_conditional_tool_call_for_active_task():
 
     assert inserted is True
     assert repo.list_tool_calls("task-running")[0]["params_summary"] == "active trace"
+
+
+def test_worker_lease_allows_one_owner_and_expired_recovery() -> None:
+    from backend.domains.ai_tasks.repository import AiTaskRepository
+
+    conn = make_conn()
+    repo = AiTaskRepository(conn)
+    repo.create_run(
+        task_id="task-lease",
+        task_type="ai_chat_agent",
+        status="queued",
+        stage="queued",
+    )
+
+    assert repo.claim_run("task-lease", lease_owner="worker-a", lease_seconds=60) is True
+    assert repo.claim_run("task-lease", lease_owner="worker-b", lease_seconds=60) is False
+    assert repo.list_recoverable_agent_runs() == []
+
+    conn.execute(
+        "UPDATE ai_task_runs SET lease_expires_at=datetime('now', '-1 second') WHERE task_id=?",
+        ("task-lease",),
+    )
+    conn.commit()
+
+    assert [item["task_id"] for item in repo.list_recoverable_agent_runs()] == ["task-lease"]
+    assert repo.claim_run("task-lease", lease_owner="worker-b", lease_seconds=60) is True
+    run = repo.get_run("task-lease")
+    assert run is not None
+    assert run["lease_owner"] == "worker-b"
+    assert run["attempt_count"] == 2
+    assert repo.release_run("task-lease", lease_owner="worker-b") is True

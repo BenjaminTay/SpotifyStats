@@ -124,6 +124,18 @@ def _run_handler_safely(
     request: dict[str, Any],
     handler: TaskHandler,
 ) -> None:
+    lease_owner = f"worker:{uuid.uuid4().hex}"
+    conn = get_db(readonly=False)
+    try:
+        claimed = AiTaskRepository(conn).claim_run(
+            task_id,
+            lease_owner=lease_owner,
+        )
+    finally:
+        conn.close()
+    if not claimed:
+        logger.info("Skipped AI task %s because another worker owns its lease", task_id)
+        return
     cancellation_registry.token_for(task_id)
     try:
         handler(task_id, request)
@@ -131,6 +143,11 @@ def _run_handler_safely(
         mark_task_error(task_id, exc)
     finally:
         cancellation_registry.discard(task_id)
+        conn = get_db(readonly=False)
+        try:
+            AiTaskRepository(conn).release_run(task_id, lease_owner=lease_owner)
+        finally:
+            conn.close()
 
 
 def mark_task_done(

@@ -41,6 +41,7 @@ _FAMILY_TOOLS: dict[str, tuple[str, ...]] = {
     "account_collection": ("account_collection_insights", "account_summary"),
     "search_behavior": ("search_history",),
     "community_lookup": ("community_trending", "community_feed_search"),
+    "taste_profile": ("taste_profile", "analysis_stats"),
     "habit_summary": ("analysis_stats", "analysis_charts", "listening_hours"),
     "safety_boundary": (),
 }

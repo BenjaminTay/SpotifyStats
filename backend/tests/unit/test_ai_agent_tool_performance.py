@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
@@ -105,6 +106,95 @@ def test_revision_cache_reuses_result_and_invalidates_after_revision_change(
     third = tools.analysis_stats_handler(params)
     assert calls == 2
     assert third.data["summary"]["total_plays"] == 2
+
+
+def test_taste_profile_builds_only_bounded_taste_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    monkeypatch.setattr(tools, "get_db", lambda readonly=True: conn)
+    calls: dict[str, Any] = {}
+
+    def load_period(_conn: sqlite3.Connection, *args: Any, **kwargs: Any):
+        calls["attach_duration_slices"] = kwargs.get("attach_duration_slices")
+        return (
+            pd.DataFrame(),
+            pd.DataFrame([{"track_id": 1, "ms_played": 120_000}]),
+            {
+                "period": "custom",
+                "label": "自定义",
+                "start_date": "2025-06-01",
+                "end_date": "2025-08-31",
+            },
+        )
+
+    monkeypatch.setattr(tools.analysis_stats_service, "load_period_plays", load_period)
+    monkeypatch.setattr(
+        tools,
+        "build_consumer_taste_profile",
+        lambda _conn, _plays: {
+            "primary_styles": {"buckets": [{"label": "流行", "hours": 1.0}]},
+            "language_dist": {"buckets": [{"label": "英语", "hours": 1.0}]},
+        },
+    )
+
+    result = tools.taste_profile_handler(
+        tools.TasteProfileParams(
+            period="custom",
+            start_date="2025-06-01",
+            end_date="2025-08-31",
+        )
+    )
+
+    assert calls["attach_duration_slices"] is False
+    assert result.source_range == "2025-06-01..2025-08-31"
+    assert result.data["taste_profile"]["primary_styles"]["buckets"][0]["label"] == "流行"
+
+
+def test_exact_annual_chart_reuses_ready_yearly_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.domains.yearly_review import context as yearly_context
+    from backend.services import yearly_review_service
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    monkeypatch.setattr(
+        yearly_context, "build_yearly_review_context", lambda *_args, **_kwargs: object()
+    )
+    monkeypatch.setattr(
+        yearly_review_service,
+        "get_cached_yearly_review",
+        lambda year, context: SimpleNamespace(
+            appendix=SimpleNamespace(
+                play_charts={
+                    "artist_by_plays": [
+                        {"rank": rank, "artist_name": f"Artist {rank}", "plays": 100 - rank}
+                        for rank in range(1, 7)
+                    ]
+                }
+            ),
+            passport=SimpleNamespace(metrics=[SimpleNamespace(key="unique_artists", value=42)]),
+        ),
+    )
+
+    data = tools._ready_yearly_chart(
+        conn,
+        tools.AnalysisChartsParams(
+            entity="artist",
+            metric="plays",
+            period="custom",
+            start_date="2024-01-01",
+            end_date="2024-12-31",
+            limit=5,
+        ),
+    )
+
+    assert data is not None
+    assert data["cache_source"] == "yearly_review_ready_artifact"
+    assert data["total"] == 42
+    assert len(data["rows"]) == 5
 
 
 def test_cache_key_tracks_metadata_revisions_and_normalized_filters(tmp_path: Path) -> None:

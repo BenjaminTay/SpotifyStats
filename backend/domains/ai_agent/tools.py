@@ -27,6 +27,7 @@ from backend.domains.ai_agent.tool_registry import AgentToolDefinition, AgentToo
 from backend.domains.billboard import details as billboard_details
 from backend.domains.community import feed_generator as community_feed_generator
 from backend.domains.community.post_types import HIGHLIGHT_POST_TYPES
+from backend.domains.metadata.genre_display_taxonomy import build_consumer_taste_profile
 from backend.services import (
     analysis_records_service,
     analysis_stats_service,
@@ -86,6 +87,10 @@ class AnalysisChartsParams(AnalysisStatsParams):
     offset: int = Field(default=0, ge=0, le=10000)
     merge_level: int = Field(default=2, ge=2, le=3)
     include_compilations: bool = False
+
+
+class TasteProfileParams(AnalysisStatsParams):
+    """A bounded taste-only read that avoids building unrelated stats panels."""
 
 
 class PlaybackRecordsParams(AnalysisStatsParams):
@@ -331,6 +336,20 @@ def _charts_result_summary(data: dict[str, Any]) -> str:
     entity = data.get("entity") or "track"
     metric = data.get("metric") or "plays"
     return f"{entity} {metric} rows={row_count}/{total}"
+
+
+def _taste_profile_result_summary(data: dict[str, Any]) -> str:
+    profile = data.get("taste_profile")
+    if not isinstance(profile, dict):
+        return "taste profile unavailable"
+    styles = profile.get("primary_styles")
+    languages = profile.get("language_dist")
+    style_buckets = styles.get("buckets") if isinstance(styles, dict) else []
+    language_buckets = languages.get("buckets") if isinstance(languages, dict) else []
+    return (
+        f"styles={len(style_buckets) if isinstance(style_buckets, list) else 0}, "
+        f"languages={len(language_buckets) if isinstance(language_buckets, list) else 0}"
+    )
 
 
 def _records_result_summary(data: dict[str, Any]) -> str:
@@ -648,6 +667,127 @@ def analysis_stats_handler(params: BaseModel) -> AgentToolResult:
     return result
 
 
+def taste_profile_handler(params: BaseModel) -> AgentToolResult:
+    parsed = (
+        params
+        if isinstance(params, TasteProfileParams)
+        else TasteProfileParams.model_validate(params)
+    )
+    conn = get_db(readonly=True)
+    try:
+        cache_key = make_cache_key(conn, tool_name="taste_profile", params=parsed)
+        if cached := get_cached_tool_result(cache_key):
+            return cached
+        _, plays, resolved = analysis_stats_service.load_period_plays(
+            conn,
+            parsed.min_ms,
+            parsed.music_only,
+            parsed.merge_enabled,
+            parsed.period,
+            parsed.start_date,
+            parsed.end_date,
+            dynamic_threshold=parsed.dynamic_threshold,
+            max_merge_gap_minutes=parsed.max_merge_gap_minutes,
+            attach_duration_slices=False,
+        )
+        data = {
+            "period": resolved,
+            "taste_profile": build_consumer_taste_profile(conn, plays),
+        }
+    finally:
+        conn.close()
+    result = AgentToolResult(
+        data=data,
+        result_summary=_taste_profile_result_summary(data),
+        source_range=_source_range(data),
+    )
+    cache_tool_result(cache_key, result)
+    return result
+
+
+def _ready_yearly_chart(
+    conn: sqlite3.Connection,
+    parsed: AnalysisChartsParams,
+) -> dict[str, Any] | None:
+    """Reuse an exact ready annual artifact without ever triggering a build."""
+    if parsed.period != "custom" or not parsed.start_date or not parsed.end_date:
+        return None
+    try:
+        start = date.fromisoformat(parsed.start_date)
+        end = date.fromisoformat(parsed.end_date)
+    except ValueError:
+        return None
+    if start.month != 1 or start.day != 1 or end.month != 12 or end.day != 31:
+        return None
+    if start.year != end.year:
+        return None
+
+    from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
+    from backend.domains.yearly_review.context import build_yearly_review_context
+    from backend.services.yearly_review_service import get_cached_yearly_review
+
+    settings = SettingsRepository(conn).load_all()
+    context = build_yearly_review_context(
+        conn,
+        {
+            "min_ms": parsed.min_ms,
+            "music_only": parsed.music_only,
+            "merge_enabled": parsed.merge_enabled,
+            "dynamic_threshold": parsed.dynamic_threshold,
+            "max_merge_gap_minutes": parsed.max_merge_gap_minutes,
+            "merge_level": parsed.merge_level,
+            "include_compilations": parsed.include_compilations,
+            "bb_top_n": settings.get("bb_top_n", SETTINGS_DEFAULTS["bb_top_n"]),
+            "bb_album_top_n": settings.get("bb_album_top_n", SETTINGS_DEFAULTS["bb_album_top_n"]),
+            "bb_artist_top_n": settings.get(
+                "bb_artist_top_n", SETTINGS_DEFAULTS["bb_artist_top_n"]
+            ),
+            "bb_week_start_dow": settings.get(
+                "bb_week_start_dow", SETTINGS_DEFAULTS["bb_week_start_dow"]
+            ),
+            "bb_week_start_hour": settings.get(
+                "bb_week_start_hour", SETTINGS_DEFAULTS["bb_week_start_hour"]
+            ),
+        },
+    )
+    report = get_cached_yearly_review(start.year, context)
+    if report is None:
+        return None
+    key = f"{parsed.entity}_by_{parsed.metric}"
+    available_rows = report.appendix.play_charts.get(key) or []
+    requested_end = parsed.offset + parsed.limit
+    if requested_end > len(available_rows):
+        return None
+    total = len(available_rows)
+    metric_key = {
+        "track": "unique_tracks",
+        "album": "unique_albums",
+        "artist": "unique_artists",
+    }[parsed.entity]
+    if report.passport is not None:
+        metric = next(
+            (item for item in report.passport.metrics if item.key == metric_key),
+            None,
+        )
+        if metric is not None and isinstance(metric.value, (int, float)):
+            total = int(metric.value)
+    return {
+        "period": {
+            "period": "custom",
+            "label": "自定义",
+            "start_date": parsed.start_date,
+            "end_date": parsed.end_date,
+        },
+        "entity": parsed.entity,
+        "metric": parsed.metric,
+        "total": total,
+        "limit": parsed.limit,
+        "offset": parsed.offset,
+        "rows": [dict(row) for row in available_rows[parsed.offset : requested_end]],
+        "cache_source": "yearly_review_ready_artifact",
+    }
+
+
 def analysis_charts_handler(params: BaseModel) -> AgentToolResult:
     parsed = (
         params
@@ -661,23 +801,25 @@ def analysis_charts_handler(params: BaseModel) -> AgentToolResult:
             return cached
         if parsed.entity == "album" and parsed.merge_level > 1 and not _album_projects_ready(conn):
             return _album_projects_unavailable("analysis_charts")
-        data = analysis_stats_service.get_analysis_charts(
-            conn,
-            min_ms=parsed.min_ms,
-            music_only=parsed.music_only,
-            merge_enabled=parsed.merge_enabled,
-            period=parsed.period,
-            start_date=parsed.start_date,
-            end_date=parsed.end_date,
-            entity=parsed.entity,
-            metric=parsed.metric,
-            limit=parsed.limit,
-            offset=parsed.offset,
-            merge_level=parsed.merge_level,
-            dynamic_threshold=parsed.dynamic_threshold,
-            max_merge_gap_minutes=parsed.max_merge_gap_minutes,
-            include_compilations=parsed.include_compilations,
-        )
+        data = _ready_yearly_chart(conn, parsed)
+        if data is None:
+            data = analysis_stats_service.get_analysis_charts(
+                conn,
+                min_ms=parsed.min_ms,
+                music_only=parsed.music_only,
+                merge_enabled=parsed.merge_enabled,
+                period=parsed.period,
+                start_date=parsed.start_date,
+                end_date=parsed.end_date,
+                entity=parsed.entity,
+                metric=parsed.metric,
+                limit=parsed.limit,
+                offset=parsed.offset,
+                merge_level=parsed.merge_level,
+                dynamic_threshold=parsed.dynamic_threshold,
+                max_merge_gap_minutes=parsed.max_merge_gap_minutes,
+                include_compilations=parsed.include_compilations,
+            )
     finally:
         conn.close()
     result = AgentToolResult(
@@ -1331,15 +1473,16 @@ def search_history_handler(params: BaseModel) -> AgentToolResult:
     )
 
 
-def _community_posts(parsed: CommunityFeedSearchParams) -> list[Any]:
-    conn = get_db(readonly=True)
-    try:
-        return community_feed_generator.generate_all_posts(
-            conn=conn,
-            **_community_generation_kwargs(parsed),
-        )
-    finally:
-        conn.close()
+def _community_posts(
+    conn: sqlite3.Connection,
+    parsed: CommunityFeedSearchParams,
+) -> list[Any]:
+    return community_feed_generator.generate_all_posts(
+        conn=conn,
+        **_community_generation_kwargs(parsed),
+        include_cover_images=False,
+        include_engagement_metrics=False,
+    )
 
 
 def community_feed_search_handler(params: BaseModel) -> AgentToolResult:
@@ -1348,7 +1491,19 @@ def community_feed_search_handler(params: BaseModel) -> AgentToolResult:
         if isinstance(params, CommunityFeedSearchParams)
         else CommunityFeedSearchParams.model_validate(params)
     )
-    posts = _community_posts(parsed)
+    conn = get_db(readonly=True)
+    try:
+        cache_key = make_cache_key(
+            conn,
+            tool_name="community_feed_search",
+            params=parsed,
+            include_billboard=True,
+        )
+        if cached := get_cached_tool_result(cache_key):
+            return cached
+        posts = _community_posts(conn, parsed)
+    finally:
+        conn.close()
     search_lower = parsed.search.casefold() if parsed.search else None
     filtered = []
     total_all = 0
@@ -1383,11 +1538,13 @@ def community_feed_search_handler(params: BaseModel) -> AgentToolResult:
         "highlights_only": parsed.highlights_only,
         "posts": [_post_to_dict(post) for post in page],
     }
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_community_feed_result_summary(data),
         source_range="community_feed",
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def community_trending_handler(params: BaseModel) -> AgentToolResult:
@@ -1396,7 +1553,19 @@ def community_trending_handler(params: BaseModel) -> AgentToolResult:
         if isinstance(params, CommunityTrendingParams)
         else CommunityTrendingParams.model_validate(params)
     )
-    posts = _community_posts(parsed)
+    conn = get_db(readonly=True)
+    try:
+        cache_key = make_cache_key(
+            conn,
+            tool_name="community_trending",
+            params=parsed,
+            include_billboard=True,
+        )
+        if cached := get_cached_tool_result(cache_key):
+            return cached
+        posts = _community_posts(conn, parsed)
+    finally:
+        conn.close()
     artist_counts: dict[str, int] = {}
     track_counts: dict[str, int] = {}
     track_to_id: dict[str, str | int] = {}
@@ -1466,11 +1635,13 @@ def community_trending_handler(params: BaseModel) -> AgentToolResult:
         if latest_debut_post
         else None,
     }
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_community_trending_result_summary(data),
         source_range="community_trending",
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 ANALYSIS_STATS_TOOL = AgentToolDefinition(
@@ -1502,6 +1673,24 @@ ANALYSIS_CHARTS_TOOL = AgentToolDefinition(
     covers=("ranking", "cumulative", "recency", "period", "trend"),
     cold_build_risk="medium",
     avoid_when=("比较 2-4 个已知实体", "只需要轻量总览"),
+    fallback=("analysis_stats",),
+)
+
+TASTE_PROFILE_TOOL = AgentToolDefinition(
+    name="taste_profile",
+    description=(
+        "Read structured style, regional-pop, and language distributions for a bounded period."
+    ),
+    read_only=True,
+    params_model=TasteProfileParams,
+    handler=taste_profile_handler,
+    cost="medium",
+    timeout_seconds=45,
+    cacheability="revision",
+    best_for=("曲风与类型分布", "语种分布", "地区流行偏好"),
+    covers=("taste", "period"),
+    cold_build_risk="low",
+    avoid_when=("只需要歌曲、专辑或艺人排行",),
     fallback=("analysis_stats",),
 )
 
@@ -1674,7 +1863,10 @@ COMMUNITY_FEED_SEARCH_TOOL = AgentToolDefinition(
     handler=community_feed_search_handler,
     best_for=("按文本或日期查社区动态", "社区帖子详情"),
     covers=("community", "detail", "period"),
-    cold_build_risk="none",
+    cost="high",
+    timeout_seconds=75,
+    cacheability="revision",
+    cold_build_risk="high",
     avoid_when=("只需要社区趋势排行",),
     fallback=("community_trending",),
 )
@@ -1687,7 +1879,10 @@ COMMUNITY_TRENDING_TOOL = AgentToolDefinition(
     handler=community_trending_handler,
     best_for=("社区趋势", "社区热门艺人与歌曲", "最新冠军或空降信号"),
     covers=("community", "ranking", "peak"),
-    cold_build_risk="none",
+    cost="high",
+    timeout_seconds=75,
+    cacheability="revision",
+    cold_build_risk="high",
     avoid_when=("按关键词查找特定帖子",),
     fallback=("community_feed_search",),
 )

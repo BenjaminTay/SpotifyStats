@@ -343,7 +343,7 @@ def test_simple_ranking_wrong_entity_chart_does_not_satisfy_required_context() -
     ]
 
 
-def test_simple_ranking_accepts_temporal_guarded_custom_chart_context() -> None:
+def test_taste_profile_accepts_temporal_guarded_custom_context() -> None:
     frame, recipe = _frame_and_recipe("去年夏天我最常听什么类型的音乐？")
     recipe_payload = recipe.model_dump()
     recipe_payload["required_context"].update(
@@ -360,19 +360,20 @@ def test_simple_ranking_accepts_temporal_guarded_custom_chart_context() -> None:
         evidence_recipe=recipe_payload,
         tool_results=[
             {
-                "tool_name": "analysis_charts",
+                "tool_name": "taste_profile",
                 "status": "done",
                 "source_range": "2025-06-01..2025-08-31",
-                "params_summary": "entity=track, metric=plays, period=custom",
+                "params_summary": "period=custom",
                 "data": {
-                    "entity": "track",
-                    "metric": "plays",
                     "period": {
                         "period": "custom",
                         "start_date": "2025-06-01",
                         "end_date": "2025-08-31",
                     },
-                    "rows": [{"rank": 1, "track_name": "Manchild", "plays": 53}],
+                    "taste_profile": {
+                        "primary_styles": {"buckets": [{"label": "流行", "hours": 12.3}]},
+                        "language_dist": {"buckets": [{"label": "英语", "hours": 10.1}]},
+                    },
                 },
             }
         ],
@@ -380,7 +381,8 @@ def test_simple_ranking_accepts_temporal_guarded_custom_chart_context() -> None:
     )
 
     assert review["sufficient"] is True
-    assert review["axis_coverage"]["ranking"] == "covered"
+    assert review["axis_coverage"]["taste"] == "covered"
+    assert review["axis_coverage"]["period"] == "covered"
     assert review["followup_tool_calls"] == []
 
 

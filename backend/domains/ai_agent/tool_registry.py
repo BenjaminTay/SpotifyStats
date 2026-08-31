@@ -151,6 +151,7 @@ def get_default_registry() -> AgentToolRegistry:
         PLAYBACK_RECORDS_TOOL,
         RESOLVE_ENTITY_TOOL,
         SEARCH_HISTORY_TOOL,
+        TASTE_PROFILE_TOOL,
         WRAPPED_YEARLY_TOOL,
     )
     from backend.domains.ai_agent.web_search_tool import WEB_SEARCH_TOOL
@@ -158,6 +159,7 @@ def get_default_registry() -> AgentToolRegistry:
     registry = AgentToolRegistry()
     registry.register(ANALYSIS_STATS_TOOL)
     registry.register(ANALYSIS_CHARTS_TOOL)
+    registry.register(TASTE_PROFILE_TOOL)
     registry.register(PLAYBACK_RECORDS_TOOL)
     registry.register(WRAPPED_YEARLY_TOOL)
     registry.register(ENTITY_STATS_TOOL)

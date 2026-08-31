@@ -131,6 +131,15 @@ def recipe_for_frame(frame: QuestionFrame | dict[str, object]) -> EvidenceRecipe
             max_followup_calls=2,
         )
 
+    if family == "taste_profile":
+        return EvidenceRecipe(
+            family=family,
+            required_axes=["taste", "period"],
+            required_tool_patterns=[{"tool_name": "taste_profile"}],
+            required_context={"time_scope": parsed_frame.time_scope},
+            max_followup_calls=1,
+        )
+
     if family == "safety_boundary":
         return EvidenceRecipe(
             family=family,

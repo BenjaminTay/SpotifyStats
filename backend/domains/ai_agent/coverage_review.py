@@ -153,6 +153,7 @@ _ALLOWED_FOLLOWUP_TOOLS = {
     "search_history",
     "community_feed_search",
     "community_trending",
+    "taste_profile",
 }
 
 _PERIOD_NAMES = {
@@ -671,6 +672,10 @@ def _tool_calls_for_pattern(
         params = _period_params_from_scope(period) if isinstance(period, str) else {}
         return [{"tool_name": "analysis_stats", "params": params}]
 
+    if tool_name == "taste_profile":
+        period_params = _period_params_from_context(required_context, frame.get("time_scope"))
+        return [{"tool_name": "taste_profile", "params": period_params}]
+
     if tool_name == "listening_hours":
         view = pattern.get("view")
         params = {"view": view} if isinstance(view, str) else {}
@@ -865,6 +870,9 @@ def _axis_coverage_for(
             else "missing"
         )
 
+    if axis == "taste":
+        return "covered" if _has_tool(tool_results, "taste_profile") else "missing"
+
     if axis == "safety":
         return "covered"
 
@@ -906,6 +914,7 @@ def _axis_coverage_for(
             "covered"
             if _has_tool(tool_results, "wrapped_yearly")
             or _has_tool(tool_results, "analysis_charts")
+            or _has_tool(tool_results, "taste_profile")
             else "missing"
         )
 
@@ -1045,7 +1054,7 @@ def review_evidence_sufficiency(
             add_followup(call)
 
     legacy_review: dict[str, Any]
-    if frame.get("family") == "preference_comparison":
+    if frame.get("family") in {"preference_comparison", "taste_profile"}:
         legacy_review = {"sufficient": True, "reasons": [], "followup_tool_calls": []}
     else:
         legacy_review = review_coverage(

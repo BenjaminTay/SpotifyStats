@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
-import { streamAiTask } from '@/api/ai-task-stream'
+import { streamAiTask, type AiTaskStreamEnvelope } from '@/api/ai-task-stream'
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import type {
@@ -208,10 +208,15 @@ export function useAiTask(taskId: string | null) {
     }
 
     const controller = new AbortController()
+    let cursor: string | undefined
+    let completed = false
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setStreamState('connecting')
-    void streamAiTask(taskId, {
-      onEvent: (event) => {
+    const handlers = {
+      onCursor: (nextCursor: string) => {
+        cursor = nextCursor
+      },
+      onEvent: (event: AiTaskStreamEnvelope) => {
         setStreamState('open')
         if (event.type === 'stream.error') {
           setStreamState('failed')
@@ -219,6 +224,7 @@ export function useAiTask(taskId: string | null) {
         }
         if (event.type === 'task.snapshot' || event.type === 'task.completed') {
           setStreamTask(event.data)
+          if (event.type === 'task.completed') completed = true
           return
         }
         if (event.type === 'task.progress') {
@@ -237,9 +243,27 @@ export function useAiTask(taskId: string | null) {
           setStreamedAnswer((current) => current + event.data.delta)
         }
       },
-    }, controller.signal).catch(() => {
-      if (!controller.signal.aborted) setStreamState('failed')
-    })
+    }
+    const connectWithReplay = async () => {
+      for (let attempt = 0; attempt < 4 && !controller.signal.aborted; attempt += 1) {
+        try {
+          await streamAiTask(taskId, handlers, controller.signal, cursor)
+          if (completed || controller.signal.aborted) return
+        } catch {
+          if (controller.signal.aborted) return
+        }
+        setStreamState('connecting')
+        await new Promise<void>((resolve) => {
+          const timeout = window.setTimeout(resolve, Math.min(4_000, 500 * (2 ** attempt)))
+          controller.signal.addEventListener('abort', () => {
+            window.clearTimeout(timeout)
+            resolve()
+          }, { once: true })
+        })
+      }
+      if (!controller.signal.aborted && !completed) setStreamState('failed')
+    }
+    void connectWithReplay()
     return () => controller.abort()
   }, [taskId])
 

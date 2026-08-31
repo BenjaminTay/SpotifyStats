@@ -22,6 +22,10 @@ from backend.domains.agent_runtime.tool_selector import (
     tool_schemas_for_profile,
 )
 from backend.domains.ai_agent.tool_registry import dispatch_tool, get_default_registry, list_tools
+from backend.domains.ai_reports.report_section_protocol import (
+    audit_report_sections,
+    strip_unsupported_numeric_sentences,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +77,8 @@ REPORT_WRITER_INSTRUCTION = """
 - is_partial_year 时用"截至 X""阶段性"，不说"全年"；Billboard 时说明"基于本地播放记录的个人 Billboard"
 - 禁止：前者/后者指代、推断艺人性别（她/他）、艺人名加括号附注英文
 
-输出严格 JSON：{"sections": [{"heading": "标题", "prose": "正文(Markdown)", "chart_refs": ["chart_id"]}]}
+输出严格 JSON：{"sections": [{"heading": "标题", "prose": "正文(Markdown)", "chart_refs": ["chart_id"], "evidence_refs": ["tool_name"]}]}
+每节必须在 evidence_refs 中列出实际支撑该节的工具名；没有使用某工具时不得填写。
 """
 
 
@@ -431,10 +436,113 @@ def run_report_agent(
         if not sections and len(writer_response.strip()) > 50:
             sections = [{"heading": "年度报告", "prose": writer_response.strip(), "chart_refs": []}]
 
+    sections, checkpoints, tool_evidence = audit_report_sections(
+        sections,
+        tool_results=all_tool_results,
+        chart_data=chart_data,
+        chart_specs=chart_specs,
+        year=year,
+        end_date=end_date,
+    )
+    failed_indexes = [
+        int(item["section_index"]) for item in checkpoints if item.get("status") == "fail"
+    ]
+    if failed_indexes:
+        compact_evidence = [
+            {
+                "tool_name": item.get("tool_name"),
+                "tool_call_id": item.get("tool_call_id"),
+                "source_range": item.get("source_range"),
+                "facts": item.get("facts", [])[:12],
+                "limitations": item.get("limitations", []),
+            }
+            for item in tool_evidence
+        ]
+        for index in failed_indexes:
+            checkpoint = checkpoints[index]
+            if emit_event:
+                emit_event(
+                    "report_section_repair",
+                    f"正在修复章节：{checkpoint.get('heading') or index + 1}",
+                    {
+                        "stage": "reviewing_sections",
+                        "progress_pct": min(0.96, 0.88 + index * 0.01),
+                        "section_index": index,
+                        "issues": checkpoint.get("issues", []),
+                    },
+                )
+            try:
+                repair_response = _llm_chat(
+                    "你是年度报告章节修复器。只能使用给定证据，禁止新增数字或实体。只输出单节 JSON。",
+                    json.dumps(
+                        {
+                            "section": sections[index],
+                            "checkpoint": checkpoint,
+                            "tool_evidence": compact_evidence,
+                            "chart_data": chart_summary,
+                            "instruction": (
+                                "删除或改正无法追溯的数字；保留有信息量的分析；"
+                                "chart_refs 只能使用已有图表，evidence_refs 使用 tool_name。"
+                            ),
+                        },
+                        ensure_ascii=False,
+                        default=str,
+                    )[:14000],
+                    temperature=0.0,
+                    max_tokens=2048,
+                )
+            except Exception as exc:
+                logger.warning("Report section repair failed at index %s: %s", index, exc)
+                repair_response = ""
+            repaired = _parse_single_section(repair_response or "", chart_specs)
+            if repaired is not None:
+                sections[index] = repaired
+
+        sections, checkpoints, tool_evidence = audit_report_sections(
+            sections,
+            tool_results=all_tool_results,
+            chart_data=chart_data,
+            chart_specs=chart_specs,
+            year=year,
+            end_date=end_date,
+        )
+
+    # The deterministic final safety net removes only sentences that still
+    # contain unsupported numbers after one bounded repair attempt.
+    for checkpoint in checkpoints:
+        if checkpoint.get("status") != "fail":
+            continue
+        index = int(checkpoint["section_index"])
+        sections[index]["prose"] = strip_unsupported_numeric_sentences(
+            str(sections[index].get("prose") or ""),
+            [str(item) for item in checkpoint.get("unsupported_numbers") or []],
+        )
+    sections, checkpoints, tool_evidence = audit_report_sections(
+        sections,
+        tool_results=all_tool_results,
+        chart_data=chart_data,
+        chart_specs=chart_specs,
+        year=year,
+        end_date=end_date,
+    )
+    if emit_event:
+        for checkpoint in checkpoints:
+            emit_event(
+                "report_section_checkpoint",
+                f"章节检查：{checkpoint.get('heading') or int(checkpoint['section_index']) + 1}",
+                {
+                    "stage": "reviewing_sections",
+                    "progress_pct": 0.97,
+                    **checkpoint,
+                },
+            )
+
     return {
         "sections": sections,
         "research_summary": research_text,
         "evidence": all_tool_results,
+        "tool_evidence": tool_evidence,
+        "section_checkpoints": checkpoints,
     }
 
 
@@ -577,8 +685,35 @@ def _parse_json_sections(text: str, chart_specs: list[dict[str, Any]]) -> list[d
         if not heading or not prose:
             continue
         chart_refs = [r for r in s.get("chart_refs", []) if r in valid_ids]
-        sections.append({"heading": heading, "prose": prose, "chart_refs": chart_refs or []})
+        evidence_refs = [str(r) for r in s.get("evidence_refs", []) if str(r).strip()]
+        sections.append(
+            {
+                "heading": heading,
+                "prose": prose,
+                "chart_refs": chart_refs or [],
+                "evidence_refs": evidence_refs,
+            }
+        )
     return sections
+
+
+def _parse_single_section(
+    text: str,
+    chart_specs: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    sections = _parse_json_sections(text, chart_specs)
+    if sections:
+        return sections[0]
+    raw = text.strip()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    wrapped = json.dumps({"sections": [parsed]}, ensure_ascii=False)
+    sections = _parse_json_sections(wrapped, chart_specs)
+    return sections[0] if sections else None
 
 
 def _parse_markdown_sections(text: str) -> list[dict[str, Any]]:

@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 69
+LATEST_SCHEMA_VERSION = 70
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3745,6 +3745,23 @@ def migrate_069(conn: sqlite3.Connection):
     conn.execute(
         """CREATE INDEX IF NOT EXISTS idx_ai_agent_inbox_pending
                ON ai_agent_session_inbox(task_id, status, inbox_id)"""
+    )
+
+
+@migration(70, "ai_task_worker_leases")
+def migrate_070(conn: sqlite3.Connection):
+    """Prevent duplicate task execution across restart and multi-worker races."""
+
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(ai_task_runs)")}
+    if "lease_owner" not in columns:
+        conn.execute("ALTER TABLE ai_task_runs ADD COLUMN lease_owner TEXT")
+    if "lease_expires_at" not in columns:
+        conn.execute("ALTER TABLE ai_task_runs ADD COLUMN lease_expires_at TEXT")
+    if "attempt_count" not in columns:
+        conn.execute("ALTER TABLE ai_task_runs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_ai_task_runs_recovery_lease
+               ON ai_task_runs(task_type, status, lease_expires_at)"""
     )
 
 

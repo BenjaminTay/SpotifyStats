@@ -53,6 +53,7 @@ class ToolOutcome:
 
     def legacy_payload(self) -> dict[str, Any]:
         return {
+            "call_id": self.call_id,
             "tool_name": self.tool_name,
             "status": self.status,
             "params": self.params,
@@ -61,6 +62,10 @@ class ToolOutcome:
             "source_range": self.source_range,
             "data": self.data,
             "error": self.error,
+            "duplicate": self.duplicate,
+            "elapsed_ms": self.elapsed_ms,
+            "result_size_bytes": self.result_size_bytes,
+            "cache_hit": self.cache_hit,
         }
 
 

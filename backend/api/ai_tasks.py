@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -60,6 +61,32 @@ def _sse(event: str, data: dict[str, Any], *, event_id: str | None = None) -> st
     return "\n".join(lines) + "\n"
 
 
+_STREAM_CURSOR_RE = re.compile(r"^v1:p(?P<progress>\d+):t(?P<tool>\d+):a(?P<answer>\d+)$")
+
+
+def _stream_cursor(progress: int, tool: int, answer: int) -> str:
+    return f"v1:p{max(0, progress)}:t{max(0, tool)}:a{max(0, answer)}"
+
+
+def _parse_stream_cursor(value: str | None) -> tuple[int, int, int]:
+    """Parse current composite cursors and legacy single-channel event ids."""
+
+    raw = (value or "").strip()
+    match = _STREAM_CURSOR_RE.fullmatch(raw)
+    if match:
+        return (
+            int(match.group("progress")),
+            int(match.group("tool")),
+            int(match.group("answer")),
+        )
+    for prefix, index in (("progress-", 0), ("tool-", 1), ("answer-", 2)):
+        if raw.startswith(prefix) and raw[len(prefix) :].isdigit():
+            cursor = [0, 0, 0]
+            cursor[index] = int(raw[len(prefix) :])
+            return cursor[0], cursor[1], cursor[2]
+    return 0, 0, 0
+
+
 def _stream_task_payload(task: dict[str, Any]) -> dict[str, Any]:
     """Public stream projection without the original prompt or hidden trace."""
 
@@ -109,11 +136,17 @@ def _safe_agent_state_payload(item: dict[str, Any]) -> dict[str, Any] | None:
 
 
 async def _task_event_stream(task_id: str, request: Request):
-    last_event_id = 0
-    last_tool_call_id = 0
+    cursor_value = request.headers.get("last-event-id") or request.query_params.get("cursor")
+    last_event_id, last_tool_call_id, last_answer_chunk = _parse_stream_cursor(cursor_value)
     last_snapshot = ""
     yield "retry: 1000\n\n"
-    yield _sse("stream.connected", {"task_id": task_id})
+    yield _sse(
+        "stream.connected",
+        {
+            "task_id": task_id,
+            "cursor": _stream_cursor(last_event_id, last_tool_call_id, last_answer_chunk),
+        },
+    )
 
     while not await request.is_disconnected():
         task = get_task(task_id)
@@ -148,16 +181,21 @@ async def _task_event_stream(task_id: str, request: Request):
                 safe_state = _safe_agent_state_payload(item)
                 if safe_state is not None:
                     progress_payload["payload"] = safe_state
+                last_event_id = event_id
                 yield _sse(
                     "task.progress",
                     progress_payload,
-                    event_id=f"progress-{event_id}",
+                    event_id=_stream_cursor(
+                        last_event_id,
+                        last_tool_call_id,
+                        last_answer_chunk,
+                    ),
                 )
-                last_event_id = event_id
             for item in tool_calls:
                 tool_call_id = int(item["tool_call_id"])
                 if tool_call_id <= last_tool_call_id:
                     continue
+                last_tool_call_id = tool_call_id
                 yield _sse(
                     "task.tool",
                     {
@@ -172,9 +210,12 @@ async def _task_event_stream(task_id: str, request: Request):
                         "started_at": item["started_at"],
                         "completed_at": item["completed_at"],
                     },
-                    event_id=f"tool-{tool_call_id}",
+                    event_id=_stream_cursor(
+                        last_event_id,
+                        last_tool_call_id,
+                        last_answer_chunk,
+                    ),
                 )
-                last_tool_call_id = tool_call_id
 
         if is_terminal:
             # Only publish answer chunks after the validator has accepted and
@@ -182,12 +223,28 @@ async def _task_event_stream(task_id: str, request: Request):
             # reasoning are never streamed.
             answer = _answer_text(task)
             for index in range(0, len(answer), 160):
+                chunk_index = index // 160 + 1
+                if chunk_index <= last_answer_chunk:
+                    continue
+                last_answer_chunk = chunk_index
                 yield _sse(
                     "task.answer_delta",
                     {"task_id": task_id, "delta": answer[index : index + 160]},
-                    event_id=f"answer-{index // 160 + 1}",
+                    event_id=_stream_cursor(
+                        last_event_id,
+                        last_tool_call_id,
+                        last_answer_chunk,
+                    ),
                 )
-            yield _sse("task.completed", snapshot)
+            yield _sse(
+                "task.completed",
+                snapshot,
+                event_id=_stream_cursor(
+                    last_event_id,
+                    last_tool_call_id,
+                    last_answer_chunk,
+                ),
+            )
             return
 
         await asyncio.sleep(0.25)
