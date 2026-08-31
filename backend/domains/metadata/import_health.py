@@ -369,6 +369,22 @@ def _build_derived_health(conn: sqlite3.Connection) -> dict[str, Any]:
     derived["rebuild_pending"] = _setting_bool(conn, "rebuild_pending")
     derived["artist_identity"] = _state_snapshot(conn, "artist_identity_state")
     derived["track_credits"] = _state_snapshot(conn, "track_credit_state")
+    from backend.domains.playback.l3_album_attribution import (
+        L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
+        get_l3_album_attribution_state,
+    )
+
+    attribution_state = get_l3_album_attribution_state(conn)
+    derived["l3_album_attribution"] = {
+        **attribution_state,
+        "expected_policy_version": L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
+        "healthy": bool(
+            attribution_state["status"] == "ready"
+            and attribution_state["policy_version"] == L3_ALBUM_ATTRIBUTION_POLICY_VERSION
+            and int(attribution_state["conflict_count"]) == 0
+            and int(attribution_state["uncovered_count"]) == 0
+        ),
+    }
     identity_tables_ready = all(
         _table_exists(conn, table)
         for table in (
@@ -752,6 +768,21 @@ def _build_health_issues(
                 "stale_revision_count": derived["stale_revision_count"],
             },
         )
+    attribution = derived["l3_album_attribution"]
+    if derived["album_projects_ready"] and not attribution["healthy"]:
+        add(
+            code="l3_album_attribution_not_ready",
+            category="derived",
+            severity="high",
+            title="L3 歌曲原生专辑归属尚未就绪",
+            count=max(
+                int(attribution["conflict_count"]) + int(attribution["uncovered_count"]),
+                1,
+            ),
+            impact="L3 专辑榜、详情、搜索和年度统计可能读取不到当前歌曲归属。",
+            recommended_action="在歌曲和专辑关系收敛后重建 L3 原生专辑归属，再刷新派生快照。",
+            evidence=attribution,
+        )
     canonical = derived["canonical_track_identity"]
     canonical_problem_count = sum(
         int(canonical[key])
@@ -902,6 +933,8 @@ def build_import_health_report(
             warnings.append(f"{label}：{count} 个")
     if derived["rebuild_pending"] or derived["stale_revision_count"]:
         warnings.append("部分派生统计或元数据 revision 尚未同步")
+    if derived["album_projects_ready"] and not derived["l3_album_attribution"]["healthy"]:
+        warnings.append("L3 歌曲原生专辑归属尚未就绪")
     if database["play_count"] and not derived["billboard_aggregates_ready"]:
         warnings.append("存在播放记录，但 Billboard 预聚合为空")
 

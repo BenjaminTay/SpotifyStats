@@ -192,9 +192,9 @@ def test_rebuild_reuses_inferred_ids_and_replaces_membership_with_foreign_keys_o
         )
         assert beta_id != alpha_id
 
-        # Removing the source project and classifying its album as a single makes
-        # it disappear on the next rebuild. With foreign keys disabled, explicit
-        # child cleanup must still leave no orphan relationships.
+        # Removing the source project and classifying its album as a single
+        # converts the stable identity into an L3-only source project. It stays
+        # outside L2 charts while remaining available for version attribution.
         conn.execute("DELETE FROM release_group_members WHERE group_id = 12")
         conn.execute("DELETE FROM release_groups WHERE group_id = 12")
         conn.execute(
@@ -203,15 +203,19 @@ def test_rebuild_reuses_inferred_ids_and_replaces_membership_with_foreign_keys_o
         conn.commit()
         album_projects.rebuild_album_projects(conn)
 
-        assert (
-            conn.execute("SELECT 1 FROM album_projects WHERE project_id = ?", (beta_id,)).fetchone()
-            is None
-        )
-        for table in ("album_project_albums", "album_project_tracks"):
-            assert (
-                conn.execute(f"SELECT 1 FROM {table} WHERE project_id = ?", (beta_id,)).fetchone()
-                is None
-            )
+        beta = conn.execute(
+            """SELECT project_type, include_in_charts
+                 FROM album_projects WHERE project_id=?""",
+            (beta_id,),
+        ).fetchone()
+        assert tuple(beta) == ("single", 0)
+        assert tuple(
+            conn.execute(
+                """SELECT min_merge_level, membership_role
+                     FROM album_project_tracks WHERE project_id=?""",
+                (beta_id,),
+            ).fetchone()
+        ) == (3, "single")
         manual = conn.execute(
             """SELECT release_date, project_type, include_in_charts, is_manual
                FROM album_projects WHERE project_id = 900"""

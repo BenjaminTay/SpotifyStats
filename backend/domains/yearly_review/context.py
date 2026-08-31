@@ -15,6 +15,9 @@ from backend.domains.metadata.track_identity import (
     TRACK_IDENTITY_POLICY_VERSION,
     get_track_identity_revision,
 )
+from backend.domains.playback.l3_album_attribution import (
+    get_l3_album_attribution_revision,
+)
 from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
 from backend.models.yearly_review import YearlyReviewFilterContext
 from backend.services.wrapped_service import _artist_metadata_revision
@@ -45,6 +48,7 @@ REVISION_FIELDS = (
     "track_identity_policy",
     "track_group_revision",
     "album_project_revision",
+    "l3_album_attribution_revision",
 )
 
 _TRACK_GROUP_TABLES = ("track_groups", "track_group_l1_members")
@@ -156,6 +160,7 @@ def collect_yearly_review_revisions(conn: sqlite3.Connection) -> dict[str, str |
         "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
         "track_group_revision": _table_set_revision(conn, _TRACK_GROUP_TABLES),
         "album_project_revision": _album_project_semantic_revision(conn),
+        "l3_album_attribution_revision": get_l3_album_attribution_revision(conn),
     }
 
 

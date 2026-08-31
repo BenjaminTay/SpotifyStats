@@ -33,6 +33,25 @@ def use_seed_db():
     original = db_mod.DB_PATH
     db_mod.DB_PATH = test_db_path
 
+    # Contract tests exercise the current public L3 surface.  Migration 68 is
+    # additive, but its derived attribution is intentionally published by the
+    # governance pipeline rather than by schema migration itself.
+    from backend.core.db import get_db
+    from backend.domains.playback.l3_album_attribution import (
+        apply_l3_album_attribution_plan,
+        ensure_l3_album_attribution_schema,
+    )
+
+    governance_conn = get_db(readonly=False)
+    try:
+        ensure_l3_album_attribution_schema(governance_conn)
+        apply_l3_album_attribution_plan(
+            governance_conn,
+            ensure_schema=False,
+        )
+    finally:
+        governance_conn.close()
+
     yield test_db_path
 
     db_mod.DB_PATH = original

@@ -28,6 +28,8 @@ import { cn } from "@/lib/utils";
 import type {
   DetectionResult,
   GroupMember,
+  L3AlbumAttributionHealth,
+  L3AlbumAttributionListResponse,
   ReleaseGroup,
   TrackComparison,
   TrackCreditTrackCandidate,
@@ -523,6 +525,7 @@ function AlbumAutoDetection({
         )}
         {message && <StatusMessage message={message} />}
       </WorkflowBlock>
+      <L3AlbumAttributionPanel vm={vm} />
       <details className="group rounded-2xl border border-border bg-muted/10">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 text-[12px] font-semibold marker:hidden">
           维护工具
@@ -551,6 +554,201 @@ function AlbumAutoDetection({
           </Button>
         </div>
       </details>
+    </div>
+  );
+}
+
+function L3AlbumAttributionPanel({
+  vm,
+}: {
+  vm: ReturnType<typeof useVersionMerge>;
+}) {
+  const [health, setHealth] = useState<L3AlbumAttributionHealth | null>(null);
+  const [snapshot, setSnapshot] = useState<L3AlbumAttributionListResponse | null>(null);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [selectedTrackId, setSelectedTrackId] = useState<number | null>(null);
+  const [targetProjectId, setTargetProjectId] = useState("");
+  const [reason, setReason] = useState("");
+
+  const load = (search = query) => {
+    setLoading(true);
+    return Promise.all([
+      vm.fetchL3AlbumAttributionHealth(),
+      vm.fetchL3AlbumAttributions(search),
+    ])
+      .then(([nextHealth, nextSnapshot]) => {
+        setHealth(nextHealth);
+        setSnapshot(nextSnapshot);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void load("");
+    }, 0);
+    // The initial governance snapshot is loaded once; explicit actions refresh it.
+    return () => window.clearTimeout(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rebuild = () => {
+    setBusy(true);
+    setMessage("");
+    vm.rebuildL3AlbumAttributions()
+      .then(() => load())
+      .then(() => setMessage("L3 歌曲归属已重建"))
+      .finally(() => setBusy(false));
+  };
+
+  const saveOverride = () => {
+    const target = Number(targetProjectId);
+    if (!selectedTrackId || !Number.isInteger(target) || !reason.trim()) {
+      setMessage("请选择歌曲，并填写目标项目 ID 与覆盖原因");
+      return;
+    }
+    setBusy(true);
+    vm.createL3AlbumAttributionOverride(selectedTrackId, target, reason.trim())
+      .then(() => load())
+      .then(() => {
+        setMessage("人工覆盖已保存，L3 归属已同步重建");
+        setReason("");
+      })
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <WorkflowBlock
+      number={3}
+      title="L3 歌曲到原生专辑归属"
+      helper="机器按歌曲作品逐项决定统计归属；Live、Acoustic、Remix 等实际来源仍保留在证据中。"
+    >
+      {loading && !health ? (
+        <div className="grid gap-2 sm:grid-cols-4">
+          {[0, 1, 2, 3].map((item) => <Skeleton key={item} className="h-16 rounded-xl" />)}
+        </div>
+      ) : health ? (
+        <div className="grid gap-2 sm:grid-cols-4">
+          <MetricTile label="发布状态" value={health.healthy ? "健康" : health.status} />
+          <MetricTile label="已归属歌曲" value={health.published_count.toLocaleString()} />
+          <MetricTile label="待处理问题" value={health.issue_count.toLocaleString()} />
+          <MetricTile label="归属 revision" value={String(health.current_revision)} />
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">搜索 L3 歌曲归属</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void load();
+            }}
+            placeholder="搜索歌曲、原生专辑或来源发行"
+            className="min-h-11 w-full rounded-xl border border-border bg-background px-3 text-[12px] outline-none focus:ring-2 focus:ring-ring"
+          />
+        </label>
+        <Button type="button" variant="outline" onClick={() => void load()} disabled={loading} className="min-h-11 gap-2">
+          <Search className="size-3.5" />搜索
+        </Button>
+        <Button type="button" variant="outline" onClick={rebuild} disabled={busy} className="min-h-11 gap-2">
+          <RefreshCw className={cn("size-3.5", busy && "animate-spin")} />重建归属
+        </Button>
+      </div>
+
+      {snapshot && (
+        <div className="mt-4 space-y-2">
+          {snapshot.items.length === 0 ? (
+            <EmptyState text="没有匹配的 L3 归属。" />
+          ) : snapshot.items.slice(0, 30).map((item) => {
+            const selected = selectedTrackId === item.representative_track_id;
+            return (
+              <button
+                key={item.canonical_song_key}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  setSelectedTrackId(item.representative_track_id);
+                  setTargetProjectId(String(item.target_project_id));
+                }}
+                className={cn(
+                  "w-full rounded-xl border p-3 text-left transition",
+                  selected ? "border-accent-foreground bg-accent-foreground/5" : "border-border bg-background hover:border-accent-foreground/35",
+                )}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">{displayName(item.canonical_song_name)}</span>
+                  <Badge variant={item.decision_source === "manual" ? "default" : "secondary"}>{item.decision_source === "manual" ? "人工" : "机器"}</Badge>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  归属：{displayName(item.target_project_name)} · 来源：{displayName(item.origin_project_name)}
+                </p>
+                <p className="mt-1 text-[10px] text-muted-foreground/80">
+                  {item.attribution_kind} · {(item.evidence.evidence_codes ?? []).join(" / ") || "目录 membership"}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-2 rounded-xl border border-border bg-muted/10 p-3 sm:grid-cols-[1fr_1fr_auto]">
+        <input
+          inputMode="numeric"
+          value={targetProjectId}
+          onChange={(event) => setTargetProjectId(event.target.value)}
+          placeholder="目标 Album Project ID"
+          aria-label="目标 Album Project ID"
+          className="min-h-11 rounded-xl border border-border bg-background px-3 text-[12px]"
+        />
+        <input
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="人工覆盖原因（必填）"
+          aria-label="人工覆盖原因"
+          className="min-h-11 rounded-xl border border-border bg-background px-3 text-[12px]"
+        />
+        <Button type="button" onClick={saveOverride} disabled={busy || selectedTrackId == null} className="min-h-11">保存覆盖</Button>
+      </div>
+
+      {snapshot && snapshot.overrides.length > 0 && (
+        <details className="mt-3 rounded-xl border border-border">
+          <summary className="min-h-11 cursor-pointer px-3 py-3 text-[11px] font-semibold">当前人工覆盖（{snapshot.overrides.length}）</summary>
+          <div className="space-y-2 border-t border-border p-3">
+            {snapshot.overrides.map((item) => (
+              <div key={item.override_id} className="flex items-center gap-2 text-[11px]">
+                <span className="min-w-0 flex-1 truncate">{displayName(item.anchor_track_name)} → {displayName(item.target_project_name ?? `#${item.target_project_id}`)} · {item.reason}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    setBusy(true);
+                    vm.removeL3AlbumAttributionOverride(item.override_id)
+                      .then(() => load())
+                      .then(() => setMessage("人工覆盖已撤销"))
+                      .finally(() => setBusy(false));
+                  }}
+                >撤销</Button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      {message && <StatusMessage message={message} />}
+    </WorkflowBlock>
+  );
+}
+
+function MetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-muted/10 p-3">
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-[14px] font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

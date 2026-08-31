@@ -320,5 +320,9 @@ export const queryKeys = {
       ["version-merge", "track-search", query] as const,
     canonicalTrackEvents: () =>
       ["version-merge", "canonical-track-events"] as const,
+    l3AlbumAttributionHealth: () =>
+      ["version-merge", "l3-album-attribution-health"] as const,
+    l3AlbumAttributions: (query: string) =>
+      ["version-merge", "l3-album-attributions", query] as const,
   },
 } as const;

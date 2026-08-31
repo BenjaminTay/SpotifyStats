@@ -22,6 +22,8 @@ from backend.domains.billboard.detail_summary import (
     unavailable_year_end_fields,
 )
 from backend.domains.billboard.details import (
+    _get_album_project_payload,
+    _load_album_project_detail_events,
     get_album_chart_detail,
     get_artist_chart_detail,
     get_track_history,
@@ -61,6 +63,69 @@ def _track_detail_cached(args: tuple, _revision_state: tuple) -> dict:
 @lru_cache(maxsize=32)
 def _album_detail_cached(args: tuple, _revision_state: tuple) -> dict:
     return get_album_chart_detail(*args)
+
+
+@singleflight
+@lru_cache(maxsize=32)
+def _album_project_detail_cached(args: tuple, _revision_state: tuple) -> dict:
+    """Build the project-only album view without the full Billboard detail."""
+
+    (
+        album_name,
+        artist_name,
+        min_ms,
+        music_only,
+        _bb_top_n,
+        _bb_album_top_n,
+        _bb_artist_top_n,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        year_start,
+        year_end,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+        merge_enabled,
+        merge_level,
+        _include_compilations,
+    ) = args
+    events = _load_album_project_detail_events(
+        min_ms,
+        music_only,
+        bb_week_start_dow,
+        bb_week_start_hour,
+        year_start,
+        year_end,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        merge_enabled=merge_enabled,
+    )
+    project = _get_album_project_payload(
+        str(album_name),
+        str(artist_name),
+        events,
+        int(merge_level),
+    )
+    if project is None:
+        return {"found": False, "album_project": None}
+    play_count = int(project.get("play_count") or 0)
+    return {
+        "found": True,
+        "chart_status": "charted" if play_count > 0 else "not_charted",
+        "track_chart_status": None,
+        "effective_play_count": play_count,
+        "album_name": str(album_name),
+        "artist_name": str(artist_name),
+        "cover_url": None,
+        "meta": None,
+        "info": None,
+        "chart_summary": None,
+        "album_project": project,
+        "album_weekly_history": [],
+        "album_no1_by_week": [],
+        "best_singles_overlay": [],
+        "tracks": [],
+        **unavailable_year_end_fields(),
+    }
 
 
 @singleflight
@@ -234,6 +299,8 @@ def get_track_detail_view(*args, view: DetailView = "full") -> dict:
 
 
 def get_album_detail_view(*args, view: DetailView = "full") -> dict:
+    if view == "project":
+        return _album_project_detail_cached(tuple(args), detail_revision_state())
     if view == "summary":
         summary = build_album_detail_summary(tuple(args))
         if summary is not None:

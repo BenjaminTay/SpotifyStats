@@ -67,6 +67,14 @@ def test_nested_relation_wrappers_are_combined_deterministically() -> None:
     assert identity.recording_variant_key == ("10 minute version|from the vault|taylor s version")
 
 
+def test_nested_named_version_inside_remix_wrapper_resolves_to_song_base() -> None:
+    identity = normalize_composition_track_title("willow - dancing witch version (Elvira remix)")
+
+    assert identity.base_title == "willow"
+    assert identity.relation_tags == ("alternate_arrangement", "remix")
+    assert identity.blocker_tags == ()
+
+
 def test_bare_closed_list_suffix_is_supported_without_generic_version_stripping() -> None:
     assert normalize_composition_track_title("S&M Remix").base_title == "s m"
     assert normalize_composition_track_title("Song Acoustic Version").base_title == "song"
@@ -83,6 +91,7 @@ def test_bare_closed_list_suffix_is_supported_without_generic_version_stripping(
         ("Song - Spanish Version", "translation"),
         ("Song (Cover Version)", "cover"),
         ("Song - Mashup", "mashup"),
+        ("Song - Live/2011/Medley", "medley"),
         ("Song - Parody", "parody"),
         ("Song - Sampled Version", "sample"),
         ("Song (Reprise)", "reprise"),

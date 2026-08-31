@@ -52,6 +52,7 @@
 
 - [`2026-08-31-ai-agent-quality-v4-acceptance.md`](2026-08-31-ai-agent-quality-v4-acceptance.md)
 - [`2026-08-31-ai-agent-quality-v3-acceptance.md`](2026-08-31-ai-agent-quality-v3-acceptance.md)
+- [`2026-08-31-l3-native-album-attribution-execution-and-acceptance.md`](2026-08-31-l3-native-album-attribution-execution-and-acceptance.md)
 - [`2026-08-31-l3-governance-execution-and-acceptance.md`](2026-08-31-l3-governance-execution-and-acceptance.md)
 - [`2026-08-30-l2-governance-execution-and-acceptance.md`](2026-08-30-l2-governance-execution-and-acceptance.md)
 - [`2026-08-27-settings-rebuild-and-data-governance-remediation.md`](2026-08-27-settings-rebuild-and-data-governance-remediation.md)

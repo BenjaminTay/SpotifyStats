@@ -233,6 +233,80 @@ export interface CanonicalTrackEvent {
   created_at: string;
 }
 
+export interface L3AlbumAttributionHealth {
+  current_revision: number;
+  status: "empty" | "building" | "ready" | "failed";
+  policy_version: string;
+  expected_policy_version: string;
+  track_identity_revision: number;
+  album_project_revision: number;
+  attributed_count: number;
+  published_count: number;
+  conflict_count: number;
+  uncovered_count: number;
+  issue_count: number;
+  active_override_count: number;
+  healthy: boolean;
+  updated_at: string | null;
+}
+
+export interface L3AlbumAttributionDecision {
+  canonical_song_key: string;
+  representative_track_id: number;
+  canonical_song_name: string;
+  canonical_artist_key: string;
+  target_project_id: number;
+  target_project_name: string;
+  origin_release_project_id: number;
+  origin_project_name: string;
+  attribution_kind: string;
+  decision_source: "automatic" | "manual";
+  confidence: number;
+  evidence: {
+    evidence_codes?: string[];
+    source_project_ids?: number[];
+    candidate_project_ids?: number[];
+    [key: string]: unknown;
+  };
+  updated_at: string;
+}
+
+export interface L3AlbumAttributionIssue {
+  canonical_song_key: string;
+  issue_kind: "conflict" | "uncovered" | "invalid_override";
+  representative_track_id: number | null;
+  canonical_artist_key: string | null;
+  evidence: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface L3AlbumAttributionOverride {
+  override_id: number;
+  anchor_track_id: number;
+  anchor_track_name: string;
+  target_project_id: number;
+  target_project_name: string | null;
+  action: "force_target" | "force_keep_source";
+  reason: string;
+  created_at: string;
+}
+
+export interface L3AlbumAttributionListResponse {
+  items: L3AlbumAttributionDecision[];
+  issues: L3AlbumAttributionIssue[];
+  overrides: L3AlbumAttributionOverride[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface L3AlbumAttributionMutationResult {
+  status: string;
+  override_id: number | null;
+  attribution_revision: number;
+  decision_count: number;
+}
+
 // ── Version Merge — Track Comparison ────────────────────────
 
 export type TrackRow = [string, string, number | null, number | null];

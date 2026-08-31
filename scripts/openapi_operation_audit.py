@@ -469,6 +469,24 @@ CONTROLLED_EXTERNAL_OR_STATEFUL_OPERATIONS: dict[tuple[str, str], OperationEvide
         "OpenAPI response_model + album-project rebuild contracts",
         "stateful local data mutation is not executed against the user's development database",
     ),
+    ("POST", "/api/version-merge/l3-album-attributions/rebuild"): OperationEvidence(
+        "controlled_external_or_stateful",
+        "OpenAPI response_model + L3 attribution planner and API contracts",
+        "stateful local data mutation is not executed against the user's development database",
+    ),
+    ("POST", "/api/version-merge/l3-album-attributions/overrides"): OperationEvidence(
+        "controlled_external_or_stateful",
+        "OpenAPI response_model + L3 attribution override contract",
+        "stateful local data mutation is exercised only against isolated databases",
+    ),
+    (
+        "DELETE",
+        "/api/version-merge/l3-album-attributions/overrides/{override_id}",
+    ): OperationEvidence(
+        "controlled_external_or_stateful",
+        "OpenAPI response_model + L3 attribution override contract",
+        "stateful local data mutation is exercised only against isolated databases",
+    ),
     ("POST", "/api/version-merge/detect"): OperationEvidence(
         "controlled_external_or_stateful",
         "OpenAPI response_model + version-merge service contracts",

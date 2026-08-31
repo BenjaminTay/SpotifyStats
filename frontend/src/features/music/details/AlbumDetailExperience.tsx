@@ -16,6 +16,7 @@ import { MusicChartOverviewSection } from './MusicChartOverviewSection'
 import { MusicChartEmptyState } from './MusicChartEmptyState'
 import { MusicTracksSection } from './MusicTracksSection'
 import { VersionGroupSection } from './VersionGroupSection'
+import { AlbumAttributionSection } from './AlbumAttributionSection'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { useViewportMode } from '@/hooks/useViewportMode'
@@ -204,6 +205,9 @@ export function AlbumDetailExperience() {
                         collapsible={isPhone}
                       />
                     </div>
+                  )}
+                  {projectData?.album_project && (
+                    <AlbumAttributionSection project={projectData.album_project} />
                   )}
                 </>
               )}

@@ -185,6 +185,7 @@ def build_yearly_review_cache_key(
         "track_credit_revision": context.track_credit_revision,
         "track_identity_revision": context.track_identity_revision,
         "track_identity_policy": context.track_identity_policy,
+        "l3_album_attribution_revision": context.l3_album_attribution_revision,
         "scoped_dependency_revision": scoped_dependency_revision
         or _fallback_dependency_revision(context),
         "database_revision": db_revision,
@@ -308,7 +309,7 @@ def _prepare_artifacts(
 def _fallback_dependency_revision(context: YearlyReviewFilterContext) -> str:
     value = (
         f"{context.artist_metadata_revision}:{context.track_group_revision}:"
-        f"{context.album_project_revision}"
+        f"{context.album_project_revision}:{context.l3_album_attribution_revision}"
     )
     return hashlib.sha256(value.encode()).hexdigest()[:20]
 
@@ -509,6 +510,18 @@ def _year_scoped_dependency_revision(
                    ORDER BY ap.canonical_name, ap.artist_id, ap.scope,
                             apa.album_id""",
                 (year,),
+            ),
+            (
+                "l3_song_album_attributions",
+                """SELECT canonical_song_key, representative_track_id,
+                          canonical_artist_key, target_project_id,
+                          origin_release_project_id, attribution_kind,
+                          decision_source, confidence, evidence_json,
+                          policy_version, track_identity_revision,
+                          album_project_revision
+                     FROM l3_song_album_attributions
+                    ORDER BY canonical_song_key""",
+                (),
             ),
             (
                 "available_playback_years",

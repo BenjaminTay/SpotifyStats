@@ -21,6 +21,7 @@ export interface YearlyReviewFilterContext {
   track_credit_revision: number
   track_group_revision: string
   album_project_revision: string
+  l3_album_attribution_revision: number
   filter_fingerprint: string
 }
 

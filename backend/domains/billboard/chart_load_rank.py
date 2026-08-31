@@ -26,7 +26,7 @@ from backend.domains.billboard.week_coverage import (
 )
 
 
-def billboard_revision_state() -> tuple[int, int, int, int, str]:
+def billboard_revision_state() -> tuple:
     """Return the metadata generation that may change artist attribution.
 
     The active revisions are included separately so a pending rebuild cannot
@@ -35,6 +35,11 @@ def billboard_revision_state() -> tuple[int, int, int, int, str]:
     from backend.core.db import get_db
     from backend.domains.metadata.artist_identity import get_identity_state
     from backend.domains.metadata.track_credits import get_track_credit_state
+    from backend.domains.metadata.track_identity import get_track_identity_revision
+    from backend.domains.playback.album_projects import get_album_project_revision
+    from backend.domains.playback.l3_album_attribution import (
+        get_l3_album_attribution_revision,
+    )
 
     conn = get_db()
     try:
@@ -46,6 +51,9 @@ def billboard_revision_state() -> tuple[int, int, int, int, str]:
             int(credits.get("current_revision", 0)),
             int(credits.get("active_aggregate_revision", 0)),
             f"{identity.get('rebuild_status', 'ready')}:{credits.get('rebuild_status', 'ready')}",
+            get_track_identity_revision(conn),
+            get_album_project_revision(conn),
+            get_l3_album_attribution_revision(conn),
         )
     finally:
         conn.close()

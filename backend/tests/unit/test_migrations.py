@@ -569,12 +569,12 @@ def test_migration_060_preserves_legacy_active_candidate_serving(
     )
 
 
-def test_migration_070_adds_idempotent_ai_task_worker_leases(empty_db) -> None:
+def test_migration_071_adds_idempotent_ai_task_worker_leases(empty_db) -> None:
     from backend.core import migrations
 
     migrations.migrate_022(empty_db)
-    migrations.migrate_070(empty_db)
-    migrations.migrate_070(empty_db)
+    migrations.migrate_071(empty_db)
+    migrations.migrate_071(empty_db)
 
     columns = {row[1] for row in empty_db.execute("PRAGMA table_info(ai_task_runs)")}
     indexes = {row[1] for row in empty_db.execute("PRAGMA index_list(ai_task_runs)")}

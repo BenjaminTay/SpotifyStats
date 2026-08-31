@@ -1132,8 +1132,8 @@ def test_snapshot_variant_serves_lkg_while_new_fingerprint_is_pending(monkeypatc
         lambda **_kwargs: {"track": {}, "album": {}, "artist": {}},
     )
     old_context = _context()
-    build_music_search_snapshot(conn, old_context)
     migrate_061(conn)
+    build_music_search_snapshot(conn, old_context)
     new_context = replace(
         old_context,
         filter_fingerprint="fingerprint-r2",
@@ -2085,7 +2085,7 @@ def test_snapshot_prune_never_removes_active_pointer_with_null_semantic_base() -
                created_at
            ) VALUES ('legacy-active', 'legacy-active', 'source', 'ready',
                      NULL, 2, 1, ?, '2025-01-01 00:00:00')""",
-        (MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,),
+        ("music_search_snapshot_v8_canonical_track",),
     )
     conn.execute(
         """INSERT INTO music_search_entity_context(
@@ -2162,6 +2162,7 @@ def test_role_only_revision_rekeys_compact_snapshot_without_metric_rebuild(
 ) -> None:
     conn = _conn()
     migrate_042(conn)
+    migrate_061(conn)
     old_context = _context(filter_fingerprint="role-old")
     conn.execute(
         """INSERT INTO music_search_snapshot_meta(
@@ -2185,7 +2186,18 @@ def test_role_only_revision_rekeys_compact_snapshot_without_metric_rebuild(
            ) VALUES (?, 'track:1', 7, 7000)""",
         (old_context.filter_fingerprint,),
     )
-    migrate_061(conn)
+    conn.execute(
+        """INSERT OR REPLACE INTO music_search_snapshot_variant_state(
+               merge_level, dynamic_threshold, active_snapshot_key,
+               active_filter_fingerprint, target_filter_fingerprint,
+               maintenance_status
+           ) VALUES (2, 1, ?, ?, ?, 'ready')""",
+        (
+            old_context.filter_fingerprint,
+            old_context.filter_fingerprint,
+            old_context.filter_fingerprint,
+        ),
+    )
     new_context = replace(
         old_context,
         filter_fingerprint="role-new",

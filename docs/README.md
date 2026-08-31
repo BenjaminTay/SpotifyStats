@@ -72,6 +72,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
 - [`reports/2026-08-31-l3-governance-execution-and-acceptance.md`](reports/2026-08-31-l3-governance-execution-and-acceptance.md)：L2/L3 分层语义、歌曲与专辑 composition 自动治理、两份副本演练、真实主库发布、API 与响应式全栈验收证据
+- [`reports/2026-08-31-l3-native-album-attribution-execution-and-acceptance.md`](reports/2026-08-31-l3-native-album-attribution-execution-and-acceptance.md)：L3 歌曲到原生专辑唯一归属、Taylor 并集、Live 逐曲回流、双副本确定性、主库守恒和完整全栈验收证据
 - [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)：聚合 proof、Records parity/参数、6 个子页面/8 个后端模块/51 个列表稳定排序、播放排行 tie-breaker、真实库和响应式验收证据
 - [`reports/2026-08-29-l2-track-album-presentation.md`](reports/2026-08-29-l2-track-album-presentation.md)：L2 歌曲专辑归属、独立封面选择、派生数据失效、真实库与响应式验收证据
 - [`reports/2026-08-27-spotify-track-l1-identity-migration.md`](reports/2026-08-27-spotify-track-l1-identity-migration.md)：canonical track 唯一归属、公共 L2/L3、真实库迁移和响应式验收证据（文件名为历史兼容）
@@ -93,6 +94,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 - [`archive/README.md`](archive/README.md)：归档阅读规则与阶段目录
 - [`archive/06-productization-closeout/`](archive/06-productization-closeout/)：最近一次产品化收口阶段
+- [`archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md`](archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md)：已完成的 L3 歌曲作品、原生专辑唯一归属、Taylor 并集和 Live 逐曲回流实施计划
 - [`archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md`](archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md)：已完成的串流增量导入 Phase A–E 规划与实施记录
 - [`archive/06-productization-closeout/2026-08-27-spotify-track-identity-l1-migration-plan.md`](archive/06-productization-closeout/2026-08-27-spotify-track-identity-l1-migration-plan.md)：已被最终 canonical track / L2 / L3 方案取代的早期 Spotify-L1 规划
 - [`archive/06-productization-closeout/2026-06-23-playback-records-plan.md`](archive/06-productization-closeout/2026-06-23-playback-records-plan.md)：播放记录早期 6 栏规划与当前 5 栏/20 模块实现差异

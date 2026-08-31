@@ -23,6 +23,7 @@ REVISIONS: dict[str, str | int] = {
     "track_identity_policy": "spotify_l1_v1",
     "track_group_revision": "track-groups",
     "album_project_revision": "album-projects",
+    "l3_album_attribution_revision": 3,
 }
 
 

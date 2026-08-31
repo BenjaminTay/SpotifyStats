@@ -57,8 +57,37 @@ def _music_search_startup_rebuild_enabled() -> bool:
 async def lifespan(_app: FastAPI):
     run_migrations()
 
+    # L3 album attribution is a small deterministic relationship projection,
+    # not a playback aggregate.  Publish it immediately after additive schema
+    # upgrades so the first L3 request cannot observe a stale owner map.  Any
+    # real governance conflict fails startup closed instead of serving mixed
+    # album semantics.
+    from backend.core.db import get_db as get_startup_db
+    from backend.domains.playback.l3_album_attribution import (
+        apply_l3_album_attribution_plan,
+        plan_l3_album_attributions,
+    )
+
+    startup_conn = get_startup_db(readonly=False)
+    try:
+        attribution_plan = plan_l3_album_attributions(startup_conn)
+        if attribution_plan.issues:
+            raise RuntimeError(
+                "L3 album attribution startup reconciliation has unresolved issues: "
+                f"{len(attribution_plan.issues)}"
+            )
+        if attribution_plan.changed:
+            apply_l3_album_attribution_plan(
+                startup_conn,
+                attribution_plan,
+                ensure_schema=False,
+            )
+    finally:
+        startup_conn.close()
+
     # Agent tools are read-only and every completed call is recorded before
-    # another model step. Resume interrupted turns from that durable boundary.
+    # another model step. Resume interrupted turns only after deterministic
+    # L3 attribution has reached a consistent startup state.
     from backend.services.ai_task_service import recover_interrupted_agent_tasks
 
     recover_interrupted_agent_tasks()

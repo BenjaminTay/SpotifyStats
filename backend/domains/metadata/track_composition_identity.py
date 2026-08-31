@@ -18,7 +18,7 @@ from functools import lru_cache
 
 from opencc import OpenCC
 
-COMPOSITION_TITLE_IDENTITY_POLICY_VERSION = "nfkc_t2s_composition_relation_v1"
+COMPOSITION_TITLE_IDENTITY_POLICY_VERSION = "nfkc_t2s_composition_relation_v2"
 
 _PUNCTUATION_TRANSLATION = str.maketrans(
     {
@@ -164,6 +164,7 @@ _BLOCKER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
     ("cover", re.compile(r"(?:\bcover(?:\s+version)?\b|翻唱(?:版)?)", re.IGNORECASE)),
     ("mashup", re.compile(r"(?:\bmash[ -]?up\b|串烧|串燒|混搭(?:版)?)", re.IGNORECASE)),
+    ("medley", re.compile(r"(?:\bmedley\b|串烧|串燒|组曲|組曲)", re.IGNORECASE)),
     ("parody", re.compile(r"(?:\bparody\b|恶搞(?:版)?|惡搞(?:版)?)", re.IGNORECASE)),
     (
         "sample",
@@ -316,6 +317,17 @@ def _fragment_semantics(
     relation_tags = _matched_tags(fragment, _RELATION_PATTERNS)
     blocker_tags = _matched_tags(fragment, _BLOCKER_PATTERNS)
     source_context_tags = _source_context(fragment)
+    # A named wrapper such as ``dancing witch version`` is a legitimate L3
+    # alternate when it is isolated by brackets or a title delimiter.  Keep
+    # bare titles such as ``Song Anniversary Version`` conservative: they are
+    # not split by ``_trailing_fragment`` and therefore never reach this rule.
+    if (
+        not relation_tags
+        and not blocker_tags
+        and not source_context_tags
+        and re.search(r"\bversion\s*$", fragment, re.IGNORECASE)
+    ):
+        relation_tags = ("alternate_arrangement",)
     return relation_tags, blocker_tags, source_context_tags
 
 

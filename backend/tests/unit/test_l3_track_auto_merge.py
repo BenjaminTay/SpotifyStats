@@ -179,6 +179,23 @@ def test_duration_and_isrc_conflicts_are_l3_warnings_not_vetoes() -> None:
         conn.close()
 
 
+def test_nested_named_remix_version_is_merged_automatically() -> None:
+    conn = _connection()
+    try:
+        _track(conn, 1, "willow", plays=5)
+        _track(conn, 2, "willow - dancing witch version (Elvira remix)", plays=2)
+
+        plan = build_l3_track_merge_plan(conn)
+
+        assert plan["groups"][0]["member_l1_ids"] == [1, 2]
+        assert set(plan["groups"][0]["relation_tags"]) == {
+            "alternate_arrangement",
+            "remix",
+        }
+    finally:
+        conn.close()
+
+
 @pytest.mark.parametrize(
     "alternate",
     [
@@ -186,6 +203,7 @@ def test_duration_and_isrc_conflicts_are_l3_warnings_not_vetoes() -> None:
         "Song - Spanish Version",
         "Song - Cover Version",
         "Song - Mashup",
+        "Song - Live/2011/Medley",
         "Song - Reprise",
     ],
 )
