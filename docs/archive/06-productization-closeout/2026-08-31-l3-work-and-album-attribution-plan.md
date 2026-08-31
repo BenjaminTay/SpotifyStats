@@ -6,9 +6,9 @@
 >
 > 实现状态：IMPLEMENTED
 >
-> 验证状态：IN_PROGRESS（代码门禁已通过，真实库与完整全栈待收口）
+> 验证状态：PASS（两份副本、主库、真实 API/浏览器与默认完整全栈均通过）
 >
-> 仓库状态：UNCOMMITTED
+> 仓库状态：COMMITTED（本轮 3 个阶段提交，见 Git 历史）
 >
 > 部署状态：NOT_DEPLOYED
 
@@ -340,9 +340,9 @@ L3 Live 专辑详情需要展示三块互不混淆的数据：
 | Phase B | PASS | migration 68、planner、revision fence、幂等与 evidence 已实现 |
 | Phase C | PASS | 联合治理事务、审计、收敛门禁与导入维护已接入 |
 | Phase D | PASS | Billboard、搜索、详情、entity stats、年度、Wrapped 与 AI 缓存共用 owner revision |
-| Phase E | PASS（代码） | Settings 治理快照/覆盖及 residual/transferred/source 详情已实现 |
-| Phase F | PASS（代码） | 四套搜索/Year-End source fence 与导入健康已接入 |
-| Phase G | IN_PROGRESS | 两份 Online Backup、副本 apply、主库和完整全栈待执行 |
+| Phase E | PASS | Settings 与专辑归属解释已通过 Desktop/390px 及完整浏览器门禁 |
+| Phase F | PASS | 四套搜索快照 ready、failed 为 0；Year-End source fence 与导入健康已接入 |
+| Phase G | PASS | 两份 Online Backup、副本 apply/复跑、主库、真实 API 与 7 阶段全栈门禁均通过 |
 
 ## 9. 测试矩阵
 

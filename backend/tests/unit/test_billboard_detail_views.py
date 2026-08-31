@@ -1,8 +1,63 @@
+import pandas as pd
+import pytest
+
+from backend.domains.billboard import detail_views
 from backend.domains.billboard.detail_views import (
+    get_album_detail_view,
     select_album_detail_view,
     select_artist_detail_view,
     select_track_detail_view,
 )
+
+
+def test_album_project_view_does_not_build_the_full_billboard_detail(monkeypatch):
+    project = {
+        "album_project_id": 7,
+        "album_project_name": "Live Album",
+        "play_count": 3,
+        "residual_tracks": [{"canonical_song_name": "Cover"}],
+        "transferred_tracks": [{"canonical_song_name": "Song"}],
+    }
+    monkeypatch.setattr(
+        detail_views,
+        "_load_album_project_detail_events",
+        lambda *_args, **_kwargs: pd.DataFrame([{"track_id": 1}]),
+    )
+    monkeypatch.setattr(
+        detail_views,
+        "_get_album_project_payload",
+        lambda *_args, **_kwargs: project,
+    )
+    monkeypatch.setattr(
+        detail_views,
+        "get_album_chart_detail",
+        lambda *_args, **_kwargs: pytest.fail("full Billboard detail should not run"),
+    )
+    monkeypatch.setattr(detail_views, "detail_revision_state", lambda: ("project-fast",))
+
+    result = get_album_detail_view(
+        "Live Album",
+        "Artist",
+        30_000,
+        True,
+        100,
+        100,
+        100,
+        4,
+        0,
+        None,
+        None,
+        True,
+        5,
+        True,
+        3,
+        False,
+        view="project",
+    )
+
+    assert result["found"] is True
+    assert result["album_project"] == project
+    assert result["effective_play_count"] == 3
 
 
 def test_track_summary_view_keeps_every_scalar_fact_unchanged():

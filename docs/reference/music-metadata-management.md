@@ -65,7 +65,7 @@ Album Project 身份，并优先于机器结果。精选集策略继续冻结，
 扩大处理范围。Settings 的专辑自动治理页显示归属健康、机器理由、来源发行和人工覆盖；每次覆盖
 创建或撤销后必须在同一事务重建完整归属，并使搜索、Billboard、年度和详情缓存失效。实现阶段、
 schema 和验收门禁见
-[`docs/plans/2026-08-31-l3-work-and-album-attribution-plan.md`](../plans/2026-08-31-l3-work-and-album-attribution-plan.md)。
+[`docs/archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md`](../archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md)。
 
 Album Project 的规范项目名、所有成员发行名及其 Unicode/大小写/空白等价形式都是同一项目的只读
 别名，但项目身份始终是稳定 `album_project_id`。新搜索结果和详情深链必须使用

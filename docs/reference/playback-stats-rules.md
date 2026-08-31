@@ -1076,7 +1076,7 @@ Live Improvisation
 Acoustic 采用逐歌曲原生专辑归属并保留 residual。实现使用
 `l3_song_album_attributions`、稳定人工覆盖与独立 revision，所有 L3 专辑消费者共用同一 owner
 映射；代码门禁已通过，真实主库切换与最终全栈证据以本轮验收报告为准。执行状态见
-[`docs/plans/2026-08-31-l3-work-and-album-attribution-plan.md`](../plans/2026-08-31-l3-work-and-album-attribution-plan.md)。
+[`docs/archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md`](../archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md)。
 
 截至 2026-08-31，L1→L2→L3 composition v1 联合治理已经在两份独立 Online Backup 副本完成全量演练并应用到
 本地主库：L2 保持 46 个活动 recording group / 93 个 membership，L3 新建 380 个活动 composition
