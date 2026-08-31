@@ -1,6 +1,6 @@
 # 播放统计与版本合并规则：最新版
 
-> 创建日期：2026-06-18；最近修订：2026-08-31
+> 创建日期：2026-06-18；最近修订：2026-09-01
 > 状态：规则源文件，作为后续实现与验收依据
 > 来源：整合 [`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md)、[`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md)，以及后续对歌曲/专辑多版本语义的确认。
 
@@ -79,6 +79,8 @@ ms_played >= 30000
 - 8-10 分钟长曲目不能只听 30 秒就计为有效。
 - 极短 interlude 仍保留 30 秒保底，避免过度计数。
 
+该阈值只决定一条逻辑事件是否贡献“播放次数”，不删除已经发生的有效音乐收听时长。只要记录属于音乐、时间戳有效且 `ms_played > 0`，其推断收听区间就进入收听时长轨；因此允许某个统计范围出现 `播放次数 = 0`、`收听时长 > 0`。这类行可以参与普通分析的时长总计和同播放次数下的时长排序，但不能单独取得 Billboard 入榜资格。
+
 ### R3. 连续播放合并
 
 连续播放合并只处理相邻、来源一致且属于同一 session 的同一 `track_id`：
@@ -122,7 +124,7 @@ logical_plays = full_plays + (1 if remainder >= effective_threshold else 0)
 逻辑事件同时维护两个互不混用的时间语义：
 
 1. **播放次数**归到 `counted_at`：即该次完整播放或余数播放刚刚达到成立条件的时刻。`ts`、`ts_date`、`ts_year`、`ts_month`、`ts_week`、`ts_dow`、`ts_hour` 均由 `counted_at` 按 `Asia/Shanghai` 重建。
-2. **收听时长**归到推断收听区间：每条原始记录以 `[ts - ms_played, ts)` 近似，跨小时、自然日或 Billboard 周边界时按边界切片。
+2. **收听时长**归到未经过播放次数阈值过滤的推断收听区间：每条有效音乐原始记录以 `[ts - ms_played, ts)` 近似，跨小时、自然日或 Billboard 周边界时按边界切片。连续同曲只负责重建稳定时间线，不得因余数未达到计次阈值而丢弃该余数时长。
 
 因此，一次跨午夜完成的播放可以在次日增加 1 次播放，同时把午夜前后的收听分钟分别计入两天。Billboard 预聚合使用独立 `play_count` / `total_ms` 权重：事件行只贡献次数，切片行只贡献时长；任何消费者不得用切片行数代替播放次数。
 
@@ -774,7 +776,7 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 
 歌曲、专辑和艺人详情页的播放次数与收听时长必须在实体范围内分别计算：
 
-- 播放次数来自实体过滤后的逻辑播放事件行；收听时长来自同一实体逻辑事件推断出的 `[ts - ms_played, ts)` 时长切片。不得复用全库 `DataFrame.attrs` 或其他隐式携带的全局切片。
+- 播放次数来自实体过滤后的合格逻辑播放事件行；收听时长来自同一实体全部有效音乐原始记录推断出的 `[ts - ms_played, ts)` 时长切片，包括未达到计次阈值的短记录和合并后的未计次余数。不得复用全库 `DataFrame.attrs` 或其他隐式携带的全局切片。
 - 详情页摘要、小时/日期/星期/月/年分布，以及歌曲/专辑/艺人详情内的时长排行，都必须显式传入实体范围的时长帧；实体没有播放时不能因全局切片而出现非零时长。
 - 艺人“最近 50 次”按稳定 `_logical_event_id` 去重后计数；艺人 fan-out 行数不能直接当作最近事件数。
 - 歌曲版本组与专辑发行组的版本播放量和时长必须复用 Billboard 逻辑播放加权帧的 `play_count` / `total_ms`，不能回退到原始 `plays` 表的静态 `ms_played` 阈值计数。

@@ -72,6 +72,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 - [`reports/2026-08-31-l3-governance-execution-and-acceptance.md`](reports/2026-08-31-l3-governance-execution-and-acceptance.md)：L2/L3 分层语义、歌曲与专辑 composition 自动治理、两份副本演练、真实主库发布、API 与响应式全栈验收证据
 - [`reports/2026-08-31-l3-native-album-attribution-execution-and-acceptance.md`](reports/2026-08-31-l3-native-album-attribution-execution-and-acceptance.md)：L3 歌曲到原生专辑唯一归属、Taylor 并集、Live 逐曲回流、双副本确定性、主库守恒和完整全栈验收证据
 - [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)：聚合 proof、Records parity/参数、6 个子页面/8 个后端模块/51 个列表稳定排序、播放排行 tie-breaker、真实库和响应式验收证据
+- [`reports/2026-08-31-billboard-count-duration-semantics-research.md`](reports/2026-08-31-billboard-count-duration-semantics-research.md)：播放次数与全部收听时长双轨语义的调研、后端实施、Online Backup 副本重建、真实 API 与榜单对账证据
 - [`reports/2026-08-29-l2-track-album-presentation.md`](reports/2026-08-29-l2-track-album-presentation.md)：L2 歌曲专辑归属、独立封面选择、派生数据失效、真实库与响应式验收证据
 - [`reports/2026-08-27-spotify-track-l1-identity-migration.md`](reports/2026-08-27-spotify-track-l1-identity-migration.md)：canonical track 唯一归属、公共 L2/L3、真实库迁移和响应式验收证据（文件名为历史兼容）
 - [`reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md`](reports/2026-08-27-settings-rebuild-and-data-governance-remediation.md)：设置重建状态、健康口径、只读预览、导入检查和响应式治理 UI 证据

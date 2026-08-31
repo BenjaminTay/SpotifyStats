@@ -2,6 +2,12 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-09-01 — 播放次数与全部收听时长双轨统一
+
+- 30 秒及动态阈值只决定逻辑播放次数；全部正时长音乐收听区间独立贡献时长，孤立短片段和连续合并后的未计次余数不再从分析、详情、首页、搜索、年度与 Billboard 同次数裁决中消失。
+- Billboard 继续以播放次数为首要排序键，并在排名前排除 `play_count=0` 的候选；因此允许普通统计出现“0 次但有时长”，但不能单靠时长入榜。
+- 聚合与搜索快照升级语义版本，真实 Online Backup 副本完成原始数据守恒、三类榜单即时/预聚合逐行一致、四套搜索快照和真实 API 验收；前端代码、字段名与显示文案均未修改。详细证据见 [`reports/2026-08-31-billboard-count-duration-semantics-research.md`](reports/2026-08-31-billboard-count-duration-semantics-research.md)。
+
 ## 2026-08-31 — L2/L3 身份与专辑归属完整性收口
 
 - Album Project 自动归并增加跨 Spotify release 的 exact、Remaster、Deluxe/Expanded 与 catalog
