@@ -51,6 +51,12 @@ track list。一个项目可以包含不同 recording key 的 Acoustic、Long Po
 这只改变专辑项目 membership，不会把这些歌曲在 L2 曲目榜合成原版录音。精选集策略未定期间，
 自动任务不得改变 compilation project 的现有 membership 或榜单资格。
 
+Album Project 的同家族发现允许移除发行标题中真实出现的艺人名前缀/后缀，以及中文专辑名中的
+`同名專輯` / `同名专辑` 标记，但这只用于扩大候选召回，不能单独构成合并证据。机器合并仍必须
+满足相同 canonical album artist、完整有序曲目表等价和受控 Remaster/Deluxe/catalog 关系；移除
+标记后标题为空、曲目不完整或存在多个可行目标时必须 fail closed。艺人规范名与发行标题语言不同
+时，也不得因为无法按规范艺人名剥离前缀而漏掉完整曲目表一致的同名专辑。
+
 L3 Album composition parent 只用于原专辑与 Taylor's Version/其他明确重录专辑的完整作品
 lineage；标准版/Deluxe 继续由 L2 处理。重录 parent 的曲目采用 child 并集，Vault/重录独有歌曲
 也纳入原专辑作品。Live、Tour、venue、Remix、Acoustic 等项目不得仅按标题或整体重叠作为不可拆分
@@ -79,6 +85,11 @@ Phone 深链与 Desktop 直接挂载同一套响应式治理工作台、API 和 
 裁切；同一操作在 Desktop 与 Phone 上产生完全相同的 scope、覆盖记录和审计事件。
 
 人工治理不得重写或删除 `plays`、`tracks`、`track_artists`。这些表继续表达导入时的原始事实；人工判断存放在独立覆盖层并保留审计链。
+
+L1 owner 完整性检查是治理前置风险分类，不是公开归并层级。机器只执行能够证明安全的 provider
+relink 或 split；无法在不改变用户歌曲身份的前提下确定拆分边界时，必须进入显式 review queue，
+并在健康接口中与 hard issue 分开报告。review queue 非空不阻断已经满足守恒和唯一归属门禁的
+L2/L3 发布，但不得伪装成已自动修复。
 
 ## 2. 有效曲目署名
 

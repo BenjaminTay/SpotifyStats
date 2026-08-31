@@ -51,7 +51,6 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
-- [`plans/2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md`](plans/2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md)：修复 Album Project 跨发行版本识别、L3 stable work key、专辑归属 coverage 健康分母和 L1 owner 内部身份冲突
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
 - [`plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：B1–B4、R1 及 6 个 Records 子页面（8 个后端记录模块、51 个列表）已完成范围验收；默认完整全栈门禁由既有耗时项继续跟踪
 - [`plans/2026-08-30-playback-records-correctness-and-ranking-plan.md`](plans/2026-08-30-playback-records-correctness-and-ranking-plan.md)：播放记录 5 个板块、20 个可见模块及 API-only 模块的统计正确性、完整候选集和稳定二级排序修复
@@ -69,6 +68,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
+- [`reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md`](reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)：等价发行 Album Project、stable work、归属 coverage、L1 风险队列、双副本与孙燕姿同名专辑定向治理证据
 - [`reports/2026-08-31-l3-governance-execution-and-acceptance.md`](reports/2026-08-31-l3-governance-execution-and-acceptance.md)：L2/L3 分层语义、歌曲与专辑 composition 自动治理、两份副本演练、真实主库发布、API 与响应式全栈验收证据
 - [`reports/2026-08-31-l3-native-album-attribution-execution-and-acceptance.md`](reports/2026-08-31-l3-native-album-attribution-execution-and-acceptance.md)：L3 歌曲到原生专辑唯一归属、Taylor 并集、Live 逐曲回流、双副本确定性、主库守恒和完整全栈验收证据
 - [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)：聚合 proof、Records parity/参数、6 个子页面/8 个后端模块/51 个列表稳定排序、播放排行 tie-breaker、真实库和响应式验收证据
@@ -109,3 +109,4 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 - 已完成计划不得继续留在 `plans/`；被替代的设计必须标记替代入口。
 - 根目录 `AGENTS.md` 与 `CLAUDE.md` 保持一致，详细领域规则通过链接引用。
 - 新增或移动文档后运行 `python3 scripts/docs_audit.py`。
+- [`archive/06-productization-closeout/2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md`](archive/06-productization-closeout/2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md)：已完成的等价发行、stable work、归属 coverage 与 L1 风险分类实施计划

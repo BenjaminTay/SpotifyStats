@@ -4,11 +4,11 @@
 >
 > 规则状态：CONFIRMED
 >
-> 实现状态：PLANNED
+> 实现状态：IMPLEMENTED
 >
-> 验证状态：NOT_RUN
+> 验证状态：PASS（真实数据、API、响应式与功能门禁；完整全栈状态见交付报告）
 >
-> 仓库状态：UNCOMMITTED
+> 仓库状态：COMMITTED `cd6cf621`、`7fbaf420`；最终证据提交见本轮 Git 历史
 >
 > 部署状态：NOT_DEPLOYED
 
@@ -36,8 +36,9 @@
   -> 搜索、详情、播放分析、Billboard、Year-End
 ```
 
-本轮规划不授权修改业务代码、正式数据库或生产环境。实施必须另行执行，并始终保持 `plays`、
-`tracks`、`track_artists` 等原始事实不被治理规则重写。
+本规划已经获得后续执行授权并完成实施；真实执行始终保持 `plays`、`tracks`、`track_artists` 等
+原始事实不被治理规则重写。完整结果见
+[`../../reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md`](../../reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)。
 
 ## 2. 真实数据基线
 
@@ -547,9 +548,9 @@ P0-B、P0-C、P0-D 可以分别开发，但正式数据发布必须按第 10 节
 
 ## 15. 与既有文档的关系
 
-- 当前统计规则继续以 [`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md) 为准；
+- 当前统计规则继续以 [`../../reference/playback-stats-rules.md`](../../reference/playback-stats-rules.md) 为准；
 - 已完成的 L3 歌曲作品、Taylor's Version 和 Live 逐曲归属方案见
-  [`../archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md`](../archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md)；
+  [`2026-08-31-l3-work-and-album-attribution-plan.md`](2026-08-31-l3-work-and-album-attribution-plan.md)；
 - 本计划不否定该方案的已验证部分，只修复真实数据揭示的 stable-key、coverage、等价发行和 L1 上游
   身份完整性缺口；
 - 实施完成并通过完整验收后，本计划应移入 `docs/archive/06-productization-closeout/`，同时新增交付

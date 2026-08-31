@@ -50,6 +50,7 @@
 
 ### 元数据、AI 与质量门禁
 
+- [`2026-08-31-l2-l3-identity-and-album-attribution-remediation.md`](2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)
 - [`2026-08-31-l3-native-album-attribution-execution-and-acceptance.md`](2026-08-31-l3-native-album-attribution-execution-and-acceptance.md)
 - [`2026-08-31-l3-governance-execution-and-acceptance.md`](2026-08-31-l3-governance-execution-and-acceptance.md)
 - [`2026-08-30-l2-governance-execution-and-acceptance.md`](2026-08-30-l2-governance-execution-and-acceptance.md)

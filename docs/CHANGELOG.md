@@ -2,6 +2,19 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-31 — L2/L3 身份与专辑归属完整性收口
+
+- Album Project 自动归并增加跨 Spotify release 的 exact、Remaster、Deluxe/Expanded 与 catalog
+  evidence；艺人名前后缀和中文“同名专辑”标记只扩大召回，最终仍要求相同 canonical artist 和
+  完整有序曲目证据。
+- L3 stable work 以完整 L2 recording group 为不可拆分输入；coverage v2 扫描完整 work universe，
+  以明确 attribution/exclusion ledger 对账，修复漏扫作品仍显示 healthy 的问题。
+- L1 owner 风险改为机器安全分类与显式 review queue；不以时长、ISRC 或弱名称启发式强行拆分。
+- 两份独立 Online Backup 完成两轮全量与幂等演练后应用到本地主库；《孫燕姿同名專輯》与
+  《同名專輯 (Remastered)》归入同一 project，2004 年《孫燕姿STEFANIE同名專輯》保持独立，
+  原始三表行数与哈希不变。详细证据见
+  [`reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md`](reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)。
+
 ## 2026-08-31 — L3 曲目与专辑自动治理落地
 
 - 新增歌曲 composition 解析与自动归并：Acoustic、Live、Remix、Taylor's Version 等在 L2 保持
