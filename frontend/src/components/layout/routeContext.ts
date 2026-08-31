@@ -224,6 +224,17 @@ export function getMastheadRouteContext(pathname: string, search = ''): Masthead
     })
   }
 
+  if (pathname.startsWith('/music/album-projects/')) {
+    return routeContext({
+      activeNavTo: null,
+      contextSegments: ['音乐详情', '专辑'],
+      mobileTopBarMode: 'push',
+      mobileEyebrow: '专辑详情',
+      mobileTitle: '专辑详情',
+      mobileFallbackTo: '/music/search',
+    })
+  }
+
   if (pathname.startsWith('/music/tracks/')) {
     return routeContext({
       activeNavTo: null,

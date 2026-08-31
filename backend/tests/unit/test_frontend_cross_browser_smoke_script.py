@@ -90,7 +90,7 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "VERSION MERGE" not in source
     assert "theme-toggle" in source
     assert "max-scroll-overflow" in source
-    assert "const DYNAMIC_ROUTE_WAIT_MS = 20000" in source
+    assert "const DYNAMIC_ROUTE_WAIT_MS = 45000" in source
     assert "FRONTEND_DYNAMIC_ROUTE_WAIT_MS" in source
     assert "SEARCH_WAIT_MS = max(WAIT_MS, 30000)" in source
     assert "timeout_ms=SEARCH_WAIT_MS" in source
@@ -143,6 +143,12 @@ def test_frontend_cross_browser_smoke_can_cover_dynamic_detail_routes():
     assert "--include-detail-routes" in source
     assert "resolveDetailRoutes" in source
     assert "dynamic: true" in source
+    assert "markers: ['专辑详情', album.album_name]" in source
+    assert "markers: ['艺人详情', artist.artist_name]" in source
+    assert "timeout_ms=route_wait_ms" in source
+    assert "Legacy album route did not resolve to a stable album-project URL" in source
+    assert "location.pathname.startsWith('/music/album-projects/')" in source
+    assert 'wait_for_text(page, "有效播放", timeout_ms=route_wait_ms)' in source
     assert "/api/billboard/entity-lists" in source
     assert "/api/community/feed" in source
     for marker in [

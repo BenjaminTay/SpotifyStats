@@ -645,6 +645,14 @@ function formatConsoleArgs(args) {
     .join(' ')
 }
 
+function isRetryableTransientNetworkFailure(result) {
+  return !result.ok
+    && result.failures.length === 1
+    && result.failures[0] === `${result.consoleErrorCount} console error(s)`
+    && result.consoleErrorCount > 0
+    && result.consoleErrors.every((entry) => entry.text.includes('net::ERR_CONNECTION_CLOSED'))
+}
+
 function renderMarkdown(results) {
   const lines = [
     '# Frontend Route Smoke',
@@ -738,6 +746,10 @@ async function main() {
               failOnConsoleWarning: args.failOnConsoleWarning,
               enforceRouteMarkers: args.enforceRouteMarkers,
             })
+            if (attempt === 1 && isRetryableTransientNetworkFailure(result)) {
+              process.stderr.write('RETRY (transient net::ERR_CONNECTION_CLOSED) ... ')
+              continue
+            }
             break
           } catch (error) {
             if (attempt === 2) throw error

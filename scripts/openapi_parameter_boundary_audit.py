@@ -76,6 +76,24 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("path", "left_l1_id", "integer"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "track override clearing rejects non-integer left-side canonical IDs",
+        ("backend/tests/contract/test_version_merge_confirm_workflow.py",),
+    ),
+    ("path", "right_l1_id", "integer"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "track override clearing rejects non-integer right-side canonical IDs",
+        ("backend/tests/contract/test_version_merge_confirm_workflow.py",),
+    ),
+    ("path", "scope", "string"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "track override clearing enforces the recording/composition scope allowlist",
+        ("backend/tests/contract/test_version_merge_confirm_workflow.py",),
+    ),
     ("path", "l1_id", "integer"): ParameterEvidence(
         "boundary_probe",
         ("music_track_canonical_identity_path_nonint",),
@@ -409,6 +427,11 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         "boundary_probe",
         ("music_track_path_nonint", "billboard_track_path_nonint", "lyrics_path_nonint"),
         "track-id path conversion is validated across music, Billboard, and lyrics surfaces",
+    ),
+    ("path", "project_id", "integer"): ParameterEvidence(
+        "boundary_probe",
+        ("music_album_project_path_nonint",),
+        "album-project path conversion rejects non-integer stable project identifiers",
     ),
     ("path", "year", "integer"): ParameterEvidence(
         "boundary_probe",

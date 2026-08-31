@@ -22,6 +22,21 @@
 - 新增安全 SSE 和前端 polling 回退；取消 ACK 不等待模型请求结束。事件日志可投影上下文并从进程中断处恢复，已完成工具不会重复执行。
 - 真实数据库副本的 DeepSeek 复杂比较 37.5 秒完成；真实浏览器进一步验证运行中追加范围、两项只读工具受控并行、证据/轨迹呈现及 390px 无横向溢出。后端 contract 415 项、前端 611 项与生产 build 通过；整仓 unit 1499 passed / 2 skipped，另有 5 项为未带入本工作树的 Album Project 基线审计缺口。
 
+## 2026-08-31 — L3 曲目与专辑自动治理落地
+
+- 新增歌曲 composition 解析与自动归并：Acoustic、Live、Remix、Taylor's Version 等在 L2 保持
+  独立录音，同时按完整 L2 child 自动进入 L3；结构性标题、翻唱、翻译、采样、mashup、parody、
+  reprise、艺人不相容与歧义证据继续 fail closed。
+- 新增专辑 composition 自动任务，以完整 L2 release project、canonical album artist、受控版本后缀
+  和曲目作品重叠建立 L3 parent；标准/Deluxe 和现有 Album Project membership 保持 L2 语义，
+  compilation 策略继续冻结。
+- 联合治理工具在两份独立 Online Backup 副本完成全量与幂等演练后应用到本地主库；L2 的 46 组 /
+  93 membership 不变，新增歌曲 L3 380 组 / 873 membership、专辑 L3 2 组 / 4 release child，
+  原始三表行数与 hash 保持不变。
+- 四套 L2/L3 × fixed/dynamic 搜索快照与年榜投影原子发布；Settings 增加 L2/L3、机器/人工、
+  policy version 和覆盖清除能力，并修复 390px 下长策略与任务标签裁切。详细证据见
+  [`reports/2026-08-31-l3-governance-execution-and-acceptance.md`](reports/2026-08-31-l3-governance-execution-and-acceptance.md)。
+
 ## 2026-08-30 — L2 同名歌曲与 Album Project 别名统一
 
 - L2 产品语义调整为“同歌曲基础版本”：canonical primary artist 与规范化普通歌名相同时由机器直接

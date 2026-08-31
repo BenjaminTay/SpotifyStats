@@ -17,6 +17,7 @@ from backend.core.auth import require_auth
 from backend.core.json_helpers import df_to_json
 from backend.core.version_merge import (
     apply_detected_groups,
+    clear_track_merge_override,
     confirm_album_relation_bundle,
     confirm_track_group_candidate,
     create_group,
@@ -142,6 +143,8 @@ class TrackGroupResponse(BaseModel):
     created_at: str
     member_count: int
     group_status: str = "active"
+    identity_policy_version: Optional[str] = None
+    automatic_version_tag: Optional[str] = None
 
 
 class TrackGroupMemberResponse(BaseModel):
@@ -604,6 +607,25 @@ def remove_track_group(group_id: int, auth: None = Depends(require_auth)):
     if ok:
         _refresh_music_search_derived_data("track group deleted")
     return {"status": "ok" if ok else "error"}
+
+
+@router.delete(
+    "/track-overrides/{scope}/{left_l1_id}/{right_l1_id}",
+    response_model=StatusResponse,
+)
+def remove_track_merge_override(
+    scope: str,
+    left_l1_id: int,
+    right_l1_id: int,
+    auth: None = Depends(require_auth),
+):
+    """Return one pair to machine governance on the next reconciliation run."""
+
+    if scope not in {"recording", "composition"}:
+        raise HTTPException(status_code=400, detail="Invalid scope")
+    if not clear_track_merge_override(scope, left_l1_id, right_l1_id):
+        raise HTTPException(status_code=404, detail="Override not found")
+    return {"status": "ok"}
 
 
 @router.post("/album-relations/confirm", response_model=AlbumRelationConfirmResponse)

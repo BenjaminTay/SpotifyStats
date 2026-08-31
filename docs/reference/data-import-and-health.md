@@ -58,7 +58,7 @@
 - schema 60–63 分别保存 candidate maintenance、四变体 active/target pointer、曲目署名 before/after change set 与即时 deny overlay。升级只新增表和索引；旧代码可忽略新表，回滚不得删除仍承担 LKG 或即时撤销展示职责的数据。
 - migration 46 从精确周账本派生独立版本的详情年榜投影。shared-full、delta 和 ready snapshot 复用都会在后台维护四套公开投影；核心 context snapshot 一经发布即可使用，Year-End 的后续失败只记录独立维护状态，不得把 candidate 或核心 context 降级。旧库已有 ready snapshot 但缺少账本/投影时，会幂等排入后台任务，账本只可在维护任务内补建，详情 GET 不得承担补建；同 fingerprint 重发与旧 snapshot pruning 必须同步清理过期年榜行。
 - Album Project 在无删除、实际元数据影响闭包精确且规模未超门限时定向重建；存在删除、闭包不精确、依赖不兼容或成本过高时自动全量回退。自动推断项目按稳定语义键复用 ID 并精确替换 membership，manual 与未受影响项目不变。持久曲目、专辑和艺人维表可为人工治理与审计保留历史行，但自动 Album Project 与搜索候选只消费当前播放事实可达闭包，历史 reconcile 或完整替换淘汰的旧实体不会继续作为活动候选。
-- 正式 L2 治理必须先在停机数据库副本执行完整 `--apply`，检查原始事实 hash、关系 revision、候选三态、外键、完整性、四套精确快照及投影，再对主库创建 Online Backup 后执行同一版本工具。关系已提交但派生重建失败时不得继续写入或宣布成功；应保留旧 LKG，对当前 revision 幂等重跑，无法恢复时从本次停机备份回滚。`--skip-derived-rebuild` 只用于诊断，不能作为正式完成路径。
+- 正式 L1/L2/L3 联合治理统一通过 `scripts/apply_version_governance.py` 执行。主库运行前必须停止写入者，至少在两份独立 Online Backup 副本完成同版本全量 `--apply` 和第二次 dry-run 幂等演练；随后为主库创建新的 Online Backup，并检查原始 `plays` / `tracks` / `track_artists` 行数与 hash、L2 关系 digest、候选三态、外键、完整性和审计 payload。一次运行只发布一次 track revision 和一次 album revision，并要求 L2/L3 × dynamic/fixed 四套精确搜索快照及详情年榜投影全部 ready、指纹一致后才成功。关系已提交但派生重建失败时不得继续写入或宣布成功；保留旧 LKG，对当前 revision 幂等重跑，无法恢复时从本次停机备份回滚。`--skip-derived-rebuild` 只用于诊断，不能作为正式完成路径。
 
 检查不会把文件导入数据库，也不会启动后台 Job。确认文件后，用户仍需显式点击已有的「导入串流数据」或「导入账号数据」。
 

@@ -37,6 +37,8 @@ const { versionMergeMock } = vi.hoisted(() => ({
         member_count: 2,
         scope: "recording",
         is_manual: 1,
+        identity_policy_version: "canonical_artist_title_v3",
+        automatic_version_tag: "ordinary",
         created_at: "2026-08-26",
       },
     ],
@@ -162,6 +164,10 @@ describe("VersionMergeSection unified workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "已保存分组" }));
     expect(screen.getByText("Style")).toBeInTheDocument();
     expect(screen.getByText("L2 同一录音")).toBeInTheDocument();
+    expect(screen.getByText("人工治理")).toBeInTheDocument();
+    expect(
+      screen.getByText("策略 canonical_artist_title_v3"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Style 封面" })).toHaveAttribute(
       "src",
       "/covers/albums/10.jpg",
@@ -221,5 +227,15 @@ describe("VersionMergeSection unified workspace", () => {
     expect(screen.getByRole("radio", { name: /歌曲归并/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /L2 · 同一录音/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /L3 · 同一作品/ })).toBeInTheDocument();
+  });
+
+  it("explains that automatic governance handles high-confidence relations", () => {
+    render(<VersionMergeSection initialObjectType="track" />);
+
+    expect(
+      screen.getByText(
+        "高置信关系由治理任务自动处理；这里只审核需要人工判断的异常候选。",
+      ),
+    ).toBeInTheDocument();
   });
 });

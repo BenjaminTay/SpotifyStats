@@ -30,6 +30,7 @@ describe('mobile shell route context', () => {
     ['/music/search', 'push', null, false, null, '音乐查找'],
     ['/music/tracks/track-1', 'push', null, false, null, '单曲详情'],
     ['/music/albums/Midnights?artist=Taylor%20Swift', 'push', null, false, null, 'Midnights'],
+    ['/music/album-projects/41476', 'push', null, false, null, '专辑详情'],
     ['/music/artists/Taylor%20Swift', 'push', null, false, null, 'Taylor Swift'],
     ['/settings', 'push', null, false, null, '设置'],
     ['/missing', 'push', null, false, null, '页面未找到'],

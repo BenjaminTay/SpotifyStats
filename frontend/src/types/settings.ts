@@ -101,6 +101,8 @@ export interface TrackGroup {
   created_at: string;
   member_count: number;
   group_status: "active" | "archived" | "conflict";
+  identity_policy_version: string | null;
+  automatic_version_tag: string | null;
 }
 
 export interface TrackGroupMember {

@@ -1100,12 +1100,6 @@ def _bootstrap_from_release_groups(
             linked = _best_spotify_album_for_local_album(conn, int(group["primary_album_id"]))
             if linked:
                 release_date = linked["release_date"] or release_date
-        resolved = _resolve_standalone_album_type(
-            conn, int(group["primary_album_id"]), spotify_type
-        )
-        if resolved in ("single", "unknown"):
-            continue
-
         member_rows = conn.execute(
             "SELECT album_id FROM release_group_members WHERE group_id = ?",
             (group["group_id"],),
@@ -1113,6 +1107,18 @@ def _bootstrap_from_release_groups(
         member_ids = [int(row["album_id"]) for row in member_rows]
         active_memberships = _tracks_for_albums(conn, member_ids)
         if not active_memberships:
+            continue
+        # Keep release-group and standalone eligibility aligned.  A local-only
+        # album with enough observed tracks is a valid L2 project before it is
+        # assigned to a release group and must not disappear merely because an
+        # L3 composition planner created a singleton release child for it.
+        eligibility = resolve_album_project_eligibility(
+            conn,
+            int(group["primary_album_id"]),
+            name_match_type=spotify_type,
+            local_tracks=len({track_id for track_id, _album_id in active_memberships}),
+        )
+        if not eligibility.eligible:
             continue
 
         project_id = _upsert_project(

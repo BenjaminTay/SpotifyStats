@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import argparse
 import re
+import sqlite3
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from re import Pattern
 from typing import Any
@@ -61,6 +62,8 @@ DEFAULT_BILLBOARD = {
     "bb_artist_top_n": 20,
     "merge_level": 2,
 }
+
+ALBUM_PROJECT_ID_TOKEN = "__album_project_id__"
 
 DEFAULT_EXCLUDED_GET_PATHS: frozenset[str] = frozenset(
     {
@@ -221,7 +224,9 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         DEFAULT_BILLBOARD,
     ),
     SmokeCase("billboard_track_detail", "/api/billboard/track/901", DEFAULT_BILLBOARD),
-    SmokeCase("billboard_track_canonical_detail", "/api/billboard/track/canonical/1", DEFAULT_BILLBOARD),
+    SmokeCase(
+        "billboard_track_canonical_detail", "/api/billboard/track/canonical/1", DEFAULT_BILLBOARD
+    ),
     SmokeCase(
         "billboard_artist_detail",
         "/api/billboard/artist/Fixture Artist Alpha",
@@ -233,6 +238,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         "/api/billboard/album/Fixture Future LP",
         DEFAULT_BILLBOARD,
         expected_statuses=(200, 404),
+    ),
+    SmokeCase(
+        "billboard_album_project_detail",
+        f"/api/billboard/album-project/{ALBUM_PROJECT_ID_TOKEN}",
+        {**DEFAULT_BILLBOARD, "view": "summary"},
     ),
     SmokeCase("billboard_entity_lists", "/api/billboard/entity-lists", DEFAULT_BILLBOARD),
     SmokeCase(
@@ -297,9 +307,19 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("music_track_legacy_identity", "/api/music/tracks/legacy/901/identity"),
     SmokeCase("music_album_stats", "/api/music/albums/Fixture Future LP/stats", DEFAULT_FILTERS),
     SmokeCase(
+        "music_album_project_stats",
+        f"/api/music/album-projects/{ALBUM_PROJECT_ID_TOKEN}/stats",
+        {**DEFAULT_FILTERS, "merge_level": 2},
+    ),
+    SmokeCase(
         "music_album_rankings",
         "/api/music/albums/Fixture Future LP/rankings",
         DEFAULT_FILTERS,
+    ),
+    SmokeCase(
+        "music_album_project_rankings",
+        f"/api/music/album-projects/{ALBUM_PROJECT_ID_TOKEN}/rankings",
+        {**DEFAULT_FILTERS, "merge_level": 2, "limit": 5},
     ),
     SmokeCase(
         "music_artist_stats", "/api/music/artists/Fixture Artist Alpha/stats", DEFAULT_FILTERS
@@ -321,14 +341,26 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         {**DEFAULT_FILTERS, "limit": 5},
     ),
     SmokeCase(
+        "music_album_project_plays",
+        f"/api/music/album-projects/{ALBUM_PROJECT_ID_TOKEN}/plays",
+        {**DEFAULT_FILTERS, "merge_level": 2, "limit": 5},
+    ),
+    SmokeCase(
         "music_artist_plays",
         "/api/music/artists/Fixture Artist Alpha/plays",
         {**DEFAULT_FILTERS, "limit": 5},
     ),
     SmokeCase("music_track_dates", "/api/music/tracks/901/play-dates", DEFAULT_FILTERS),
-    SmokeCase("music_track_canonical_dates", "/api/music/tracks/canonical/901/play-dates", DEFAULT_FILTERS),
+    SmokeCase(
+        "music_track_canonical_dates", "/api/music/tracks/canonical/901/play-dates", DEFAULT_FILTERS
+    ),
     SmokeCase(
         "music_album_dates", "/api/music/albums/Fixture Future LP/play-dates", DEFAULT_FILTERS
+    ),
+    SmokeCase(
+        "music_album_project_dates",
+        f"/api/music/album-projects/{ALBUM_PROJECT_ID_TOKEN}/play-dates",
+        {**DEFAULT_FILTERS, "merge_level": 2},
     ),
     SmokeCase(
         "music_artist_dates", "/api/music/artists/Fixture Artist Alpha/play-dates", DEFAULT_FILTERS
@@ -397,9 +429,43 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
 )
 
 
+def _resolve_smoke_album_project_id() -> int:
+    from backend.core import db as db_mod
+
+    db_path = Path(db_mod.DB_PATH).resolve()
+    db_uri = f"{db_path.as_uri()}?mode=ro"
+    with sqlite3.connect(db_uri, uri=True) as conn:
+        row = conn.execute(
+            """
+            SELECT ap.project_id, COUNT(p.play_id) AS play_count
+              FROM album_projects ap
+              JOIN album_project_tracks apt
+                ON apt.project_id = ap.project_id
+               AND apt.min_merge_level <= 2
+              LEFT JOIN plays p ON p.track_id = apt.track_id
+             GROUP BY ap.project_id
+             ORDER BY play_count DESC, ap.project_id ASC
+             LIMIT 1
+            """
+        ).fetchone()
+    if row is None:
+        raise RuntimeError("API smoke requires at least one active L2 album project")
+    return int(row[0])
+
+
+def _materialize_dynamic_cases(cases: tuple[SmokeCase, ...]) -> tuple[SmokeCase, ...]:
+    if not any(ALBUM_PROJECT_ID_TOKEN in case.path for case in cases):
+        return cases
+    project_id = _resolve_smoke_album_project_id()
+    return tuple(
+        replace(case, path=case.path.replace(ALBUM_PROJECT_ID_TOKEN, str(project_id)))
+        for case in cases
+    )
+
+
 def run_cases(client, cases: tuple[SmokeCase, ...] = DEFAULT_SAFE_GET_CASES) -> list[SmokeResult]:
     results = []
-    for case in cases:
+    for case in _materialize_dynamic_cases(cases):
         response = client.get(case.path, params=case.params or {})
         request_id = response.headers.get("X-Request-ID")
         status_ok = response.status_code in case.expected_statuses

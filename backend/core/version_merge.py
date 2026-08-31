@@ -394,6 +394,7 @@ def get_all_track_groups() -> pd.DataFrame:
                                    NULLIF(album_artist.artist_name, ''),
                                    NULLIF(sam.album_artists, '')) AS artist_name,
                           tg.scope, tg.is_manual, tg.group_status, tg.created_at,
+                          tg.identity_policy_version, tg.automatic_version_tag,
                           COUNT(members.l1_id) AS member_count
                    FROM track_groups tg
                    LEFT JOIN track_l1_identities li ON li.l1_id=tg.primary_l1_id
@@ -426,6 +427,8 @@ def get_all_track_groups() -> pd.DataFrame:
                                NULLIF(album_artist.artist_name, ''),
                                NULLIF(sam.album_artists, '')) AS artist_name,
                       tg.scope, tg.is_manual, tg.created_at,
+                      NULL AS identity_policy_version,
+                      NULL AS automatic_version_tag,
                       COUNT(tgm.track_id) AS member_count
                FROM track_groups tg
                LEFT JOIN tracks pt ON pt.track_id = tg.primary_track_id
@@ -778,6 +781,98 @@ def _resolve_track_reference_to_l1(conn, value: int, *, reference_is_l1: bool) -
     return resolve_canonical_track_id(conn, int(value))
 
 
+def _upsert_track_merge_override(
+    conn,
+    *,
+    scope: str,
+    left_l1_id: int,
+    right_l1_id: int,
+    action: str,
+    reason: str,
+) -> None:
+    """Persist one manual pair decision for future automatic reconciliation."""
+    if left_l1_id == right_l1_id:
+        return
+    left_l1_id, right_l1_id = sorted((int(left_l1_id), int(right_l1_id)))
+    existing = conn.execute(
+        """SELECT override_id FROM track_merge_overrides
+            WHERE scope=?
+              AND MIN(left_l1_id, right_l1_id)=?
+              AND MAX(left_l1_id, right_l1_id)=?""",
+        (scope, left_l1_id, right_l1_id),
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            """INSERT INTO track_merge_overrides(
+                   scope, left_l1_id, right_l1_id, action, reason
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (scope, left_l1_id, right_l1_id, action, reason),
+        )
+        return
+    conn.execute(
+        """UPDATE track_merge_overrides
+              SET left_l1_id=?, right_l1_id=?, action=?, reason=?,
+                  updated_at=datetime('now')
+            WHERE override_id=?""",
+        (left_l1_id, right_l1_id, action, reason, int(existing["override_id"])),
+    )
+
+
+def _persist_track_group_pair_overrides(
+    conn,
+    *,
+    scope: str,
+    left_l1_ids: list[int],
+    right_l1_ids: list[int],
+    action: str,
+    reason: str,
+) -> None:
+    """Persist the cross-product of two member sets without duplicate pairs."""
+    seen: set[tuple[int, int]] = set()
+    for left_l1_id in left_l1_ids:
+        for right_l1_id in right_l1_ids:
+            left = int(left_l1_id)
+            right = int(right_l1_id)
+            pair = (min(left, right), max(left, right))
+            if pair[0] == pair[1] or pair in seen:
+                continue
+            seen.add(pair)
+            _upsert_track_merge_override(
+                conn,
+                scope=scope,
+                left_l1_id=pair[0],
+                right_l1_id=pair[1],
+                action=action,
+                reason=reason,
+            )
+
+
+def clear_track_merge_override(scope: str, left_l1_id: int, right_l1_id: int) -> bool:
+    """Clear one durable manual exception so the next governance run decides it again."""
+
+    if scope not in {"recording", "composition"}:
+        return False
+    left_l1_id, right_l1_id = sorted((int(left_l1_id), int(right_l1_id)))
+    if left_l1_id == right_l1_id:
+        return False
+    conn = get_db(readonly=False)
+    try:
+        deleted = conn.execute(
+            """DELETE FROM track_merge_overrides
+                WHERE scope=?
+                  AND MIN(left_l1_id, right_l1_id)=?
+                  AND MAX(left_l1_id, right_l1_id)=?""",
+            (scope, left_l1_id, right_l1_id),
+        ).rowcount
+        conn.commit()
+        return bool(deleted)
+    except Exception:
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
 def _confirm_l1_track_group(
     conn,
     *,
@@ -883,6 +978,14 @@ def _confirm_l1_track_group(
     conn.executemany(
         "INSERT OR IGNORE INTO track_group_l1_members(group_id, l1_id) VALUES (?, ?)",
         ((group_id, original_l1_id), (group_id, candidate_l1_id)),
+    )
+    _upsert_track_merge_override(
+        conn,
+        scope=scope,
+        left_l1_id=original_l1_id,
+        right_l1_id=candidate_l1_id,
+        action="force_merge",
+        reason="manual_candidate_confirmation",
     )
     conn.execute(
         """UPDATE track_group_candidates SET status='accepted'
@@ -1353,6 +1456,13 @@ def update_track_group_members(
                 if group["primary_l1_id"]
                 else None
             )
+            original_member_ids = [
+                int(row["l1_id"])
+                for row in conn.execute(
+                    "SELECT l1_id FROM track_group_l1_members WHERE group_id=? ORDER BY l1_id",
+                    (group_id,),
+                ).fetchall()
+            ]
             normalized_add_ids: list[int] = []
             for reference_id in add_ids or []:
                 l1_id = resolve_canonical_track_id(conn, int(reference_id))
@@ -1403,6 +1513,34 @@ def update_track_group_members(
             if int(member_count) < 2:
                 conn.rollback()
                 return False
+            remaining_member_ids = [
+                int(row["l1_id"])
+                for row in conn.execute(
+                    "SELECT l1_id FROM track_group_l1_members WHERE group_id=? ORDER BY l1_id",
+                    (group_id,),
+                ).fetchall()
+            ]
+            if normalized_add_ids:
+                existing_before_add = [
+                    l1_id for l1_id in original_member_ids if l1_id not in normalized_remove_ids
+                ]
+                _persist_track_group_pair_overrides(
+                    conn,
+                    scope=scope,
+                    left_l1_ids=normalized_add_ids,
+                    right_l1_ids=existing_before_add + normalized_add_ids,
+                    action="force_merge",
+                    reason="manual_member_addition",
+                )
+            if normalized_remove_ids:
+                _persist_track_group_pair_overrides(
+                    conn,
+                    scope=scope,
+                    left_l1_ids=normalized_remove_ids,
+                    right_l1_ids=remaining_member_ids,
+                    action="force_separate",
+                    reason="manual_member_removal",
+                )
             conn.execute(
                 "UPDATE track_groups SET is_manual=1, group_status='active' WHERE group_id=?",
                 (group_id,),
@@ -1516,10 +1654,10 @@ def delete_track_group(group_id: int) -> bool:
     """Delete a track group without rewriting imported track or play facts."""
     conn = get_db(readonly=False)
     try:
-        if (
-            conn.execute("SELECT 1 FROM track_groups WHERE group_id = ?", (group_id,)).fetchone()
-            is None
-        ):
+        group = conn.execute(
+            "SELECT scope FROM track_groups WHERE group_id = ?", (group_id,)
+        ).fetchone()
+        if group is None:
             return False
         conn.execute(
             "UPDATE track_groups SET parent_group_id = NULL WHERE parent_group_id = ?",
@@ -1529,6 +1667,21 @@ def delete_track_group(group_id: int) -> bool:
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
         ).fetchone()
         if has_l1:
+            member_ids = [
+                int(row["l1_id"])
+                for row in conn.execute(
+                    "SELECT l1_id FROM track_group_l1_members WHERE group_id=? ORDER BY l1_id",
+                    (group_id,),
+                ).fetchall()
+            ]
+            _persist_track_group_pair_overrides(
+                conn,
+                scope=str(group["scope"]),
+                left_l1_ids=member_ids,
+                right_l1_ids=member_ids,
+                action="force_separate",
+                reason="manual_group_deletion",
+            )
             conn.execute("DELETE FROM track_group_l1_members WHERE group_id=?", (group_id,))
         conn.execute("DELETE FROM track_group_members WHERE group_id = ?", (group_id,))
         conn.execute("DELETE FROM track_groups WHERE group_id = ?", (group_id,))

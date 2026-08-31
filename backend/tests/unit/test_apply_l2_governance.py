@@ -13,6 +13,10 @@ from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_V
 from backend.domains.music_search.year_end_projection import (
     YEAR_END_PROJECTION_BUILDER_VERSION,
 )
+from backend.domains.playback.album_composition_auto_merge import (
+    ALBUM_COMPOSITION_POLICY_VERSION,
+    AlbumCompositionApplyReport,
+)
 from backend.domains.playback.album_project_auto_merge import (
     AlbumProjectAutoMergeApplyReport,
 )
@@ -107,6 +111,7 @@ def _create_database(path: Path) -> None:
                 parent_group_id INTEGER,
                 is_manual INTEGER NOT NULL,
                 group_status TEXT NOT NULL,
+                automatic_spotify_track_id TEXT,
                 automatic_artist_id INTEGER,
                 automatic_title_key TEXT,
                 automatic_version_tag TEXT,
@@ -127,6 +132,17 @@ def _create_database(path: Path) -> None:
                 status TEXT NOT NULL,
                 UNIQUE(scope, original_l1_id, candidate_l1_id)
             );
+
+            CREATE TABLE release_groups(
+                group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                canonical_name TEXT NOT NULL,
+                artist_id INTEGER,
+                primary_album_id INTEGER,
+                scope TEXT NOT NULL,
+                parent_group_id INTEGER,
+                is_manual INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE release_group_members(group_id INTEGER, album_id INTEGER);
 
             CREATE TABLE album_projects(
                 project_id INTEGER PRIMARY KEY,
@@ -326,8 +342,21 @@ def _empty_album_report() -> AlbumProjectAutoMergeApplyReport:
     )
 
 
+def _empty_album_composition_report() -> AlbumCompositionApplyReport:
+    return AlbumCompositionApplyReport(
+        candidate_count=0,
+        groups_created=0,
+        groups_updated=0,
+        groups_archived=0,
+        release_children_created=0,
+        unchanged_groups=0,
+        album_project_revision=2,
+        requires_downstream_refresh=False,
+    )
+
+
 def _patch_successful_relations(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[bool]]:
-    calls: dict[str, list[bool]] = {"l1_bump": [], "l2_bump": []}
+    calls: dict[str, list[bool]] = {"l1_bump": [], "l2_bump": [], "l3_bump": []}
     monkeypatch.setattr(governance, "run_migrations", lambda: None)
     monkeypatch.setattr(
         governance,
@@ -413,6 +442,45 @@ def _patch_successful_relations(monkeypatch: pytest.MonkeyPatch) -> dict[str, li
         return {"status": "applied", "changed": True, "group_count": 1}
 
     monkeypatch.setattr(governance, "apply_l2_track_merge_plan", apply_l2)
+
+    def build_l3(_conn):
+        return {
+            "policy_version": "fixture-l3",
+            "state_digest": "fixture",
+            "changed": False,
+            "desired_group_count": 0,
+            "groups_to_create": 0,
+            "groups_to_update": 0,
+            "groups_to_archive": 0,
+            "archived_group_ids": [],
+            "accepted_edges": [],
+            "blocked_edges": [],
+            "warning_edges": [],
+            "warning_reason_counts": {},
+            "groups": [],
+        }
+
+    monkeypatch.setattr(governance, "build_l3_track_merge_plan", build_l3)
+
+    def apply_l3(_conn, _plan, *, commit=False, bump_revision=True):
+        assert commit is False
+        calls["l3_bump"].append(bool(bump_revision))
+        return {
+            "status": "unchanged",
+            "changed": False,
+            "group_count": 0,
+            "groups_created": 0,
+            "groups_updated": 0,
+            "groups_archived": 0,
+            "members_added": 0,
+            "members_removed": 0,
+            "recording_parents_updated": 0,
+            "candidate_evidence_upserted": 0,
+            "revision_bumped": False,
+            "track_identity_revision": 5,
+        }
+
+    monkeypatch.setattr(governance, "apply_l3_track_merge_plan", apply_l3)
     monkeypatch.setattr(
         governance,
         "plan_album_project_auto_merges",
@@ -427,6 +495,22 @@ def _patch_successful_relations(monkeypatch: pytest.MonkeyPatch) -> dict[str, li
         governance,
         "apply_album_project_auto_merge_plan",
         lambda *_a, **_k: _empty_album_report(),
+    )
+    monkeypatch.setattr(
+        governance,
+        "plan_album_composition_merges",
+        lambda _conn: SimpleNamespace(
+            policy_version=ALBUM_COMPOSITION_POLICY_VERSION,
+            candidates=(),
+            archive_group_ids=(),
+            scanned_project_count=0,
+            skipped_reason_counts=(),
+        ),
+    )
+    monkeypatch.setattr(
+        governance,
+        "apply_album_composition_plan",
+        lambda *_a, **_k: _empty_album_composition_report(),
     )
     monkeypatch.setattr(
         governance,
@@ -457,6 +541,9 @@ def test_clone_plan_runs_two_round_simulation_and_reports_aggregate_changes(
         "l1_operation_count": 0,
         "l2_changed": False,
         "l2_groups_to_archive": 0,
+        "l3_changed": False,
+        "l2_preserved_by_l3": True,
+        "album_l3_changed": False,
     }
     assert len(report["l1"]["rounds"]) == 2
     assert len(report["track"]["rounds"]) == 2
@@ -466,7 +553,11 @@ def test_clone_plan_runs_two_round_simulation_and_reports_aggregate_changes(
     assert report["track"]["groups_to_update"] == 0
     assert report["track"]["groups_to_archive"] == 0
     assert report["track"]["groups"][0]["governance_round"] == 1
-    assert calls == {"l1_bump": [False], "l2_bump": [False, False]}
+    assert calls == {
+        "l1_bump": [False],
+        "l2_bump": [False, False],
+        "l3_bump": [False],
+    }
 
     conn = sqlite3.connect(path)
     try:
@@ -498,7 +589,11 @@ def test_apply_commits_auditable_header_preserves_raw_and_bumps_revision_once(
 
     assert report["governance_status"] == "applied"
     assert db_mod.DB_PATH == original_db_path
-    assert calls == {"l1_bump": [False], "l2_bump": [False, False]}
+    assert calls == {
+        "l1_bump": [False],
+        "l2_bump": [False, False],
+        "l3_bump": [False],
+    }
     assert report["track_identity_revision"] == {"before": 5, "after": 6, "delta": 1}
     assert report["relation_validation"]["raw_facts_preserved"] is True
     conn = sqlite3.connect(path)
