@@ -98,6 +98,57 @@ def _context_row(
     ).fetchone()
 
 
+def load_published_entity_context(
+    conn: sqlite3.Connection,
+    *,
+    values: dict[str, Any],
+    entity_type: str,
+    merge_level: int,
+    track_id: int | None = None,
+    name: str | None = None,
+    artist_name: str | None = None,
+) -> dict[str, Any] | None:
+    """Read one exact ready search/chart snapshot without rebuilding charts."""
+    try:
+        snapshot_key = _snapshot_key(conn, values)
+        if snapshot_key is None:
+            return None
+        kind = entity_type
+        if entity_type == "album":
+            kind = "album" if merge_level <= 1 else "album_project"
+        document = _active_document(
+            conn,
+            kind=kind,
+            merge_level=merge_level,
+            track_id=track_id,
+            name=name,
+            artist_name=artist_name,
+        )
+        if document is None:
+            return None
+        context = _context_row(conn, snapshot_key, str(document["entity_key"]))
+    except sqlite3.OperationalError:
+        # Pre-migration databases and focused unit fixtures legitimately lack
+        # published search-snapshot tables. Callers retain their full-builder
+        # compatibility fallback for that case.
+        return None
+    if context is None:
+        return None
+    return {
+        "snapshot_key": snapshot_key,
+        "entity_key": str(document["entity_key"]),
+        "name": str(document["label"]),
+        "artist_name": document["artist_name"],
+        "play_events": int(context["play_events"] or 0),
+        "total_ms": int(context["total_ms"] or 0),
+        "peak_position": context["peak_position"],
+        "weeks_on_chart": int(context["weeks_on_chart"] or 0),
+        "weeks_at_no1": int(context["weeks_at_no1"] or 0),
+        "power_score": context["power_score"],
+        "power_rank": context["power_rank"],
+    }
+
+
 def _track_meta(conn: sqlite3.Connection, track_id: int) -> dict | None:
     row = conn.execute(
         """SELECT stm.duration_ms, stm.popularity, stm.explicit,

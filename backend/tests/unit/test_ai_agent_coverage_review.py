@@ -636,3 +636,59 @@ def test_preference_comparison_cold_start_uses_one_bounded_compare() -> None:
             },
         },
     ]
+
+
+def test_steered_preference_comparison_uses_bounded_result_not_old_lifetime_result() -> None:
+    question = (
+        "从播放次数来看，比较 GUTS 和 The Life of a Showgirl 这两张专辑；只看今年；再比较播放时长。"
+    )
+    frame, recipe = _frame_and_recipe(question)
+    tool_results = [
+        {
+            "tool_name": "compare_entities",
+            "status": "ok",
+            "data": {
+                "entity_type": "album",
+                "period": {"period": "lifetime"},
+                "winner_by_cumulative_plays": "GUTS",
+                "winner_by_intensity": "GUTS",
+                "entities": [
+                    {"name": "GUTS", "found": True},
+                    {"name": "The Life of a Showgirl", "found": True},
+                ],
+            },
+        },
+        {
+            "tool_name": "compare_entities",
+            "status": "ok",
+            "data": {
+                "entity_type": "album",
+                "period": {
+                    "period": "custom",
+                    "start_date": "2026-01-01",
+                    "end_date": "2026-08-21",
+                },
+                "winner_by_cumulative_plays": "The Life of a Showgirl",
+                "winner_by_total_hours": "The Life of a Showgirl",
+                "winner_by_intensity": "The Life of a Showgirl",
+                "entities": [
+                    {"name": "GUTS", "found": True},
+                    {"name": "The Life of a Showgirl", "found": True},
+                ],
+                "fairness_notes": ["对象进入播放历史的时间不同。"],
+            },
+        },
+    ]
+
+    review = review_evidence_sufficiency(
+        question_frame=frame.model_dump(),
+        evidence_recipe=recipe.model_dump(),
+        tool_results=tool_results,
+        coverage={"comparison": {"compare_entities": "found"}},
+    )
+
+    assert review["sufficient"] is True
+    assert review["axis_coverage"]["cumulative"] == "covered"
+    assert review["axis_coverage"]["intensity"] == "covered"
+    assert review["axis_coverage"]["recency"] == "covered"
+    assert review["followup_tool_calls"] == []

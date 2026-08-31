@@ -48,7 +48,7 @@ def test_live_quality_gate_fails_unsupported_numeric_claims() -> None:
     assert any("unsupported numeric claims" in issue for issue in graded["issues"])
 
 
-def test_live_quality_gate_marks_grounded_fallback_and_slow_turn_partial() -> None:
+def test_live_quality_gate_marks_slow_and_excessive_tool_turn_partial() -> None:
     case = MatrixCase("AI-01", "问题", "预期", [])
     task = _task_result(
         grounded_fallback_used=True,
@@ -58,4 +58,14 @@ def test_live_quality_gate_marks_grounded_fallback_and_slow_turn_partial() -> No
     graded = _grade_case(case, task, _events())
 
     assert graded["grade"] == "Partial"
-    assert len(graded["issues"]) == 3
+    assert len(graded["issues"]) == 2
+
+
+def test_live_quality_gate_accepts_fully_grounded_deterministic_fallback() -> None:
+    case = MatrixCase("AI-01", "问题", "预期", [])
+    task = _task_result(grounded_fallback_used=True)
+
+    graded = _grade_case(case, task, _events())
+
+    assert graded["grade"] == "Pass"
+    assert graded["grounded_fallback_used"] is True

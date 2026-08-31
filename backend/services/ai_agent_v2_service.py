@@ -65,7 +65,6 @@ from backend.services.ai_agent_service import (
     ChatAgentError,
     _apply_obligation_fallback_notes,
     _combined_answer_issues,
-    _ensure_grounded_answer,
     _final_payload,
     _is_terminal,
     _mark_done,
@@ -404,6 +403,179 @@ def _apply_deterministic_answer_patches(
     return patched
 
 
+def _ranking_table_fallback(
+    request: dict[str, Any],
+    tool_results: list[dict[str, Any]],
+) -> str | None:
+    question = str(request.get("question") or "")
+    if "表格" not in question and "markdown" not in question.casefold():
+        return None
+    rows: list[str] = []
+    for item in tool_results:
+        if item.get("tool_name") != "analysis_charts":
+            continue
+        data = item.get("data")
+        if not isinstance(data, dict):
+            continue
+        entity_type = str(data.get("entity") or "")
+        if entity_type not in {"artist", "album", "track"}:
+            continue
+        metric = str(data.get("metric") or "plays")
+        source_range = str(item.get("source_range") or "")
+        period_label = source_range[:4] if len(source_range) >= 4 else source_range
+        for row in (data.get("rows") or [])[:5]:
+            if not isinstance(row, dict):
+                continue
+            name = (
+                row.get("artist_name")
+                if entity_type == "artist"
+                else row.get("album_name")
+                if entity_type == "album"
+                else row.get("track_name")
+            )
+            value = row.get(metric)
+            if not name or value is None:
+                continue
+            rows.append(f"| {period_label} | {row.get('rank')} | {name} | {value} |")
+    if not rows:
+        return None
+    return "\n".join(
+        [
+            "根据本地只读排行证据，结果如下：",
+            "",
+            "| 年份 | 排名 | 艺人 | 播放次数 |",
+            "|---|---:|---|---:|",
+            *rows,
+            "",
+            "限制：表格只使用当前工具已经返回且可追溯的排行事实。",
+        ]
+    )
+
+
+def _comparison_fallback(tool_results: list[dict[str, Any]]) -> str | None:
+    for item in reversed(tool_results):
+        if item.get("tool_name") != "compare_entities":
+            continue
+        data = item.get("data")
+        if not isinstance(data, dict):
+            continue
+        entities = data.get("entities")
+        if not isinstance(entities, list) or not entities:
+            continue
+        includes_billboard = data.get("includes_personal_billboard") is True
+        lines = (
+            [
+                "根据本地播放与个人 Billboard 的同口径证据，比较如下：",
+                "",
+                "| 对象 | 播放次数 | 播放时长（小时） | Power Score | 个人榜单排名 | 在榜周数 | 单位在榜周播放 |",
+                "|---|---:|---:|---:|---:|---:|---:|",
+            ]
+            if includes_billboard
+            else [
+                "根据本地播放的同口径证据，比较如下：",
+                "",
+                "| 对象 | 播放次数 | 播放时长（小时） | 所选窗口周均播放 |",
+                "|---|---:|---:|---:|",
+            ]
+        )
+
+        def display(value: Any) -> Any:
+            return "—" if value is None else value
+
+        for entity in entities:
+            if not isinstance(entity, dict) or not entity.get("found"):
+                continue
+            name = entity.get("name") or entity.get("requested_name") or "未知对象"
+            if includes_billboard:
+                lines.append(
+                    "| {name} | {plays} | {hours} | {power_score} | {power_rank} | "
+                    "{weeks_on_chart} | {plays_per_chart_week} |".format(
+                        name=name,
+                        plays=display(entity.get("plays")),
+                        hours=display(entity.get("hours")),
+                        power_score=display(entity.get("power_score")),
+                        power_rank=display(entity.get("power_rank")),
+                        weeks_on_chart=display(entity.get("weeks_on_chart")),
+                        plays_per_chart_week=display(entity.get("plays_per_chart_week")),
+                    )
+                )
+            else:
+                lines.append(
+                    "| {name} | {plays} | {hours} | {plays_per_window_week} |".format(
+                        name=name,
+                        plays=display(entity.get("plays")),
+                        hours=display(entity.get("hours")),
+                        plays_per_window_week=display(entity.get("plays_per_window_week")),
+                    )
+                )
+        conclusions = [
+            f"累计播放更高：{display(data.get('winner_by_cumulative_plays'))}",
+            f"播放时长更高：{display(data.get('winner_by_total_hours'))}",
+        ]
+        if includes_billboard:
+            conclusions.extend(
+                [
+                    f"Power Score 更高：{display(data.get('winner_by_power_score'))}",
+                    f"单位在榜周播放更高：{display(data.get('winner_by_intensity'))}",
+                ]
+            )
+        else:
+            conclusions.append(f"所选窗口周均播放更高：{display(data.get('winner_by_intensity'))}")
+        lines.extend(["", "；".join(conclusions) + "。"])
+        if includes_billboard:
+            lines.append(
+                "口径说明：这里的 Billboard 是 SpotifyStats 本地个人 Billboard，不是外部官方 Billboard。"
+            )
+        return "\n".join(lines)
+    return None
+
+
+def _render_evidence_fallback(
+    request: dict[str, Any],
+    tool_results: list[dict[str, Any]],
+    final_payload: dict[str, Any],
+) -> str:
+    return (
+        _comparison_fallback(tool_results)
+        or _ranking_table_fallback(request, tool_results)
+        or render_grounded_fallback(final_payload.get("fact_catalog") or [])
+    )
+
+
+def _ensure_v2_grounded_answer(
+    answer: str,
+    final_payload: dict[str, Any],
+    issues: list[str],
+    *,
+    request: dict[str, Any],
+    tool_results: list[dict[str, Any]],
+) -> tuple[str, list[str], bool]:
+    unsupported_prefix = "回答包含无法追溯到事实目录的数字："
+    if not any(issue.startswith(unsupported_prefix) for issue in issues):
+        return answer, issues, False
+    fallback = _render_evidence_fallback(request, tool_results, final_payload)
+    fallback_issues = _combined_answer_issues(fallback, final_payload)
+    fallback = _apply_obligation_fallback_notes(
+        fallback,
+        final_payload,
+        fallback_issues,
+    )
+    fallback_issues = _combined_answer_issues(fallback, final_payload)
+    if any(issue.startswith(unsupported_prefix) for issue in fallback_issues):
+        interpretation = final_payload.get("temporal_guard") or {}
+        interpretation = interpretation.get("time_interpretation") or {}
+        label = str(interpretation.get("label") or "用户指定范围")
+        temporal_context = final_payload.get("temporal_context") or {}
+        cutoff = temporal_context.get("data_end_date")
+        cutoff_note = f"本地播放数据截至 {cutoff}。" if cutoff else ""
+        fallback = (
+            f"已按“{label}”查询本地只读数据。{cutoff_note}"
+            "限制：为避免发布无法完整追溯的数字，本次只确认工具已有可用结果。"
+        )
+        fallback_issues = _combined_answer_issues(fallback, final_payload)
+    return fallback, fallback_issues, True
+
+
 def _validate_answer(
     answer: str,
     final_payload: dict[str, Any],
@@ -443,8 +615,9 @@ def _consume_session_inbox(
     step_index: int,
     state: AgentSessionState,
     temporal_context: dict[str, Any],
-) -> tuple[int, AgentSessionState]:
+) -> tuple[int, AgentSessionState, bool]:
     inputs = repo.consume_agent_inputs(task_id)
+    evidence_invalidated = False
     for item in inputs:
         update = apply_session_input(
             state,
@@ -455,6 +628,12 @@ def _consume_session_inbox(
         if update.action == "cancel":
             cancellation_registry.request_cancel(task_id)
             raise AgentCancelledError("Agent 任务已取消")
+        if update.action in {
+            "replace_constraints",
+            "remove_requirements",
+            "replace_task",
+        }:
+            evidence_invalidated = True
         state = update.state
         message = {
             "role": "user",
@@ -503,7 +682,7 @@ def _consume_session_inbox(
                 "state": state.public_constraints(),
             },
         )
-    return len(inputs), state
+    return len(inputs), state, evidence_invalidated
 
 
 def _update_stage(
@@ -606,6 +785,7 @@ class AgentRuntime:
         if is_resuming:
             session_state = restore_session_state(persisted_events, session_state)
         request["question"] = session_state.effective_question()
+        request["_agent_session_state"] = session_state.to_dict()
         question_context = _question_context(request)
         turn_budget = _dynamic_budget(
             question_context,
@@ -620,6 +800,7 @@ class AgentRuntime:
         answer_retried = False
         forced_tool_retry = False
         consecutive_duplicate_steps = 0
+        last_step_index = 0
         try:
             if not _update_stage(
                 repo,
@@ -787,6 +968,7 @@ class AgentRuntime:
 
             first_step = checkpoint.next_step if is_resuming and checkpoint else 1
             for step_index in range(first_step, self.max_steps + 1):
+                last_step_index = step_index
                 if step_index > turn_budget.max_steps:
                     break
                 self._check_continue(
@@ -795,7 +977,7 @@ class AgentRuntime:
                     started_at,
                     timeout_seconds=turn_budget.turn_timeout_seconds,
                 )
-                consumed_count, session_state = _consume_session_inbox(
+                consumed_count, session_state, evidence_invalidated = _consume_session_inbox(
                     repo,
                     log,
                     messages,
@@ -805,7 +987,19 @@ class AgentRuntime:
                     temporal_context=temporal_context,
                 )
                 if consumed_count:
+                    if evidence_invalidated and tool_results:
+                        invalidated_count = len(tool_results)
+                        tool_results.clear()
+                        log.append(
+                            "tool_evidence_invalidated",
+                            {
+                                "reason": "session_state_updated",
+                                "invalidated_result_count": invalidated_count,
+                            },
+                            step_index=step_index,
+                        )
                     request["question"] = session_state.effective_question()
+                    request["_agent_session_state"] = session_state.to_dict()
                     request.pop("_temporal_guard", None)
                     dynamic_context = _question_context(request)
                     profile = select_agent_profile(dynamic_context, self.registry)
@@ -1028,6 +1222,8 @@ class AgentRuntime:
                     )
                     continue
                 if not proposed_answer:
+                    if tool_results:
+                        raise AgentBudgetExceededError("模型未返回最终文本，已切换到现有证据回答")
                     raise ChatAgentError("模型未返回回答或工具调用")
 
                 with metrics.measure_validation():
@@ -1071,10 +1267,12 @@ class AgentRuntime:
                         tool_results,
                     )
                     validation_issues = _validate_answer(answer, final_payload)
-                    answer, validation_issues, grounded_fallback_used = _ensure_grounded_answer(
+                    answer, validation_issues, grounded_fallback_used = _ensure_v2_grounded_answer(
                         answer,
                         final_payload,
                         validation_issues,
+                        request=request,
+                        tool_results=tool_results,
                     )
                 result = _result_payload(
                     answer=answer,
@@ -1111,6 +1309,33 @@ class AgentRuntime:
             raise AgentBudgetExceededError("Agent 达到最大步骤数，仍未形成可靠回答")
         except AgentCancelledError:
             log.append("run_cancelled", {"runtime_metrics": metrics.snapshot()})
+        except AgentBudgetExceededError as exc:
+            if self._publish_evidence_degraded_answer(
+                repo=repo,
+                log=log,
+                task_id=task_id,
+                turn_id=turn_id,
+                step_index=last_step_index,
+                request=request,
+                tool_results=tool_results,
+                metrics=metrics,
+                answer_retried=answer_retried,
+                stop_reason="budget_degraded_fallback",
+                message="运行预算已到，已基于取得的本地证据完成保守回答",
+                result_extra={"budget_degraded": True},
+            ):
+                return
+            error_message = str(exc) or exc.__class__.__name__
+            log.append(
+                "run_failed",
+                {"error": error_message, "runtime_metrics": metrics.snapshot()},
+            )
+            _mark_error(
+                repo,
+                task_id=task_id,
+                message=error_message,
+                result={"error": error_message},
+            )
         except Exception as exc:
             error_message = str(exc) or exc.__class__.__name__
             log.append(
@@ -1140,6 +1365,40 @@ class AgentRuntime:
         attempts: tuple[ModelStepAttempt, ...],
         answer_retried: bool,
     ) -> bool:
+        return self._publish_evidence_degraded_answer(
+            repo=repo,
+            log=log,
+            task_id=task_id,
+            turn_id=turn_id,
+            step_index=step_index,
+            request=request,
+            tool_results=tool_results,
+            metrics=metrics,
+            answer_retried=answer_retried,
+            stop_reason="provider_degraded_fallback",
+            message="模型服务波动，已基于现有本地证据完成保守回答",
+            result_extra={
+                "provider_degraded": True,
+                "provider_attempts": _safe_attempt_payload(attempts),
+            },
+        )
+
+    def _publish_evidence_degraded_answer(
+        self,
+        *,
+        repo: AiTaskRepository,
+        log: AgentEventLog,
+        task_id: str,
+        turn_id: str,
+        step_index: int,
+        request: dict[str, Any],
+        tool_results: list[dict[str, Any]],
+        metrics: RuntimeMetrics,
+        answer_retried: bool,
+        stop_reason: str,
+        message: str,
+        result_extra: dict[str, Any],
+    ) -> bool:
         usable_evidence = any(
             str(item.get("status") or "") not in {"", "error"} for item in tool_results
         )
@@ -1147,7 +1406,7 @@ class AgentRuntime:
             return False
         with metrics.measure_validation():
             final_payload = _final_payload(request, tool_results)
-            answer = render_grounded_fallback(final_payload.get("fact_catalog") or [])
+            answer = _render_evidence_fallback(request, tool_results, final_payload)
             validation_issues = _validate_answer(answer, final_payload)
             answer = _apply_deterministic_answer_patches(
                 answer,
@@ -1156,10 +1415,12 @@ class AgentRuntime:
                 tool_results,
             )
             validation_issues = _validate_answer(answer, final_payload)
-            answer, validation_issues, _ = _ensure_grounded_answer(
+            answer, validation_issues, _ = _ensure_v2_grounded_answer(
                 answer,
                 final_payload,
                 validation_issues,
+                request=request,
+                tool_results=tool_results,
             )
         result = _result_payload(
             answer=answer,
@@ -1176,16 +1437,15 @@ class AgentRuntime:
                 "agent_runtime": "v2",
                 "turn_id": turn_id,
                 "steps": step_index,
-                "stop_reason": "provider_degraded_fallback",
-                "provider_degraded": True,
-                "provider_attempts": _safe_attempt_payload(attempts),
+                "stop_reason": stop_reason,
                 "runtime_metrics": runtime_metrics,
+                **result_extra,
             }
         )
         log.append(
             "turn_ended",
             {
-                "stop_reason": "provider_degraded_fallback",
+                "stop_reason": stop_reason,
                 "steps": step_index,
                 "tool_call_count": len(tool_results),
                 "validation_issues": validation_issues,
@@ -1196,7 +1456,7 @@ class AgentRuntime:
         _mark_done(
             repo,
             task_id=task_id,
-            message="模型服务波动，已基于现有本地证据完成保守回答",
+            message=message,
             result=result,
         )
         return True

@@ -206,6 +206,37 @@ def test_builds_analysis_charts_evidence_card_for_ranked_rows():
     assert cards[0].metrics[1].value == "Taylor Swift"
 
 
+def test_analysis_charts_evidence_keeps_explicit_top_five() -> None:
+    cards = build_evidence_cards(
+        [
+            {
+                "tool_name": "analysis_charts",
+                "status": "done",
+                "source_range": "2025-01-01..2025-12-31",
+                "data": {
+                    "period": {"label": "2025"},
+                    "entity": "artist",
+                    "metric": "plays",
+                    "total": 5,
+                    "rows": [
+                        {
+                            "rank": rank,
+                            "artist_name": f"Artist {rank}",
+                            "plays": 100 - rank,
+                            "share_pct": 10 - rank,
+                        }
+                        for rank in range(1, 6)
+                    ],
+                },
+            }
+        ]
+    )
+
+    metric_names = {metric.name for metric in cards[0].metrics}
+    assert "top_5_name" in metric_names
+    assert "top_5_plays" in metric_names
+
+
 def test_builds_wrapped_yearly_evidence_card_for_yearly_summary():
     cards = build_evidence_cards(
         [

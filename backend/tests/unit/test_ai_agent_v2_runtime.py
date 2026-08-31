@@ -308,6 +308,83 @@ def test_agent_v2_replaces_repeated_unsupported_numbers_with_grounded_fallback(
     assert result["claim_ledger"]["unsupported_literals"] == []
 
 
+def test_v2_grounded_fallback_preserves_requested_markdown_ranking_table() -> None:
+    request = {"question": "请用 Markdown 表格比较 2025 年 Top 5 艺人"}
+    tool_results = [
+        {
+            "tool_name": "analysis_charts",
+            "status": "ok",
+            "source_range": "2025-01-01..2025-12-31",
+            "result_summary": "artist rows=5",
+            "data": {
+                "period": {"label": "2025"},
+                "entity": "artist",
+                "metric": "plays",
+                "total": 5,
+                "rows": [
+                    {
+                        "rank": rank,
+                        "artist_name": f"Artist {rank}",
+                        "plays": 100 - rank,
+                        "share_pct": 10 - rank,
+                    }
+                    for rank in range(1, 6)
+                ],
+            },
+        }
+    ]
+    final_payload = ai_agent_service._final_payload(request, tool_results)
+
+    answer, issues, used = ai_agent_v2_service._ensure_v2_grounded_answer(
+        "模型声称有 999 次播放",
+        final_payload,
+        ["回答包含无法追溯到事实目录的数字：999"],
+        request=request,
+        tool_results=tool_results,
+    )
+
+    assert used is True
+    assert "| 年份 | 排名 | 艺人 | 播放次数 |" in answer
+    assert "| 2025 | 5 | Artist 5 | 95 |" in answer
+    assert not any("无法追溯" in issue for issue in issues)
+
+
+def test_v2_grounded_fallback_has_non_numeric_last_resort(monkeypatch) -> None:
+    request = {"question": "去年夏天我最常听什么？"}
+    tool_results = [
+        {
+            "tool_name": "analysis_charts",
+            "status": "ok",
+            "source_range": "2025-06-01..2025-08-31",
+            "data": {
+                "period": {"label": "自定义"},
+                "entity": "artist",
+                "metric": "plays",
+                "total": 1,
+                "rows": [{"rank": 1, "artist_name": "Artist A", "plays": 12}],
+            },
+        }
+    ]
+    final_payload = ai_agent_service._final_payload(request, tool_results)
+    monkeypatch.setattr(
+        ai_agent_v2_service,
+        "_render_evidence_fallback",
+        lambda request, tool_results, final_payload: "错误回退声称 999 次",
+    )
+
+    answer, issues, used = ai_agent_v2_service._ensure_v2_grounded_answer(
+        "模型声称 999 次",
+        final_payload,
+        ["回答包含无法追溯到事实目录的数字：999"],
+        request=request,
+        tool_results=tool_results,
+    )
+
+    assert used is True
+    assert "999" not in answer
+    assert not any("无法追溯" in issue for issue in issues)
+
+
 def test_agent_v2_provider_failure_after_tool_preserves_evidence_and_finishes(
     tmp_path,
     monkeypatch,
@@ -359,6 +436,151 @@ def test_agent_v2_provider_failure_after_tool_preserves_evidence_and_finishes(
     assert result["grounded_fallback_used"] is True
     assert result["evidence_coverage"] == 1.0
     assert "12" in result["answer"]
+
+
+def test_agent_v2_budget_timeout_after_tool_publishes_observed_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "agent-budget-degraded.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+    now = [0.0]
+
+    def slow_chart_handler(params: BaseModel) -> AgentToolResult:
+        now[0] += 20.0
+        return _chart_handler(params)
+
+    registry = AgentToolRegistry()
+    registry.register(
+        AgentToolDefinition(
+            name="analysis_charts",
+            description="Read rankings",
+            read_only=True,
+            params_model=ChartParams,
+            handler=slow_chart_handler,
+        )
+    )
+    model = FakeModel()
+    AgentRuntime(
+        model=model,
+        registry=registry,
+        max_steps=4,
+        timeout_seconds=10,
+        clock=lambda: now[0],
+    ).run("task-v2", {"question": "谁是我听得最多的艺人？"})
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    result = json.loads(task["result_json"])
+    conn.close()
+
+    assert task["status"] == "done"
+    assert model.calls == 1
+    assert result["stop_reason"] == "budget_degraded_fallback"
+    assert result["budget_degraded"] is True
+    assert result["grounded_fallback_used"] is True
+    assert result["evidence_coverage"] == 1.0
+    assert "12" in result["answer"]
+
+
+def test_agent_v2_empty_completion_after_tool_uses_observed_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "agent-empty-completion.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class EmptyAfterToolModel(FakeModel):
+        def complete(self, messages, tools, *, thinking):
+            if self.calls == 0:
+                return super().complete(messages, tools, thinking=thinking)
+            self.calls += 1
+            return LLMCompletion(content="", tool_calls=[])
+
+    model = EmptyAfterToolModel()
+    AgentRuntime(model=model, registry=_chart_registry(), max_steps=4).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？"},
+    )
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    result = json.loads(task["result_json"])
+    conn.close()
+
+    assert task["status"] == "done"
+    assert result["stop_reason"] == "budget_degraded_fallback"
+    assert result["grounded_fallback_used"] is True
+    assert result["evidence_coverage"] == 1.0
+
+
+def test_comparison_fallback_honors_billboard_exclusion() -> None:
+    answer = ai_agent_v2_service._comparison_fallback(
+        [
+            {
+                "tool_name": "compare_entities",
+                "data": {
+                    "includes_personal_billboard": False,
+                    "winner_by_cumulative_plays": "Showgirl",
+                    "winner_by_total_hours": "Showgirl",
+                    "winner_by_intensity": "GUTS",
+                    "entities": [
+                        {
+                            "name": "GUTS",
+                            "found": True,
+                            "plays": 271,
+                            "hours": 14.3,
+                            "plays_per_window_week": 8.2,
+                            "power_score": None,
+                        },
+                        {
+                            "name": "Showgirl",
+                            "found": True,
+                            "plays": 524,
+                            "hours": 31.3,
+                            "plays_per_window_week": 15.9,
+                            "power_score": None,
+                        },
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert answer is not None
+    assert "Billboard" not in answer
+    assert "Power Score" not in answer
+    assert "None" not in answer
+    assert "播放时长更高：Showgirl" in answer
+    assert "所选窗口周均播放更高：GUTS" in answer
+
+
+def test_question_context_honors_structured_metric_exclusions() -> None:
+    context = ai_agent_service._question_context(
+        {
+            "question": "比较 GUTS 和 Showgirl 的播放次数与个人 Billboard；再比较播放时长",
+            "_agent_session_state": {
+                "metrics": ["plays", "hours"],
+                "excluded_dimensions": ["personal_billboard"],
+            },
+        }
+    )
+
+    assert context["routing_signals"]["explicit_billboard"] is False
+    assert context["question_intent"]["requested_metrics"] == ["plays", "hours"]
+    assert "personal_billboard" not in context["question_frame"]["analysis_axes"]
+    assert "personal_billboard" not in context["evidence_recipe"]["required_axes"]
+    assert "personal_billboard" not in context["evidence_recipe"]["conditional_axes"]
 
 
 def test_agent_v2_safety_boundary_does_not_call_model(tmp_path, monkeypatch):
@@ -423,15 +645,20 @@ def test_agent_v2_stops_repeated_identical_tool_loop(tmp_path, monkeypatch):
     )
 
     conn = factory()
-    task = conn.execute("SELECT status, error FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    task = conn.execute(
+        "SELECT status, error, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
     tool_count = conn.execute("SELECT COUNT(*) FROM ai_tool_calls").fetchone()[0]
     deduplicated = conn.execute(
         "SELECT COUNT(*) FROM ai_agent_turn_events WHERE event_type='tool_call_deduplicated'"
     ).fetchone()[0]
     conn.close()
 
-    assert task["status"] == "error"
-    assert "重复" in task["error"]
+    result = json.loads(task["result_json"])
+    assert task["status"] == "done"
+    assert task["error"] is None
+    assert result["stop_reason"] == "budget_degraded_fallback"
+    assert result["evidence_coverage"] == 1.0
     assert tool_count == 1
     assert deduplicated == 2
 
@@ -895,6 +1122,71 @@ def test_agent_consumes_session_inbox_before_next_model_step(tmp_path, monkeypat
     assert public_payload["state"]["time_range"]["period"] == "custom"
     assert "active_question" not in public_payload["state"]
     assert "pending_requirements" not in public_payload["state"]
+
+
+def test_steering_invalidates_tool_evidence_from_old_constraints(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "agent-steering-evidence.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class SteeringModel:
+        calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del tools, thinking
+            self.calls += 1
+            if self.calls == 1:
+                conn = factory()
+                conn.execute(
+                    """INSERT INTO ai_agent_session_inbox
+                       (task_id, session_id, input_type, content)
+                       VALUES ('task-v2', 1, 'steer', '只看今年')"""
+                )
+                conn.commit()
+                conn.close()
+                return LLMCompletion(
+                    tool_calls=[
+                        LLMToolCall(
+                            call_id="old",
+                            name="analysis_charts",
+                            arguments={"entity": "artist", "metric": "plays"},
+                        )
+                    ]
+                )
+            if self.calls == 2:
+                return LLMCompletion(
+                    tool_calls=[
+                        LLMToolCall(
+                            call_id="new",
+                            name="analysis_charts",
+                            arguments={"entity": "artist", "metric": "plays"},
+                        )
+                    ]
+                )
+            return LLMCompletion(content="Taylor Swift 是第一名。")
+
+    AgentRuntime(model=SteeringModel(), registry=_chart_registry(), max_steps=4).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？", "session_id": 1},
+    )
+
+    conn = factory()
+    task = conn.execute("SELECT result_json FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    invalidated = conn.execute(
+        "SELECT payload_json FROM ai_agent_turn_events WHERE event_type='tool_evidence_invalidated'"
+    ).fetchone()
+    latest_tool_call = conn.execute(
+        "SELECT payload_json FROM ai_agent_turn_events "
+        "WHERE event_type='tool_call' ORDER BY event_id DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    result = json.loads(task["result_json"])
+
+    assert len(result["tools"]) == 1
+    assert json.loads(invalidated["payload_json"])["invalidated_result_count"] == 1
+    assert json.loads(latest_tool_call["payload_json"])["params"]["period"] == "custom"
 
 
 def _chart_registry() -> AgentToolRegistry:

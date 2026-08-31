@@ -369,12 +369,73 @@ def _question_context(request: dict[str, Any]) -> dict[str, Any]:
     intent = parse_question_intent(question)
     frame = build_question_frame(question, intent)
     recipe = recipe_for_frame(frame)
+    intent_payload = intent.model_dump()
+    frame_payload = frame.model_dump()
+    recipe_payload = recipe.model_dump()
+    session_state = request.get("_agent_session_state")
+    excluded = (
+        {
+            str(item)
+            for item in session_state.get("excluded_dimensions", [])
+            if isinstance(item, str)
+        }
+        if isinstance(session_state, dict)
+        else set()
+    )
+    state_metrics = (
+        [
+            str(item)
+            for item in session_state.get("metrics", [])
+            if isinstance(item, str) and item not in excluded
+        ]
+        if isinstance(session_state, dict)
+        else []
+    )
+    if excluded or state_metrics:
+        metrics = [
+            str(item)
+            for item in intent_payload.get("requested_metrics", [])
+            if str(item) not in excluded
+        ]
+        for metric in state_metrics:
+            if metric not in metrics:
+                metrics.append(metric)
+        intent_payload["requested_metrics"] = metrics or ["summary"]
+        frame_payload["requested_metrics"] = list(intent_payload["requested_metrics"])
+        frame_payload["analysis_axes"] = [
+            axis for axis in frame_payload.get("analysis_axes", []) if axis not in excluded
+        ]
+        recipe_payload["required_axes"] = [
+            axis for axis in recipe_payload.get("required_axes", []) if axis not in excluded
+        ]
+        recipe_payload["conditional_axes"] = [
+            axis for axis in recipe_payload.get("conditional_axes", []) if axis not in excluded
+        ]
+        if "personal_billboard" in excluded:
+            intent_payload["needs_fairness_note"] = False
+            recipe_payload["required_tool_patterns"] = [
+                pattern
+                for pattern in recipe_payload.get("required_tool_patterns", [])
+                if not (
+                    isinstance(pattern, dict)
+                    and pattern.get("tool_name") == "billboard_entity_detail"
+                )
+            ]
+            recipe_payload["recommended_tool_patterns"] = [
+                pattern
+                for pattern in recipe_payload.get("recommended_tool_patterns", [])
+                if not (
+                    isinstance(pattern, dict)
+                    and pattern.get("tool_name") == "billboard_entity_detail"
+                )
+            ]
     return {
-        "question_intent": intent.model_dump(),
-        "question_frame": frame.model_dump(),
-        "evidence_recipe": recipe.model_dump(),
+        "question_intent": intent_payload,
+        "question_frame": frame_payload,
+        "evidence_recipe": recipe_payload,
         "routing_signals": {
-            "explicit_billboard": _question_contains_any(
+            "explicit_billboard": "personal_billboard" not in excluded
+            and _question_contains_any(
                 question,
                 (
                     "billboard",

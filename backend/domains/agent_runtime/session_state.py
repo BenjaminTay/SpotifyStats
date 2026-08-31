@@ -33,6 +33,7 @@ _REMOVE_TOKENS = ("不要", "不看", "排除", "去掉", "移除", "别看", "�
 _REPLACE_TOKENS = ("只看", "仅看", "改成", "改为", "换成", "限定", "改到")
 _ADD_TOKENS = ("再", "还要", "同时", "另外", "补充", "也看", "加上")
 _CANCEL_TOKENS = ("取消", "停止", "别继续", "不用查了")
+_CLAUSE_SPLIT_PATTERN = re.compile(r"[，,。；;\n]+")
 _DIMENSION_TOKENS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("personal_billboard", ("billboard", "个人榜", "冠军周", "在榜周", "power score")),
     ("hours", ("播放时长", "收听时长", "时长", "小时")),
@@ -59,6 +60,40 @@ def _dimensions(content: str) -> list[str]:
         for dimension, tokens in _DIMENSION_TOKENS
         if any(token.casefold() in lowered for token in tokens)
     ]
+
+
+def _removal_dimensions(content: str) -> list[str]:
+    """Only treat dimensions in a negative clause as excluded."""
+
+    result: list[str] = []
+    for clause in _CLAUSE_SPLIT_PATTERN.split(content):
+        if any(token in clause for token in _REMOVE_TOKENS):
+            result.extend(_dimensions(clause))
+    return _unique(result)
+
+
+def _without_excluded_dimensions(content: str, excluded: list[str]) -> str:
+    """Remove excluded semantic dimensions from model-visible question text."""
+
+    clauses: list[str] = []
+    for raw_clause in _CLAUSE_SPLIT_PATTERN.split(content):
+        clause = raw_clause.strip()
+        if not clause:
+            continue
+        clause_dimensions = _dimensions(clause)
+        if any(token in clause for token in _REMOVE_TOKENS) and any(
+            dimension in excluded for dimension in clause_dimensions
+        ):
+            continue
+        for dimension, tokens in _DIMENSION_TOKENS:
+            if dimension not in excluded:
+                continue
+            for token in tokens:
+                clause = re.sub(re.escape(token), "", clause, flags=re.IGNORECASE)
+        clause = re.sub(r"\s+", " ", clause).strip(" 、和与及：:")
+        if clause:
+            clauses.append(clause)
+    return "；".join(clauses)
 
 
 def _time_range(content: str, temporal_context: dict[str, Any]) -> dict[str, Any]:
@@ -196,8 +231,13 @@ class AgentSessionState:
         )
 
     def effective_question(self) -> str:
-        additions = "；".join(self.pending_requirements)
-        return f"{self.active_question}；{additions}" if additions else self.active_question
+        parts = [self.active_question, *self.pending_requirements]
+        effective = [
+            value
+            for item in parts
+            if (value := _without_excluded_dimensions(item, self.excluded_dimensions))
+        ]
+        return "；".join(_unique(effective))
 
     def model_context(self) -> str:
         return "SESSION_CONSTRAINTS（后端已结构化，后续工具选择与回答必须遵守）：" + json.dumps(
@@ -294,6 +334,7 @@ def apply_session_input(
         metric for metric in intent.requested_metrics if metric not in {"summary", "recent_window"}
     ]
     dimensions = _dimensions(requirement)
+    removal_dimensions = _removal_dimensions(requirement)
 
     if action == "replace_task":
         updated = initial_session_state(
@@ -303,11 +344,12 @@ def apply_session_input(
         )
         patch["active_question"] = requirement
     elif action == "remove_requirements":
-        updated.excluded_dimensions = _unique([*updated.excluded_dimensions, *dimensions])
-        updated.metrics = [item for item in updated.metrics if item not in dimensions]
-        if "personal_billboard" in dimensions:
+        removed = removal_dimensions or dimensions
+        updated.excluded_dimensions = _unique([*updated.excluded_dimensions, *removed])
+        updated.metrics = [item for item in updated.metrics if item not in removed]
+        if "personal_billboard" in removed:
             updated.filters["include_billboard"] = False
-        patch["excluded_dimensions"] = dimensions
+        patch["excluded_dimensions"] = removed
     else:
         if detected_time:
             updated.time_range = detected_time
@@ -331,12 +373,14 @@ def apply_session_input(
             updated.excluded_dimensions = [
                 item for item in updated.excluded_dimensions if item != "personal_billboard"
             ]
-        if any(token in requirement for token in _REMOVE_TOKENS) and dimensions:
-            updated.excluded_dimensions = _unique([*updated.excluded_dimensions, *dimensions])
-            updated.metrics = [item for item in updated.metrics if item not in dimensions]
-            if "personal_billboard" in dimensions:
+        if removal_dimensions:
+            updated.excluded_dimensions = _unique(
+                [*updated.excluded_dimensions, *removal_dimensions]
+            )
+            updated.metrics = [item for item in updated.metrics if item not in removal_dimensions]
+            if "personal_billboard" in removal_dimensions:
                 updated.filters["include_billboard"] = False
-            patch["excluded_dimensions"] = dimensions
+            patch["excluded_dimensions"] = removal_dimensions
         updated.pending_requirements = _unique([*updated.pending_requirements, requirement])
         patch["pending_requirements"] = list(updated.pending_requirements)
 

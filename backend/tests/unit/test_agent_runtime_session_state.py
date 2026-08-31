@@ -62,6 +62,33 @@ def test_session_state_applies_replace_add_and_remove_semantics() -> None:
     assert removed.action == "remove_requirements"
     assert "personal_billboard" in removed.state.excluded_dimensions
     assert removed.state.filters["include_billboard"] is False
+    assert "billboard" not in removed.state.effective_question().casefold()
+    assert "hours" in removed.state.metrics
+
+
+def test_session_state_mixed_steering_excludes_only_negative_clause() -> None:
+    state = initial_session_state(
+        {"question": ("比较 GUTS 和 The Life of a Showgirl 的播放次数与个人 Billboard")},
+        default_filters={"period": "lifetime", "include_billboard": True},
+        temporal_context=TEMPORAL_CONTEXT,
+    )
+
+    update = apply_session_input(
+        state,
+        input_type="steer",
+        content="只看今年，不要看 Billboard，再比较播放时长",
+        temporal_context=TEMPORAL_CONTEXT,
+    )
+
+    assert update.state.time_range["start_date"] == "2026-01-01"
+    assert "hours" in update.state.metrics
+    assert "hours" not in update.state.excluded_dimensions
+    assert "personal_billboard" in update.state.excluded_dimensions
+    assert update.state.filters["include_billboard"] is False
+    effective = update.state.effective_question().casefold()
+    assert "billboard" not in effective
+    assert "power score" not in effective
+    assert "播放时长" in effective
 
 
 def test_session_state_replace_task_resets_old_constraints() -> None:

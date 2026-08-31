@@ -10,6 +10,8 @@ import pandas as pd
 from backend.core.db import load_plays_for_artists
 from backend.domains.ai_agent.entity_resolver import resolve_entities
 from backend.domains.billboard.chart_compute import compute_billboard_data
+from backend.domains.billboard.detail_summary import load_published_entity_context
+from backend.domains.settings.repository import SettingsRepository
 from backend.services.analysis_stats_service import (
     _summary,
     build_duration_frame,
@@ -18,6 +20,110 @@ from backend.services.analysis_stats_service import (
 from backend.services.entity_stats_service import _filter_entity_rows
 
 EntityType = Literal["track", "album", "artist"]
+
+
+def _billboard_settings(conn: sqlite3.Connection) -> dict[str, Any]:
+    settings = SettingsRepository(conn).load_all()
+    return {
+        "bb_top_n": int(settings["bb_top_n"]),
+        "bb_album_top_n": int(settings["bb_album_top_n"]),
+        "bb_artist_top_n": int(settings["bb_artist_top_n"]),
+        "bb_week_start_dow": int(settings["bb_week_start_dow"]),
+        "bb_week_start_hour": int(settings["bb_week_start_hour"]),
+        "include_compilations": bool(settings["include_compilations"]),
+    }
+
+
+def _published_lifetime_rows(
+    conn: sqlite3.Connection,
+    *,
+    entity_type: EntityType,
+    names: list[str],
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: int | None,
+    merge_level: int,
+    include_billboard: bool,
+    billboard_settings: dict[str, Any],
+) -> list[dict[str, Any]] | None:
+    """Use the exact ready search/chart snapshot for lifetime comparisons."""
+
+    values = {
+        "min_ms": min_ms,
+        "music_only": music_only,
+        "bb_top_n": billboard_settings["bb_top_n"],
+        "bb_album_top_n": billboard_settings["bb_album_top_n"],
+        "bb_artist_top_n": billboard_settings["bb_artist_top_n"],
+        "bb_week_start_dow": billboard_settings["bb_week_start_dow"],
+        "bb_week_start_hour": billboard_settings["bb_week_start_hour"],
+        "year_start": None,
+        "year_end": None,
+        "dynamic_threshold": dynamic_threshold,
+        "max_merge_gap_minutes": max_merge_gap_minutes,
+        "merge_enabled": merge_enabled,
+        "merge_level": merge_level,
+        "include_compilations": billboard_settings["include_compilations"],
+    }
+    rows: list[dict[str, Any]] = []
+    for requested_name in names:
+        candidate = _first_candidate(
+            conn,
+            query=requested_name,
+            entity_type=entity_type,
+        )
+        if candidate is None:
+            rows.append(
+                {
+                    "name": requested_name,
+                    "requested_name": requested_name,
+                    "entity_type": entity_type,
+                    "found": False,
+                    "error": f"{entity_type} not found in local listening data",
+                }
+            )
+            continue
+        display_name, track_id, album_name, artist_name = _identity_fields(
+            requested_name,
+            entity_type,
+            candidate,
+        )
+        published = load_published_entity_context(
+            conn,
+            values=values,
+            entity_type=entity_type,
+            merge_level=merge_level,
+            track_id=track_id,
+            name=album_name or artist_name or display_name,
+            artist_name=artist_name if entity_type == "album" else None,
+        )
+        if published is None:
+            return None
+        row: dict[str, Any] = {
+            "name": str(published.get("name") or display_name),
+            "requested_name": requested_name,
+            "entity_type": entity_type,
+            "found": True,
+            "plays": published["play_events"],
+            "hours": round(float(published["total_ms"]) / 3_600_000, 1),
+            "period": {"period": "lifetime", "label": "全部时间"},
+            "evidence_source": "published_search_chart_snapshot",
+        }
+        if track_id is not None:
+            row["track_id"] = track_id
+        if include_billboard:
+            row.update(
+                {
+                    "power_score": published["power_score"],
+                    "power_rank": published["power_rank"],
+                    "no1_weeks": published["weeks_at_no1"],
+                    "weeks_on_chart": published["weeks_on_chart"],
+                    "peak_position": published["peak_position"],
+                }
+            )
+        rows.append(row)
+    return rows
 
 
 def _first_candidate(
@@ -247,6 +353,31 @@ def build_entity_comparison_rows(
     merge_level: int,
     include_billboard: bool,
 ) -> list[dict[str, Any]]:
+    billboard_settings = _billboard_settings(conn)
+    snapshot_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='music_search_snapshot_meta'"
+    ).fetchone()
+    if (
+        period == "lifetime"
+        and start_date is None
+        and end_date is None
+        and snapshot_table is not None
+    ):
+        published_rows = _published_lifetime_rows(
+            conn,
+            entity_type=entity_type,
+            names=names,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            merge_level=merge_level,
+            include_billboard=include_billboard,
+            billboard_settings=billboard_settings,
+        )
+        if published_rows is not None:
+            return published_rows
     rows = _playback_rows(
         conn,
         entity_type=entity_type,
@@ -266,17 +397,17 @@ def build_entity_comparison_rows(
         billboard = compute_billboard_data(
             min_ms,
             music_only,
-            30,
-            20,
-            20,
-            4,
-            0,
+            billboard_settings["bb_top_n"],
+            billboard_settings["bb_album_top_n"],
+            billboard_settings["bb_artist_top_n"],
+            billboard_settings["bb_week_start_dow"],
+            billboard_settings["bb_week_start_hour"],
             None,
             None,
             merge_level=merge_level,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
-            include_compilations=False,
+            include_compilations=billboard_settings["include_compilations"],
             merge_enabled=merge_enabled,
         )
         for row in rows:

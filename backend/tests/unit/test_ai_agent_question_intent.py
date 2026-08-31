@@ -73,6 +73,14 @@ def test_ignores_markdown_table_format_instruction_when_extracting_entities() ->
     assert intent.entities == ["GUTS", "The Life of a Showgirl"]
 
 
+def test_ignores_plain_comparison_verb_when_extracting_entities() -> None:
+    intent = parse_question_intent(
+        "从播放次数来看，比较 GUTS 和 The Life of a Showgirl 这两张专辑。"
+    )
+
+    assert intent.entities == ["GUTS", "The Life of a Showgirl"]
+
+
 def test_ranking_signals_win_over_generic_which_terms() -> None:
     album_intent = parse_question_intent("我今年最常听哪张专辑？")
     artist_intent = parse_question_intent("哪个艺人播放量最高？")

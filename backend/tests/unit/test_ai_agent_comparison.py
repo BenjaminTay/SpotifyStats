@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import sqlite3
+from typing import cast
+
 import pytest
 
+from backend.domains.ai_agent import entity_comparison_service
 from backend.domains.ai_agent.comparison import summarize_entity_comparison
 
 pytestmark = pytest.mark.unit
@@ -71,3 +75,56 @@ def test_comparison_accepts_track_no1_metric_alias() -> None:
 
     assert result["entities"][0]["no1_weeks"] == 4
     assert result["entities"][1]["no1_weeks"] == 5
+
+
+def test_lifetime_comparison_prefers_exact_published_snapshot(monkeypatch) -> None:
+    monkeypatch.setattr(
+        entity_comparison_service,
+        "_first_candidate",
+        lambda conn, *, query, entity_type: {
+            "name": query,
+            "album_name": query,
+            "artist_name": "Artist",
+        },
+    )
+    monkeypatch.setattr(
+        entity_comparison_service,
+        "load_published_entity_context",
+        lambda conn, **kwargs: {
+            "name": kwargs["name"],
+            "play_events": 123,
+            "total_ms": 3_600_000,
+            "power_score": 456,
+            "power_rank": 7,
+            "weeks_at_no1": 2,
+            "weeks_on_chart": 9,
+            "peak_position": 1,
+        },
+    )
+
+    rows = entity_comparison_service._published_lifetime_rows(
+        cast(sqlite3.Connection, object()),
+        entity_type="album",
+        names=["Album A"],
+        min_ms=30000,
+        music_only=True,
+        merge_enabled=True,
+        dynamic_threshold=True,
+        max_merge_gap_minutes=5,
+        merge_level=2,
+        include_billboard=True,
+        billboard_settings={
+            "bb_top_n": 30,
+            "bb_album_top_n": 20,
+            "bb_artist_top_n": 20,
+            "bb_week_start_dow": 4,
+            "bb_week_start_hour": 12,
+            "include_compilations": False,
+        },
+    )
+
+    assert rows is not None
+    assert rows[0]["plays"] == 123
+    assert rows[0]["hours"] == 1.0
+    assert rows[0]["power_score"] == 456
+    assert rows[0]["evidence_source"] == "published_search_chart_snapshot"

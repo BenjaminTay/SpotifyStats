@@ -317,11 +317,19 @@ def _compare_item_matches_names(
 def _compare_item_matches_frame(item: dict[str, Any], frame: dict[str, Any]) -> bool:
     entity_type = str(frame.get("entity_type") or "")
     names = _requested_frame_entities(frame)
-    return _compare_item_matches_names(
+    if not _compare_item_matches_names(
         item,
         names=names,
         entity_type=entity_type if entity_type in {"album", "artist", "track"} else None,
-    )
+    ):
+        return False
+    time_scope = str(frame.get("time_scope") or "lifetime")
+    item_period = _period_from_item(item)
+    if time_scope == "lifetime":
+        return item_period in {"", "lifetime", "全部时间"}
+    # A steered relative scope is normalized to a bounded custom range by the
+    # temporal guard.  Do not let an earlier lifetime comparison satisfy it.
+    return item_period not in {"", "lifetime", "全部时间"}
 
 
 def _compare_data(tool_results: list[dict[str, Any]], frame: dict[str, Any]) -> dict[str, Any]:
@@ -801,6 +809,10 @@ def _axis_coverage_for(
         return "covered" if has_cumulative else "missing"
 
     if axis == "recency":
+        if family == "preference_comparison" and comparison:
+            return (
+                "covered" if str(frame.get("time_scope") or "lifetime") != "lifetime" else "missing"
+            )
         periods = _required_recent_periods(recipe)
         if periods:
             return (

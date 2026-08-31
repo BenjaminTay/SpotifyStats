@@ -205,7 +205,10 @@ def _analysis_charts_card(item: dict[str, Any], data: dict[str, Any]) -> Evidenc
     metric_label = "播放次数" if metric == "plays" else "播放时长"
     metrics: list[EvidenceMetric] = []
     _append_metric(metrics, _metric("total_ranked_entities", "候选数量", data.get("total")))
-    for row in rows[:3]:
+    # Five rows are still compact enough for the final context and are needed
+    # to satisfy explicit Top 5 / comparison-table requests without inventing
+    # facts outside the evidence catalog.
+    for row in rows[:5]:
         if not isinstance(row, dict):
             continue
         rank = row.get("rank")
