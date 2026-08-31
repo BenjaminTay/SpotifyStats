@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,7 +32,7 @@ def test_benchmark_api_exposes_reusable_performance_cli():
     script = ROOT / "scripts" / "benchmark_api.py"
 
     result = subprocess.run(
-        ["python", str(script), "--help"],
+        [sys.executable, str(script), "--help"],
         cwd=ROOT,
         check=False,
         text=True,

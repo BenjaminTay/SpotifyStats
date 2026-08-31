@@ -491,6 +491,9 @@ def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -
     assert "docker ps --no-trunc" in workflow
     assert "cmp --silent" in workflow
     assert "retention-days: 1" in workflow
+    assert 'gate["all_four_ready"] is True' in workflow
+    assert "ready_variant_count']}/4 ready" in workflow
+    assert "all_six_ready" not in workflow
     assert "one-time-search-snapshot-bootstrap.yml" in production_workflow
     assert "INITIALIZE_SEARCH_SNAPSHOTS" in workflow
     assert "bootstrap-music-search-statistics.sh" in production_workflow
@@ -504,6 +507,10 @@ def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -
     assert "deploy.sh" not in bootstrap
     assert "music-search-resume.db" in bootstrap
     assert "同源部分成果" in bootstrap
+    assert "for capacity_attempt in {1..10}" in bootstrap
+    assert '[[ "$capacity_attempt" -lt 10 ]]' in bootstrap
+    assert "sleep 15" in bootstrap
+    assert "容量在有界等待后仍不满足" in bootstrap
     assert "src=$DEPLOY_DIR,dst=/bootstrap" not in bootstrap
     assert "src=$PREPARE_HELPER" in bootstrap
     assert 'sudo chown -- "$host_uid:$host_gid" "$baseline_path"' in bootstrap

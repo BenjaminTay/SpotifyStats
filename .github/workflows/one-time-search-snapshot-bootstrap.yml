@@ -126,11 +126,11 @@ jobs:
           production = payload["production_validation"]
           resources = payload["resources"]
           assert payload["status"] == "ready"
-          assert gate["all_six_ready"] is True
+          assert gate["all_four_ready"] is True
           assert production["context_orphan_count"] == 0
           with open(sys.argv[1] + ".summary", "w", encoding="utf-8") as handle:
               handle.write("## One-time music-search statistics bootstrap\n\n")
-              handle.write(f"- Variants: {gate['ready_variant_count']}/6 ready\n")
+              handle.write(f"- Variants: {gate['ready_variant_count']}/4 ready\n")
               handle.write(f"- Snapshot elapsed: {payload['snapshot_elapsed_ms'] / 1000:.3f}s\n")
               handle.write(f"- Peak RSS: {resources['peak_rss_mib']:.3f} MiB\n")
               handle.write("- Production containers: unchanged\n")

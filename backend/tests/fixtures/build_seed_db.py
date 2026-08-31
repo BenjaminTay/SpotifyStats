@@ -17,6 +17,12 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
 
 from backend.core.db import SCHEMA
+from backend.core.migrations import (
+    _IDEMPOTENT_OPERATIONAL_ERRORS,
+    LATEST_SCHEMA_VERSION,
+    MIGRATIONS,
+    _ensure_migrations_table,
+)
 
 SEED_PATH = os.path.join(os.path.dirname(__file__), "seed.db")
 
@@ -37,6 +43,9 @@ def build() -> str:
 
     conn = sqlite3.connect(SEED_PATH)
     conn.row_factory = sqlite3.Row
+    # The fixture has many intentionally empty contract tables. A compact page
+    # size keeps that schema portable without weakening the 1 MB size guard.
+    conn.execute("PRAGMA page_size=1024")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
     # Add columns that are created by ensure_schema() via ALTER TABLE
@@ -54,6 +63,21 @@ def build() -> str:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
         except sqlite3.OperationalError:
             pass
+    # SCHEMA is the current baseline, but some additive tables still live in
+    # versioned migrations.  Execute every migration against the empty
+    # baseline before stamping it; stamping without execution can produce a
+    # database that claims to be current while required tables are absent.
+    _ensure_migrations_table(conn)
+    for version, name, migration in sorted(MIGRATIONS, key=lambda item: item[0]):
+        try:
+            migration(conn)
+        except sqlite3.OperationalError as exc:
+            if not any(fragment in str(exc).lower() for fragment in _IDEMPOTENT_OPERATIONAL_ERRORS):
+                raise
+        conn.execute(
+            "INSERT INTO schema_migrations(version, name) VALUES (?, ?)",
+            (version, name),
+        )
     conn.commit()
 
     # ── Dimension Data ──────────────────────────────────────────────────────
@@ -981,8 +1005,10 @@ def build() -> str:
 
     # Merge consecutive same-track plays (min_ms = 0 first, then filter)
     from backend.core.db import merge_consecutive_plays
+    from backend.domains.metadata.track_identity import synchronize_track_identity_projection
 
     min_ms_agg = 30000
+    synchronize_track_identity_projection(conn)
     df_merged = merge_consecutive_plays(df, 0)
     df_merged = df_merged[df_merged["ms_played"] >= min_ms_agg]
 
@@ -994,8 +1020,16 @@ def build() -> str:
     )
     for r in tracks_agg.itertuples(index=False):
         conn.execute(
-            "INSERT INTO agg_weekly_tracks(billboard_week, track_id, play_count, total_ms) VALUES (?, ?, ?, ?)",
-            (str(r.billboard_week), int(r.track_id), int(r.play_count), int(r.total_ms)),
+            """INSERT INTO agg_weekly_tracks(
+                   billboard_week, l1_id, track_id, play_count, total_ms
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (
+                str(r.billboard_week),
+                int(r.track_id),
+                int(r.track_id),
+                int(r.play_count),
+                int(r.total_ms),
+            ),
         )
 
     # Album aggregation (exclude tracks without album)
@@ -1105,6 +1139,26 @@ def build() -> str:
     conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (921, 925)")
     conn.execute("INSERT INTO track_group_members(group_id, track_id) VALUES (921, 926)")
 
+    # The current merge path consumes stable L1 membership. Keep the legacy
+    # rows too because migration and compatibility tests exercise both
+    # projections from this fixture.
+    conn.execute(
+        """INSERT INTO track_group_l1_members(group_id, l1_id)
+           SELECT members.group_id, links.l1_id
+             FROM track_group_members members
+             JOIN track_l1_source_links links ON links.track_id=members.track_id"""
+    )
+    conn.execute(
+        """UPDATE track_groups
+              SET primary_l1_id=(
+                  SELECT links.l1_id
+                    FROM track_l1_source_links links
+                   WHERE links.track_id=track_groups.primary_track_id
+                   ORDER BY links.observed_plays DESC, links.l1_id
+                   LIMIT 1
+              )"""
+    )
+
     # ── Settings ───────────────────────────────────────────────────────────
     conn.execute("INSERT INTO settings(key, value) VALUES ('min_ms', '30000')")
     conn.execute("INSERT INTO settings(key, value) VALUES ('music_only', '1')")
@@ -1118,6 +1172,29 @@ def build() -> str:
 
     # ── Golden Assertions ──────────────────────────────────────────────────
     print("Running golden assertions...")
+
+    migration_versions = {
+        int(row[0]) for row in conn.execute("SELECT version FROM schema_migrations")
+    }
+    expected_versions = {version for version, _name, _migration in MIGRATIONS}
+    assert migration_versions == expected_versions, (
+        f"Migration stamp mismatch: missing={sorted(expected_versions - migration_versions)} "
+        f"unexpected={sorted(migration_versions - expected_versions)}"
+    )
+    assert max(migration_versions) == LATEST_SCHEMA_VERSION
+    track_group_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(track_groups)")}
+    assert {"primary_l1_id", "group_status"} <= track_group_columns
+    required_triggers = {
+        "trg_track_group_l1_single_active_scope_insert",
+        "trg_track_group_single_active_scope_update",
+    }
+    actual_triggers = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'trg_track_group_%'"
+        )
+    }
+    assert required_triggers <= actual_triggers
     errors: list[str] = []
 
     # A1: Row counts

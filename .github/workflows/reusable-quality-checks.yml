@@ -31,6 +31,7 @@ jobs:
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Documentation checks
         run: .venv/bin/python scripts/docs_audit.py --include-archive
