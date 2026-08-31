@@ -41,6 +41,7 @@ describe('useAiTask', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('loads task status and task events together', async () => {
@@ -119,6 +120,50 @@ describe('useAiTask', () => {
     expect(result.current.task).toBeNull()
     expect(result.current.events).toEqual([])
     expect(result.current.toolCalls).toEqual([])
+  })
+
+  it('preserves the safe session state payload received over SSE', async () => {
+    const client = createClient()
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          'event: task.progress\ndata: {"event_id":7,"task_id":"task-state","event_type":"session_state_updated","stage":"agent_running","message":"Agent 已更新分析约束","payload":{"state":{"entities":["Taylor Swift","Olivia Rodrigo"],"time_range":{"label":"今年"},"metrics":["plays"],"excluded_dimensions":[]},"inbox_id":3,"semantic_action":"replace_constraints"},"created_at":"2026-08-31T00:00:00Z"}\n\n',
+        ))
+        controller.close()
+      },
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })))
+    vi.spyOn(api, 'get').mockImplementation((path: string) => {
+      if (path === '/ai/tasks/task-state') {
+        return Promise.resolve({
+          found: true,
+          task_id: 'task-state',
+          status: 'running',
+          stage: 'agent_running',
+          progress_pct: 0.4,
+          message: 'Agent 正在分析',
+        })
+      }
+      if (path === '/ai/tasks/task-state/events') {
+        return Promise.resolve({ found: true, events: [], tool_calls: [] })
+      }
+      return Promise.reject(new Error(`unexpected path: ${path}`))
+    })
+
+    const { result } = renderHook(() => useAiTask('task-state'), {
+      wrapper: wrapperFor(client),
+    })
+
+    await waitFor(() => expect(result.current.events).toHaveLength(1))
+    expect(result.current.events[0]?.payload).toEqual(expect.objectContaining({
+      inbox_id: 3,
+      semantic_action: 'replace_constraints',
+      state: expect.objectContaining({ metrics: ['plays'] }),
+    }))
   })
 
   it('does not request anything when manually refetching a null taskId', async () => {

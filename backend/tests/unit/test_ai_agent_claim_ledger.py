@@ -122,3 +122,28 @@ def test_claim_ledger_ignores_markdown_list_ordinals() -> None:
 
     assert ledger["unsupported_literals"] == []
     assert ledger["numeric_claim_count"] == 2
+
+
+def test_fact_catalog_recovers_allowlisted_metrics_without_evidence_card() -> None:
+    facts = build_fact_catalog(
+        [],
+        tool_results=[
+            {
+                "tool_name": "analysis_stats",
+                "status": "done",
+                "source_range": "2026",
+                "data": {"summary": {"total_plays": 77}},
+            },
+            {
+                "tool_name": "listening_hours",
+                "status": "done",
+                "source_range": "late_night_ratio",
+                "data": [{"year": 2026, "rate": 12.5}],
+            },
+        ],
+    )
+
+    by_metric = {item["metric_name"]: item for item in facts}
+    assert by_metric["summary.total_plays"]["value"] == 77
+    assert by_metric["0.rate"]["value"] == 12.5
+    assert by_metric["0.rate"]["unit"] == "%"

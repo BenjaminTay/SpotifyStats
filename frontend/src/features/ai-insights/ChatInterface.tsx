@@ -79,7 +79,7 @@ export function ChatInterface({
     },
     [addMessage],
   )
-  const steerRunningAgent = useRunningAgentSteering({
+  const { steerRunningAgent, steeringInputs } = useRunningAgentSteering({
     taskId: activeChatTask?.taskId ?? null,
     sessionId: activeChatTask?.sessionId ?? null,
     active: isActiveAiTask(activeStatus),
@@ -291,6 +291,7 @@ export function ChatInterface({
             events: activeTaskState.events,
             toolCalls: activeTaskState.toolCalls,
             streamedAnswer: activeTaskState.streamedAnswer,
+            steeringInputs,
           }}
           retryingIdx={retryingIdx}
           reportContext={reportContext}

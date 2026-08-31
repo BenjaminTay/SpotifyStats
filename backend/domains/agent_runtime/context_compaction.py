@@ -37,6 +37,7 @@ def compact_session_events(
     revisions: dict[str, Any] = {}
     time_ranges: set[str] = set()
     events_by_turn: dict[str, list[int]] = defaultdict(list)
+    session_state: dict[str, Any] | None = None
 
     ordered = sorted(events, key=lambda item: int(item.get("event_id") or 0))
     for event in ordered:
@@ -46,6 +47,14 @@ def compact_session_events(
             events_by_turn[turn_id].append(event_id)
         payload = event.get("payload")
         if not isinstance(payload, dict):
+            continue
+        if event.get("event_type") in {
+            "session_state_initialized",
+            "session_state_updated",
+        }:
+            candidate = payload.get("state")
+            if isinstance(candidate, dict):
+                session_state = candidate
             continue
         if event.get("event_type") == "model_message":
             message = payload.get("message")
@@ -93,6 +102,7 @@ def compact_session_events(
         "time_ranges": sorted(time_ranges),
         "revisions": revisions,
         "recent_messages": recent_messages[-max_recent_messages:],
+        "session_state": session_state,
         "turn_refs": [
             {
                 "turn_id": turn_id,
@@ -108,5 +118,13 @@ def compact_session_events(
         encoded = json.dumps(compacted, ensure_ascii=False, separators=(",", ":"))
     while len(encoded) > max_chars and compacted["recent_messages"]:
         compacted["recent_messages"].pop(0)
+        encoded = json.dumps(compacted, ensure_ascii=False, separators=(",", ":"))
+    state_requirements = (
+        compacted.get("session_state", {}).get("pending_requirements")
+        if isinstance(compacted.get("session_state"), dict)
+        else None
+    )
+    while len(encoded) > max_chars and isinstance(state_requirements, list) and state_requirements:
+        state_requirements.pop(0)
         encoded = json.dumps(compacted, ensure_ascii=False, separators=(",", ":"))
     return compacted

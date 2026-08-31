@@ -6,6 +6,7 @@ import json
 import time
 import uuid
 from collections.abc import Callable
+from dataclasses import asdict
 from typing import Any, Protocol
 
 from backend.core.config import (
@@ -22,15 +23,33 @@ from backend.core.db import get_db
 from backend.domains.agent_runtime.context_compaction import compact_session_events
 from backend.domains.agent_runtime.event_log import AgentEventLog
 from backend.domains.agent_runtime.metrics import RuntimeMetrics
-from backend.domains.agent_runtime.native_loop import NativeObservationLoop, tool_message
+from backend.domains.agent_runtime.native_loop import assistant_message, tool_message
 from backend.domains.agent_runtime.projections import ContextSource, select_context_messages
+from backend.domains.agent_runtime.provider_reliability import (
+    BudgetCaps,
+    DynamicAgentBudget,
+    ModelStepAttempt,
+    ModelStepExecutor,
+    ModelStepExhaustedError,
+    ProviderCandidate,
+    ProviderCircuitBreaker,
+    dynamic_agent_budget,
+)
 from backend.domains.agent_runtime.recovery import build_resume_checkpoint
 from backend.domains.agent_runtime.serialization import compact_json
+from backend.domains.agent_runtime.session_state import (
+    AgentSessionState,
+    apply_session_input,
+    filters_for_session_state,
+    initial_session_state,
+    restore_session_state,
+)
 from backend.domains.agent_runtime.tool_runtime import ToolRuntime
 from backend.domains.agent_runtime.tool_selector import (
     select_agent_profile,
     tool_schemas_for_profile,
 )
+from backend.domains.ai_agent.claim_ledger import render_grounded_fallback
 from backend.domains.ai_agent.project_context import PROJECT_CONTEXT_VERSION
 from backend.domains.ai_agent.temporal_context import (
     apply_temporal_guard,
@@ -69,10 +88,32 @@ class AgentModel(Protocol):
     ) -> LLMCompletion: ...
 
 
+_PROVIDER_CIRCUIT_BREAKER = ProviderCircuitBreaker()
+
+
 class ConfiguredNativeToolModel:
     """Resolve the configured provider and require its native tool protocol."""
 
-    def __init__(self) -> None:
+    def __init__(self, budget: DynamicAgentBudget | None = None) -> None:
+        runtime_managed_retries = budget is not None
+        if budget is None:
+            budget = dynamic_agent_budget(
+                {
+                    "question_intent": {
+                        "task_type": "comparison",
+                        "entities": ["report", "context"],
+                        "requested_metrics": ["plays", "hours"],
+                    }
+                },
+                caps=BudgetCaps(
+                    max_steps=AI_AGENT_MAX_STEPS,
+                    max_tool_calls=AI_AGENT_MAX_TOOL_CALLS,
+                    turn_timeout_seconds=AI_AGENT_TURN_TIMEOUT_SECONDS,
+                    model_timeout_seconds=AI_AGENT_LLM_TIMEOUT_SECONDS,
+                    max_model_retries=AI_AGENT_LLM_RETRIES,
+                    max_output_tokens=6144,
+                ),
+            )
         cfg = ai_insights_service._get_config()
         initial = ai_insights_service._get_llm(cfg)
         if initial is None:
@@ -80,8 +121,8 @@ class ConfiguredNativeToolModel:
         provider_config = ProviderConfig(
             name=f"agent-v2-{initial.provider}",
             base_url=initial.base_url,
-            timeout=AI_AGENT_LLM_TIMEOUT_SECONDS,
-            retries=AI_AGENT_LLM_RETRIES,
+            timeout=budget.model_timeout_seconds,
+            retries=0 if runtime_managed_retries else AI_AGENT_LLM_RETRIES,
             rate_limit_rps=3.0,
             http_proxy=HTTP_PROXY or "",
             https_proxy=HTTPS_PROXY or "",
@@ -90,6 +131,8 @@ class ConfiguredNativeToolModel:
         if resolved is None:
             raise ChatAgentError("LLM 未配置，无法启动 Agent V2")
         self.llm = resolved
+        self.max_tokens = budget.max_output_tokens
+        self.provider_id = f"{resolved.provider}:{resolved.model}"
 
     def complete(
         self,
@@ -102,7 +145,7 @@ class ConfiguredNativeToolModel:
             messages,
             tools,
             temperature=0.2,
-            max_tokens=4096,
+            max_tokens=self.max_tokens,
             thinking=thinking,
         )
 
@@ -113,6 +156,47 @@ class AgentCancelledError(ChatAgentError):
 
 class AgentBudgetExceededError(ChatAgentError):
     pass
+
+
+def _dynamic_budget(
+    question_context: dict[str, Any],
+    *,
+    max_steps: int = AI_AGENT_MAX_STEPS,
+    max_tool_calls: int = AI_AGENT_MAX_TOOL_CALLS,
+    timeout_seconds: int = AI_AGENT_TURN_TIMEOUT_SECONDS,
+) -> DynamicAgentBudget:
+    return dynamic_agent_budget(
+        question_context,
+        caps=BudgetCaps(
+            max_steps=max_steps,
+            max_tool_calls=max_tool_calls,
+            turn_timeout_seconds=timeout_seconds,
+            model_timeout_seconds=AI_AGENT_LLM_TIMEOUT_SECONDS,
+            max_model_retries=AI_AGENT_LLM_RETRIES,
+            max_output_tokens=6144,
+        ),
+    )
+
+
+def _record_model_attempts(
+    metrics: RuntimeMetrics,
+    attempts: tuple[ModelStepAttempt, ...],
+    *,
+    usage: dict[str, Any] | None,
+    input_chars: int,
+) -> int:
+    actual_attempts = [attempt for attempt in attempts if attempt.outcome != "circuit_open"]
+    for attempt in actual_attempts:
+        metrics.record_model(
+            elapsed_ms=attempt.elapsed_ms,
+            usage=usage if attempt.outcome == "success" else {},
+            input_chars=input_chars,
+        )
+    return sum(attempt.elapsed_ms for attempt in actual_attempts)
+
+
+def _safe_attempt_payload(attempts: tuple[ModelStepAttempt, ...]) -> list[dict[str, Any]]:
+    return [asdict(attempt) for attempt in attempts]
 
 
 def _agent_default_filters(request: dict[str, Any]) -> dict[str, Any]:
@@ -357,13 +441,26 @@ def _consume_session_inbox(
     *,
     task_id: str,
     step_index: int,
-) -> int:
+    state: AgentSessionState,
+    temporal_context: dict[str, Any],
+) -> tuple[int, AgentSessionState]:
     inputs = repo.consume_agent_inputs(task_id)
     for item in inputs:
+        update = apply_session_input(
+            state,
+            input_type=str(item["input_type"]),
+            content=str(item["content"]),
+            temporal_context=temporal_context,
+        )
+        if update.action == "cancel":
+            cancellation_registry.request_cancel(task_id)
+            raise AgentCancelledError("Agent 任务已取消")
+        state = update.state
         message = {
             "role": "user",
             "content": (
-                f"用户在运行中补充（{item['input_type']}）：{str(item['content']).strip()}"
+                f"用户在运行中补充（{update.action}）：{str(item['content']).strip()}\n"
+                f"{state.model_context()}"
             ),
         }
         messages.append(message)
@@ -377,10 +474,36 @@ def _consume_session_inbox(
             {
                 "inbox_id": int(item["inbox_id"]),
                 "input_type": item["input_type"],
+                "semantic_action": update.action,
+                "patch": update.patch,
+                "state": state.to_dict(),
             },
             step_index=step_index,
         )
-    return len(inputs)
+        log.append(
+            "session_state_updated",
+            {
+                "inbox_id": int(item["inbox_id"]),
+                "input_type": item["input_type"],
+                "semantic_action": update.action,
+                "patch": update.patch,
+                "state": state.to_dict(),
+            },
+            step_index=step_index,
+        )
+        repo.add_event(
+            task_id=task_id,
+            event_type="session_state_updated",
+            stage="agent_running",
+            message="Agent 已更新分析约束",
+            payload={
+                "inbox_id": int(item["inbox_id"]),
+                "input_type": item["input_type"],
+                "semantic_action": update.action,
+                "state": state.public_constraints(),
+            },
+        )
+    return len(inputs), state
 
 
 def _update_stage(
@@ -421,6 +544,8 @@ class AgentRuntime:
         max_tool_calls: int = AI_AGENT_MAX_TOOL_CALLS,
         timeout_seconds: int = AI_AGENT_TURN_TIMEOUT_SECONDS,
         clock: Callable[[], float] = time.monotonic,
+        fallback_models: tuple[ProviderCandidate, ...] = (),
+        circuit_breaker: ProviderCircuitBreaker | None = None,
     ) -> None:
         self.model = model
         self.registry = registry
@@ -428,6 +553,22 @@ class AgentRuntime:
         self.max_tool_calls = max_tool_calls
         self.timeout_seconds = timeout_seconds
         self.clock = clock
+        provider_id = str(
+            getattr(model, "provider_id", f"test:{model.__class__.__name__}:{id(model)}")
+        )
+        self.model_step_executor = ModelStepExecutor(
+            primary=ProviderCandidate(provider_id, model),
+            fallbacks=fallback_models,
+            circuit_breaker=(
+                circuit_breaker
+                or (
+                    _PROVIDER_CIRCUIT_BREAKER
+                    if isinstance(model, ConfiguredNativeToolModel)
+                    else ProviderCircuitBreaker()
+                )
+            ),
+            clock=clock,
+        )
 
     def run(
         self,
@@ -455,6 +596,23 @@ class AgentRuntime:
         )
         started_at = self.clock()
         metrics = RuntimeMetrics(clock=self.clock)
+        temporal_context = _temporal_context(request)
+        base_default_filters = _agent_default_filters(request)
+        session_state = initial_session_state(
+            request,
+            default_filters=base_default_filters,
+            temporal_context=temporal_context,
+        )
+        if is_resuming:
+            session_state = restore_session_state(persisted_events, session_state)
+        request["question"] = session_state.effective_question()
+        question_context = _question_context(request)
+        turn_budget = _dynamic_budget(
+            question_context,
+            max_steps=self.max_steps,
+            max_tool_calls=self.max_tool_calls,
+            timeout_seconds=self.timeout_seconds,
+        )
         tool_results: list[dict[str, Any]] = (
             list(checkpoint.recovered_tool_results) if is_resuming and checkpoint else []
         )
@@ -487,20 +645,31 @@ class AgentRuntime:
                     {
                         "runtime": "v2",
                         "budgets": {
-                            "max_steps": self.max_steps,
-                            "max_tool_calls": self.max_tool_calls,
-                            "timeout_seconds": self.timeout_seconds,
+                            **asdict(turn_budget),
                         },
                     },
                 )
+                log.append(
+                    "session_state_initialized",
+                    {"state": session_state.to_dict()},
+                )
+                repo.add_event(
+                    task_id=task_id,
+                    event_type="session_state_initialized",
+                    stage="agent_running",
+                    message="Agent 已建立分析约束",
+                    payload={"state": session_state.public_constraints()},
+                )
 
-            question_context = _question_context(request)
             profile = select_agent_profile(question_context, self.registry)
+            log.append("agent_budget_selected", asdict(turn_budget))
             memory_messages = _initial_messages(
                 request,
                 question_context,
                 _session_context(repo, session_id=session_id, task_id=task_id),
             )
+            if not is_resuming:
+                memory_messages.append({"role": "user", "content": session_state.model_context()})
             if is_resuming and checkpoint:
                 messages = list(checkpoint.messages)
                 log.append(
@@ -573,7 +742,10 @@ class AgentRuntime:
                 task_repo=repo,
                 event_log=log,
                 task_id=task_id,
-                default_filters=_agent_default_filters(request),
+                default_filters=filters_for_session_state(
+                    session_state,
+                    base_default_filters,
+                ),
                 metrics=metrics,
                 clock=self.clock,
                 allowed_tool_names=set(profile.tool_names),
@@ -581,17 +753,16 @@ class AgentRuntime:
             if is_resuming and checkpoint:
                 tool_runtime.seed_outcomes(checkpoint.recovered_tool_results)
             schemas = tool_schemas_for_profile(self.registry, profile)
-            observation_loop = NativeObservationLoop(
-                model=self.model,
-                schemas=schemas,
-                thinking=_thinking_mode_enabled(request),
-                clock=self.clock,
-            )
 
             if is_resuming and checkpoint and checkpoint.pending_tool_calls:
                 resume_step = max(1, checkpoint.next_step - 1)
                 for pending in checkpoint.pending_tool_calls:
-                    self._check_continue(repo, task_id, started_at)
+                    self._check_continue(
+                        repo,
+                        task_id,
+                        started_at,
+                        timeout_seconds=turn_budget.turn_timeout_seconds,
+                    )
                     outcome = tool_runtime.execute(
                         call_id=pending.call_id,
                         tool_name=pending.tool_name,
@@ -616,14 +787,51 @@ class AgentRuntime:
 
             first_step = checkpoint.next_step if is_resuming and checkpoint else 1
             for step_index in range(first_step, self.max_steps + 1):
-                self._check_continue(repo, task_id, started_at)
-                _consume_session_inbox(
+                if step_index > turn_budget.max_steps:
+                    break
+                self._check_continue(
+                    repo,
+                    task_id,
+                    started_at,
+                    timeout_seconds=turn_budget.turn_timeout_seconds,
+                )
+                consumed_count, session_state = _consume_session_inbox(
                     repo,
                     log,
                     messages,
                     task_id=task_id,
                     step_index=step_index,
+                    state=session_state,
+                    temporal_context=temporal_context,
                 )
+                if consumed_count:
+                    request["question"] = session_state.effective_question()
+                    request.pop("_temporal_guard", None)
+                    dynamic_context = _question_context(request)
+                    profile = select_agent_profile(dynamic_context, self.registry)
+                    schemas = tool_schemas_for_profile(self.registry, profile)
+                    turn_budget = _dynamic_budget(
+                        dynamic_context,
+                        max_steps=self.max_steps,
+                        max_tool_calls=self.max_tool_calls,
+                        timeout_seconds=self.timeout_seconds,
+                    )
+                    tool_runtime.allowed_tool_names = set(profile.tool_names)
+                    tool_runtime.default_filters = filters_for_session_state(
+                        session_state,
+                        _agent_default_filters(request),
+                    )
+                    log.append(
+                        "agent_profile_updated",
+                        {
+                            "profile": profile.name,
+                            "family": profile.family,
+                            "tool_names": list(profile.tool_names),
+                            "reason": "session_state_updated",
+                            "budget": asdict(turn_budget),
+                        },
+                        step_index=step_index,
+                    )
                 progress = min(0.88, 0.1 + (step_index - 1) * 0.13)
                 _update_stage(
                     repo,
@@ -652,28 +860,69 @@ class AgentRuntime:
                     },
                     step_index=step_index,
                 )
-                model_started_at = self.clock()
                 try:
-                    model_step = observation_loop.complete_step(messages)
-                except Exception:
-                    metrics.record_model(
-                        elapsed_ms=round((self.clock() - model_started_at) * 1000),
-                        usage={},
+                    model_step = self.model_step_executor.execute(
+                        messages=messages,
+                        tools=schemas,
+                        thinking=_thinking_mode_enabled(request),
+                        budget=turn_budget,
+                    )
+                except ModelStepExhaustedError as exc:
+                    model_elapsed_ms = _record_model_attempts(
+                        metrics,
+                        exc.attempts,
+                        usage=None,
                         input_chars=model_input_chars,
                     )
-                    raise
+                    log.append(
+                        "model_step_failed",
+                        {
+                            "model_call_id": model_call_id,
+                            "attempts": _safe_attempt_payload(exc.attempts),
+                            "elapsed_ms": model_elapsed_ms,
+                        },
+                        step_index=step_index,
+                    )
+                    if self._publish_provider_degraded_answer(
+                        repo=repo,
+                        log=log,
+                        task_id=task_id,
+                        turn_id=turn_id,
+                        step_index=step_index,
+                        request=request,
+                        tool_results=tool_results,
+                        metrics=metrics,
+                        attempts=exc.attempts,
+                        answer_retried=answer_retried,
+                    ):
+                        return
+                    raise ChatAgentError("模型服务暂时不可用，且尚未取得可发布的本地证据") from exc
                 completion = model_step.completion
-                model_elapsed_ms = model_step.elapsed_ms
-                metrics.record_model(
-                    elapsed_ms=model_elapsed_ms,
+                model_elapsed_ms = _record_model_attempts(
+                    metrics,
+                    model_step.attempts,
                     usage=completion.usage,
                     input_chars=model_input_chars,
+                )
+                log.append(
+                    "model_step_attempts",
+                    {
+                        "model_call_id": model_call_id,
+                        "provider_id": model_step.provider_id,
+                        "attempts": _safe_attempt_payload(model_step.attempts),
+                    },
+                    step_index=step_index,
                 )
                 # Provider calls are synchronous today.  Re-check immediately
                 # after they return so a cancellation can never be followed by
                 # a fresh tool invocation or result publication.
-                self._check_continue(repo, task_id, started_at)
-                assistant = model_step.assistant_message
+                self._check_continue(
+                    repo,
+                    task_id,
+                    started_at,
+                    timeout_seconds=turn_budget.turn_timeout_seconds,
+                )
+                assistant = assistant_message(completion)
                 messages.append(assistant)
                 log.append_model_message(
                     assistant,
@@ -696,7 +945,10 @@ class AgentRuntime:
                 )
 
                 if completion.tool_calls:
-                    if executed_tool_calls + len(completion.tool_calls) > self.max_tool_calls:
+                    if (
+                        executed_tool_calls + len(completion.tool_calls)
+                        > turn_budget.max_tool_calls
+                    ):
                         raise AgentBudgetExceededError("Agent 工具调用超过上限")
                     guarded_calls, temporal_guard = apply_temporal_guard(
                         str(request.get("question") or ""),
@@ -710,7 +962,12 @@ class AgentRuntime:
                     duplicate_count = 0
                     paired_calls = list(zip(completion.tool_calls, guarded_calls))
                     for offset in range(0, len(paired_calls), 2):
-                        self._check_continue(repo, task_id, started_at)
+                        self._check_continue(
+                            repo,
+                            task_id,
+                            started_at,
+                            timeout_seconds=turn_budget.turn_timeout_seconds,
+                        )
                         chunk = paired_calls[offset : offset + 2]
                         outcomes = tool_runtime.execute_batch(
                             [
@@ -783,7 +1040,7 @@ class AgentRuntime:
                         tool_results,
                     )
                     issues = _validate_answer(proposed_answer, final_payload)
-                if issues and not answer_retried and step_index < self.max_steps:
+                if issues and not answer_retried and step_index < turn_budget.max_steps:
                     answer_retried = True
                     correction = {
                         "role": "user",
@@ -869,15 +1126,92 @@ class AgentRuntime:
         finally:
             conn.close()
 
+    def _publish_provider_degraded_answer(
+        self,
+        *,
+        repo: AiTaskRepository,
+        log: AgentEventLog,
+        task_id: str,
+        turn_id: str,
+        step_index: int,
+        request: dict[str, Any],
+        tool_results: list[dict[str, Any]],
+        metrics: RuntimeMetrics,
+        attempts: tuple[ModelStepAttempt, ...],
+        answer_retried: bool,
+    ) -> bool:
+        usable_evidence = any(
+            str(item.get("status") or "") not in {"", "error"} for item in tool_results
+        )
+        if not usable_evidence:
+            return False
+        with metrics.measure_validation():
+            final_payload = _final_payload(request, tool_results)
+            answer = render_grounded_fallback(final_payload.get("fact_catalog") or [])
+            validation_issues = _validate_answer(answer, final_payload)
+            answer = _apply_deterministic_answer_patches(
+                answer,
+                final_payload,
+                validation_issues,
+                tool_results,
+            )
+            validation_issues = _validate_answer(answer, final_payload)
+            answer, validation_issues, _ = _ensure_grounded_answer(
+                answer,
+                final_payload,
+                validation_issues,
+            )
+        result = _result_payload(
+            answer=answer,
+            tool_results=tool_results,
+            request=request,
+            final_payload=final_payload,
+            answer_retried=answer_retried,
+            validation_issues=validation_issues,
+            grounded_fallback_used=True,
+        )
+        runtime_metrics = metrics.snapshot()
+        result.update(
+            {
+                "agent_runtime": "v2",
+                "turn_id": turn_id,
+                "steps": step_index,
+                "stop_reason": "provider_degraded_fallback",
+                "provider_degraded": True,
+                "provider_attempts": _safe_attempt_payload(attempts),
+                "runtime_metrics": runtime_metrics,
+            }
+        )
+        log.append(
+            "turn_ended",
+            {
+                "stop_reason": "provider_degraded_fallback",
+                "steps": step_index,
+                "tool_call_count": len(tool_results),
+                "validation_issues": validation_issues,
+                "runtime_metrics": runtime_metrics,
+            },
+            step_index=step_index,
+        )
+        _mark_done(
+            repo,
+            task_id=task_id,
+            message="模型服务波动，已基于现有本地证据完成保守回答",
+            result=result,
+        )
+        return True
+
     def _check_continue(
         self,
         repo: AiTaskRepository,
         task_id: str,
         started_at: float,
+        *,
+        timeout_seconds: int | None = None,
     ) -> None:
         if cancellation_registry.is_cancel_requested(task_id) or _is_terminal(repo, task_id):
             raise AgentCancelledError("Agent 任务已取消")
-        if self.clock() - started_at > self.timeout_seconds:
+        if self.clock() - started_at > (timeout_seconds or self.timeout_seconds):
             raise AgentBudgetExceededError("Agent 回合执行超时")
 
 
@@ -887,8 +1221,9 @@ def run_chat_agent_task_v2(
     *,
     resume: bool = False,
 ) -> None:
+    initial_budget = _dynamic_budget(_question_context(request))
     runtime = AgentRuntime(
-        model=ConfiguredNativeToolModel(),
+        model=ConfiguredNativeToolModel(initial_budget),
         registry=get_default_registry(),
     )
     runtime.run(task_id, request, resume=resume)

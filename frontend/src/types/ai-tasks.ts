@@ -98,6 +98,12 @@ export interface AiAgentInboxPayload {
   status: string
 }
 
+export interface AiAgentSteeringInput {
+  inboxId: number | null
+  content: string
+  status: string
+}
+
 export interface AiTaskCreatePayload {
   task_id: string
   status: AiTaskStatus | string

@@ -224,7 +224,7 @@ export function useAiTask(taskId: string | null) {
         if (event.type === 'task.progress') {
           setStreamEvents((current) => current.some((item) => item.event_id === event.data.event_id)
             ? current
-            : [...current, { ...event.data, payload: null }])
+            : [...current, event.data])
           return
         }
         if (event.type === 'task.tool') {

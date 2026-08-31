@@ -5,10 +5,17 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from backend.domains.ai_agent import tool_registry, tools
+from backend.domains.ai_agent import tool_cache, tool_registry, tools
 from backend.services import ai_agent_service
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _isolate_agent_tool_cache():
+    tool_cache.clear_agent_tool_cache()
+    yield
+    tool_cache.clear_agent_tool_cache()
 
 
 class FakeReadonlyConn:
@@ -739,6 +746,7 @@ def test_compare_entities_combines_playback_and_billboard_batch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tool_registry.get_default_registry.cache_clear()
+    _patch_readonly_db(monkeypatch)
     observed: dict[str, Any] = {"playback": [], "billboard": []}
 
     playback_data = {
@@ -916,6 +924,7 @@ def test_compare_entities_keeps_missing_entities(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tool_registry.get_default_registry.cache_clear()
+    _patch_readonly_db(monkeypatch)
 
     def fake_batch(_conn: Any, **kwargs: Any) -> list[dict[str, Any]]:
         return [

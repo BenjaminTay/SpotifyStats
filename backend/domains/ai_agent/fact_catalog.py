@@ -11,6 +11,22 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 _ISO_DATE_RE = re.compile(r"20\d{2}-\d{2}-\d{2}")
+_TOOL_METRIC_SPECS: dict[str, tuple[str, str | None]] = {
+    "total_plays": ("播放次数", "plays"),
+    "plays": ("播放次数", "plays"),
+    "hours": ("播放时长", "hours"),
+    "total_hours": ("播放时长", "hours"),
+    "rate": ("比例", "%"),
+    "share_pct": ("占比", "%"),
+    "rank": ("排名", None),
+    "peak_position": ("最高排名", None),
+    "power_score": ("个人榜单 Power Score", None),
+    "weeks_on_chart": ("在榜周数", "weeks"),
+    "weeks_at_no1": ("冠军周数", "weeks"),
+    "year": ("年份", None),
+}
+_MAX_FALLBACK_TOOL_FACTS = 40
+_MAX_FALLBACK_LIST_ITEMS = 20
 
 
 class AgentFact(BaseModel):
@@ -193,9 +209,86 @@ def _source_range_facts(evidence_cards: list[dict[str, Any]]) -> list[AgentFact]
     return facts
 
 
+def _tool_result_facts(tool_results: list[dict[str, Any]]) -> list[AgentFact]:
+    """Recover known deterministic metrics when a tool has no card builder yet."""
+
+    facts: list[AgentFact] = []
+
+    def visit(
+        value: Any,
+        *,
+        tool_name: str,
+        evidence_ref: str,
+        source_range: str,
+        path: tuple[str, ...],
+    ) -> None:
+        if len(facts) >= _MAX_FALLBACK_TOOL_FACTS:
+            return
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if len(facts) >= _MAX_FALLBACK_TOOL_FACTS:
+                    break
+                next_path = (*path, str(key))
+                spec = _TOOL_METRIC_SPECS.get(str(key))
+                if (
+                    spec is not None
+                    and isinstance(item, (int, float))
+                    and not isinstance(item, bool)
+                ):
+                    label, unit = spec
+                    facts.append(
+                        AgentFact(
+                            fact_id=_fact_id(evidence_ref, next_path, item),
+                            evidence_ref=evidence_ref,
+                            tool_name=tool_name,
+                            source_range=source_range,
+                            metric_name=".".join(next_path),
+                            label=label,
+                            value=item,
+                            unit=unit,
+                        )
+                    )
+                visit(
+                    item,
+                    tool_name=tool_name,
+                    evidence_ref=evidence_ref,
+                    source_range=source_range,
+                    path=next_path,
+                )
+        elif isinstance(value, list):
+            # Long row series (for example daily trends) are evidence payloads,
+            # not a useful final-answer fact catalog. Their summary metrics
+            # should come from an evidence-card builder instead.
+            if len(value) > _MAX_FALLBACK_LIST_ITEMS:
+                return
+            for index, item in enumerate(value):
+                visit(
+                    item,
+                    tool_name=tool_name,
+                    evidence_ref=evidence_ref,
+                    source_range=source_range,
+                    path=(*path, str(index)),
+                )
+
+    for index, result in enumerate(tool_results):
+        if not isinstance(result, dict) or result.get("status") == "error":
+            continue
+        tool_name = str(result.get("tool_name") or "")
+        evidence_ref = f"tool_result:{index}:{tool_name}"
+        visit(
+            result.get("data"),
+            tool_name=tool_name,
+            evidence_ref=evidence_ref,
+            source_range=str(result.get("source_range") or ""),
+            path=(),
+        )
+    return facts
+
+
 def build_fact_catalog(
     evidence_cards: list[dict[str, Any]],
     *,
+    tool_results: list[dict[str, Any]] | None = None,
     temporal_context: dict[str, Any] | None = None,
     temporal_guard: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
@@ -216,5 +309,6 @@ def build_fact_catalog(
                 facts.append(fact)
     facts.extend(_derived_comparison_facts(facts))
     facts.extend(_source_range_facts(evidence_cards))
+    facts.extend(_tool_result_facts(tool_results or []))
     facts.extend(_temporal_facts(temporal_context or {}, temporal_guard or {}))
     return [fact.model_dump(exclude_none=True) for fact in facts]

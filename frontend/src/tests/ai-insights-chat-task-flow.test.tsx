@@ -286,7 +286,9 @@ describe('ChatInterface task-based agent flow', () => {
         content: '只看今年，不要全部时间',
       })
     })
-    expect(await screen.findByText('只看今年，不要全部时间')).toBeInTheDocument()
+    expect((await screen.findAllByText('只看今年，不要全部时间')).length).toBeGreaterThan(0)
+    expect(screen.getByText('运行中补充')).toBeInTheDocument()
+    expect(screen.getByText('已接收，等待 Agent 读取')).toBeInTheDocument()
   })
 
   it('adds the done task answer as an assistant message and preserves tool trace', async () => {

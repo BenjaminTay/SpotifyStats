@@ -38,6 +38,18 @@ from backend.services.ai_task_service import (
 router = APIRouter(prefix="/ai/tasks", tags=["AI Tasks"])
 
 _STREAM_TERMINAL_STATUSES = {"done", "error", "cancelled"}
+_SAFE_AGENT_STATE_EVENT_TYPES = {
+    "session_state_initialized",
+    "session_state_updated",
+    "session_input_consumed",
+}
+_SAFE_AGENT_STATE_FIELDS = (
+    "entities",
+    "time_range",
+    "metrics",
+    "excluded_dimensions",
+    "filters",
+)
 
 
 def _sse(event: str, data: dict[str, Any], *, event_id: str | None = None) -> str:
@@ -77,6 +89,25 @@ def _answer_text(task: dict[str, Any]) -> str:
     return ""
 
 
+def _safe_agent_state_payload(item: dict[str, Any]) -> dict[str, Any] | None:
+    if item.get("event_type") not in _SAFE_AGENT_STATE_EVENT_TYPES:
+        return None
+    raw = item.get("payload")
+    if not isinstance(raw, dict):
+        return None
+    state = raw.get("state")
+    if not isinstance(state, dict):
+        return None
+    payload: dict[str, Any] = {
+        "state": {field: state.get(field) for field in _SAFE_AGENT_STATE_FIELDS},
+    }
+    for field in ("inbox_id", "input_type", "semantic_action"):
+        value = raw.get(field)
+        if isinstance(value, (str, int)) and not isinstance(value, bool):
+            payload[field] = value
+    return payload
+
+
 async def _task_event_stream(task_id: str, request: Request):
     last_event_id = 0
     last_tool_call_id = 0
@@ -106,16 +137,20 @@ async def _task_event_stream(task_id: str, request: Request):
                     continue
                 # Deliberately omit payload: it can contain runtime bookkeeping
                 # and validation internals that are not user-facing progress.
+                progress_payload = {
+                    "event_id": event_id,
+                    "task_id": task_id,
+                    "event_type": item["event_type"],
+                    "stage": item["stage"],
+                    "message": item["message"],
+                    "created_at": item["created_at"],
+                }
+                safe_state = _safe_agent_state_payload(item)
+                if safe_state is not None:
+                    progress_payload["payload"] = safe_state
                 yield _sse(
                     "task.progress",
-                    {
-                        "event_id": event_id,
-                        "task_id": task_id,
-                        "event_type": item["event_type"],
-                        "stage": item["stage"],
-                        "message": item["message"],
-                        "created_at": item["created_at"],
-                    },
+                    progress_payload,
                     event_id=f"progress-{event_id}",
                 )
                 last_event_id = event_id

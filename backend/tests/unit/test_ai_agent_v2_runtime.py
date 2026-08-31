@@ -21,6 +21,7 @@ from backend.domains.ai_agent.tool_registry import (
     AgentToolResult,
     get_default_registry,
 )
+from backend.providers.base import ProviderNetworkError
 from backend.providers.llm.client import LLMCompletion, LLMToolCall
 from backend.services import ai_agent_service, ai_agent_v2_service
 from backend.services.ai_agent_v2_service import AgentRuntime
@@ -305,6 +306,59 @@ def test_agent_v2_replaces_repeated_unsupported_numbers_with_grounded_fallback(
     assert result["evidence_coverage"] == 1.0
     assert "250" not in result["answer"]
     assert result["claim_ledger"]["unsupported_literals"] == []
+
+
+def test_agent_v2_provider_failure_after_tool_preserves_evidence_and_finishes(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "agent-provider-degraded.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class ProviderFailsAfterTool:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            self.calls += 1
+            if self.calls == 1:
+                return LLMCompletion(
+                    tool_calls=[
+                        LLMToolCall(
+                            call_id="call-1",
+                            name="analysis_charts",
+                            arguments={"entity": "artist", "metric": "plays"},
+                        )
+                    ]
+                )
+            raise ProviderNetworkError("test", "temporary upstream failure")
+
+    model = ProviderFailsAfterTool()
+    AgentRuntime(model=model, registry=_chart_registry(), max_steps=4).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？"},
+    )
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    tool_call_count = conn.execute("SELECT COUNT(*) FROM ai_tool_calls").fetchone()[0]
+    result = json.loads(task["result_json"])
+    conn.close()
+
+    assert task["status"] == "done"
+    assert tool_call_count == 1
+    assert model.calls == 3
+    assert result["stop_reason"] == "provider_degraded_fallback"
+    assert result["provider_degraded"] is True
+    assert result["grounded_fallback_used"] is True
+    assert result["evidence_coverage"] == 1.0
+    assert "12" in result["answer"]
 
 
 def test_agent_v2_safety_boundary_does_not_call_model(tmp_path, monkeypatch):
@@ -822,10 +876,25 @@ def test_agent_consumes_session_inbox_before_next_model_step(tmp_path, monkeypat
     consumed_events = conn.execute(
         "SELECT COUNT(*) FROM ai_agent_turn_events WHERE event_type='session_input_consumed'"
     ).fetchone()[0]
+    state_event = conn.execute(
+        "SELECT payload_json FROM ai_agent_turn_events "
+        "WHERE event_type='session_state_updated' ORDER BY event_id DESC LIMIT 1"
+    ).fetchone()
+    public_event = conn.execute(
+        "SELECT payload_json FROM ai_task_events "
+        "WHERE event_type='session_state_updated' ORDER BY event_id DESC LIMIT 1"
+    ).fetchone()
     conn.close()
     assert inbox["status"] == "consumed"
     assert inbox["consumed_at"] is not None
     assert consumed_events == 1
+    state_payload = json.loads(state_event["payload_json"])
+    assert state_payload["semantic_action"] == "replace_constraints"
+    assert state_payload["state"]["time_range"]["period"] == "custom"
+    public_payload = json.loads(public_event["payload_json"])
+    assert public_payload["state"]["time_range"]["period"] == "custom"
+    assert "active_question" not in public_payload["state"]
+    assert "pending_requirements" not in public_payload["state"]
 
 
 def _chart_registry() -> AgentToolRegistry:

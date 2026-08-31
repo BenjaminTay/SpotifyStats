@@ -244,9 +244,7 @@ def _poll_task(
 
 def _task_events(backend_url: str, task_id: str) -> dict[str, Any]:
     try:
-        payload = _http_json(
-            "GET", _api_url(backend_url, f"/api/ai/tasks/{task_id}/events")
-        )
+        payload = _http_json("GET", _api_url(backend_url, f"/api/ai/tasks/{task_id}/events"))
         trajectory = _http_json(
             "GET",
             _api_url(backend_url, f"/api/ai/tasks/{task_id}/trajectory"),
@@ -419,9 +417,7 @@ def _grade_case(
         fail_issues.append(f"expected agent_runtime=v2, got {result.get('agent_runtime')!r}")
     trajectory = _as_list(events_payload.get("trajectory"))
     trajectory_types = {
-        str(event.get("event_type") or "")
-        for event in trajectory
-        if isinstance(event, dict)
+        str(event.get("event_type") or "") for event in trajectory if isinstance(event, dict)
     }
     if not {"turn_started", "turn_ended"}.issubset(trajectory_types):
         fail_issues.append("missing replayable V2 turn_started/turn_ended trajectory")
@@ -431,6 +427,31 @@ def _grade_case(
     validation_issues = [str(issue) for issue in _as_list(result.get("validation_issues"))]
     if validation_issues:
         partial_issues.extend(f"validation: {issue}" for issue in validation_issues)
+
+    evidence_coverage = result.get("evidence_coverage")
+    if not isinstance(evidence_coverage, (int, float)) or isinstance(evidence_coverage, bool):
+        fail_issues.append("missing numeric evidence_coverage")
+    elif float(evidence_coverage) < 1.0:
+        fail_issues.append(
+            f"numeric evidence coverage is {float(evidence_coverage):.1%}, expected 100%"
+        )
+    claim_ledger = _as_dict(result.get("claim_ledger"))
+    unsupported_literals = _as_list(claim_ledger.get("unsupported_literals"))
+    if unsupported_literals:
+        fail_issues.append(f"unsupported numeric claims: {unsupported_literals[:8]}")
+    if result.get("grounded_fallback_used") is True:
+        partial_issues.append("model answer required deterministic grounded fallback")
+
+    runtime_metrics = _as_dict(result.get("runtime_metrics"))
+    if not runtime_metrics:
+        fail_issues.append("missing runtime_metrics")
+    else:
+        total_elapsed_ms = runtime_metrics.get("total_elapsed_ms")
+        if isinstance(total_elapsed_ms, (int, float)) and total_elapsed_ms > 180_000:
+            partial_issues.append(f"turn latency {int(total_elapsed_ms)}ms exceeds 180000ms")
+        tool_calls = runtime_metrics.get("tool_call_count")
+        if isinstance(tool_calls, (int, float)) and tool_calls > 8:
+            partial_issues.append(f"tool call count {int(tool_calls)} exceeds quality target 8")
 
     if case.case_id.startswith("P0-"):
         fail, partial = _p0_specific_issues(case, result, events_payload)
@@ -453,6 +474,9 @@ def _grade_case(
         "tool_names": _tool_names(result, events_payload),
         "answer_preview": answer[:500],
         "validation_issues": validation_issues,
+        "evidence_coverage": evidence_coverage,
+        "runtime_metrics": runtime_metrics,
+        "grounded_fallback_used": result.get("grounded_fallback_used") is True,
     }
 
 

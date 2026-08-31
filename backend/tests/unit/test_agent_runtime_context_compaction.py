@@ -27,6 +27,22 @@ def test_compaction_retains_facts_range_revision_and_evidence_reference() -> Non
         {
             "event_id": 3,
             "turn_id": "turn-1",
+            "event_type": "session_state_updated",
+            "payload": {
+                "state": {
+                    "version": 1,
+                    "entities": ["A", "B"],
+                    "time_range": {"period": "this_year"},
+                    "metrics": ["plays"],
+                    "excluded_dimensions": ["personal_billboard"],
+                    "filters": {"include_billboard": False},
+                    "pending_requirements": ["只看今年"],
+                }
+            },
+        },
+        {
+            "event_id": 4,
+            "turn_id": "turn-1",
             "event_type": "model_message",
             "payload": {"message": {"role": "assistant", "content": "A 更高。"}},
         },
@@ -53,6 +69,8 @@ def test_compaction_retains_facts_range_revision_and_evidence_reference() -> Non
         "user",
         "assistant",
     ]
+    assert compacted["session_state"]["time_range"] == {"period": "this_year"}
+    assert compacted["session_state"]["excluded_dimensions"] == ["personal_billboard"]
 
 
 def test_compaction_is_bounded_and_drops_raw_tool_data() -> None:

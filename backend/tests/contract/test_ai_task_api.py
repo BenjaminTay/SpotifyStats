@@ -231,6 +231,26 @@ def test_task_stream_projects_progress_and_final_answer_without_internal_payload
             message="正在选择本地数据工具",
             payload={"hidden_reasoning": "不得通过 SSE 暴露"},
         )
+        repo.add_event(
+            task_id="task-stream",
+            event_type="session_state_updated",
+            stage="agent_deciding",
+            message="已应用补充约束",
+            payload={
+                "inbox_id": 7,
+                "input_type": "steer",
+                "semantic_action": "replace_constraints",
+                "state": {
+                    "active_question": "不应进入 SSE 的原始问题",
+                    "entities": ["Taylor Swift"],
+                    "time_range": {"period": "this_year"},
+                    "metrics": ["plays"],
+                    "excluded_dimensions": ["personal_billboard"],
+                    "filters": {"music_only": True},
+                    "pending_requirements": ["不应公开的原始补充"],
+                },
+            },
+        )
         repo.add_tool_call(
             task_id="task-stream",
             tool_name="analysis_stats",
@@ -262,6 +282,13 @@ def test_task_stream_projects_progress_and_final_answer_without_internal_payload
     assert "最终答案：128 次播放。" in body
     assert "hidden_reasoning" not in body
     assert "不得通过 SSE 暴露" not in body
+    assert "session_state_updated" in body
+    assert "Taylor Swift" in body
+    assert "replace_constraints" in body
+    assert "active_question" not in body
+    assert "不应进入 SSE 的原始问题" not in body
+    assert "pending_requirements" not in body
+    assert "不应公开的原始补充" not in body
 
 
 def test_agent_inbox_accepts_running_turn_steering_and_persists_it(client):

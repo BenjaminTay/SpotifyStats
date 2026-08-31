@@ -1220,6 +1220,7 @@ def _final_payload(
     )
     fact_catalog = build_fact_catalog(
         compact_cards,
+        tool_results=tool_results,
         temporal_context=temporal_context,
         temporal_guard=temporal_guard,
     )

@@ -2,8 +2,9 @@ import { Calendar, RefreshCw, X } from 'lucide-react'
 import { AIEvidenceCards } from '@/features/ai-tasks/AIEvidenceCards'
 import { AITaskProgress } from '@/features/ai-tasks/AITaskProgress'
 import { AIToolTrace } from '@/features/ai-tasks/AIToolTrace'
+import { AgentConstraintStatus } from './AgentConstraintStatus'
 import type { ChatMessage, ReportType } from '@/types/ai-insights'
-import type { AiTaskEvent, AiTaskRun, AiToolCall } from '@/types/ai-tasks'
+import type { AiAgentSteeringInput, AiTaskEvent, AiTaskRun, AiToolCall } from '@/types/ai-tasks'
 import { AiMarkdown } from './AiMarkdown'
 import { REPORT_LABELS } from './aiInsightsData'
 
@@ -48,6 +49,7 @@ interface Props {
     events: AiTaskEvent[]
     toolCalls: AiToolCall[]
     streamedAnswer?: string
+    steeringInputs?: AiAgentSteeringInput[]
   }
   retryingIdx: number | null
   reportContext?: ReportType
@@ -163,6 +165,11 @@ export function ChatMessageList({
             <div className="flex justify-start">
               <div className="max-w-[80%] space-y-3 rounded-r-2xl border-l-2 border-accent-foreground/20 bg-card/40 backdrop-blur-[8px] px-4 py-3">
                 <AITaskProgress task={activeTask?.task ?? null} events={activeTask?.events ?? []} />
+                <AgentConstraintStatus
+                  task={activeTask?.task ?? null}
+                  events={activeTask?.events ?? []}
+                  steeringInputs={activeTask?.steeringInputs ?? []}
+                />
                 <AIToolTrace toolCalls={activeTask?.toolCalls ?? []} />
                 {activeTask?.streamedAnswer && (
                   <div
