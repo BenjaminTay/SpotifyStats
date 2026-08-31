@@ -67,6 +67,9 @@ AI_AGENT_MAX_TOOL_CALLS = max(1, int(_get("AI_AGENT_MAX_TOOL_CALLS", "12")))
 AI_AGENT_TURN_TIMEOUT_SECONDS = max(10, int(_get("AI_AGENT_TURN_TIMEOUT_SECONDS", "90")))
 AI_AGENT_LLM_TIMEOUT_SECONDS = max(10, int(_get("AI_AGENT_LLM_TIMEOUT_SECONDS", "45")))
 AI_AGENT_LLM_RETRIES = max(0, int(_get("AI_AGENT_LLM_RETRIES", "1")))
+AI_AGENT_CONTEXT_SOURCE = _get("AI_AGENT_CONTEXT_SOURCE", "memory").strip().lower()
+if AI_AGENT_CONTEXT_SOURCE not in {"memory", "event_log"}:
+    AI_AGENT_CONTEXT_SOURCE = "memory"
 
 # ── Remote access auth (Task 5) ──────────────────────────────────────
 

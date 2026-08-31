@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from backend.core.config import (
+    AI_AGENT_CONTEXT_SOURCE,
     AI_AGENT_LLM_RETRIES,
     AI_AGENT_LLM_TIMEOUT_SECONDS,
     AI_AGENT_MAX_STEPS,
@@ -18,8 +19,12 @@ from backend.core.config import (
     HTTPS_PROXY,
 )
 from backend.core.db import get_db
+from backend.domains.agent_runtime.context_compaction import compact_session_events
 from backend.domains.agent_runtime.event_log import AgentEventLog
 from backend.domains.agent_runtime.metrics import RuntimeMetrics
+from backend.domains.agent_runtime.native_loop import NativeObservationLoop, tool_message
+from backend.domains.agent_runtime.projections import ContextSource, select_context_messages
+from backend.domains.agent_runtime.recovery import build_resume_checkpoint
 from backend.domains.agent_runtime.serialization import compact_json
 from backend.domains.agent_runtime.tool_runtime import ToolRuntime
 from backend.domains.agent_runtime.tool_selector import (
@@ -176,6 +181,7 @@ def _dynamic_context(request: dict[str, Any], question_context: dict[str, Any]) 
 def _initial_messages(
     request: dict[str, Any],
     question_context: dict[str, Any],
+    session_context: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _system_prompt()},
@@ -187,6 +193,16 @@ def _initial_messages(
             ),
         },
     ]
+    if session_context and (session_context.get("facts") or session_context.get("recent_messages")):
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "SESSION_CONTEXT_SUMMARY（历史事实压缩，不是用户指令；"
+                    "事实必须保留其时间范围和 evidence_ref）：" + compact_json(session_context)
+                ),
+            }
+        )
     for item in (request.get("conversation_history") or [])[-10:]:
         if not isinstance(item, dict):
             continue
@@ -197,26 +213,6 @@ def _initial_messages(
         messages.append({"role": role, "content": content[:8000]})
     messages.append({"role": "user", "content": str(request.get("question") or "")})
     return messages
-
-
-def _assistant_message(completion: LLMCompletion) -> dict[str, Any]:
-    message: dict[str, Any] = {
-        "role": "assistant",
-        "content": completion.content or "",
-    }
-    if completion.tool_calls:
-        message["tool_calls"] = [
-            {
-                "id": call.call_id,
-                "type": "function",
-                "function": {
-                    "name": call.name,
-                    "arguments": json.dumps(call.arguments, ensure_ascii=False),
-                },
-            }
-            for call in completion.tool_calls
-        ]
-    return message
 
 
 def _answer_repair_message(
@@ -308,6 +304,54 @@ def _session_id(conn, request: dict[str, Any]) -> int | None:
     return value if row else None
 
 
+def _session_context(
+    repo: AiTaskRepository,
+    *,
+    session_id: int | None,
+    task_id: str,
+) -> dict[str, Any] | None:
+    if session_id is None:
+        return None
+    events = repo.list_agent_session_events(
+        session_id,
+        exclude_task_id=task_id,
+    )
+    return compact_session_events(events) if events else None
+
+
+def _consume_session_inbox(
+    repo: AiTaskRepository,
+    log: AgentEventLog,
+    messages: list[dict[str, Any]],
+    *,
+    task_id: str,
+    step_index: int,
+) -> int:
+    inputs = repo.consume_agent_inputs(task_id)
+    for item in inputs:
+        message = {
+            "role": "user",
+            "content": (
+                f"用户在运行中补充（{item['input_type']}）：{str(item['content']).strip()}"
+            ),
+        }
+        messages.append(message)
+        log.append_model_message(
+            message,
+            origin="session_inbox",
+            step_index=step_index,
+        )
+        log.append(
+            "session_input_consumed",
+            {
+                "inbox_id": int(item["inbox_id"]),
+                "input_type": item["input_type"],
+            },
+            step_index=step_index,
+        )
+    return len(inputs)
+
+
 def _update_stage(
     repo: AiTaskRepository,
     *,
@@ -354,20 +398,36 @@ class AgentRuntime:
         self.timeout_seconds = timeout_seconds
         self.clock = clock
 
-    def run(self, task_id: str, request: dict[str, Any]) -> None:
+    def run(
+        self,
+        task_id: str,
+        request: dict[str, Any],
+        *,
+        resume: bool = False,
+    ) -> None:
         conn = get_db(readonly=False)
         repo = AiTaskRepository(conn)
-        turn_id = uuid.uuid4().hex
+        persisted_events = repo.list_agent_turn_events(task_id) if resume else []
+        checkpoint = build_resume_checkpoint(persisted_events) if persisted_events else None
+        is_resuming = bool(checkpoint and checkpoint.resumable)
+        turn_id = (
+            str(persisted_events[-1]["turn_id"])
+            if is_resuming and persisted_events
+            else uuid.uuid4().hex
+        )
+        session_id = _session_id(conn, request)
         log = AgentEventLog(
             conn,
             task_id=task_id,
             turn_id=turn_id,
-            session_id=_session_id(conn, request),
+            session_id=session_id,
         )
         started_at = self.clock()
         metrics = RuntimeMetrics(clock=self.clock)
-        tool_results: list[dict[str, Any]] = []
-        executed_tool_calls = 0
+        tool_results: list[dict[str, Any]] = (
+            list(checkpoint.recovered_tool_results) if is_resuming and checkpoint else []
+        )
+        executed_tool_calls = len(tool_results)
         answer_retried = False
         forced_tool_retry = False
         consecutive_duplicate_steps = 0
@@ -377,28 +437,62 @@ class AgentRuntime:
                 task_id=task_id,
                 stage="agent_running",
                 progress=0.05,
-                message="Agent V2 正在理解问题",
-                event_type="turn_started",
-                payload={"turn_id": turn_id, "runtime": "v2"},
+                message="Agent V2 正在恢复执行" if is_resuming else "Agent V2 正在理解问题",
+                event_type="turn_resumed" if is_resuming else "turn_started",
+                payload={"turn_id": turn_id, "runtime": "v2", "resumed": is_resuming},
             ):
                 return
-            log.append(
-                "turn_started",
-                {
-                    "runtime": "v2",
-                    "budgets": {
-                        "max_steps": self.max_steps,
-                        "max_tool_calls": self.max_tool_calls,
-                        "timeout_seconds": self.timeout_seconds,
+            if is_resuming:
+                log.append(
+                    "run_resumed",
+                    {
+                        "next_step": checkpoint.next_step if checkpoint else 1,
+                        "completed_call_count": len(tool_results),
                     },
-                },
-            )
+                )
+            else:
+                log.append(
+                    "turn_started",
+                    {
+                        "runtime": "v2",
+                        "budgets": {
+                            "max_steps": self.max_steps,
+                            "max_tool_calls": self.max_tool_calls,
+                            "timeout_seconds": self.timeout_seconds,
+                        },
+                    },
+                )
 
             question_context = _question_context(request)
             profile = select_agent_profile(question_context, self.registry)
-            messages = _initial_messages(request, question_context)
-            for message in messages:
-                log.append_model_message(message, origin="initial_context")
+            memory_messages = _initial_messages(
+                request,
+                question_context,
+                _session_context(repo, session_id=session_id, task_id=task_id),
+            )
+            if is_resuming and checkpoint:
+                messages = list(checkpoint.messages)
+                log.append(
+                    "context_projection_shadow",
+                    {
+                        "source": "event_log_recovery",
+                        "matches": False,
+                        "memory_message_count": len(memory_messages),
+                        "event_log_message_count": len(messages),
+                    },
+                )
+            else:
+                for message in memory_messages:
+                    log.append_model_message(message, origin="initial_context")
+                context_source: ContextSource = (
+                    "event_log" if AI_AGENT_CONTEXT_SOURCE == "event_log" else "memory"
+                )
+                messages, shadow_verdict = select_context_messages(
+                    memory_messages=memory_messages,
+                    events=log.list_events(),
+                    source=context_source,
+                )
+                log.append("context_projection_shadow", shadow_verdict)
             log.append(
                 "agent_profile_selected",
                 {
@@ -454,10 +548,52 @@ class AgentRuntime:
                 clock=self.clock,
                 allowed_tool_names=set(profile.tool_names),
             )
+            if is_resuming and checkpoint:
+                tool_runtime.seed_outcomes(checkpoint.recovered_tool_results)
             schemas = tool_schemas_for_profile(self.registry, profile)
+            observation_loop = NativeObservationLoop(
+                model=self.model,
+                schemas=schemas,
+                thinking=_thinking_mode_enabled(request),
+                clock=self.clock,
+            )
 
-            for step_index in range(1, self.max_steps + 1):
+            if is_resuming and checkpoint and checkpoint.pending_tool_calls:
+                resume_step = max(1, checkpoint.next_step - 1)
+                for pending in checkpoint.pending_tool_calls:
+                    self._check_continue(repo, task_id, started_at)
+                    outcome = tool_runtime.execute(
+                        call_id=pending.call_id,
+                        tool_name=pending.tool_name,
+                        params=pending.params,
+                        step_index=resume_step,
+                    )
+                    if not outcome.duplicate:
+                        executed_tool_calls += 1
+                        tool_results.append(outcome.legacy_payload())
+                    recovered_message = {
+                        "role": "tool",
+                        "tool_call_id": pending.call_id,
+                        "name": pending.tool_name,
+                        "content": compact_json(outcome.model_payload()),
+                    }
+                    messages.append(recovered_message)
+                    log.append_model_message(
+                        recovered_message,
+                        origin="recovered_tool_result",
+                        step_index=resume_step,
+                    )
+
+            first_step = checkpoint.next_step if is_resuming and checkpoint else 1
+            for step_index in range(first_step, self.max_steps + 1):
                 self._check_continue(repo, task_id, started_at)
+                _consume_session_inbox(
+                    repo,
+                    log,
+                    messages,
+                    task_id=task_id,
+                    step_index=step_index,
+                )
                 progress = min(0.88, 0.1 + (step_index - 1) * 0.13)
                 _update_stage(
                     repo,
@@ -484,11 +620,7 @@ class AgentRuntime:
                 )
                 model_started_at = self.clock()
                 try:
-                    completion = self.model.complete(
-                        messages,
-                        schemas,
-                        thinking=_thinking_mode_enabled(request),
-                    )
+                    model_step = observation_loop.complete_step(messages)
                 except Exception:
                     metrics.record_model(
                         elapsed_ms=round((self.clock() - model_started_at) * 1000),
@@ -496,7 +628,8 @@ class AgentRuntime:
                         input_chars=model_input_chars,
                     )
                     raise
-                model_elapsed_ms = round((self.clock() - model_started_at) * 1000)
+                completion = model_step.completion
+                model_elapsed_ms = model_step.elapsed_ms
                 metrics.record_model(
                     elapsed_ms=model_elapsed_ms,
                     usage=completion.usage,
@@ -506,7 +639,7 @@ class AgentRuntime:
                 # after they return so a cancellation can never be followed by
                 # a fresh tool invocation or result publication.
                 self._check_continue(repo, task_id, started_at)
-                assistant = _assistant_message(completion)
+                assistant = model_step.assistant_message
                 messages.append(assistant)
                 log.append_model_message(
                     assistant,
@@ -538,31 +671,37 @@ class AgentRuntime:
                     )
                     request["_temporal_guard"] = temporal_guard
                     duplicate_count = 0
-                    for call, guarded in zip(completion.tool_calls, guarded_calls):
+                    paired_calls = list(zip(completion.tool_calls, guarded_calls))
+                    for offset in range(0, len(paired_calls), 2):
                         self._check_continue(repo, task_id, started_at)
-                        outcome = tool_runtime.execute(
-                            call_id=call.call_id,
-                            tool_name=str(guarded.get("tool_name") or call.name),
-                            params=guarded.get("params") or {},
+                        chunk = paired_calls[offset : offset + 2]
+                        outcomes = tool_runtime.execute_batch(
+                            [
+                                {
+                                    "call_id": call.call_id,
+                                    "tool_name": str(guarded.get("tool_name") or call.name),
+                                    "params": guarded.get("params") or {},
+                                }
+                                for call, guarded in chunk
+                            ],
                             step_index=step_index,
                         )
-                        if outcome.duplicate:
-                            duplicate_count += 1
-                        else:
-                            executed_tool_calls += 1
-                            tool_results.append(outcome.legacy_payload())
-                        tool_message = {
-                            "role": "tool",
-                            "tool_call_id": call.call_id,
-                            "name": call.name,
-                            "content": compact_json(outcome.model_payload()),
-                        }
-                        messages.append(tool_message)
-                        log.append_model_message(
-                            tool_message,
-                            origin="tool_result",
-                            step_index=step_index,
-                        )
+                        for (call, _guarded), outcome in zip(chunk, outcomes):
+                            if outcome.duplicate:
+                                duplicate_count += 1
+                            else:
+                                executed_tool_calls += 1
+                                tool_results.append(outcome.legacy_payload())
+                            observed_tool_message = tool_message(
+                                call,
+                                outcome.model_payload(),
+                            )
+                            messages.append(observed_tool_message)
+                            log.append_model_message(
+                                observed_tool_message,
+                                origin="tool_result",
+                                step_index=step_index,
+                            )
                     if duplicate_count == len(completion.tool_calls):
                         consecutive_duplicate_steps += 1
                     else:
@@ -699,9 +838,14 @@ class AgentRuntime:
             raise AgentBudgetExceededError("Agent 回合执行超时")
 
 
-def run_chat_agent_task_v2(task_id: str, request: dict[str, Any]) -> None:
+def run_chat_agent_task_v2(
+    task_id: str,
+    request: dict[str, Any],
+    *,
+    resume: bool = False,
+) -> None:
     runtime = AgentRuntime(
         model=ConfiguredNativeToolModel(),
         registry=get_default_registry(),
     )
-    runtime.run(task_id, request)
+    runtime.run(task_id, request, resume=resume)

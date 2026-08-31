@@ -19,10 +19,12 @@ class SyncThread:
         target: Callable[..., None],
         args: tuple[Any, ...] = (),
         daemon: bool | None = None,
+        name: str | None = None,
     ):
         self.target = target
         self.args = args
         self.daemon = daemon
+        self.name = name
 
     def start(self) -> None:
         self.target(*self.args)
@@ -150,6 +152,35 @@ def test_handler_exception_marks_task_error(
     assert events[0][-1]["event_type"] == "stage_failed"
     assert events[0][-1]["stage"] == "error"
     assert events[0][-1]["payload"] == {"error": "boom"}
+
+
+def test_startup_recovery_resumes_queued_agent_task(
+    ai_task_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del ai_task_db
+    from backend.core import config as runtime_config
+    from backend.services import ai_agent_v2_service
+
+    monkeypatch.setattr(runtime_config, "AI_AGENT_RUNTIME", "v2")
+    monkeypatch.setattr(ai_task_service.threading, "Thread", SyncThread)
+    observed: list[tuple[str, dict[str, Any], bool]] = []
+
+    def fake_resume(task_id: str, request: dict[str, Any], *, resume: bool = False) -> None:
+        observed.append((task_id, request, resume))
+
+    monkeypatch.setattr(ai_agent_v2_service, "run_chat_agent_task_v2", fake_resume)
+    task = ai_task_service.create_task(
+        task_type="ai_chat_agent",
+        stage="queued",
+        message="等待 Agent",
+        request={"question": "恢复这个问题"},
+    )
+
+    recovered = ai_task_service.recover_interrupted_agent_tasks()
+
+    assert recovered == 1
+    assert observed == [(task["task_id"], {"question": "恢复这个问题"}, True)]
 
 
 def test_handler_exception_does_not_overwrite_cancelled_task(

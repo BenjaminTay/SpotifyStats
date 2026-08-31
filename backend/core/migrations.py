@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 68
+LATEST_SCHEMA_VERSION = 69
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3722,6 +3722,29 @@ def migrate_068(conn: sqlite3.Connection):
     conn.execute(
         """CREATE INDEX IF NOT EXISTS idx_ai_agent_turn_events_session
                ON ai_agent_turn_events(session_id, event_id)"""
+    )
+
+
+@migration(69, "ai_agent_session_inbox")
+def migrate_069(conn: sqlite3.Connection):
+    """Add durable user steering messages consumed at Agent step boundaries."""
+
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_agent_session_inbox (
+            inbox_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            session_id INTEGER REFERENCES chat_sessions(id) ON DELETE SET NULL,
+            input_type TEXT NOT NULL CHECK(input_type IN ('steer', 'followup')),
+            content TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending', 'consumed', 'rejected')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            consumed_at TEXT
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_ai_agent_inbox_pending
+               ON ai_agent_session_inbox(task_id, status, inbox_id)"""
     )
 
 

@@ -12,7 +12,15 @@ import json
 import logging
 from typing import Any
 
-from backend.domains.agent_runtime.serialization import compact_json
+from backend.domains.agent_runtime.native_loop import (
+    NativeObservationLoop,
+    NativeToolObservation,
+)
+from backend.domains.agent_runtime.tool_selector import (
+    AgentProfile,
+    select_report_profile,
+    tool_schemas_for_profile,
+)
 from backend.domains.ai_agent.tool_registry import dispatch_tool, get_default_registry, list_tools
 
 logger = logging.getLogger(__name__)
@@ -72,8 +80,11 @@ REPORT_WRITER_INSTRUCTION = """
 # ── Agent loop ────────────────────────────────────────────────────────────────
 
 
-def _build_tools_description() -> str:
+def _build_tools_description(profile: AgentProfile | None = None) -> str:
     tools = list_tools()
+    if profile is not None:
+        selected = set(profile.tool_names)
+        tools = [item for item in tools if item.get("name") in selected]
     lines = []
     for t in tools:
         name = t.get("name", "?")
@@ -149,14 +160,8 @@ def _native_report_research(
     from backend.services.ai_agent_v2_service import ConfiguredNativeToolModel
 
     registry = get_default_registry()
-    schemas = [
-        {
-            "name": item["name"],
-            "description": item["description"],
-            "parameters": item["params_schema"],
-        }
-        for item in registry.list_tools()
-    ]
+    profile = select_report_profile(registry)
+    schemas = tool_schemas_for_profile(registry, profile)
     model = ConfiguredNativeToolModel()
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": planner_prompt},
@@ -164,96 +169,71 @@ def _native_report_research(
     ]
     results: list[dict[str, Any]] = []
     identities: set[str] = set()
-    tool_count = 0
 
-    for step in range(1, AI_AGENT_MAX_STEPS + 1):
-        completion = model.complete(messages, schemas, thinking=True)
-        assistant: dict[str, Any] = {
-            "role": "assistant",
-            "content": completion.content or "",
-        }
-        if completion.tool_calls:
-            assistant["tool_calls"] = [
-                {
-                    "id": call.call_id,
-                    "type": "function",
-                    "function": {
-                        "name": call.name,
-                        "arguments": json.dumps(call.arguments, ensure_ascii=False),
-                    },
-                }
-                for call in completion.tool_calls
-            ]
-        messages.append(assistant)
-        if not completion.tool_calls:
-            return completion.content.strip(), results
-
-        for call in completion.tool_calls:
-            if tool_count >= AI_AGENT_MAX_TOOL_CALLS:
-                return _compile_research_from_tools(results), results
-            model_result: dict[str, Any]
-            try:
-                definition = registry.get(call.name)
-                properties = definition.params_model.model_json_schema().get("properties") or {}
-                params = dict(call.arguments)
-                for key, value in base_filters.items():
-                    if key in properties and key not in params and value is not None:
-                        params[key] = value
-                if "year" in properties and "year" not in params:
-                    params["year"] = year
-                if "period" in properties:
-                    params.update(
-                        {
-                            "period": "custom",
-                            "start_date": f"{year}-01-01",
-                            "end_date": end_date,
-                        }
-                    )
-                identity = f"{call.name}:{json.dumps(params, ensure_ascii=False, sort_keys=True)}"
-                if identity in identities:
-                    model_result = {
-                        "status": "duplicate",
-                        "tool_name": call.name,
-                        "error": "相同参数已查询，请基于已有结果继续推理",
+    def execute_tool(call, _step: int) -> NativeToolObservation:
+        try:
+            definition = registry.get(call.name)
+            if call.name not in profile.tool_names:
+                raise ValueError(f"Tool is outside the selected Agent profile: {call.name}")
+            properties = definition.params_model.model_json_schema().get("properties") or {}
+            params = dict(call.arguments)
+            for key, value in base_filters.items():
+                if key in properties and key not in params and value is not None:
+                    params[key] = value
+            if "year" in properties and "year" not in params:
+                params["year"] = year
+            if "period" in properties:
+                params.update(
+                    {
+                        "period": "custom",
+                        "start_date": f"{year}-01-01",
+                        "end_date": end_date,
                     }
-                else:
-                    identities.add(identity)
-                    raw = registry.dispatch(call.name, params)
-                    data = raw.get("data") if isinstance(raw.get("data"), dict) else {}
-                    status = "empty" if data.get("found") is False else "ok"
-                    item = {
-                        **raw,
-                        "status": status,
-                        "_tool_name": call.name,
-                        "_params": params,
-                    }
-                    results.append(item)
-                    tool_count += 1
-                    model_result = {
-                        "status": status,
-                        "tool_name": call.name,
-                        "result_summary": raw.get("result_summary"),
-                        "source_range": raw.get("source_range"),
-                        "data": data,
-                    }
-            except Exception as exc:
-                item = {
-                    "_tool_name": call.name,
-                    "_params": call.arguments,
-                    "status": "error",
-                    "error": str(exc) or exc.__class__.__name__,
+                )
+            identity = f"{call.name}:{json.dumps(params, ensure_ascii=False, sort_keys=True)}"
+            if identity in identities:
+                duplicate = {
+                    "status": "duplicate",
+                    "tool_name": call.name,
+                    "error": "相同参数已查询，请基于已有结果继续推理",
                 }
-                results.append(item)
-                tool_count += 1
-                model_result = item
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call.call_id,
-                    "name": call.name,
-                    "content": compact_json(model_result),
-                }
+                return NativeToolObservation(
+                    model_payload=duplicate,
+                    result_payload=duplicate,
+                    counted=False,
+                )
+            identities.add(identity)
+            raw = registry.dispatch(call.name, params)
+            data = raw.get("data") if isinstance(raw.get("data"), dict) else {}
+            status = "empty" if data.get("found") is False else "ok"
+            item = {
+                **raw,
+                "status": status,
+                "_tool_name": call.name,
+                "_params": params,
+            }
+            results.append(item)
+            return NativeToolObservation(
+                model_payload={
+                    "status": status,
+                    "tool_name": call.name,
+                    "result_summary": raw.get("result_summary"),
+                    "source_range": raw.get("source_range"),
+                    "data": data,
+                },
+                result_payload=item,
             )
+        except Exception as exc:
+            item = {
+                "_tool_name": call.name,
+                "_params": call.arguments,
+                "status": "error",
+                "error": str(exc) or exc.__class__.__name__,
+            }
+            results.append(item)
+            return NativeToolObservation(model_payload=item, result_payload=item)
+
+    def on_step(step: int, tool_count: int) -> None:
         if emit_event:
             emit_event(
                 "stage_started",
@@ -262,9 +242,23 @@ def _native_report_research(
                     "stage": "researching",
                     "progress_pct": min(0.75, 0.25 + step * 0.08),
                     "runtime": "v2",
+                    "agent_profile": profile.name,
                 },
             )
-    return _compile_research_from_tools(results), results
+
+    loop_result = NativeObservationLoop(
+        model=model,
+        schemas=schemas,
+        thinking=True,
+    ).run(
+        messages=messages,
+        execute_tool=execute_tool,
+        max_steps=AI_AGENT_MAX_STEPS,
+        max_tool_calls=AI_AGENT_MAX_TOOL_CALLS,
+        on_step=on_step,
+    )
+    research = loop_result.content or _compile_research_from_tools(results)
+    return research, results
 
 
 def run_report_agent(
@@ -288,7 +282,8 @@ def run_report_agent(
     from backend.services.ai_insights_service import _llm_chat
 
     # ── Build tool description for the planner ──
-    tools_desc = _build_tools_description()
+    report_profile = select_report_profile(get_default_registry())
+    tools_desc = _build_tools_description(report_profile)
 
     # ── Phase 1: Research Planning + Execution ──
     base_filters = {

@@ -90,6 +90,14 @@ export interface AiAgentTrajectoryPayload {
   events: AiAgentTurnEvent[]
 }
 
+export interface AiAgentInboxPayload {
+  accepted: boolean
+  task_id: string
+  action: 'steer' | 'followup' | 'cancel'
+  inbox_id?: number | null
+  status: string
+}
+
 export interface AiTaskCreatePayload {
   task_id: string
   status: AiTaskStatus | string

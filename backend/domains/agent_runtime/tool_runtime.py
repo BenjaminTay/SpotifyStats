@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
@@ -96,6 +97,29 @@ class ToolRuntime:
         self.allowed_tool_names = allowed_tool_names
         self._outcomes_by_identity: dict[str, ToolOutcome] = {}
 
+    def seed_outcomes(self, outcomes: list[dict[str, Any]]) -> None:
+        """Seed durable completed calls so recovery never executes them twice."""
+
+        for item in outcomes:
+            tool_name = str(item.get("tool_name") or "")
+            params = item.get("params")
+            data = item.get("data")
+            if not tool_name or not isinstance(params, dict) or not isinstance(data, dict):
+                continue
+            outcome = ToolOutcome(
+                call_id="recovered",
+                tool_name=tool_name,
+                status=str(item.get("status") or "error"),
+                params=params,
+                params_summary=str(item.get("params_summary") or "由事件日志恢复"),
+                result_summary=str(item.get("result_summary") or ""),
+                source_range=str(item.get("source_range") or ""),
+                data=data,
+                error=str(item["error"]) if item.get("error") else None,
+                result_size_bytes=json_size_bytes(data),
+            )
+            self._outcomes_by_identity[self.identity(tool_name, params)] = outcome
+
     def prepare_params(self, tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
         if self.allowed_tool_names is not None and tool_name not in self.allowed_tool_names:
             raise ValueError(f"Tool is outside the selected Agent profile: {tool_name}")
@@ -145,6 +169,7 @@ class ToolRuntime:
                 {
                     "call_id": call_id,
                     "tool_name": tool_name,
+                    "params": params,
                     "outcome": outcome.model_payload(),
                 },
                 step_index=step_index,
@@ -259,8 +284,167 @@ class ToolRuntime:
             {
                 "call_id": call_id,
                 "tool_name": tool_name,
+                "params": prepared,
                 "outcome": outcome.model_payload(),
             },
             step_index=step_index,
         )
         return outcome
+
+    def _dispatch_prepared(
+        self,
+        *,
+        call_id: str,
+        tool_name: str,
+        prepared: dict[str, Any],
+    ) -> ToolOutcome:
+        started_at = self.clock()
+        try:
+            result = self.registry.dispatch(tool_name, prepared)
+            data = result.get("data") if isinstance(result.get("data"), dict) else {}
+            return ToolOutcome(
+                call_id=call_id,
+                tool_name=tool_name,
+                status=_result_status(data),
+                params=prepared,
+                params_summary=str(result.get("params_summary") or ""),
+                result_summary=str(result.get("result_summary") or ""),
+                source_range=str(result.get("source_range") or ""),
+                data=data,
+                elapsed_ms=round((self.clock() - started_at) * 1000),
+                result_size_bytes=json_size_bytes(data),
+                cache_hit=result.get("cache_hit") is True,
+            )
+        except (ValidationError, ValueError, TypeError, KeyError) as exc:
+            summary = "工具参数或调用无效"
+            error = str(exc)
+        except Exception as exc:
+            summary = "工具执行失败"
+            error = str(exc) or exc.__class__.__name__
+        return ToolOutcome(
+            call_id=call_id,
+            tool_name=tool_name,
+            status="error",
+            params=prepared,
+            params_summary="",
+            result_summary=summary,
+            source_range="",
+            data={},
+            error=error,
+            elapsed_ms=round((self.clock() - started_at) * 1000),
+        )
+
+    def _persist_parallel_outcome(self, outcome: ToolOutcome, *, step_index: int) -> None:
+        identity = self.identity(outcome.tool_name, outcome.params)
+        self._outcomes_by_identity[identity] = outcome
+        if self.metrics is not None:
+            self.metrics.record_tool(
+                elapsed_ms=outcome.elapsed_ms,
+                result_bytes=outcome.result_size_bytes,
+                cache_hit=outcome.cache_hit,
+            )
+        self.task_repo.add_tool_call_if_not_terminal(
+            task_id=self.task_id,
+            tool_name=outcome.tool_name,
+            status=outcome.status,
+            params_summary=outcome.params_summary,
+            result_summary=outcome.result_summary,
+            source_range=outcome.source_range,
+            error=outcome.error,
+        )
+        self.event_log.append(
+            "tool_result",
+            {
+                "call_id": outcome.call_id,
+                "tool_name": outcome.tool_name,
+                "params": outcome.params,
+                "outcome": outcome.model_payload(),
+                "parallel": True,
+            },
+            step_index=step_index,
+        )
+
+    def execute_batch(
+        self,
+        calls: list[dict[str, Any]],
+        *,
+        step_index: int,
+        max_parallel: int = 2,
+    ) -> list[ToolOutcome]:
+        """Run independent read-only calls two at a time with stable writeback."""
+
+        if len(calls) < 2 or max_parallel < 2:
+            return [
+                self.execute(
+                    call_id=str(item["call_id"]),
+                    tool_name=str(item["tool_name"]),
+                    params=item.get("params") or {},
+                    step_index=step_index,
+                )
+                for item in calls
+            ]
+        prepared_calls: list[dict[str, Any]] = []
+        identities: set[str] = set()
+        try:
+            for item in calls:
+                tool_name = str(item["tool_name"])
+                definition = self.registry.get(tool_name)
+                if not definition.read_only or not definition.supports_parallel:
+                    raise ValueError("tool does not support parallel execution")
+                prepared = self.prepare_params(tool_name, item.get("params") or {})
+                identity = self.identity(tool_name, prepared)
+                if identity in identities or identity in self._outcomes_by_identity:
+                    raise ValueError("duplicate calls require sequential deduplication")
+                identities.add(identity)
+                prepared_calls.append(
+                    {
+                        "call_id": str(item["call_id"]),
+                        "tool_name": tool_name,
+                        "params": prepared,
+                    }
+                )
+        except (ValidationError, ValueError, TypeError, KeyError):
+            return [
+                self.execute(
+                    call_id=str(item["call_id"]),
+                    tool_name=str(item["tool_name"]),
+                    params=item.get("params") or {},
+                    step_index=step_index,
+                )
+                for item in calls
+            ]
+
+        outcomes: list[ToolOutcome] = []
+        self.event_log.append(
+            "parallel_tool_batch_started",
+            {"call_count": len(prepared_calls), "max_parallel": 2},
+            step_index=step_index,
+        )
+        for offset in range(0, len(prepared_calls), 2):
+            chunk = prepared_calls[offset : offset + 2]
+            for item in chunk:
+                self.event_log.append(
+                    "tool_call",
+                    {**item, "parallel": True},
+                    step_index=step_index,
+                )
+            with ThreadPoolExecutor(max_workers=min(2, len(chunk))) as executor:
+                futures = [
+                    executor.submit(
+                        self._dispatch_prepared,
+                        call_id=item["call_id"],
+                        tool_name=item["tool_name"],
+                        prepared=item["params"],
+                    )
+                    for item in chunk
+                ]
+                chunk_outcomes = [future.result() for future in futures]
+            for outcome in chunk_outcomes:
+                self._persist_parallel_outcome(outcome, step_index=step_index)
+                outcomes.append(outcome)
+        self.event_log.append(
+            "parallel_tool_batch_ended",
+            {"call_count": len(outcomes)},
+            step_index=step_index,
+        )
+        return outcomes

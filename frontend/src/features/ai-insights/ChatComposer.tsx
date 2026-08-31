@@ -8,6 +8,7 @@ interface ChatComposerProps {
   onChange: (value: string) => void
   onThinkingModeChange: (value: boolean) => void
   onSend: () => void
+  placeholder?: string
 }
 
 export function ChatComposer({
@@ -17,6 +18,7 @@ export function ChatComposer({
   onChange,
   onThinkingModeChange,
   onSend,
+  placeholder = '输入问题，如「我今年听最多的艺人是谁？」',
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -73,7 +75,7 @@ export function ChatComposer({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入问题，如「我今年听最多的艺人是谁？」"
+          placeholder={placeholder}
           disabled={disabled}
           maxLength={500}
           rows={1}

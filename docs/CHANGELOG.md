@@ -9,6 +9,10 @@
 - 年度视觉报告的补充研究阶段复用原生工具调用协议；确定性图表、统计 builder、evidence cards、时间门禁、回答校验和事实审核继续保留。
 - 偏好比较改为单次、时间窗一致的 `compare_entities`：普通比较跳过个人 Billboard 冷构建，并输出窗口周均强度；只有用户明确询问榜单指标时才计算 Billboard，避免重复单实体查询导致超时。
 - 默认 `AI_AGENT_RUNTIME=v2`，保留 `legacy` 显式回退；详细契约见 [`designs/2026-08-31-ai-agent-runtime-v2.md`](designs/2026-08-31-ai-agent-runtime-v2.md)。
+- 增加问题相关 AgentProfile、运行耗时/Token/cache 指标、revision-aware 工具缓存和最多 2 路的受控只读并行；机械性时间/证据义务由确定性补丁完成，只有语义矛盾才再次调用模型。
+- Chat 与年度报告研究共用 `NativeObservationLoop`；迁移 69 增加 Session Inbox，运行中的问答可继续补充范围或取消，长会话压缩仍保留时间范围、revision 和 evidence reference。
+- 新增安全 SSE 和前端 polling 回退；取消 ACK 不等待模型请求结束。事件日志可投影上下文并从进程中断处恢复，已完成工具不会重复执行。
+- 真实数据库副本的 DeepSeek 复杂比较 37.5 秒完成；真实浏览器进一步验证运行中追加范围、两项只读工具受控并行、证据/轨迹呈现及 390px 无横向溢出。后端 contract 415 项、前端 611 项与生产 build 通过；整仓 unit 1499 passed / 2 skipped，另有 5 项为未带入本工作树的 Album Project 基线审计缺口。
 
 ## 2026-08-30 — L2 同名歌曲与 Album Project 别名统一
 

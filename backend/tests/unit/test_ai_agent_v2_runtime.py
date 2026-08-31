@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -146,6 +147,16 @@ def _create_runtime_db(path: Path) -> None:
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             UNIQUE(turn_id, sequence)
         );
+        CREATE TABLE ai_agent_session_inbox (
+            inbox_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL,
+            session_id INTEGER,
+            input_type TEXT NOT NULL,
+            content TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            consumed_at TEXT
+        );
         CREATE TABLE plays (ts_date TEXT);
         INSERT INTO plays(ts_date) VALUES ('2020-01-01'), ('2026-08-30');
         INSERT INTO chat_sessions(id, title) VALUES (1, 'Agent test');
@@ -227,6 +238,14 @@ def test_agent_v2_runs_observation_loop_and_persists_replayable_events(
     ]
     assert any(message["role"] == "tool" for message in model_messages)
     assert any(message["role"] == "assistant" for message in model_messages)
+    shadow_payloads = [
+        json.loads(row["payload_json"])
+        for row in events
+        if row["event_type"] == "context_projection_shadow"
+    ]
+    assert len(shadow_payloads) == 1
+    assert shadow_payloads[0]["source"] == "memory"
+    assert shadow_payloads[0]["matches"] is True
 
 
 def test_agent_v2_safety_boundary_does_not_call_model(tmp_path, monkeypatch):
@@ -549,3 +568,240 @@ def test_compact_observation_bounds_large_rows_without_invalid_json() -> None:
     assert len(observation["rows"]) == 13
     assert observation["rows"][-1]["omitted_items"] == 38
     assert json.loads(json.dumps(observation, ensure_ascii=False)) == observation
+
+
+def test_agent_executes_two_independent_readonly_tools_in_parallel_with_stable_order(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "agent-parallel.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+    barrier = threading.Barrier(2)
+    state = {"active": 0, "max_active": 0}
+    lock = threading.Lock()
+
+    def handler_for(label: str):
+        def handler(params: BaseModel) -> AgentToolResult:
+            del params
+            with lock:
+                state["active"] += 1
+                state["max_active"] = max(state["max_active"], state["active"])
+            barrier.wait(timeout=2)
+            with lock:
+                state["active"] -= 1
+            return AgentToolResult(
+                data={"found": True, "label": label},
+                result_summary=label,
+                source_range="lifetime",
+            )
+
+        return handler
+
+    registry = AgentToolRegistry()
+    for name in ("analysis_charts", "analysis_stats"):
+        registry.register(
+            AgentToolDefinition(
+                name=name,
+                description=name,
+                read_only=True,
+                params_model=ChartParams,
+                handler=handler_for(name),
+                supports_parallel=True,
+            )
+        )
+
+    class ParallelModel:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.tool_order: list[str] = []
+
+        def complete(self, messages, tools, *, thinking):
+            del tools, thinking
+            self.calls += 1
+            if self.calls == 1:
+                return LLMCompletion(
+                    tool_calls=[
+                        LLMToolCall(call_id="first", name="analysis_charts", arguments={}),
+                        LLMToolCall(call_id="second", name="analysis_stats", arguments={}),
+                    ]
+                )
+            self.tool_order = [
+                str(item.get("name")) for item in messages if item.get("role") == "tool"
+            ]
+            return LLMCompletion(
+                content=("两个只读统计工具均已返回结果。数据范围为 2020-01-01 至 2026-08-30。")
+            )
+
+    model = ParallelModel()
+    AgentRuntime(model=model, registry=registry, max_steps=3).run(
+        "task-v2",
+        {"question": "我的播放排行和总体统计是什么？"},
+    )
+
+    conn = factory()
+    event_types = [
+        row[0]
+        for row in conn.execute("SELECT event_type FROM ai_agent_turn_events ORDER BY sequence")
+    ]
+    task = conn.execute("SELECT status, error FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    conn.close()
+    assert task["status"] == "done", task["error"]
+    assert state["max_active"] == 2
+    assert model.tool_order == ["analysis_charts", "analysis_stats"]
+    assert "parallel_tool_batch_started" in event_types
+    assert "parallel_tool_batch_ended" in event_types
+
+
+def test_agent_consumes_session_inbox_before_next_model_step(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "agent-inbox.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+    conn = factory()
+    conn.execute(
+        """INSERT INTO ai_agent_session_inbox
+           (task_id, session_id, input_type, content)
+           VALUES ('task-v2', 1, 'steer', '只看今年，不要全部时间')"""
+    )
+    conn.commit()
+    conn.close()
+
+    class InboxModel(FakeModel):
+        def complete(self, messages, tools, *, thinking):
+            assert any(
+                "只看今年，不要全部时间" in str(item.get("content") or "") for item in messages
+            )
+            return super().complete(messages, tools, thinking=thinking)
+
+    AgentRuntime(model=InboxModel(), registry=_chart_registry(), max_steps=4).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？", "session_id": 1},
+    )
+    conn = factory()
+    inbox = conn.execute("SELECT status, consumed_at FROM ai_agent_session_inbox").fetchone()
+    consumed_events = conn.execute(
+        "SELECT COUNT(*) FROM ai_agent_turn_events WHERE event_type='session_input_consumed'"
+    ).fetchone()[0]
+    conn.close()
+    assert inbox["status"] == "consumed"
+    assert inbox["consumed_at"] is not None
+    assert consumed_events == 1
+
+
+def _chart_registry() -> AgentToolRegistry:
+    registry = AgentToolRegistry()
+    registry.register(
+        AgentToolDefinition(
+            name="analysis_charts",
+            description="Read rankings",
+            read_only=True,
+            params_model=ChartParams,
+            handler=_chart_handler,
+        )
+    )
+    return registry
+
+
+def test_agent_resume_reuses_completed_tool_result_without_dispatch(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "agent-resume.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+    conn = factory()
+    conn.execute("UPDATE ai_task_runs SET status='running' WHERE task_id='task-v2'")
+    log = AgentEventLog(
+        conn,
+        task_id="task-v2",
+        turn_id="interrupted-turn",
+        session_id=1,
+    )
+    log.append("turn_started", {})
+    log.append_model_message({"role": "system", "content": "rules"}, origin="initial")
+    log.append_model_message(
+        {"role": "user", "content": "谁是第一名？"},
+        origin="initial",
+    )
+    assistant = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {
+                "id": "completed-call",
+                "type": "function",
+                "function": {
+                    "name": "analysis_charts",
+                    "arguments": json.dumps({"entity": "artist", "metric": "plays"}),
+                },
+            }
+        ],
+    }
+    log.append("step_started", {}, step_index=1)
+    log.append_model_message(assistant, origin="model_response", step_index=1)
+    params = {"entity": "artist", "metric": "plays"}
+    log.append(
+        "tool_call",
+        {"call_id": "completed-call", "tool_name": "analysis_charts", "params": params},
+        step_index=1,
+    )
+    log.append(
+        "tool_result",
+        {
+            "call_id": "completed-call",
+            "tool_name": "analysis_charts",
+            "params": params,
+            "outcome": {
+                "status": "ok",
+                "tool_name": "analysis_charts",
+                "result_summary": "artist top1 Artist A, plays=12",
+                "source_range": "2020-01-01..2026-08-30",
+                "data": {"found": True, "rows": [{"artist_name": "Artist A"}]},
+            },
+        },
+        step_index=1,
+    )
+    conn.close()
+    dispatch_count = 0
+
+    def must_not_dispatch(params: BaseModel) -> AgentToolResult:
+        nonlocal dispatch_count
+        dispatch_count += 1
+        return _chart_handler(params)
+
+    registry = AgentToolRegistry()
+    registry.register(
+        AgentToolDefinition(
+            name="analysis_charts",
+            description="Read rankings",
+            read_only=True,
+            params_model=ChartParams,
+            handler=must_not_dispatch,
+        )
+    )
+
+    class ResumeModel:
+        def complete(self, messages, tools, *, thinking):
+            del tools, thinking
+            assert any(item.get("role") == "tool" for item in messages)
+            return LLMCompletion(
+                content=("Artist A 是第一名，共 12 次。数据范围为 2020-01-01 至 2026-08-30。")
+            )
+
+    AgentRuntime(model=ResumeModel(), registry=registry, max_steps=4).run(
+        "task-v2",
+        {"question": "谁是第一名？", "session_id": 1},
+        resume=True,
+    )
+    conn = factory()
+    task = conn.execute("SELECT status FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    resumed = conn.execute(
+        "SELECT COUNT(*) FROM ai_agent_turn_events WHERE event_type='run_resumed'"
+    ).fetchone()[0]
+    conn.close()
+    assert task["status"] == "done"
+    assert resumed == 1
+    assert dispatch_count == 0

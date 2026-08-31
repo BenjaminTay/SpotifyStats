@@ -123,6 +123,15 @@ function mockChatPosts() {
         result: null,
       })
     }
+    if (path === '/ai/tasks/chat-task-1/inbox') {
+      return Promise.resolve({
+        accepted: true,
+        task_id: 'chat-task-1',
+        action: 'steer',
+        inbox_id: 1,
+        status: 'pending',
+      })
+    }
     return Promise.reject(new Error(`unexpected POST ${path}`))
   })
 }
@@ -240,6 +249,44 @@ describe('ChatInterface task-based agent flow', () => {
         thinking_mode: false,
       }))
     })
+  })
+
+  it('allows a running Agent turn to receive a steering message', async () => {
+    mockChatSessionGets([
+      {
+        found: true,
+        task_id: 'chat-task-1',
+        task_type: 'ai_chat_agent',
+        status: 'running',
+        stage: 'querying_tools',
+        progress_pct: 0.5,
+        message: '正在查询你的年度播放数据',
+        result: null,
+        error: null,
+        created_at: '2026-06-28T00:00:00',
+        updated_at: '2026-06-28T00:00:01',
+      },
+    ])
+    const postSpy = mockChatPosts()
+
+    renderChat()
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/chat/sessions/7'))
+    const composer = screen.getByPlaceholderText('输入问题，如「我今年听最多的艺人是谁？」')
+    fireEvent.change(composer, { target: { value: '比较两个艺人' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
+
+    const steeringComposer = await screen.findByPlaceholderText('可继续补充时间范围或分析要求…')
+    expect(steeringComposer).not.toBeDisabled()
+    fireEvent.change(steeringComposer, { target: { value: '只看今年，不要全部时间' } })
+    fireEvent.click(screen.getByRole('button', { name: '发送问题' }))
+
+    await waitFor(() => {
+      expect(postSpy).toHaveBeenCalledWith('/ai/tasks/chat-task-1/inbox', {
+        action: 'steer',
+        content: '只看今年，不要全部时间',
+      })
+    })
+    expect(await screen.findByText('只看今年，不要全部时间')).toBeInTheDocument()
   })
 
   it('adds the done task answer as an assistant message and preserves tool trace', async () => {

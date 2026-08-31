@@ -10,6 +10,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from backend.models.ai_tasks import (
+    AiAgentInboxRequest,
+    AiAgentInboxResponse,
     AiAgentTrajectoryResponse,
     AiTaskCreateResponse,
     AiTaskEventsResponse,
@@ -22,6 +24,7 @@ from backend.models.ai_tasks import (
 )
 from backend.services.ai_task_service import (
     cancel_task,
+    enqueue_agent_input,
     get_agent_trajectory,
     get_task,
     get_task_events,
@@ -260,6 +263,26 @@ def stream_ai_task(task_id: str, request: Request):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post(
+    "/{task_id}/inbox",
+    response_model=AiAgentInboxResponse,
+)
+def post_ai_agent_input(task_id: str, body: AiAgentInboxRequest):
+    payload = enqueue_agent_input(
+        task_id,
+        action=body.action,
+        content=body.content,
+    )
+    if payload is None:
+        return {
+            "accepted": False,
+            "task_id": task_id,
+            "action": body.action,
+            "status": "not_found",
+        }
+    return payload
 
 
 @router.post(

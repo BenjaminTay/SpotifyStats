@@ -278,3 +278,90 @@ class AiTaskRepository:
             item["payload"] = _json_load(item.pop("payload_json", None)) or {}
             events.append(item)
         return events
+
+    def list_agent_session_events(
+        self,
+        session_id: int,
+        *,
+        exclude_task_id: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        params: list[Any] = [session_id]
+        predicate = "session_id = ?"
+        if exclude_task_id:
+            predicate += " AND task_id <> ?"
+            params.append(exclude_task_id)
+        params.append(max(1, min(limit, 2000)))
+        rows = self.conn.execute(
+            f"""SELECT event_id, task_id, session_id, turn_id, sequence,
+                       step_index, event_type, payload_json, created_at
+                FROM ai_agent_turn_events
+                WHERE {predicate}
+                ORDER BY event_id DESC LIMIT ?""",
+            params,
+        ).fetchall()
+        events = []
+        for row in reversed(rows):
+            item = dict(row)
+            item["payload"] = _json_load(item.pop("payload_json", None)) or {}
+            events.append(item)
+        return events
+
+    def enqueue_agent_input(
+        self,
+        *,
+        task_id: str,
+        session_id: int | None,
+        input_type: str,
+        content: str,
+    ) -> int:
+        cursor = self.conn.execute(
+            """INSERT INTO ai_agent_session_inbox
+               (task_id, session_id, input_type, content)
+               VALUES (?, ?, ?, ?)""",
+            (task_id, session_id, input_type, content),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def consume_agent_inputs(self, task_id: str, *, limit: int = 8) -> list[dict[str, Any]]:
+        """Atomically claim pending steering messages in insertion order."""
+
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            rows = self.conn.execute(
+                """SELECT inbox_id, task_id, session_id, input_type, content, created_at
+                   FROM ai_agent_session_inbox
+                   WHERE task_id = ? AND status = 'pending'
+                   ORDER BY inbox_id ASC LIMIT ?""",
+                (task_id, max(1, min(limit, 20))),
+            ).fetchall()
+            ids = [int(row["inbox_id"]) for row in rows]
+            if ids:
+                placeholders = ",".join("?" for _ in ids)
+                self.conn.execute(
+                    f"""UPDATE ai_agent_session_inbox
+                        SET status = 'consumed', consumed_at = datetime('now')
+                        WHERE inbox_id IN ({placeholders}) AND status = 'pending'""",
+                    ids,
+                )
+            self.conn.commit()
+            return [dict(row) for row in rows]
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    def list_recoverable_agent_runs(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """SELECT * FROM ai_task_runs
+               WHERE task_type = 'ai_chat_agent'
+                 AND status IN ('queued', 'running', 'cancelling')
+               ORDER BY created_at ASC"""
+        ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["request"] = _json_load(item.pop("request_json", None))
+            item["result"] = _json_load(item.pop("result_json", None))
+            result.append(item)
+        return result

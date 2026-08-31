@@ -2858,6 +2858,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/tasks/{task_id}/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Ai Agent Input */
+        post: operations["post_ai_agent_input_api_ai_tasks__task_id__inbox_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/tasks/{task_id}/cancel": {
         parameters: {
             query?: never;
@@ -3741,6 +3758,35 @@ export interface components {
             content: string;
             /** Meta Json */
             meta_json?: string | null;
+        };
+        /** AiAgentInboxRequest */
+        AiAgentInboxRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "steer" | "followup" | "cancel";
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+        };
+        /** AiAgentInboxResponse */
+        AiAgentInboxResponse: {
+            /** Accepted */
+            accepted: boolean;
+            /** Task Id */
+            task_id: string;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "steer" | "followup" | "cancel";
+            /** Inbox Id */
+            inbox_id?: number | null;
+            /** Status */
+            status: string;
         };
         /** AiAgentTrajectoryResponse */
         AiAgentTrajectoryResponse: {
@@ -19015,6 +19061,41 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_ai_agent_input_api_ai_tasks__task_id__inbox_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiAgentInboxRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiAgentInboxResponse"];
                 };
             };
             /** @description Validation Error */

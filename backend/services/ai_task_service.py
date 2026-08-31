@@ -1030,3 +1030,114 @@ def cancel_task(task_id: str) -> dict[str, Any] | None:
         return repo.get_run(task_id)
     finally:
         conn.close()
+
+
+def enqueue_agent_input(
+    task_id: str,
+    *,
+    action: str,
+    content: str,
+) -> dict[str, Any] | None:
+    """Persist steering/follow-up input for the next safe Agent boundary."""
+
+    if action == "cancel":
+        task = cancel_task(task_id)
+        if task is None:
+            return None
+        return {
+            "accepted": True,
+            "task_id": task_id,
+            "action": action,
+            "inbox_id": None,
+            "status": str(task["status"]),
+        }
+    conn = get_db(readonly=False)
+    try:
+        repo = AiTaskRepository(conn)
+        task = repo.get_run(task_id)
+        if task is None:
+            return None
+        if task.get("task_type") != "ai_chat_agent" or task.get("status") not in {
+            "queued",
+            "running",
+        }:
+            return {
+                "accepted": False,
+                "task_id": task_id,
+                "action": action,
+                "inbox_id": None,
+                "status": str(task.get("status") or "rejected"),
+            }
+        request = task.get("request")
+        session_id = request.get("session_id") if isinstance(request, dict) else None
+        inbox_id = repo.enqueue_agent_input(
+            task_id=task_id,
+            session_id=session_id if isinstance(session_id, int) else None,
+            input_type=action,
+            content=content.strip(),
+        )
+        repo.add_event(
+            task_id=task_id,
+            event_type="agent_input_received",
+            stage=str(task.get("stage") or "agent_running"),
+            message="Agent 已收到补充要求",
+            payload={"inbox_id": inbox_id, "input_type": action},
+        )
+        return {
+            "accepted": True,
+            "task_id": task_id,
+            "action": action,
+            "inbox_id": inbox_id,
+            "status": "pending",
+        }
+    finally:
+        conn.close()
+
+
+def recover_interrupted_agent_tasks() -> int:
+    """Resume durable read-only Agent turns left active by a process restart."""
+
+    from backend.core.config import AI_AGENT_RUNTIME
+
+    if AI_AGENT_RUNTIME == "legacy":
+        return 0
+    conn = get_db(readonly=False)
+    try:
+        runs = AiTaskRepository(conn).list_recoverable_agent_runs()
+    finally:
+        conn.close()
+
+    recovered = 0
+    for task in runs:
+        task_id = str(task["task_id"])
+        if task.get("status") == "cancelling":
+            cancel_task(task_id)
+            continue
+        request = task.get("request")
+        if not isinstance(request, dict):
+            mark_task_error(task_id, ValueError("Agent 恢复失败：任务请求缺失"))
+            continue
+
+        def resume_handler(
+            recovered_task_id: str,
+            recovered_request: dict[str, Any],
+        ) -> None:
+            from backend.services.ai_agent_v2_service import run_chat_agent_task_v2
+
+            run_chat_agent_task_v2(
+                recovered_task_id,
+                recovered_request,
+                resume=True,
+            )
+
+        thread = threading.Thread(
+            target=_run_handler_safely,
+            args=(task_id, request, resume_handler),
+            daemon=True,
+            name=f"ai-agent-recovery-{task_id}",
+        )
+        thread.start()
+        recovered += 1
+    if recovered:
+        logger.info("Recovered %d interrupted AI Agent task(s)", recovered)
+    return recovered

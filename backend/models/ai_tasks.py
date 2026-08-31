@@ -85,6 +85,25 @@ class AiAgentTrajectoryResponse(BaseModel):
     events: list[AiAgentTurnEvent]
 
 
+class AiAgentInboxRequest(BaseModel):
+    action: Literal["steer", "followup", "cancel"]
+    content: str = Field(default="", max_length=500)
+
+    @model_validator(mode="after")
+    def validate_content(self) -> AiAgentInboxRequest:
+        if self.action != "cancel" and not self.content.strip():
+            raise ValueError("steer and followup require content")
+        return self
+
+
+class AiAgentInboxResponse(BaseModel):
+    accepted: bool
+    task_id: str
+    action: Literal["steer", "followup", "cancel"]
+    inbox_id: int | None = None
+    status: str
+
+
 class AiTaskCreateResponse(BaseModel):
     task_id: str
     task_type: str | None = None

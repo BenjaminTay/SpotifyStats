@@ -169,7 +169,7 @@ def test_enrichment_task_does_not_overwrite_cancelled_task_or_append_late_events
         event["message"] for event in events_payload["events"]
     ]
     assert events_payload["events"][-1]["stage"] == "cancelled"
-    assert events_payload["events"][-1]["event_type"] == "stage_completed"
+    assert events_payload["events"][-1]["event_type"] == "cancellation_completed"
 
 
 @pytest.mark.parametrize(

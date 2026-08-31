@@ -57,6 +57,12 @@ def _music_search_startup_rebuild_enabled() -> bool:
 async def lifespan(_app: FastAPI):
     run_migrations()
 
+    # Agent tools are read-only and every completed call is recorded before
+    # another model step. Resume interrupted turns from that durable boundary.
+    from backend.services.ai_task_service import recover_interrupted_agent_tasks
+
+    recover_interrupted_agent_tasks()
+
     # Start background job queue for async enrichment & cover downloads
     from backend.core.job_queue import get_job_queue
     from backend.jobs.handlers import (

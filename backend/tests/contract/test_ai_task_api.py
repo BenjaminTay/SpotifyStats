@@ -29,16 +29,18 @@ def _create_task(
     status: str = "queued",
     stage: str = "checking_cache",
     message: str = "正在检查缓存",
+    task_type: str = "ai_report_weekly",
+    request: dict | None = None,
 ) -> None:
     repo = _repo()
     try:
         repo.create_run(
             task_id=task_id,
-            task_type="ai_report_weekly",
+            task_type=task_type,
             status=status,
             stage=stage,
             message=message,
-            request={"report_type": "weekly", "action": "cache_only"},
+            request=request or {"report_type": "weekly", "action": "cache_only"},
         )
     finally:
         _close_repo(repo)
@@ -260,6 +262,78 @@ def test_task_stream_projects_progress_and_final_answer_without_internal_payload
     assert "最终答案：128 次播放。" in body
     assert "hidden_reasoning" not in body
     assert "不得通过 SSE 暴露" not in body
+
+
+def test_agent_inbox_accepts_running_turn_steering_and_persists_it(client):
+    _create_task(
+        "task-inbox",
+        status="running",
+        stage="agent_deciding",
+        task_type="ai_chat_agent",
+        request={"question": "比较两个艺人"},
+    )
+
+    response = client.post(
+        "/api/ai/tasks/task-inbox/inbox",
+        json={"action": "steer", "content": "只看今年的数据"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted"] is True
+    assert payload["action"] == "steer"
+    assert payload["status"] == "pending"
+    repo = _repo()
+    try:
+        row = repo.conn.execute(
+            "SELECT input_type, content, status FROM ai_agent_session_inbox WHERE inbox_id = ?",
+            (payload["inbox_id"],),
+        ).fetchone()
+    finally:
+        _close_repo(repo)
+    assert tuple(row) == ("steer", "只看今年的数据", "pending")
+
+
+def test_agent_inbox_rejects_followup_after_terminal_turn(client):
+    _create_task(
+        "task-inbox-done",
+        status="done",
+        stage="done",
+        task_type="ai_chat_agent",
+        request={"question": "完成的问题"},
+    )
+
+    response = client.post(
+        "/api/ai/tasks/task-inbox-done/inbox",
+        json={"action": "followup", "content": "再补充一个角度"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "accepted": False,
+        "task_id": "task-inbox-done",
+        "action": "followup",
+        "inbox_id": None,
+        "status": "done",
+    }
+
+
+def test_agent_inbox_cancel_uses_same_fast_cancellation_path(client):
+    _create_task(
+        "task-inbox-cancel",
+        status="running",
+        stage="agent_deciding",
+        task_type="ai_chat_agent",
+        request={"question": "还在运行"},
+    )
+
+    response = client.post(
+        "/api/ai/tasks/task-inbox-cancel/inbox",
+        json={"action": "cancel"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
 
 
 def test_cancel_done_task_keeps_existing_state(client):

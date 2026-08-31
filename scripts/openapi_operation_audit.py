@@ -261,6 +261,11 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_ai_task_api.py",
         "AI task cancellation state transitions are covered by contract tests.",
     ),
+    ("POST", "/api/ai/tasks/{task_id}/inbox"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_ai_task_api.py",
+        "Agent steering, terminal rejection, and cancellation are covered by contract tests.",
+    ),
     ("GET", "/api/billboard/enrichment/album/{album_name}"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_billboard_enrichment_contract.py",

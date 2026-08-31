@@ -4,7 +4,12 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { streamAiTask } from '@/api/ai-task-stream'
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
-import type { AiTaskCreatePayload, AiTaskEventsPayload, AiTaskRun } from '@/types/ai-tasks'
+import type {
+  AiAgentInboxPayload,
+  AiTaskCreatePayload,
+  AiTaskEventsPayload,
+  AiTaskRun,
+} from '@/types/ai-tasks'
 import type { ReportType } from '@/types/ai-insights'
 import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
@@ -118,6 +123,23 @@ export function useCancelAiTask() {
     mutationFn: (taskId: string) => {
       if (!capabilities.ai) return Promise.reject(new Error('当前部署未开放 AI 功能'))
       return api.post<AiTaskRun>(`/ai/tasks/${taskId}/cancel`)
+    },
+  })
+}
+
+export function useSendAiAgentInput() {
+  const { capabilities } = useRuntimeCapabilities()
+  return useMutation({
+    mutationFn: (payload: {
+      taskId: string
+      action: 'steer' | 'followup'
+      content: string
+    }) => {
+      if (!capabilities.ai) return Promise.reject(new Error('当前部署未开放 AI 功能'))
+      return api.post<AiAgentInboxPayload>(`/ai/tasks/${payload.taskId}/inbox`, {
+        action: payload.action,
+        content: payload.content,
+      })
     },
   })
 }

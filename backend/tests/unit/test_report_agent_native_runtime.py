@@ -47,10 +47,12 @@ def test_report_research_uses_native_tool_observation_loop(monkeypatch):
         def __init__(self):
             self.calls = 0
             self.messages = []
+            self.tools = []
 
         def complete(self, messages, tools, *, thinking):
             self.calls += 1
             self.messages = messages
+            self.tools = tools
             if self.calls == 1:
                 return LLMCompletion(
                     tool_calls=[
@@ -85,6 +87,7 @@ def test_report_research_uses_native_tool_observation_loop(monkeypatch):
     assert evidence[0]["_params"]["period"] == "custom"
     assert evidence[0]["_params"]["start_date"] == "2025-01-01"
     assert evidence[0]["_params"]["end_date"] == "2025-12-31"
+    assert [tool["name"] for tool in model.tools] == ["analysis_stats"]
     tool_messages = [message for message in model.messages if message["role"] == "tool"]
     assert len(tool_messages) == 1
     observed = json.loads(tool_messages[0]["content"])
