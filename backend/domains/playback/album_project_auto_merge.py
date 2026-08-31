@@ -796,10 +796,44 @@ def _release_relation_tags(value: str) -> frozenset[str]:
     return frozenset(tags)
 
 
+def _artist_alias_tolerant_album_key(evidence: _ProjectReleaseEvidence) -> str:
+    """Drop a catalog artist prefix/suffix only when a title remains.
+
+    Chinese catalogs commonly publish one edition as ``孫燕姿同名專輯`` and
+    another as ``同名專輯 (Remastered)``.  The artist name is packaging text in
+    that pair, not album identity.  This key is used only to discover a family;
+    complete ordered-track equivalence and the controlled relation gates still
+    decide whether any merge is accepted.
+    """
+
+    album_key = _catalog_album_name_key(evidence.spotify_album_name)
+    artist_keys = {
+        _catalog_album_name_key(value)
+        for value in (evidence.artist_name, evidence.album_artists)
+        if value
+    }
+    for artist_key in sorted(artist_keys, key=len, reverse=True):
+        if len(artist_key) < 2:
+            continue
+        if album_key.startswith(artist_key) and len(album_key) > len(artist_key):
+            return album_key[len(artist_key) :]
+        if album_key.endswith(artist_key) and len(album_key) > len(artist_key):
+            return album_key[: -len(artist_key)]
+    # The local canonical artist may be an English provider name while the
+    # release title carries an unlinked Chinese stage name.  ``同名專輯`` is an
+    # explicit catalog marker for a namesake/self-titled album, so its prefix
+    # can be ignored for family discovery.  Ordered complete-track evidence
+    # remains mandatory before any relation is accepted.
+    for marker in ("同名專輯", "同名专辑"):
+        if album_key.endswith(marker) and len(album_key) > len(marker):
+            return marker
+    return album_key
+
+
 def _release_family_key(evidence: _ProjectReleaseEvidence) -> tuple[str, str]:
     return (
         normalize_album_release_name(evidence.album_artists),
-        _catalog_album_name_key(evidence.spotify_album_name),
+        _artist_alias_tolerant_album_key(evidence),
     )
 
 

@@ -384,41 +384,40 @@ def test_sun_yanzi_original_and_remaster_merge_but_2004_namesake_stays_separate(
         _add_spotify_release(
             conn,
             spotify_album_id="yanzi-2000",
-            album_name="孙燕姿",
-            album_artists="孙燕姿",
+            album_name="孫燕姿同名專輯",
+            album_artists="Stefanie Sun",
             release_date="2000-06-09",
             track_ids=original_ids,
         )
         _add_spotify_release(
             conn,
             spotify_album_id="yanzi-2000-remaster",
-            album_name="孙燕姿 (Remastered)",
-            album_artists="孙燕姿",
-            release_date="2024-06-09",
+            album_name="同名專輯 (Remastered)",
+            album_artists="Stefanie Sun",
+            release_date="2000",
             track_ids=remaster_ids,
         )
         _add_spotify_release(
             conn,
             spotify_album_id="yanzi-2004",
-            album_name="孙燕姿",
-            album_artists="孙燕姿",
+            album_name="孫燕姿STEFANIE同名專輯",
+            album_artists="Stefanie Sun",
             release_date="2004-10-29",
             track_ids=namesake_ids,
         )
         for album_id, album_name, spotify_album_id, spotify_track_id in (
-            (60, "孙燕姿", "yanzi-2000", original_ids[0]),
-            (61, "孙燕姿 (Remastered)", "yanzi-2000-remaster", remaster_ids[0]),
-            # The source archive keeps this same-title catalog row with a
-            # harmless whitespace variant, so it remains a distinct local
-            # container while normalising to the same release title.
-            (62, "孙燕姿 ", "yanzi-2004", namesake_ids[0]),
+            (60, "孫燕姿同名專輯", "yanzi-2000", original_ids[0]),
+            (61, "同名專輯", "yanzi-2000-remaster", remaster_ids[0]),
+            # The 2004 namesake has a different complete repertoire and must
+            # remain a distinct local container despite the artist/title words.
+            (62, "孫燕姿STEFANIE同名專輯", "yanzi-2004", namesake_ids[0]),
         ):
             _add_local_album(
                 conn,
                 album_id=album_id,
                 album_name=album_name,
                 artist_id=1,
-                artist_name="孙燕姿",
+                artist_name="Stefanie Sun",
                 spotify_album_id=spotify_album_id,
                 spotify_track_id=spotify_track_id,
             )
