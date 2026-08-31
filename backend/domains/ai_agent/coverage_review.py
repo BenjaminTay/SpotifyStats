@@ -264,7 +264,7 @@ def _item_period_date(item: dict[str, Any], key: str) -> str:
 
 def _has_tool(tool_results: list[dict[str, Any]], tool_name: str) -> bool:
     return any(
-        item.get("tool_name") == tool_name and item.get("status") != "error"
+        item.get("tool_name") == tool_name and item.get("status") not in {"error", "empty"}
         for item in tool_results
     )
 
@@ -272,7 +272,7 @@ def _has_tool(tool_results: list[dict[str, Any]], tool_name: str) -> bool:
 def _has_late_night_tool(tool_results: list[dict[str, Any]]) -> bool:
     return any(
         item.get("tool_name") == "listening_hours"
-        and item.get("status") != "error"
+        and item.get("status") not in {"error", "empty"}
         and _view_from_item(item) == "late_night_tracks"
         for item in tool_results
     )
@@ -436,7 +436,9 @@ def _item_matches_pattern(
     *,
     entity_name: str | None = None,
 ) -> bool:
-    if item.get("status") == "error" or item.get("tool_name") != pattern.get("tool_name"):
+    if item.get("status") in {"error", "empty"} or item.get("tool_name") != pattern.get(
+        "tool_name"
+    ):
         return False
     if entity_name and not _item_mentions_entity(item, entity_name):
         return False

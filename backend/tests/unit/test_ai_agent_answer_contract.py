@@ -87,3 +87,40 @@ def test_comparison_must_cover_both_entities_and_direct_conclusion() -> None:
 
     assert result["dimensions"]["complete"]["passed"] is False
     assert result["dimensions"]["informative"]["passed"] is False
+
+
+def test_no_data_ranking_passes_when_it_explains_the_boundary() -> None:
+    payload = {
+        "question_frame": {"family": "simple_ranking", "entities": []},
+        "evidence_sufficiency": {"sufficient": False},
+        "answer_obligations": [],
+    }
+
+    result = evaluate_answer_contract(
+        "当前数据未覆盖这个范围，因此没有可生成的实际排行。",
+        payload,
+    )
+
+    assert result["ok"] is True
+
+
+def test_community_answer_must_name_an_actual_matched_subject() -> None:
+    payload = {
+        "question_frame": {"family": "community_lookup", "entities": ["Olivia Rodrigo"]},
+        "evidence_sufficiency": {"sufficient": True},
+        "answer_obligations": [],
+        "fact_catalog": [
+            {
+                "fact_id": "post-subject",
+                "metric_name": "community_post_1.top_2_subject",
+                "label": "相关帖子主体",
+                "value": "Olivia Rodrigo",
+            }
+        ],
+    }
+
+    incomplete = evaluate_answer_contract("已经找到相关帖子。", payload)
+    complete = evaluate_answer_contract("找到 Olivia Rodrigo 的个人艺人榜帖子。", payload)
+
+    assert incomplete["dimensions"]["informative"]["passed"] is False
+    assert complete["ok"] is True

@@ -14,10 +14,15 @@ from typing import Any
 from backend.core.db import get_db
 from backend.domains.ai_reports.visual_artifact_models import VISUAL_YEARLY_REPORT_MODE
 from backend.domains.ai_tasks.cancellation import cancellation_registry
-from backend.domains.ai_tasks.repository import AiTaskRepository
+from backend.domains.ai_tasks.repository import TASK_LEASE_SECONDS, AiTaskRepository
 from backend.services import ai_insights_service, wikipedia_service
 
 logger = logging.getLogger(__name__)
+
+# Task dispatch is intentionally patchable by synchronous contract tests. Lease
+# heartbeats must remain real background threads or a synchronous test adapter
+# would block inside Event.wait().
+_LeaseHeartbeatThread = threading.Thread
 
 TaskHandler = Callable[[str, dict[str, Any]], None]
 TERMINAL_STATUSES = {"done", "error", "cancelled"}
@@ -32,6 +37,7 @@ _AGENTIC_STAGE_PROGRESS = {
     "writing_report": 0.80,
     "reviewing_visual_artifact": 0.88,
 }
+TASK_LEASE_HEARTBEAT_SECONDS = max(10, TASK_LEASE_SECONDS // 3)
 
 
 def new_task_id() -> str:
@@ -125,9 +131,12 @@ def _run_handler_safely(
     handler: TaskHandler,
 ) -> None:
     lease_owner = f"worker:{uuid.uuid4().hex}"
+    supports_worker_leases = False
     conn = get_db(readonly=False)
     try:
-        claimed = AiTaskRepository(conn).claim_run(
+        repo = AiTaskRepository(conn)
+        supports_worker_leases = repo.supports_worker_leases
+        claimed = repo.claim_run(
             task_id,
             lease_owner=lease_owner,
         )
@@ -136,6 +145,16 @@ def _run_handler_safely(
     if not claimed:
         logger.info("Skipped AI task %s because another worker owns its lease", task_id)
         return
+    heartbeat_stop = threading.Event()
+    heartbeat_thread: threading.Thread | None = None
+    if supports_worker_leases:
+        heartbeat_thread = _LeaseHeartbeatThread(
+            target=_renew_worker_lease,
+            args=(task_id, lease_owner, heartbeat_stop),
+            daemon=True,
+            name=f"ai-task-lease-{task_id}",
+        )
+        heartbeat_thread.start()
     cancellation_registry.token_for(task_id)
     try:
         handler(task_id, request)
@@ -143,11 +162,38 @@ def _run_handler_safely(
         mark_task_error(task_id, exc)
     finally:
         cancellation_registry.discard(task_id)
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=2.0)
         conn = get_db(readonly=False)
         try:
             AiTaskRepository(conn).release_run(task_id, lease_owner=lease_owner)
         finally:
             conn.close()
+
+
+def _renew_worker_lease(
+    task_id: str,
+    lease_owner: str,
+    stop_event: threading.Event,
+) -> None:
+    """Keep ownership alive while a tool or model call is blocking the task thread."""
+
+    while not stop_event.wait(TASK_LEASE_HEARTBEAT_SECONDS):
+        conn = get_db(readonly=False)
+        try:
+            renewed = AiTaskRepository(conn).renew_run(
+                task_id,
+                lease_owner=lease_owner,
+            )
+        except Exception:
+            logger.exception("Failed to renew AI task lease for %s", task_id)
+            continue
+        finally:
+            conn.close()
+        if not renewed:
+            logger.warning("Stopped AI task lease heartbeat after ownership loss: %s", task_id)
+            return
 
 
 def mark_task_done(
@@ -939,6 +985,23 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
         metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
         if metadata.get("report_mode") in {"agentic_longform", "visual_yearly_artifact"}:
             _persist_report_tool_calls(repo, task_id=task_id, result=result)
+
+        if metadata.get("report_mode") == "visual_yearly_artifact" and any(
+            metadata.get(key) is False
+            for key in (
+                "critic_passed",
+                "fact_validation_passed",
+                "final_artifact_quality_passed",
+                "section_checkpoints_passed",
+            )
+        ):
+            _mark_report_task_error(
+                repo,
+                task_id=task_id,
+                message="年度报告质量门禁未通过，结果未写入缓存。",
+                result=result,
+            )
+            return
 
         if result.get("success"):
             cache_written_at = (

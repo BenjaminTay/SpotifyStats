@@ -1037,6 +1037,66 @@ def test_agent_synthesis_sections_do_not_render_internal_brief_as_deck(monkeypat
     assert result["metadata"]["final_artifact_quality_passed"] is True
 
 
+def test_agent_synthesis_uses_single_research_run_and_audited_fallback(monkeypatch):
+    from backend.domains.ai_reports import visual_yearly_artifact_service as svc
+
+    context = _quality_polish_context()
+    calls = {"agent": 0}
+    monkeypatch.setattr(
+        svc,
+        "_run_visual_research",
+        lambda request, emit_event=None: ([], context),
+    )
+    monkeypatch.setattr(
+        svc,
+        "build_visual_chart_data",
+        lambda context, chart_specs: _chart_data_with_observations(
+            {"artist_monthly_trend": "Taylor Swift 在 2026-01 达到 111 次。"}
+        ),
+    )
+    monkeypatch.setattr(
+        svc,
+        "critique_visual_yearly_artifact",
+        lambda artifact, context: {"ok": True, "issues": [], "repair_instructions": []},
+    )
+    monkeypatch.setattr(
+        svc,
+        "_validate_visual_fact_safety",
+        lambda report, artifact, context: {"ok": True, "issues": []},
+    )
+    monkeypatch.setattr(
+        svc,
+        "evaluate_final_artifact_quality",
+        lambda artifact: {"ok": True, "issues": [], "visible_text_length": 3200},
+    )
+
+    def short_agent_result(**kwargs):
+        del kwargs
+        calls["agent"] += 1
+        return {
+            "sections": [],
+            "research_summary": "summary",
+            "evidence": [],
+            "section_checkpoints": [],
+            "tool_evidence": [],
+        }
+
+    monkeypatch.setattr(svc, "run_report_agent", short_agent_result)
+
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "agent_synthesis_v2"}
+    )
+
+    assert calls["agent"] == 1
+    assert result["metadata"]["fallback_level"] == "agent_writer_quality_fallback"
+    assert len(result["artifact"]["sections"]) >= 6
+    assert result["section_checkpoints"]
+    assert all(item["status"] != "fail" for item in result["section_checkpoints"]), result[
+        "section_checkpoints"
+    ]
+    assert {item["schema_version"] for item in result["tool_evidence"]} == {"tool_evidence_v2"}
+
+
 def test_visual_yearly_artifact_service_blocks_final_quality_failure(monkeypatch):
     from backend.domains.ai_reports import visual_yearly_artifact_service as svc
 

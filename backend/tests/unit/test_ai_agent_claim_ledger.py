@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from backend.domains.ai_agent.claim_ledger import build_claim_ledger, claim_ledger_issues
+from backend.domains.ai_agent.claim_ledger import (
+    build_claim_ledger,
+    claim_ledger_issues,
+    render_grounded_fallback,
+)
 from backend.domains.ai_agent.fact_catalog import build_fact_catalog
 
 pytestmark = pytest.mark.unit
@@ -147,3 +151,38 @@ def test_fact_catalog_recovers_allowlisted_metrics_without_evidence_card() -> No
     assert by_metric["summary.total_plays"]["value"] == 77
     assert by_metric["0.rate"]["value"] == 12.5
     assert by_metric["0.rate"]["unit"] == "%"
+
+
+def test_community_post_facts_render_named_grounded_fallback() -> None:
+    content = "本周个人艺人榜：Olivia Rodrigo 排名第 2，播放 18 次。"
+    facts = build_fact_catalog(
+        [],
+        tool_results=[
+            {
+                "tool_name": "community_feed_search",
+                "status": "done",
+                "source_range": "community_feed:scoped_chart_snapshot",
+                "data": {
+                    "posts": [
+                        {
+                            "content": content,
+                            "posted_at": "2026-08-14",
+                            "linked_entities": [{"type": "artist", "name": "Olivia Rodrigo"}],
+                            "chart": {
+                                "week": "2026-08-14",
+                                "rank": 2,
+                                "play_count": 18,
+                            },
+                        }
+                    ]
+                },
+            }
+        ],
+    )
+
+    answer = render_grounded_fallback(facts)
+    ledger = build_claim_ledger(answer, facts)
+
+    assert content in answer
+    assert ledger["unsupported_literals"] == []
+    assert ledger["unsupported_semantic_claims"] == []

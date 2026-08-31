@@ -440,6 +440,35 @@ def _grade_case(
     unsupported_literals = _as_list(claim_ledger.get("unsupported_literals"))
     if unsupported_literals:
         fail_issues.append(f"unsupported numeric claims: {unsupported_literals[:8]}")
+
+    answer_contract = _as_dict(result.get("answer_contract"))
+    if answer_contract.get("classification") != "pass" or answer_contract.get("ok") is not True:
+        fail_issues.append(
+            "answer quality contract did not pass: "
+            f"{answer_contract.get('classification') or 'missing'}"
+        )
+    else:
+        dimensions = _as_dict(answer_contract.get("dimensions"))
+        required_dimensions = {
+            "grounded",
+            "complete",
+            "informative",
+            "constraint_compliant",
+            "readable",
+        }
+        if not required_dimensions.issubset(dimensions):
+            fail_issues.append("answer quality contract is missing required dimensions")
+
+    tool_names = _tool_names(result, events_payload)
+    tool_evidence = [
+        item for item in _as_list(result.get("tool_evidence")) if isinstance(item, dict)
+    ]
+    if tool_names and not tool_evidence:
+        fail_issues.append("tool calls exist but tool_evidence_v2 is missing")
+    elif any(item.get("schema_version") != "tool_evidence_v2" for item in tool_evidence):
+        fail_issues.append("tool evidence does not use tool_evidence_v2")
+    elif any(not item.get("constraint_fingerprint") for item in tool_evidence):
+        fail_issues.append("tool evidence is missing constraint_fingerprint")
     # A deterministic fallback is an intentional Agent safety path. It remains
     # visible in the result, but is not itself a quality failure when the final
     # answer has complete evidence coverage and no validation issues.
@@ -473,7 +502,7 @@ def _grade_case(
         "status": status,
         "grade": grade,
         "issues": fail_issues + partial_issues,
-        "tool_names": _tool_names(result, events_payload),
+        "tool_names": tool_names,
         "answer_preview": answer[:500],
         "validation_issues": validation_issues,
         "evidence_coverage": evidence_coverage,

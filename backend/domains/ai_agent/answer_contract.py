@@ -201,6 +201,16 @@ def _informative_issues(answer: str, payload: dict[str, Any]) -> list[str]:
             issues.append("informative: 比较回答没有覆盖全部比较对象")
         if not _contains_any(answer, _COMPARISON_TOKENS):
             issues.append("informative: 比较回答没有给出直接或分口径结论")
+    elif family == "community_lookup":
+        catalog = [item for item in _as_list(payload.get("fact_catalog")) if isinstance(item, dict)]
+        subjects = [
+            str(item.get("value") or "")
+            for item in catalog
+            if ".top_" in str(item.get("metric_name") or "")
+            and str(item.get("metric_name") or "").endswith("_subject")
+        ]
+        if subjects and not any(subject and subject in answer for subject in subjects):
+            issues.append("informative: 社区查询没有列出任何实际匹配帖子或实体")
     elif family in {"trend_preference", "change_explanation"} and not _contains_any(
         answer, _TREND_TOKENS
     ):

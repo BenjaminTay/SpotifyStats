@@ -152,6 +152,76 @@ def test_taste_profile_builds_only_bounded_taste_evidence(
     assert result.data["taste_profile"]["primary_styles"]["buckets"][0]["label"] == "流行"
 
 
+def test_community_text_search_uses_scoped_snapshot_without_full_feed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE music_search_index_state (
+            state_id INTEGER PRIMARY KEY,
+            active_generation_id TEXT
+        );
+        INSERT INTO music_search_index_state VALUES (1, 'generation-1');
+        CREATE TABLE music_search_documents (
+            generation_id TEXT,
+            entity_key TEXT,
+            kind TEXT,
+            merge_level INTEGER,
+            label TEXT,
+            normalized_label TEXT,
+            secondary TEXT,
+            normalized_secondary TEXT,
+            normalized_alias TEXT,
+            artist_name TEXT,
+            album_name TEXT
+        );
+        INSERT INTO music_search_documents VALUES (
+            'generation-1', 'artist:8', 'artist', 0,
+            'Olivia Rodrigo', 'olivia rodrigo', NULL, '', '', 'Olivia Rodrigo', NULL
+        );
+        CREATE TABLE music_search_weekly_chart_context (
+            snapshot_key TEXT,
+            family TEXT,
+            week TEXT,
+            entity_key TEXT,
+            rank INTEGER,
+            play_count INTEGER,
+            total_ms INTEGER
+        );
+        INSERT INTO music_search_weekly_chart_context VALUES (
+            'snapshot-1', 'artist', '2026-08-14', 'artist:8', 2, 18, 3600000
+        );
+        """
+    )
+    monkeypatch.setattr(
+        tools,
+        "build_music_search_filter_context",
+        lambda *_args, **_kwargs: SimpleNamespace(filter_fingerprint="target-1"),
+    )
+    monkeypatch.setattr(
+        tools,
+        "get_serving_music_search_snapshot",
+        lambda *_args, **_kwargs: {
+            "snapshot_key": "snapshot-1",
+            "status": "ready",
+            "freshness": "current",
+        },
+    )
+
+    data = tools._community_snapshot_search(
+        conn,
+        tools.CommunityFeedSearchParams(search="Olivia Rodrigo", limit=5),
+    )
+
+    assert data is not None
+    assert data["retrieval_mode"] == "scoped_chart_snapshot"
+    assert data["meta"]["returned"] == 1
+    assert "Olivia Rodrigo" in data["posts"][0]["content"]
+    assert data["posts"][0]["chart"]["rank"] == 2
+
+
 def test_exact_annual_chart_reuses_ready_yearly_artifact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

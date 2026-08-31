@@ -70,9 +70,11 @@ REPORT_WRITER_INSTRUCTION = """
 基于以上所有工具调查结果和图表数据，撰写一份信息密度高、有洞察力的年度音乐回顾。
 
 核心原则：
-- 每节至少 3 个具体数字（播放次数、时长、占比、排名、在榜周数）
+- 写 6 至 8 节，总正文不少于 3000 个中文字符；每节围绕一个清晰问题展开
+- 每节只选 1 至 3 个最有解释力的数字，必须逐字来自工具或图表数据，不能计算或猜测新数字
 - 从数据中找故事——有趣的异常和趋势比全面覆盖更重要
 - 艺人/专辑/歌曲名完整写出，数字带单位，时间带月份
+- 必须明确提到年度 Top 单曲与 Top 专辑，并解释它们与艺人、月份或个人 Billboard 的关系
 - 禁止废话：不要写"反复回到的声音""低阻力回访""不同场景里都能成立"等模板表述
 - is_partial_year 时用"截至 X""阶段性"，不说"全年"；Billboard 时说明"基于本地播放记录的个人 Billboard"
 - 禁止：前者/后者指代、推断艺人性别（她/他）、艺人名加括号附注英文
@@ -423,18 +425,46 @@ def run_report_agent(
         f"可用图表: {', '.join(s.get('id', '') for s in chart_specs)}\n"
     )
 
-    writer_response = _llm_chat(
-        "你是 SpotifyStats 年度音乐报告作者。基于工具数据撰写报告。只输出 JSON。",
-        write_instruction,
-        temperature=0.40,
-    )
     sections: list[dict[str, Any]] = []
-    if writer_response:
-        sections = _parse_json_sections(writer_response, chart_specs)
-        if not sections:
-            sections = _parse_markdown_sections(writer_response)
-        if not sections and len(writer_response.strip()) > 50:
-            sections = [{"heading": "年度报告", "prose": writer_response.strip(), "chart_refs": []}]
+    for writer_attempt in range(2):
+        retry_instruction = ""
+        if writer_attempt:
+            retry_instruction = (
+                "\n\n上一次输出没有达到 6 节且 3000 字的结构门槛。"
+                "请重新完整输出，不要解释失败原因，不要省略 JSON 尾部。"
+            )
+        writer_response = _llm_chat(
+            "你是 SpotifyStats 年度音乐报告作者。基于工具数据撰写报告。只输出 JSON。",
+            write_instruction + retry_instruction,
+            temperature=0.35,
+            max_tokens=6144,
+        )
+        candidate: list[dict[str, Any]] = []
+        if writer_response:
+            candidate = _parse_json_sections(writer_response, chart_specs)
+            if not candidate:
+                candidate = _parse_markdown_sections(writer_response)
+            if not candidate and len(writer_response.strip()) > 50:
+                candidate = [
+                    {"heading": "年度报告", "prose": writer_response.strip(), "chart_refs": []}
+                ]
+        candidate_chars = sum(len(str(item.get("prose") or "")) for item in candidate)
+        current_chars = sum(len(str(item.get("prose") or "")) for item in sections)
+        if (len(candidate), candidate_chars) > (len(sections), current_chars):
+            sections = candidate
+        if len(candidate) >= 6 and candidate_chars >= 2800:
+            break
+        if writer_attempt == 0 and emit_event:
+            emit_event(
+                "report_writer_retry",
+                f"初稿结构不足（{len(candidate)} 节/{candidate_chars} 字），正在重写",
+                {
+                    "stage": "writing_report",
+                    "progress_pct": 0.87,
+                    "section_count": len(candidate),
+                    "article_length": candidate_chars,
+                },
+            )
 
     sections, checkpoints, tool_evidence = audit_report_sections(
         sections,

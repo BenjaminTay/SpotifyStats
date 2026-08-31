@@ -300,6 +300,34 @@ def test_simple_ranking_followup_uses_recipe_required_context() -> None:
     ]
 
 
+def test_empty_ranking_results_are_evidence_of_no_data_not_a_completed_ranking() -> None:
+    frame, recipe = _frame_and_recipe("2010年我最常听什么？")
+
+    review = review_evidence_sufficiency(
+        question_frame=frame.model_dump(),
+        evidence_recipe=recipe.model_dump(),
+        tool_results=[
+            {
+                "tool_name": "analysis_charts",
+                "status": "empty",
+                "source_range": "2010-01-01..2010-12-31",
+                "params": {
+                    "entity": "track",
+                    "metric": "plays",
+                    "period": "custom",
+                    "start_date": "2010-01-01",
+                    "end_date": "2010-12-31",
+                },
+                "data": {"status": "empty", "rows": []},
+            }
+        ],
+        coverage={},
+    )
+
+    assert review["sufficient"] is False
+    assert review["axis_coverage"]["ranking"] == "missing"
+
+
 def test_simple_ranking_wrong_entity_chart_does_not_satisfy_required_context() -> None:
     frame, recipe = _frame_and_recipe("2023年我播放量最高的艺人是谁？")
 

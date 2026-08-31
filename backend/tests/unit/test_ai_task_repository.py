@@ -176,6 +176,11 @@ def test_worker_lease_allows_one_owner_and_expired_recovery() -> None:
     assert repo.claim_run("task-lease", lease_owner="worker-b", lease_seconds=60) is False
     assert repo.list_recoverable_agent_runs() == []
 
+    attempt_before_renew = repo.get_run("task-lease")["attempt_count"]
+    assert repo.renew_run("task-lease", lease_owner="worker-a", lease_seconds=120) is True
+    assert repo.renew_run("task-lease", lease_owner="worker-b", lease_seconds=120) is False
+    assert repo.get_run("task-lease")["attempt_count"] == attempt_before_renew
+
     conn.execute(
         "UPDATE ai_task_runs SET lease_expires_at=datetime('now', '-1 second') WHERE task_id=?",
         ("task-lease",),

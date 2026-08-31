@@ -345,6 +345,25 @@ def _semantic_time_claims(sentence: str, facts: list[dict[str, Any]]) -> list[Se
 
 
 def _semantic_claims(sentence: str, facts: list[dict[str, Any]]) -> list[SemanticClaim]:
+    normalized_sentence = sentence.lstrip("- ").rstrip("。.!！ ")
+    for fact in facts:
+        if not isinstance(fact, dict) or not str(fact.get("metric_name") or "").endswith(
+            ".content"
+        ):
+            continue
+        value = str(fact.get("value") or "").strip().rstrip("。.!！ ")
+        if value and value == normalized_sentence:
+            return [
+                SemanticClaim(
+                    text=sentence,
+                    claim_type="community_post",
+                    subject=str(fact.get("entity_name") or "") or None,
+                    predicate="exact_tool_content",
+                    object=value,
+                    fact_refs=_fact_ref(fact),
+                    supported=True,
+                )
+            ]
     return [
         *_semantic_ranking_claims(sentence, facts),
         *_semantic_comparison_claims(sentence, facts),
@@ -478,8 +497,28 @@ def render_grounded_fallback(facts: list[dict[str, Any]], *, max_facts: int = 12
             continue
         direct.append(fact)
 
+    community_posts = [
+        fact
+        for fact in direct
+        if str(fact.get("metric_name") or "").startswith("community_post_")
+        and str(fact.get("metric_name") or "").endswith(".content")
+    ]
+    numeric_direct = [
+        fact
+        for fact in direct
+        if isinstance(fact.get("value"), (int, float)) and not isinstance(fact.get("value"), bool)
+    ]
+    has_positive_metric = any(float(fact["value"]) > 0 for fact in numeric_direct)
+    has_ranked_subject = any(fact.get("entity_name") or fact.get("rank") for fact in direct)
+    no_data = bool(numeric_direct) and not has_positive_metric and not has_ranked_subject
+
     lines = ["根据当前本地只读工具能够直接核验的证据，可确认："]
-    for fact in direct[: max(1, max_facts)]:
+    if community_posts:
+        for fact in community_posts[: max(1, max_facts)]:
+            lines.append(f"- {fact['value']}")
+    elif no_data:
+        lines.append("- 该范围内没有满足当前过滤条件的播放记录，因此无法生成实际排行。")
+    for fact in [] if no_data or community_posts else direct[: max(1, max_facts)]:
         value = fact["value"]
         unit = _UNIT_LABELS.get(str(fact.get("unit") or ""), str(fact.get("unit") or ""))
         rendered = f"{value}{unit}" if unit else str(value)

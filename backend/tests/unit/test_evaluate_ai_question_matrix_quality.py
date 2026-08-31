@@ -14,6 +14,28 @@ def _task_result(**overrides):
         "validation_issues": [],
         "evidence_coverage": 1.0,
         "claim_ledger": {"unsupported_literals": []},
+        "answer_contract": {
+            "ok": True,
+            "classification": "pass",
+            "dimensions": {
+                name: {"passed": True, "applicable": True, "issues": []}
+                for name in (
+                    "grounded",
+                    "complete",
+                    "informative",
+                    "constraint_compliant",
+                    "readable",
+                )
+            },
+        },
+        "tool_evidence": [
+            {
+                "schema_version": "tool_evidence_v2",
+                "tool_name": "analysis_stats",
+                "constraint_fingerprint": "abc123",
+            }
+        ],
+        "tools": [{"tool_name": "analysis_stats", "status": "ok"}],
         "grounded_fallback_used": False,
         "runtime_metrics": {
             "total_elapsed_ms": 1_000,
@@ -69,3 +91,14 @@ def test_live_quality_gate_accepts_fully_grounded_deterministic_fallback() -> No
 
     assert graded["grade"] == "Pass"
     assert graded["grounded_fallback_used"] is True
+
+
+def test_live_quality_gate_rejects_missing_answer_contract_or_tool_evidence() -> None:
+    case = MatrixCase("AI-01", "问题", "预期", [])
+    task = _task_result(answer_contract={}, tool_evidence=[])
+
+    graded = _grade_case(case, task, _events())
+
+    assert graded["grade"] == "Fail"
+    assert any("answer quality contract" in issue for issue in graded["issues"])
+    assert any("tool_evidence_v2" in issue for issue in graded["issues"])

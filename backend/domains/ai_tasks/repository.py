@@ -9,7 +9,7 @@ from typing import Any, Union
 
 JsonPayload = Union[dict[str, Any], list[Any]]
 TERMINAL_STATUSES = ("done", "error", "cancelled")
-TASK_LEASE_SECONDS = 900
+TASK_LEASE_SECONDS = 90
 
 
 def _json_dump(value: JsonPayload | None) -> str | None:
@@ -37,12 +37,16 @@ class AiTaskRepository:
             "attempt_count",
         }.issubset(columns)
 
+    @property
+    def supports_worker_leases(self) -> bool:
+        return self._supports_leases
+
     def _lease_refresh_sql(self) -> str:
         if not self._supports_leases:
             return ""
         return (
             "lease_expires_at = CASE WHEN lease_owner IS NOT NULL "
-            "THEN datetime('now', '+900 seconds') ELSE NULL END,"
+            f"THEN datetime('now', '+{TASK_LEASE_SECONDS} seconds') ELSE NULL END,"
         )
 
     def create_run(
@@ -88,6 +92,29 @@ class AiTaskRepository:
                      OR lease_expires_at IS NULL OR lease_expires_at <= datetime('now')
                  )""",
             (lease_owner, modifier, task_id, *TERMINAL_STATUSES, lease_owner),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def renew_run(
+        self,
+        task_id: str,
+        *,
+        lease_owner: str,
+        lease_seconds: int = TASK_LEASE_SECONDS,
+    ) -> bool:
+        """Extend an active worker lease without changing the attempt counter."""
+
+        if not self._supports_leases:
+            return True
+        modifier = f"+{max(30, int(lease_seconds))} seconds"
+        cursor = self.conn.execute(
+            """UPDATE ai_task_runs
+               SET lease_expires_at = datetime('now', ?),
+                   updated_at = datetime('now')
+               WHERE task_id = ? AND lease_owner = ?
+                 AND status NOT IN (?, ?, ?)""",
+            (modifier, task_id, lease_owner, *TERMINAL_STATUSES),
         )
         self.conn.commit()
         return cursor.rowcount > 0

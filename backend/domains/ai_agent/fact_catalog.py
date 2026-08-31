@@ -214,6 +214,86 @@ def _tool_result_facts(tool_results: list[dict[str, Any]]) -> list[AgentFact]:
 
     facts: list[AgentFact] = []
 
+    def add_community_post_facts(
+        data: dict[str, Any],
+        *,
+        tool_name: str,
+        evidence_ref: str,
+        source_range: str,
+    ) -> None:
+        posts = data.get("posts")
+        if not isinstance(posts, list):
+            return
+        for index, post in enumerate(posts[:10], start=1):
+            if not isinstance(post, dict) or len(facts) >= _MAX_FALLBACK_TOOL_FACTS:
+                break
+            content = str(post.get("content") or "").strip()
+            chart = post.get("chart") if isinstance(post.get("chart"), dict) else {}
+            linked = post.get("linked_entities")
+            linked = linked if isinstance(linked, list) else []
+            subject = next(
+                (
+                    str(item.get("name") or "").strip()
+                    for item in linked
+                    if isinstance(item, dict) and str(item.get("name") or "").strip()
+                ),
+                "",
+            )
+            rank = chart.get("rank")
+            plays = chart.get("play_count")
+            week = str(chart.get("week") or post.get("posted_at") or "").strip()
+            if content:
+                facts.append(
+                    AgentFact(
+                        fact_id=_fact_id(evidence_ref, "community_post", index, "content", content),
+                        evidence_ref=evidence_ref,
+                        tool_name=tool_name,
+                        source_range=source_range,
+                        metric_name=f"community_post_{index}.content",
+                        label=f"相关帖子 {index}",
+                        value=content,
+                        entity_name=subject or None,
+                    )
+                )
+            if subject and isinstance(rank, int):
+                facts.append(
+                    AgentFact(
+                        fact_id=_fact_id(evidence_ref, "community_post", index, "subject", subject),
+                        evidence_ref=evidence_ref,
+                        tool_name=tool_name,
+                        source_range=source_range,
+                        metric_name=f"community_post_{index}.top_{rank}_subject",
+                        label=f"相关帖子 {index} 主体",
+                        value=subject,
+                        entity_name=subject,
+                    )
+                )
+            for metric_name, label, value, unit in (
+                (f"community_post_{index}.week", "帖子周", week, None),
+                (f"community_post_{index}.rank", f"{subject} 排名", rank, None),
+                (
+                    f"community_post_{index}.play_count",
+                    f"{subject} 播放次数",
+                    plays,
+                    "plays",
+                ),
+            ):
+                if value is None or value == "" or len(facts) >= _MAX_FALLBACK_TOOL_FACTS:
+                    continue
+                facts.append(
+                    AgentFact(
+                        fact_id=_fact_id(evidence_ref, metric_name, value),
+                        evidence_ref=evidence_ref,
+                        tool_name=tool_name,
+                        source_range=source_range,
+                        metric_name=metric_name,
+                        label=label,
+                        value=value,
+                        unit=unit,
+                        entity_name=subject or None,
+                    )
+                )
+
     def visit(
         value: Any,
         *,
@@ -275,8 +355,16 @@ def _tool_result_facts(tool_results: list[dict[str, Any]]) -> list[AgentFact]:
             continue
         tool_name = str(result.get("tool_name") or "")
         evidence_ref = f"tool_result:{index}:{tool_name}"
+        data = result.get("data")
+        if tool_name == "community_feed_search" and isinstance(data, dict):
+            add_community_post_facts(
+                data,
+                tool_name=tool_name,
+                evidence_ref=evidence_ref,
+                source_range=str(result.get("source_range") or ""),
+            )
         visit(
-            result.get("data"),
+            data,
             tool_name=tool_name,
             evidence_ref=evidence_ref,
             source_range=str(result.get("source_range") or ""),

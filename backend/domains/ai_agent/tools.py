@@ -28,6 +28,9 @@ from backend.domains.billboard import details as billboard_details
 from backend.domains.community import feed_generator as community_feed_generator
 from backend.domains.community.post_types import HIGHLIGHT_POST_TYPES
 from backend.domains.metadata.genre_display_taxonomy import build_consumer_taste_profile
+from backend.domains.music_search.context import build_music_search_filter_context
+from backend.domains.music_search.normalization import normalize_search_text
+from backend.domains.music_search.snapshot import get_serving_music_search_snapshot
 from backend.services import (
     analysis_records_service,
     analysis_stats_service,
@@ -658,6 +661,9 @@ def analysis_stats_handler(params: BaseModel) -> AgentToolResult:
         data = analysis_stats_service.get_analysis_stats(conn, **_filter_kwargs(parsed))
     finally:
         conn.close()
+    summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+    if int(summary.get("total_plays") or 0) == 0:
+        data = {**data, "status": "empty"}
     result = AgentToolResult(
         data=data,
         result_summary=_stats_result_summary(data),
@@ -822,6 +828,8 @@ def analysis_charts_handler(params: BaseModel) -> AgentToolResult:
             )
     finally:
         conn.close()
+    if not data.get("rows"):
+        data = {**data, "status": "empty"}
     result = AgentToolResult(
         data=data,
         result_summary=_charts_result_summary(data),
@@ -878,6 +886,8 @@ def wrapped_yearly_handler(params: BaseModel) -> AgentToolResult:
         )
     finally:
         conn.close()
+    if data.get("empty") is True:
+        data = {**data, "status": "empty"}
     return AgentToolResult(
         data=data,
         result_summary=_wrapped_yearly_result_summary(data),
@@ -1485,6 +1495,161 @@ def _community_posts(
     )
 
 
+def _community_snapshot_search(
+    conn: sqlite3.Connection,
+    parsed: CommunityFeedSearchParams,
+) -> dict[str, Any] | None:
+    """Build scoped community activity cards from a ready search snapshot.
+
+    The public community feed replays every historical chart week because it
+    must derive global records and milestones.  A text search does not need
+    that full history.  Reuse the exact/LKG music-search chart ledger instead,
+    while keeping the response honest about snapshot freshness.
+    """
+
+    if not parsed.search:
+        return None
+    normalized = normalize_search_text(parsed.search)
+    if not normalized or normalized.startswith("@"):
+        return None
+    context = build_music_search_filter_context(conn, parsed)
+    serving = get_serving_music_search_snapshot(
+        conn,
+        filter_fingerprint=context.filter_fingerprint,
+        merge_level=parsed.merge_level,
+        dynamic_threshold=parsed.dynamic_threshold,
+    )
+    snapshot_key = serving.get("snapshot_key")
+    if not isinstance(snapshot_key, str) or not snapshot_key:
+        return None
+    generation = conn.execute(
+        "SELECT active_generation_id FROM music_search_index_state WHERE state_id=1"
+    ).fetchone()
+    if generation is None or not generation[0]:
+        return None
+
+    conditions = [
+        "d.generation_id=?",
+        "w.snapshot_key=?",
+        "(d.kind='artist' OR d.merge_level=?)",
+        "(instr(d.normalized_label, ?) > 0 "
+        "OR instr(d.normalized_secondary, ?) > 0 "
+        "OR instr(d.normalized_alias, ?) > 0)",
+        "w.family=CASE d.kind WHEN 'album_project' THEN 'album' ELSE d.kind END",
+    ]
+    values: list[Any] = [
+        str(generation[0]),
+        snapshot_key,
+        parsed.merge_level,
+        normalized,
+        normalized,
+        normalized,
+    ]
+    if parsed.date_from:
+        conditions.append("w.week>=?")
+        values.append(parsed.date_from[:10])
+    if parsed.date_to:
+        conditions.append("w.week<=?")
+        values.append(parsed.date_to[:10])
+    if parsed.year_start is not None:
+        conditions.append("w.week>=?")
+        values.append(f"{parsed.year_start:04d}-01-01")
+    if parsed.year_end is not None:
+        conditions.append("w.week<=?")
+        values.append(f"{parsed.year_end:04d}-12-31")
+    if parsed.highlights_only:
+        conditions.append("w.rank=1")
+
+    query = f"""
+        SELECT d.entity_key, d.kind, d.label, d.secondary,
+               d.artist_name, d.album_name,
+               w.week, w.rank, w.play_count, w.total_ms
+          FROM music_search_documents d
+          JOIN music_search_weekly_chart_context w
+            ON w.entity_key=d.entity_key
+         WHERE {" AND ".join(conditions)}
+         ORDER BY w.week DESC, w.rank ASC,
+                  CASE d.kind WHEN 'artist' THEN 0 WHEN 'album_project' THEN 1 ELSE 2 END,
+                  d.entity_key
+         LIMIT ?
+    """
+    values.append(parsed.limit + 1)
+    rows = conn.execute(query, values).fetchall()
+    if not rows:
+        return {
+            "status": "empty",
+            "retrieval_mode": "scoped_chart_snapshot",
+            "snapshot": serving,
+            "meta": {"total": 0, "total_all": 0, "returned": 0, "limit": parsed.limit},
+            "highlights_only": parsed.highlights_only,
+            "posts": [],
+        }
+
+    posts: list[dict[str, Any]] = []
+    for row in rows[: parsed.limit]:
+        kind = str(row[1])
+        family = "album" if kind == "album_project" else kind
+        label = str(row[2])
+        artist_name = str(row[4] or "")
+        if family == "artist":
+            subject = label
+        elif artist_name:
+            subject = f"{label} — {artist_name}"
+        else:
+            subject = label
+        family_label = {"artist": "艺人", "album": "专辑", "track": "单曲"}.get(family, "音乐")
+        posts.append(
+            {
+                "id": f"snapshot:{snapshot_key[:12]}:{family}:{row[0]}:{row[6]}",
+                "account_handle": "@spotifydata",
+                "posted_at": str(row[6]),
+                "content": (
+                    f"本周个人{family_label}榜：{subject} 排名第 {int(row[7])}，"
+                    f"播放 {int(row[8])} 次。"
+                ),
+                "post_type": "scoped_chart_activity",
+                "tags": ["weekly", "chart", "scoped_search"],
+                "significance": 1.0 if int(row[7]) == 1 else 0.55,
+                "linked_entities": [
+                    {
+                        "type": family,
+                        "name": label,
+                        "id": str(row[0]).split(":", 1)[-1],
+                    },
+                    *(
+                        [{"type": "artist", "name": artist_name}]
+                        if artist_name and family != "artist"
+                        else []
+                    ),
+                ],
+                "metrics": {"likes": 0, "retweets": 0, "replies": 0, "views": 0},
+                "chart": {
+                    "family": family,
+                    "week": str(row[6]),
+                    "rank": int(row[7]),
+                    "play_count": int(row[8]),
+                    "total_ms": int(row[9]),
+                },
+            }
+        )
+    return {
+        "retrieval_mode": "scoped_chart_snapshot",
+        "snapshot": serving,
+        "meta": {
+            "total": len(rows),
+            "total_all": len(rows),
+            "returned": len(posts),
+            "limit": parsed.limit,
+            "has_more": len(rows) > parsed.limit,
+        },
+        "highlights_only": parsed.highlights_only,
+        "posts": posts,
+        "limitations": [
+            "文本窄查询返回确定性周榜活动卡片；全历史纪录与里程碑帖子仍由完整社区 Feed 生成。"
+        ],
+    }
+
+
 def community_feed_search_handler(params: BaseModel) -> AgentToolResult:
     parsed = (
         params
@@ -1501,6 +1666,15 @@ def community_feed_search_handler(params: BaseModel) -> AgentToolResult:
         )
         if cached := get_cached_tool_result(cache_key):
             return cached
+        scoped = _community_snapshot_search(conn, parsed)
+        if scoped is not None:
+            result = AgentToolResult(
+                data=scoped,
+                result_summary=_community_feed_result_summary(scoped),
+                source_range="community_feed:scoped_chart_snapshot",
+            )
+            cache_tool_result(cache_key, result)
+            return result
         posts = _community_posts(conn, parsed)
     finally:
         conn.close()
