@@ -77,6 +77,13 @@ class AnalysisStatsParams(BaseModel):
 
     @model_validator(mode="after")
     def validate_custom_range(self) -> AnalysisStatsParams:
+        # Explicit bounds are authoritative. Models occasionally emit a
+        # leftover named period together with concrete dates; silently
+        # ignoring those dates can turn an empty historical query into a
+        # lifetime answer. Normalize at the tool boundary so every handler
+        # observes one unambiguous time scope.
+        if self.start_date is not None or self.end_date is not None:
+            self.period = "custom"
         if self.period == "custom" and self.start_date and self.end_date:
             if date.fromisoformat(self.start_date) > date.fromisoformat(self.end_date):
                 raise ValueError("start_date must be before or equal to end_date")

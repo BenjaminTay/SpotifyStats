@@ -742,6 +742,20 @@ def test_resolve_entity_rejects_empty_query() -> None:
         tool_registry.dispatch_tool("resolve_entity", {"query": ""})
 
 
+def test_explicit_dates_override_a_conflicting_named_period() -> None:
+    params = tools.AnalysisStatsParams.model_validate(
+        {
+            "period": "lifetime",
+            "start_date": "2010-01-01",
+            "end_date": "2010-12-31",
+        }
+    )
+
+    assert params.period == "custom"
+    assert params.start_date == "2010-01-01"
+    assert params.end_date == "2010-12-31"
+
+
 def test_compare_entities_combines_playback_and_billboard_batch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

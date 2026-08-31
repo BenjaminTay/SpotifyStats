@@ -309,6 +309,7 @@ def summarize_billboard_year_end(
         if (row := _normalize_year_end_row(item, "artist", index))
     ]
     meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    projection_source = meta.get("data_source") == "published_year_end_projection"
     available = bool(tracks or albums or artists)
     return {
         "available": available,
@@ -328,6 +329,8 @@ def summarize_billboard_year_end(
             "weekly_top_n": meta.get("weekly_top_n"),
             "weekly_album_top_n": meta.get("weekly_album_top_n"),
             "weekly_artist_top_n": meta.get("weekly_artist_top_n"),
+            "data_source": meta.get("data_source"),
+            "snapshot_freshness": meta.get("snapshot_freshness"),
         },
         "tracks": tracks,
         "albums": albums,
@@ -335,6 +338,12 @@ def summarize_billboard_year_end(
         "caveat": (
             "这是本地个人 Billboard Year-End，基于用户自己的播放记录计算，"
             "不是外部官方 Billboard 榜单。"
+            + (
+                " 当前读取已发布 Year-End 投影；其中 plays 表示上榜周播放次数，"
+                "完整年度播放次数请以年度 Top 榜为准。"
+                if projection_source
+                else ""
+            )
         ),
         "note": "" if available else "personal Billboard Year-End data unavailable.",
     }
@@ -372,7 +381,11 @@ def _normalize_year_end_row(
         return None
 
     chart_plays = int(item.get("chart_plays") or 0)
-    annual_plays = int(item.get("annual_plays") or item.get("plays") or chart_plays)
+    annual_value = item.get("annual_plays")
+    if annual_value is None:
+        annual_value = item.get("plays")
+    annual_plays = int(annual_value) if annual_value is not None else None
+    displayed_plays = annual_plays if annual_plays is not None else chart_plays
     row = {
         "rank": int(item.get("year_end_rank") or item.get("rank") or index + 1),
         "name": name,
@@ -380,9 +393,11 @@ def _normalize_year_end_row(
         "peak_position": _optional_int(item.get("peak_position")),
         "weeks_on_chart": int(item.get("weeks_on_chart") or 0),
         "weeks_at_no1": int(item.get("weeks_at_no1") or 0),
-        "plays": annual_plays,
+        "plays": displayed_plays,
         "annual_plays": annual_plays,
         "chart_plays": chart_plays,
+        "play_count_basis": item.get("play_count_basis")
+        or ("annual" if annual_plays is not None else "charted_weeks"),
     }
     if entity_type in {"track", "album"}:
         row["artist"] = item_text(item, "artist_name", "artist")

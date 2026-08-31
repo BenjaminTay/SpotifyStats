@@ -23,7 +23,7 @@ from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepos
 from backend.domains.yearly_review.context import build_yearly_review_context
 from backend.services.yearly_review_service import _prepare_artifact
 
-AGENT_CONTEXT_BUILDER_VERSION = "yearly_agent_context_v1"
+AGENT_CONTEXT_BUILDER_VERSION = "yearly_agent_context_v2"
 REPORT_RESEARCH_TOOLS = (
     "report_period_context",
     "yearly_overview",
@@ -198,6 +198,7 @@ def _build_base_context(request: dict[str, Any]) -> tuple[dict[str, Any], list[d
             year=int(request["year"]),
             dynamic_threshold=bool(request["dynamic_threshold"]),
             max_merge_gap_minutes=request.get("max_merge_gap_minutes"),
+            allow_expensive_year_end=False,
         )
     finally:
         conn.close()

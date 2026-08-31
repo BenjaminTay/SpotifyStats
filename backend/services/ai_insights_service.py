@@ -948,6 +948,7 @@ def _gather_yearly_data(
     year: int,
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: Optional[int] = 5,
+    allow_expensive_year_end: bool = True,
 ) -> dict:
     """Gather structured data for a yearly story."""
     from backend.services.wrapped_service import get_wrapped_full
@@ -1026,6 +1027,7 @@ def _gather_yearly_data(
             year=year,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            allow_expensive_fallback=allow_expensive_year_end,
         )
     )
     year_over_year = {
@@ -1120,10 +1122,32 @@ def _compute_year_end_for_yearly_report(
     year: int,
     dynamic_threshold: bool,
     max_merge_gap_minutes: Optional[int],
+    allow_expensive_fallback: bool = True,
 ) -> dict[str, Any]:
     if not _connection_uses_default_database(conn):
         return {"meta": {"year": year}, "tracks": [], "albums": [], "artists": [], "honors": {}}
     try:
+        published = _load_published_year_end_for_yearly_report(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            year=year,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+        if published is not None:
+            return published
+        if not allow_expensive_fallback:
+            return {
+                "meta": {
+                    "year": year,
+                    "data_source": "published_projection_unavailable",
+                },
+                "tracks": [],
+                "albums": [],
+                "artists": [],
+                "honors": {},
+            }
         from backend.services.billboard_service import compute_year_end_staged
 
         settings = SettingsRepository(conn).load_all()
@@ -1144,6 +1168,144 @@ def _compute_year_end_for_yearly_report(
     except Exception:
         logger.warning("Failed to compute yearly report Billboard Year-End", exc_info=True)
         return {"meta": {"year": year}, "tracks": [], "albums": [], "artists": [], "honors": {}}
+
+
+def _load_published_year_end_for_yearly_report(
+    conn: sqlite3.Connection,
+    *,
+    min_ms: int,
+    music_only: bool,
+    year: int,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: Optional[int],
+) -> dict[str, Any] | None:
+    """Read the compact published Year-End projection without rebuilding Billboard."""
+
+    try:
+        from backend.domains.music_search.context import build_music_search_filter_context
+        from backend.domains.music_search.snapshot import get_serving_music_search_snapshot
+        from backend.domains.music_search.year_end_projection import (
+            YEAR_END_PROJECTION_BUILDER_VERSION,
+        )
+
+        settings = SettingsRepository(conn).load_all()
+        merge_level = 2
+        values = {
+            "min_ms": min_ms,
+            "music_only": music_only,
+            "bb_top_n": int(settings["bb_top_n"]),
+            "bb_album_top_n": int(settings["bb_album_top_n"]),
+            "bb_artist_top_n": int(settings["bb_artist_top_n"]),
+            "bb_week_start_dow": int(settings["bb_week_start_dow"]),
+            "bb_week_start_hour": int(settings["bb_week_start_hour"]),
+            "year_start": None,
+            "year_end": None,
+            "dynamic_threshold": dynamic_threshold,
+            "max_merge_gap_minutes": max_merge_gap_minutes,
+            "merge_enabled": True,
+            "merge_level": merge_level,
+            "include_compilations": bool(settings["include_compilations"]),
+        }
+        context = build_music_search_filter_context(conn, values)
+        serving = get_serving_music_search_snapshot(
+            conn,
+            filter_fingerprint=context.filter_fingerprint,
+            merge_level=merge_level,
+            dynamic_threshold=dynamic_threshold,
+        )
+        snapshot_key = serving.get("snapshot_key")
+        if not snapshot_key:
+            return None
+        state = conn.execute(
+            """SELECT status, builder_version
+               FROM music_search_year_end_projection_state WHERE snapshot_key=?""",
+            (snapshot_key,),
+        ).fetchone()
+        if (
+            state is None
+            or str(state[0]) != "ready"
+            or str(state[1]) != YEAR_END_PROJECTION_BUILDER_VERSION
+        ):
+            return None
+        meta = conn.execute(
+            """SELECT coverage_status, is_complete_year, observed_weeks, expected_weeks,
+                      first_billboard_week, last_billboard_week
+               FROM music_search_year_end_meta WHERE snapshot_key=? AND year=?""",
+            (snapshot_key, year),
+        ).fetchone()
+        if meta is None:
+            return None
+        rows = conn.execute(
+            """SELECT annual.family, annual.year_end_rank, annual.year_end_score,
+                      annual.peak_position, annual.weeks_on_chart, annual.weeks_at_no1,
+                      annual.chart_plays, document.label, document.artist_name
+               FROM music_search_entity_year_end annual
+               LEFT JOIN music_search_documents document
+                ON document.generation_id=(SELECT active_generation_id
+                                              FROM music_search_index_state LIMIT 1)
+                AND document.entity_key=annual.entity_key
+                AND document.merge_level=CASE
+                      WHEN annual.family='artist' THEN 0 ELSE ? END
+               WHERE annual.snapshot_key=? AND annual.year=?
+               ORDER BY annual.family, annual.year_end_rank""",
+            (merge_level, snapshot_key, year),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return None
+
+    families: dict[str, list[dict[str, Any]]] = {
+        "track": [],
+        "album": [],
+        "artist": [],
+    }
+    for row in rows:
+        family = str(row[0])
+        if family not in families or not row[7]:
+            continue
+        item = {
+            "year_end_rank": int(row[1]),
+            "year_end_score": int(row[2]),
+            "peak_position": int(row[3]),
+            "weeks_on_chart": int(row[4]),
+            "weeks_at_no1": int(row[5]),
+            "chart_plays": int(row[6]),
+            "play_count_basis": "charted_weeks",
+        }
+        if family == "track":
+            item.update({"track_name": str(row[7]), "artist_name": row[8]})
+        elif family == "album":
+            item.update({"album_name": str(row[7]), "artist_name": row[8]})
+        else:
+            item["artist_name"] = str(row[7])
+        families[family].append(item)
+    if not any(families.values()):
+        return None
+    freshness = str(serving.get("freshness") or "current")
+    return {
+        "meta": {
+            "year": year,
+            "total_weeks": int(meta[2]),
+            "score_label": "Year-End Score",
+            "semantics_version": YEAR_END_SEMANTICS_VERSION,
+            "coverage_status": str(meta[0]),
+            "is_complete_year": bool(meta[1]),
+            "period_start": f"{year}-01-01",
+            "period_end": f"{year}-12-31",
+            "first_billboard_week": meta[4],
+            "last_billboard_week": meta[5],
+            "observed_weeks": int(meta[2]),
+            "expected_weeks": int(meta[3]),
+            "weekly_top_n": int(settings["bb_top_n"]),
+            "weekly_album_top_n": int(settings["bb_album_top_n"]),
+            "weekly_artist_top_n": int(settings["bb_artist_top_n"]),
+            "data_source": "published_year_end_projection",
+            "snapshot_freshness": freshness,
+        },
+        "tracks": families["track"],
+        "albums": families["album"],
+        "artists": families["artist"],
+        "honors": {},
+    }
 
 
 def _connection_uses_default_database(conn: sqlite3.Connection) -> bool:

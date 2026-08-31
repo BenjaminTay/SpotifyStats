@@ -153,6 +153,37 @@ def test_llm_text_completion_classifies_transport_failure(monkeypatch):
     assert result.empty_reason == "transport_error"
 
 
+def test_deepseek_explicitly_switches_thinking_mode(monkeypatch):
+    from backend.providers.llm.client import LLMProvider
+
+    provider = LLMProvider(
+        provider="deepseek",
+        api_key="deepseek-test",  # pragma: allowlist secret
+        model="deepseek-v4-flash",
+        base_url="https://api.deepseek.com",
+    )
+    bodies: list[dict] = []
+
+    class Response:
+        status = 200
+
+        @staticmethod
+        def json():
+            return {"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]}
+
+    def post(_url, *, data, headers):  # noqa: ARG001
+        bodies.append(data)
+        return Response()
+
+    monkeypatch.setattr(provider._http, "post", post)
+
+    provider.chat([{"role": "user", "content": "直接回答"}], thinking=False)
+    provider.chat([{"role": "user", "content": "先分析"}], thinking=True)
+
+    assert bodies[0]["thinking"] == {"type": "disabled"}
+    assert bodies[1]["thinking"] == {"type": "enabled"}
+
+
 def test_ai_insights_structured_helper_keeps_legacy_wrapper_compatible(monkeypatch):
     from backend.providers.llm.client import LLMTextCompletion
     from backend.services import ai_insights_service

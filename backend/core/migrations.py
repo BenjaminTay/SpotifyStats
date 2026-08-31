@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 71
+LATEST_SCHEMA_VERSION = 72
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3856,6 +3856,21 @@ def migrate_071(conn: sqlite3.Connection):
         """CREATE INDEX IF NOT EXISTS idx_ai_task_runs_recovery_lease
                ON ai_task_runs(task_type, status, lease_expires_at)"""
     )
+
+
+@migration(72, "ai_agent_turn_event_log_repair")
+def migrate_072(conn: sqlite3.Connection):
+    """Repair databases where historical migration 69 had another meaning.
+
+    Some already-upgraded databases recorded version 69 as
+    ``l3_album_attribution_coverage_v2`` before the Agent V2 branch assigned
+    that number to its event log.  A version-only runner therefore skipped the
+    Agent table even though later inbox/lease migrations applied.  Replaying
+    the idempotent table creation under a new version makes both histories
+    converge without rewriting migration history.
+    """
+
+    migrate_069(conn)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

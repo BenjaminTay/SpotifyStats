@@ -197,8 +197,7 @@ class LLMProvider(BaseProvider):
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
-            if thinking:
-                body["thinking"] = {"type": "enabled"}
+            self._apply_openai_thinking_control(body, thinking=thinking)
             url = f"{self.base_url}/chat/completions"
 
         resp = self._http.post(url, data=body, headers=headers)
@@ -306,6 +305,24 @@ class LLMProvider(BaseProvider):
             empty_reason=self._content_empty_reason(content, finish_reason),
         )
 
+    def _apply_openai_thinking_control(
+        self,
+        body: dict[str, Any],
+        *,
+        thinking: bool,
+    ) -> None:
+        """Make DeepSeek's default-on thinking mode explicit.
+
+        DeepSeek V4 defaults to thinking even when the field is omitted. Text
+        writing calls need non-thinking output, while Agent planning opts in.
+        Other OpenAI-compatible providers retain the existing opt-in behavior.
+        """
+
+        if self.provider == "deepseek":
+            body["thinking"] = {"type": "enabled" if thinking else "disabled"}
+        elif thinking:
+            body["thinking"] = {"type": "enabled"}
+
     def _parse_anthropic_text_completion(
         self,
         payload: dict[str, Any],
@@ -404,8 +421,7 @@ class LLMProvider(BaseProvider):
                 ],
                 "tool_choice": "auto",
             }
-            if thinking:
-                body["thinking"] = {"type": "enabled"}
+            self._apply_openai_thinking_control(body, thinking=thinking)
             url = f"{self.base_url}/chat/completions"
 
         resp = self._http.post(url, data=body, headers=headers)

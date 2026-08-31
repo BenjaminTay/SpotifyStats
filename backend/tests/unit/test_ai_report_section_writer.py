@@ -148,6 +148,7 @@ def test_audit_rejection_is_retried_and_usage_is_aggregated() -> None:
     assert section_metadata["attempt_count"] == 2
     assert section_metadata["finish_reason"] == "stop-2"
     assert section_metadata["usage"] == {"input_tokens": 20, "output_tokens": 3}
+    assert section_metadata["issues"] == ["missing_evidence"]
     assert run.results[1].attempts[0].issues == ("missing_evidence",)
 
 

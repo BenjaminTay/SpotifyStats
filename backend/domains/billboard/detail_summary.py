@@ -46,14 +46,41 @@ def _filter_values(args: tuple, *, album_name: str | None = None) -> dict[str, A
     }
 
 
-def _snapshot_key(conn: sqlite3.Connection, values: dict[str, Any]) -> str | None:
+def _snapshot_resolution(
+    conn: sqlite3.Connection,
+    values: dict[str, Any],
+    *,
+    allow_lkg: bool = False,
+) -> tuple[str | None, str]:
     context = build_music_search_filter_context(conn, values)
     row = conn.execute(
         """SELECT snapshot_key FROM music_search_snapshot_meta
            WHERE filter_fingerprint=? AND status='ready' AND builder_version=?""",
         (context.filter_fingerprint, MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION),
     ).fetchone()
-    return str(row[0]) if row is not None else None
+    if row is not None:
+        return str(row[0]), "current"
+    if not allow_lkg:
+        return None, "unavailable"
+    # Local import avoids the snapshot -> billboard service -> detail views
+    # cycle during clean process startup.
+    from backend.domains.music_search.snapshot import get_serving_music_search_snapshot
+
+    serving = get_serving_music_search_snapshot(
+        conn,
+        filter_fingerprint=context.filter_fingerprint,
+        merge_level=context.merge_level,
+        dynamic_threshold=context.dynamic_threshold,
+    )
+    snapshot_key = serving.get("snapshot_key")
+    if not snapshot_key:
+        return None, str(serving.get("freshness") or "unavailable")
+    return str(snapshot_key), str(serving.get("freshness") or "last_known_good")
+
+
+def _snapshot_key(conn: sqlite3.Connection, values: dict[str, Any]) -> str | None:
+    snapshot_key, _freshness = _snapshot_resolution(conn, values)
+    return snapshot_key
 
 
 def _active_document(
@@ -107,10 +134,15 @@ def load_published_entity_context(
     track_id: int | None = None,
     name: str | None = None,
     artist_name: str | None = None,
+    allow_lkg: bool = False,
 ) -> dict[str, Any] | None:
-    """Read one exact ready search/chart snapshot without rebuilding charts."""
+    """Read a published search/chart snapshot without rebuilding charts."""
     try:
-        snapshot_key = _snapshot_key(conn, values)
+        snapshot_key, snapshot_freshness = _snapshot_resolution(
+            conn,
+            values,
+            allow_lkg=allow_lkg,
+        )
         if snapshot_key is None:
             return None
         kind = entity_type
@@ -136,6 +168,7 @@ def load_published_entity_context(
         return None
     return {
         "snapshot_key": snapshot_key,
+        "snapshot_freshness": snapshot_freshness,
         "entity_key": str(document["entity_key"]),
         "name": str(document["label"]),
         "artist_name": document["artist_name"],

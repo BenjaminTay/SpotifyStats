@@ -73,8 +73,11 @@ def test_exact_snapshot_prevents_repeated_heavy_context_build(monkeypatch):
 
     from backend.services import ai_insights_service
 
-    def gather(*_args, **_kwargs):
+    gather_kwargs: list[dict] = []
+
+    def gather(*_args, **kwargs):
         calls["gather"] += 1
+        gather_kwargs.append(kwargs)
         return {
             "reporting_period": {
                 "year": 2025,
@@ -107,6 +110,7 @@ def test_exact_snapshot_prevents_repeated_heavy_context_build(monkeypatch):
     assert warm.built is False
     assert warm.cache_hit is True
     assert calls["gather"] == 1
+    assert gather_kwargs[0]["allow_expensive_year_end"] is False
     assert cold.context["hero"]["total_plays"] == 88
     assert len(cold.payload["evidence"]) == len(context_builder.REPORT_RESEARCH_TOOLS)
 

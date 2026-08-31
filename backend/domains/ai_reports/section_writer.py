@@ -394,6 +394,9 @@ def _build_metadata(results: tuple[SectionWriteResult, ...]) -> SectionWriterMet
         if reasons:
             empty_reasons[result.plan.section_id] = reasons
         finish_reason = result.attempts[-1].finish_reason if result.attempts else ""
+        issues = list(
+            dict.fromkeys(issue for attempt in result.attempts for issue in attempt.issues if issue)
+        )
         section_metadata.append(
             {
                 "section_id": result.plan.section_id,
@@ -404,6 +407,7 @@ def _build_metadata(results: tuple[SectionWriteResult, ...]) -> SectionWriterMet
                 "finish_reason": finish_reason,
                 "usage": _aggregate_usage(result.attempts),
                 "empty_reasons": list(reasons),
+                "issues": issues,
                 "fallback_reason": result.fallback_reason,
             }
         )

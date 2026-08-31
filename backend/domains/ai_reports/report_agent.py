@@ -666,7 +666,12 @@ def _write_sections_v2(
             '{"heading":"...","prose":"...","chart_refs":[],"evidence_refs":[]}。',
             prompt,
             temperature=0.35,
-            max_tokens=1800,
+            # Reasoning-capable providers may spend roughly 1.8k completion
+            # tokens before emitting visible JSON. A 1.8k ceiling therefore
+            # produced an empty length stop for every section. Keep enough
+            # room for that internal work plus the requested 500-800 Chinese
+            # characters while still bounding one section independently.
+            max_tokens=4096,
         )
         if completion is None:
             return SectionCompletion(empty_reason="provider_unavailable")
@@ -688,6 +693,7 @@ def _write_sections_v2(
             **fallback,
             **parsed,
             "id": fallback.get("id") or plan.section_id,
+            "heading": parsed.get("heading") or fallback.get("heading") or plan.heading,
             "role": fallback.get("role") or "opening",
             "deck": fallback.get("deck") or "",
             "insight_refs": list(fallback.get("insight_refs") or []),
@@ -695,7 +701,7 @@ def _write_sections_v2(
         }
 
     def audit(plan: SectionWritePlan, section: dict[str, Any]) -> SectionAuditResult:
-        _audited, checkpoints, _evidence = audit_report_sections(
+        audited, checkpoints, _evidence = audit_report_sections(
             [section],
             tool_results=all_tool_results,
             chart_data=chart_data,
@@ -704,6 +710,29 @@ def _write_sections_v2(
             end_date=end_date,
         )
         checkpoint = checkpoints[0] if checkpoints else {"status": "fail", "issues": ["no_audit"]}
+        unsupported = [str(item) for item in checkpoint.get("unsupported_numbers") or []]
+        if unsupported and audited:
+            sanitized = dict(audited[0])
+            sanitized["prose"] = strip_unsupported_numeric_sentences(
+                str(sanitized.get("prose") or ""),
+                unsupported,
+            )
+            audited, checkpoints, _evidence = audit_report_sections(
+                [sanitized],
+                tool_results=all_tool_results,
+                chart_data=chart_data,
+                chart_specs=chart_specs,
+                year=year,
+                end_date=end_date,
+            )
+            checkpoint = (
+                checkpoints[0]
+                if checkpoints
+                else {"status": "fail", "issues": ["no_audit_after_sanitize"]}
+            )
+        if audited:
+            section.clear()
+            section.update(audited[0])
         accepted = checkpoint.get("status") != "fail"
         return SectionAuditResult(
             accepted=accepted,

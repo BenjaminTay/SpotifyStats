@@ -92,6 +92,7 @@ def test_lifetime_comparison_prefers_exact_published_snapshot(monkeypatch) -> No
         "load_published_entity_context",
         lambda conn, **kwargs: {
             "name": kwargs["name"],
+            "snapshot_freshness": "current",
             "play_events": 123,
             "total_ms": 3_600_000,
             "power_score": 456,
@@ -128,3 +129,58 @@ def test_lifetime_comparison_prefers_exact_published_snapshot(monkeypatch) -> No
     assert rows[0]["hours"] == 1.0
     assert rows[0]["power_score"] == 456
     assert rows[0]["evidence_source"] == "published_search_chart_snapshot"
+
+
+def test_lifetime_comparison_accepts_published_last_known_good(monkeypatch) -> None:
+    monkeypatch.setattr(
+        entity_comparison_service,
+        "_first_candidate",
+        lambda conn, *, query, entity_type: {
+            "name": query,
+            "album_name": query,
+            "artist_name": "Artist",
+        },
+    )
+    observed: dict[str, object] = {}
+
+    def published(conn, **kwargs):
+        observed.update(kwargs)
+        return {
+            "name": kwargs["name"],
+            "snapshot_freshness": "last_known_good",
+            "play_events": 123,
+            "total_ms": 3_600_000,
+            "power_score": 456,
+            "power_rank": 7,
+            "weeks_at_no1": 2,
+            "weeks_on_chart": 9,
+            "peak_position": 1,
+        }
+
+    monkeypatch.setattr(entity_comparison_service, "load_published_entity_context", published)
+
+    rows = entity_comparison_service._published_lifetime_rows(
+        cast(sqlite3.Connection, object()),
+        entity_type="album",
+        names=["Album A"],
+        min_ms=30000,
+        music_only=True,
+        merge_enabled=True,
+        dynamic_threshold=True,
+        max_merge_gap_minutes=5,
+        merge_level=2,
+        include_billboard=True,
+        billboard_settings={
+            "bb_top_n": 30,
+            "bb_album_top_n": 20,
+            "bb_artist_top_n": 20,
+            "bb_week_start_dow": 4,
+            "bb_week_start_hour": 12,
+            "include_compilations": False,
+        },
+    )
+
+    assert rows is not None
+    assert observed["allow_lkg"] is True
+    assert rows[0]["evidence_source"] == "published_search_chart_snapshot_lkg"
+    assert rows[0]["snapshot_freshness"] == "last_known_good"

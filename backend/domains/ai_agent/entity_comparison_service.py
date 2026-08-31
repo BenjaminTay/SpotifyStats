@@ -97,9 +97,11 @@ def _published_lifetime_rows(
             track_id=track_id,
             name=album_name or artist_name or display_name,
             artist_name=artist_name if entity_type == "album" else None,
+            allow_lkg=True,
         )
         if published is None:
             return None
+        snapshot_freshness = str(published.get("snapshot_freshness") or "current")
         row: dict[str, Any] = {
             "name": str(published.get("name") or display_name),
             "requested_name": requested_name,
@@ -108,7 +110,12 @@ def _published_lifetime_rows(
             "plays": published["play_events"],
             "hours": round(float(published["total_ms"]) / 3_600_000, 1),
             "period": {"period": "lifetime", "label": "全部时间"},
-            "evidence_source": "published_search_chart_snapshot",
+            "evidence_source": (
+                "published_search_chart_snapshot"
+                if snapshot_freshness == "current"
+                else "published_search_chart_snapshot_lkg"
+            ),
+            "snapshot_freshness": snapshot_freshness,
         }
         if track_id is not None:
             row["track_id"] = track_id

@@ -49,6 +49,24 @@ def test_applied_versions_empty(empty_db):
     assert _applied_versions(empty_db) == set()
 
 
+def test_migrate_072_repairs_historical_version_69_collision(empty_db):
+    """An existing L3 migration 69 must not suppress the Agent event log."""
+    from backend.core import migrations
+
+    _ensure_migrations_table(empty_db)
+    empty_db.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (69, ?)",
+        ("l3_album_attribution_coverage_v2",),
+    )
+
+    migrations.migrate_072(empty_db)
+
+    table = empty_db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_agent_turn_events'"
+    ).fetchone()
+    assert table is not None
+
+
 def test_tracked_seed_matches_current_schema_contract():
     seed_path = Path(__file__).resolve().parents[1] / "fixtures" / "seed.db"
     conn = sqlite3.connect(f"file:{seed_path}?mode=ro&immutable=1", uri=True)
