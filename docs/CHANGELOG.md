@@ -2,6 +2,14 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-08-31 — AI Agent 真实数据质量与运行中转向 V3
+
+- 对照 Pi 的小核心循环与 DeepSeek Harness 的 Turn/Step、事件溯源，保留 SpotifyStats 确定性事实和只读权限边界；V3 仍是应用内最小 Agent，不扩展为通用 Shell、SQL、联网或多 Agent 平台。
+- 增加 Question Frame、Evidence Recipe、Fact Catalog、Claim Ledger 和不可追溯数字硬门禁；Provider 空完成、降级或预算耗尽时，使用已观察证据生成高质量排行/比较答案。
+- 全部时间实体比较优先读取精确 ready 的已发布快照；真实冷路径从约 120.2 秒降至约 1 秒。普通比较不再无条件构建或展示个人 Billboard。
+- Session Inbox 转向改为结构化状态：混合子句可同时替换年份、排除 Billboard、增加时长；旧约束证据显式失效，最终工具、证据充分性和回答只消费新约束结果。
+- 真实数据库 Online Backup 副本 + DeepSeek 变更门禁 11/11 Pass；真实转向后四个证据轴均 covered、覆盖率 100%、校验问题为 0。Desktop/390px 浏览器验收无页面横向溢出或控制台错误。详细见 [`designs/2026-08-31-ai-agent-quality-v3.md`](designs/2026-08-31-ai-agent-quality-v3.md) 与 [`reports/2026-08-31-ai-agent-quality-v3-acceptance.md`](reports/2026-08-31-ai-agent-quality-v3-acceptance.md)。
+
 ## 2026-08-31 — AI Agent 原生工具调用运行时 V2
 
 - AI 问答从一次性文本规划升级为原生 tool calling 的 Turn/Step 循环：模型观察每次只读工具结果后继续决策，并由步骤数、工具数、回合时间及重复调用保护限制运行范围。
