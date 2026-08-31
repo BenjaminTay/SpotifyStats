@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from functools import lru_cache, partial
@@ -445,6 +446,20 @@ def _resolve_album_project_song_keys(
     project_id = project_id or _resolve_album_project_id(conn, album_name, artist_name, merge_level)
     if project_id is None:
         return set()
+    if merge_level >= 3:
+        from backend.domains.playback.album_projects import load_album_project_membership
+
+        membership = load_album_project_membership(
+            conn,
+            merge_level=3,
+            include_compilations=True,
+        )
+        return set(
+            membership.loc[
+                membership["project_id"] == project_id,
+                "canonical_song_key",
+            ].dropna()
+        )
 
     rows = conn.execute(
         """SELECT DISTINCT COALESCE(links.l1_id, apt.track_id) AS track_id,
@@ -479,6 +494,23 @@ def _resolve_album_project_track_ids(
     ensure_album_projects(conn)
     project_id = project_id or _resolve_album_project_id(conn, album_name, artist_name, merge_level)
     if project_id is not None:
+        if merge_level >= 3:
+            from backend.domains.playback.album_projects import load_album_project_membership
+
+            membership = load_album_project_membership(
+                conn,
+                merge_level=3,
+                include_compilations=True,
+            )
+            track_ids = pd.to_numeric(
+                membership.loc[
+                    membership["project_id"] == project_id,
+                    "track_id",
+                ],
+                errors="coerce",
+            ).dropna()
+            if not track_ids.empty:
+                return sorted({int(value) for value in track_ids})
         rows = conn.execute(
             """SELECT DISTINCT track_id FROM album_project_tracks
                WHERE project_id=? AND min_merge_level<=? ORDER BY track_id""",
@@ -516,6 +548,33 @@ def _resolve_album_project_album_names(
     project_id = project_id or _resolve_album_project_id(conn, album_name, artist_name, merge_level)
     if project_id is None:
         return [album_name]
+
+    if merge_level >= 3:
+        source_project_ids: set[int] = set()
+        for row in conn.execute(
+            """SELECT evidence_json
+                 FROM l3_song_album_attributions
+                WHERE target_project_id=?""",
+            (project_id,),
+        ).fetchall():
+            try:
+                payload = json.loads(str(row[0] or "{}"))
+            except json.JSONDecodeError:
+                continue
+            source_project_ids.update(int(value) for value in payload.get("source_project_ids", []))
+        if source_project_ids:
+            placeholders = ",".join("?" for _ in source_project_ids)
+            rows = conn.execute(
+                f"""SELECT DISTINCT albums.album_name
+                       FROM album_project_albums membership
+                       JOIN albums ON albums.album_id=membership.album_id
+                      WHERE membership.project_id IN ({placeholders})""",
+                tuple(sorted(source_project_ids)),
+            ).fetchall()
+            names = [str(row[0]) for row in rows if row[0]]
+            if album_name not in names:
+                names.append(album_name)
+            return names
 
     rows = conn.execute(
         """SELECT DISTINCT COALESCE(sa.album_name, al.album_name) AS album_name
@@ -1379,6 +1438,9 @@ def _entity_stats_revision_state(conn: sqlite3.Connection) -> tuple[Any, ...]:
     from backend.domains.metadata.track_identity import get_track_identity_revision
     from backend.domains.metadata.track_presentation import TRACK_PRESENTATION_POLICY_VERSION
     from backend.domains.playback.album_projects import get_album_project_revision
+    from backend.domains.playback.l3_album_attribution import (
+        get_l3_album_attribution_revision,
+    )
 
     state = get_music_search_revision_state(conn)
     return (
@@ -1388,6 +1450,7 @@ def _entity_stats_revision_state(conn: sqlite3.Connection) -> tuple[Any, ...]:
         state.candidate_revision,
         get_track_identity_revision(conn),
         get_album_project_revision(conn),
+        get_l3_album_attribution_revision(conn),
         TRACK_PRESENTATION_POLICY_VERSION,
     )
 

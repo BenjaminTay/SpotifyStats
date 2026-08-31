@@ -553,6 +553,9 @@ def _report_cache_key(
             TRACK_IDENTITY_POLICY_VERSION,
             get_track_identity_revision,
         )
+        from backend.domains.playback.l3_album_attribution import (
+            get_l3_album_attribution_revision,
+        )
         from backend.services.wrapped_service import _artist_metadata_revision
 
         filter_part = (
@@ -560,6 +563,7 @@ def _report_cache_key(
             f"|track_credit:{get_track_credit_revision(identity_conn)}"
             f"|track_identity:{get_track_identity_revision(identity_conn)}"
             f"|track_identity_policy:{TRACK_IDENTITY_POLICY_VERSION}"
+            f"|l3_album_attribution:{get_l3_album_attribution_revision(identity_conn)}"
             f"|genre_display:{GENRE_DISPLAY_TAXONOMY_VERSION}"
             f"|artist_metadata:{_artist_metadata_revision(identity_conn)}"
         )

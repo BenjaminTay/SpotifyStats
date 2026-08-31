@@ -1152,6 +1152,36 @@ export interface AlbumProject {
   unique_canonical_songs: number
   tracks: AlbumProjectTrack[]
   source_breakdown: AlbumSourceBreakdownItem[]
+  source_play_count?: number
+  source_total_ms?: number
+  residual_tracks?: AlbumProjectAttributionTrack[]
+  transferred_tracks?: AlbumProjectAttributionTrack[]
+  source_tracks?: AlbumProjectSourceTrack[]
+}
+
+export interface AlbumProjectAttributionTrack {
+  canonical_song_key: string
+  representative_track_id: number
+  canonical_song_name: string
+  target_project_id: number
+  target_project_name: string
+  origin_release_project_id: number
+  origin_project_name: string
+  attribution_kind: string
+  decision_source: 'automatic' | 'manual'
+  play_count: number
+  total_ms: number
+}
+
+export interface AlbumProjectSourceTrack {
+  track_id: number
+  track_name: string
+  canonical_song_key: string
+  play_count: number
+  total_ms: number
+  target_project_id?: number
+  target_project_name?: string
+  attribution_kind?: string
 }
 
 export interface AlbumDetailResponse extends DetailYearEndFields {

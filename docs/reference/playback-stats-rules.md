@@ -203,7 +203,7 @@ project 可以同时包含原版曲目和 Acoustic、Long Pond、rehearsal 等�
 保持各自的 L2 key，但共同贡献给所属发行项目。例如 `Folklore: The Long Pond Studio Sessions`
 和包含原版 12 首歌及 Acoustic Collection 的豪华发行都可以归入各自原专辑项目。
 
-### R8. L3：同作品/同专辑项目口径
+### R8. L3：同歌曲作品/原生专辑归属口径
 
 L3 是宽松口径。
 
@@ -219,13 +219,20 @@ L3 是宽松口径。
 - Taylor's Version 或其他重录版本。
 - 合作版。
 
-专辑层面：同一专辑项目的所有发行合并。包括：
+专辑层面：先完成 L3 歌曲归并，再把每个歌曲作品的播放唯一投影到其原生专辑作品：
 
-- L2 已合并的所有发行。
-- Live 专辑。
-- Remix 专辑。
-- Acoustic 专辑。
-- Taylor's Version 或其他重录专辑。
+- Taylor's Version 或其他重录专辑与原专辑合并，曲目采用并集；Vault/重录独有歌曲也纳入原专辑
+  的 L3 专辑作品。
+- Live、Remix、Acoustic 等版本曲目如果存在该艺人的原始录音室专辑或基础单曲归属，播放回流到
+  该原生项目，不再计入版本发行自身的 L3 专辑播放量。
+- Live、Remix、Acoustic 项目中没有其他原生归属的翻唱、现场独有原创、即兴或其他独有歌曲，
+  继续留在该项目，并以 residual 播放量正常参与 L3 专辑榜。
+- 版本项目所有歌曲都已回流时，其 L3 residual 为 0，默认专辑榜不展示；实际 source release 和
+  来源播放仍保留在解释视图中。
+- 不同艺人的翻唱不自动跨艺人合并，因而可以作为现场艺人自己的歌曲和 Live residual 保留。
+
+因此，L3 专辑不是简单的完整 release-group 合并，而是“专辑作品 lineage + 逐歌曲唯一归属”。
+每个逻辑播放事件在默认 L3 专辑统计中最多贡献一次。
 
 ---
 
@@ -386,6 +393,8 @@ album_project_plays = sum(play_count(canonical_song) for canonical_song in album
 - 先行单曲，只要后续被收入该专辑项目。
 - L3 下对应重录专辑中的同作品曲目。
 - L3 下重录专辑独有曲目。
+- L3 下由 Live、Remix、Acoustic 等版本回流到本项目的同作品曲目。
+- L3 下版本项目中没有其他原生归属而保留的 residual 独有曲目。
 
 去重规则：
 
@@ -399,7 +408,7 @@ album_project_plays = sum(play_count(canonical_song) for canonical_song in album
 |------|------------|------|
 | 基础发行 | `album_id` | 系统内部的具体 album container，不作为用户可选统计模式 |
 | L2 | `album_project_id` / `release_group_id(scope=release)` | 标准版、豪华版、区域版等合并 |
-| L3 | `album_project_id` / `release_group_id(scope=composition)` | 重录、live、remix、acoustic 等项目级合并 |
+| L3 | `l3_song_album_attributions.target_project_id` | 重录专辑采用 composition parent；Live/Remix/Acoustic 按歌曲回流或保留 residual |
 
 L2 album project 自动归并使用稳定发行证据：规范化项目名和 canonical album artist 是基础条件；
 同一 Spotify Album ID 只有在 album artist、发行类型/日期与完整 track list 等 catalog 证据相容时
@@ -407,11 +416,16 @@ L2 album project 自动归并使用稳定发行证据：规范化项目名和 ca
 触发合并。同专辑名仅大小写、Unicode 或空白不同应机器合并；标准版、Deluxe、Expanded、
 Anniversary 等通过曲目包含关系归并。跨 artist、同名不同专辑或证据冲突的组件保持独立并进入审计。
 
-L3 album composition 自动任务只消费完整活动 L2 release project，以受控的重录、live、remix、
-acoustic 等发行后缀解析基础项目名，并要求 canonical album artist 一致、基础名唯一且曲目作品重叠
-至少 60%。最小交集为 `min(5, max(2, ceil(smaller_project_track_count * 0.6)))`；歧义标题、
-compilation、人工项目、弱重叠或其他证据冲突均 fail closed。标准版与 Deluxe 仍在 L2 归并；L3
-只新建 composition parent 并挂接完整 release child，不改写 L2 project 或其 membership。
+L3 album composition parent 只用于表达原专辑与 Taylor's Version/其他明确重录专辑属于同一个
+专辑作品；标准版与 Deluxe 仍由 L2 处理。Live、Tour、venue、Remix、Acoustic 等项目不能因为
+标题或整体曲目重叠就作为不可拆分 child 挂到一张录音室专辑，而要在 L3 歌曲归并后逐曲决定
+原生专辑。原生项目存在 composition parent 时，歌曲 owner 指向 parent；不存在 parent 时指向
+release project 自身。
+
+原生专辑的机器判定优先原始录音室专辑标准 membership、正式 EP/原声带核心归属、已进入正式
+专辑的先行单曲和独立基础单曲。精选集、Live、Remix、Acoustic 合集及重录 child 不能仅因再次
+收录歌曲而抢占 owner。多个不同专辑作品仍无法唯一消歧时必须 fail closed 并进入审计，不能按
+`project_id`、日期或 SQL 行顺序静默选一个。
 
 ### R18. 标准版与豪华版
 
@@ -441,6 +455,20 @@ L3 下，重录专辑参与同一 album project 合并。
 - L3：`1989` 与 `1989 (Taylor's Version)` 合并为同一 album project。
 - `Style` 与 `Style (Taylor's Version)` 合并为同一 canonical song。
 - `Say Don't Go (Taylor's Version)` 作为 `1989 (Taylor's Version)` 独有曲目，也计入 `1989` album project。
+
+### R19.1 Live、Remix 与 Acoustic 项目
+
+L3 下按歌曲逐项处理：
+
+- `Love Story (Live)` 与 `Love Story` 合并为同一 canonical song，并把播放归属到 `Fearless`；
+- 同一张巡演 Live 专辑中的 `Style (Live)` 可以同时归属到 `1989`，不能把整张 Live 专辑强制并入
+  `Fearless` 或 `1989` 中的任意一张；
+- 不同艺人的翻唱、现场首次原创和无可靠原生项目的歌曲保留为 Live residual；
+- Remix/Acoustic 单曲包遵循同一规则，有基础 album/single owner 的歌曲回流，独有歌曲保留；
+- Live 项目的全部 source plays 等于“已回流到其他项目的播放 + 本项目 residual 播放”。
+
+实际 source album 不随统计归属改变。详情和来源拆分必须同时说明目标专辑与实际 Live/Remix/
+Acoustic 来源。
 
 ### R20. 专辑发行前播放
 
@@ -476,7 +504,7 @@ Billboard 周榜中：
 | 豪华版/扩展版 | 播放时 source album 是 deluxe、expanded、anniversary 等版本 |
 | 单曲版 | 播放时 source album 是 single / single package |
 | 精选集/合辑 | 播放时 source album 是 compilation / greatest hits |
-| Live / Acoustic / Remix 项目 | L3 下才可能贡献到同一 album project |
+| Live / Acoustic / Remix 项目 | L3 下作为实际 source；有原生项目时贡献回流，独有曲目保留 residual |
 | 重录版本 | L3 下才可能贡献到同一 album project |
 | 其他来源 | soundtrack、未知发行物、无法分类来源 |
 | 推断来源 | 历史 backfill 无法还原真实 source album，只能从 track primary album 推断 |
@@ -783,6 +811,8 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 - 标准版/豪华版/重录版等发行版本。
 - 独有曲目。
 - 专辑播放量来源拆分。
+- L3 Live/Remix/Acoustic 项目的 residual 曲目、已回流曲目及各自目标专辑。
+- 具体 source release 的完整来源播放；来源播放与 L3 归属播放必须分栏解释，不能相加。
 - 发行前单曲播放是否计入全时专辑播放量。
 - Billboard 入榜起始日期。
 
@@ -880,6 +910,8 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
 | `release_groups` / `release_group_members` | L2/L3 发行版本组 |
 | `album_project` | 统计意义上的专辑项目 |
 | `album_project_tracks` | album project 去重后的 canonical song 集合 |
+| `l3_song_album_attributions` | 每个 L3 canonical song 唯一的原生专辑 owner 与证据 |
+| `l3_song_album_attribution_overrides` | 使用稳定 Track/Album Project 身份保存的人工归属覆盖 |
 | `source_album_id` | 每次播放的来源发行容器 |
 | `album_source_breakdown` | 专辑播放量来源解释 |
 
@@ -894,8 +926,11 @@ V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对�
   album project。
 - canonical artist + 受控作品基础标题一致的 L3 track composition；L2 的版本冲突是 L3 的输入，
   不等于全局 rejected。L3 使用完整 L2 recording child，不能选择性拆组。
-- canonical album artist、受控项目基础名和曲目作品重叠门禁同时成立的 L3 album composition；
-  composition parent 只挂接完整 L2 release child。
+- canonical album artist、明确重录 lineage 和曲目作品重叠门禁同时成立的 L3 rerecord album
+  composition；composition parent 只挂接完整 L2 release child。
+- L3 歌曲 owner 的逐曲原生专辑归属：原始 studio/EP/soundtrack membership、album-bound
+  先行单曲、基础独立单曲以及 rerecord parent 可形成机器证据；Live/Remix/Acoustic 只作为无其他
+  owner 时的 residual，不抢占已有原生项目。
 
 以下关系不会被 L2 自动任务合并；若要跨录音归并，应进入 L3 或显式覆盖：
 
@@ -935,6 +970,10 @@ parody、reprise、artist 不相容和歧义证据才是 L3 的确定性 blocker
 11. 自动归并前后 `plays`、`tracks`、`track_artists` 的行数与内容 hash 不变。
 12. 每个 provider external ID 只能有一个活动 owner；每个 L1 在同一 scope 至多属于一个活动组。
 13. 自动任务 dry-run 不得写业务状态；apply 必须幂等，并为每个变更保存可追溯证据。
+14. 每个 L3 canonical song 最多一个默认专辑 owner；每个逻辑播放事件在 L3 专辑统计中最多贡献一次。
+15. 普通 L2 release project 在 L3 不得因全局歌曲键排序去重而无解释消失；项目从默认榜移除必须能
+    追溯到全部曲目均已明确回流。
+16. Live source 总量必须等于已回流播放与 residual 播放之和；source album 本身不被改写。
 
 ---
 
@@ -987,6 +1026,25 @@ GUTS (spilled) / 2024-03-22
 - `Style` 与 `Style (Taylor's Version)` 合并为同一 canonical song。
 - `Say Don't Go (Taylor's Version)` 作为重录专辑独有歌曲，也计入 `1989` album project。
 
+### 巡演 Live 专辑
+
+假设某 Live 专辑包含：
+
+```text
+Love Story (Live)
+Style (Live)
+不同艺人的翻唱
+Live Improvisation
+```
+
+规则：
+
+- `Love Story (Live)` 的播放归属 `Fearless`；
+- `Style (Live)` 的播放归属 `1989`；
+- 不同艺人的翻唱不自动并入原唱作品，留在该 Live 项目；
+- `Live Improvisation` 没有其他原生项目时也留在该 Live 项目；
+- Live 专辑只用后两类 residual 播放参与 L3 专辑榜，完整现场来源播放仍在 source 视图可查。
+
 ### 精选集
 
 规则：
@@ -1014,7 +1072,13 @@ GUTS (spilled) / 2024-03-22
 
 ## 17. Implementation Status
 
-截至 2026-08-31，L1→L2→L3 联合治理已经在两份独立 Online Backup 副本完成全量演练并应用到
+2026-08-31 已实现新的 L3 专辑目标契约：Taylor's Version 采用专辑作品并集，Live/Remix/
+Acoustic 采用逐歌曲原生专辑归属并保留 residual。实现使用
+`l3_song_album_attributions`、稳定人工覆盖与独立 revision，所有 L3 专辑消费者共用同一 owner
+映射；代码门禁已通过，真实主库切换与最终全栈证据以本轮验收报告为准。执行状态见
+[`docs/plans/2026-08-31-l3-work-and-album-attribution-plan.md`](../plans/2026-08-31-l3-work-and-album-attribution-plan.md)。
+
+截至 2026-08-31，L1→L2→L3 composition v1 联合治理已经在两份独立 Online Backup 副本完成全量演练并应用到
 本地主库：L2 保持 46 个活动 recording group / 93 个 membership，L3 新建 380 个活动 composition
 group / 873 个 membership；L3 album composition 新建 2 个父项目并挂接 4 个完整 release child。
 原始 `plays`、`tracks`、`track_artists` 的行数和 hash 均保持不变，四套 L2/L3 × fixed/dynamic
@@ -1032,6 +1096,7 @@ group / 873 个 membership；L3 album composition 新建 2 个父项目并挂接
 - 先行单曲播放计入全时 album project totals。
 - Billboard 专辑周榜按 `album_project.release_date` 排除发行前播放。
 - Source breakdown bucket totals 与 album project plays 对齐。
+- L3 详情把 residual、已回流目标和完整 source release 播放分开显示；0 residual 来源发行仍可查询。
 - 纯既有歌曲精选集不会在非 L1 下成为默认独立 album project。
 - 精选集独有曲目可以形成 compilation-exclusive project。
 - track-source weekly pre-aggregation 与 raw fallback 在新 album project 口径下一致。

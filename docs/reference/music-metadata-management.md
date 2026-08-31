@@ -51,11 +51,21 @@ track list。一个项目可以包含不同 recording key 的 Acoustic、Long Po
 这只改变专辑项目 membership，不会把这些歌曲在 L2 曲目榜合成原版录音。精选集策略未定期间，
 自动任务不得改变 compilation project 的现有 membership 或榜单资格。
 
-L3 Album composition 只把完整 L2 release project 作为 child。canonical album artist、受控的
-重录/live/remix/acoustic 基础项目名和至少 60% 的曲目作品重叠必须同时成立，最小交集为
-`min(5, max(2, ceil(smaller_project_track_count * 0.6)))`。标准版/Deluxe 继续由 L2 处理；
-compilation、manual project、歧义基础名和弱重叠均 fail closed。L3 parent 不改写 L2 项目及
-membership，详情从任一 child 进入都解析到同一 composition project。
+L3 Album composition parent 只用于原专辑与 Taylor's Version/其他明确重录专辑的完整作品
+lineage；标准版/Deluxe 继续由 L2 处理。重录 parent 的曲目采用 child 并集，Vault/重录独有歌曲
+也纳入原专辑作品。Live、Tour、venue、Remix、Acoustic 等项目不得仅按标题或整体重叠作为不可拆分
+child 挂到一张录音室专辑，而要在 L3 歌曲 composition 完成后逐曲确定原生专辑 owner：有原始
+studio/EP/soundtrack/基础单曲归属的版本播放回流到该项目或其 composition parent；不同艺人翻唱、
+现场独有原创、即兴和无法唯一找到其他 owner 的歌曲保留为版本项目 residual。一个 L3 canonical
+song 最多一个默认专辑 owner，一个逻辑播放事件最多贡献给一个 L3 专辑。
+
+机器归属必须持久化目标、候选、排除项、policy/revision 和 evidence，不能依靠
+`drop_duplicates(canonical_song_key)` 的 SQL 排序决定。人工覆盖使用稳定 Track owner 和
+Album Project 身份，并优先于机器结果。精选集策略继续冻结，不因这次 Live/重录规则确认而自动
+扩大处理范围。Settings 的专辑自动治理页显示归属健康、机器理由、来源发行和人工覆盖；每次覆盖
+创建或撤销后必须在同一事务重建完整归属，并使搜索、Billboard、年度和详情缓存失效。实现阶段、
+schema 和验收门禁见
+[`docs/plans/2026-08-31-l3-work-and-album-attribution-plan.md`](../plans/2026-08-31-l3-work-and-album-attribution-plan.md)。
 
 Album Project 的规范项目名、所有成员发行名及其 Unicode/大小写/空白等价形式都是同一项目的只读
 别名，但项目身份始终是稳定 `album_project_id`。新搜索结果和详情深链必须使用

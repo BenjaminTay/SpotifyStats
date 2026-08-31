@@ -24,6 +24,8 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from typing import Any
 
+import pandas as pd
+
 from backend.domains.metadata.artist_identity import get_artist_identity_map
 from backend.domains.playback.album_projects import (
     _ensure_album_project_revision_schema,
@@ -32,7 +34,7 @@ from backend.domains.playback.album_projects import (
     rebuild_album_projects,
 )
 
-ALBUM_COMPOSITION_POLICY_VERSION = "canonical_album_composition_v1"
+ALBUM_COMPOSITION_POLICY_VERSION = "canonical_album_composition_v2_rerecord_only"
 
 _COMPILATION_MARKERS = (
     "greatest hits",
@@ -240,8 +242,11 @@ def plan_album_composition_merges(conn: sqlite3.Connection) -> AlbumCompositionP
     candidates: list[AlbumCompositionCandidate] = []
 
     for (artist_id, base_key), family in sorted(families.items()):
-        tagged = [item for item in family if item.title.relation_tag]
+        tagged = [item for item in family if item.title.relation_tag == "rerecord"]
         base = [item for item in family if item.title.relation_tag is None]
+        skipped["non_rerecord_project_uses_song_attribution"] += sum(
+            item.title.relation_tag not in {None, "rerecord"} for item in family
+        )
         if not tagged:
             continue
         if len(base) != 1:
@@ -561,39 +566,20 @@ def _load_projects(conn: sqlite3.Connection, skipped: Counter[str]) -> list[_Pro
 
 
 def _load_project_track_keys(conn: sqlite3.Connection) -> dict[int, set[str]]:
-    composition_by_l1 = {
-        int(row["l1_id"]): f"composition:{int(row['group_id'])}"
-        for row in conn.execute(
-            """SELECT members.l1_id, groups.group_id
-                 FROM track_group_l1_members members
-                 JOIN track_groups groups ON groups.group_id=members.group_id
-                WHERE groups.scope='composition' AND groups.group_status='active'"""
-        ).fetchall()
-    }
-    l1_by_track: dict[int, set[int]] = defaultdict(set)
-    for row in conn.execute("SELECT track_id, l1_id FROM track_l1_source_links").fetchall():
-        l1_by_track[int(row["track_id"])].add(int(row["l1_id"]))
-    for row in conn.execute(
-        """SELECT representative_track_id, l1_id FROM track_l1_identities
-            WHERE representative_track_id IS NOT NULL"""
-    ).fetchall():
-        l1_by_track[int(row["representative_track_id"])].add(int(row["l1_id"]))
+    from backend.domains.playback.song_work_keys import apply_l3_song_work_keys
 
-    result: dict[int, set[str]] = defaultdict(set)
-    for row in conn.execute(
+    rows = conn.execute(
         "SELECT DISTINCT project_id, track_id FROM album_project_tracks ORDER BY project_id, track_id"
-    ).fetchall():
-        project_id = int(row["project_id"])
-        track_id = int(row["track_id"])
-        composition_keys = {
-            composition_by_l1[l1_id]
-            for l1_id in l1_by_track.get(track_id, set())
-            if l1_id in composition_by_l1
-        }
-        if composition_keys:
-            result[project_id].update(composition_keys)
-        else:
-            result[project_id].add(f"track:{track_id}")
+    ).fetchall()
+    frame = pd.DataFrame.from_records(
+        [dict(row) for row in rows], columns=["project_id", "track_id"]
+    )
+    if frame.empty:
+        return {}
+    keyed = apply_l3_song_work_keys(frame, conn)
+    result: dict[int, set[str]] = defaultdict(set)
+    for row in keyed.itertuples(index=False):
+        result[int(row.project_id)].add(str(row.canonical_song_key))
     return result
 
 

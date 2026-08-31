@@ -275,9 +275,14 @@ def test_rerecord_is_created_as_l3_parent_without_collapsing_l2_projects() -> No
         assert tuple(composition_identity) == (
             "1989",
             "taylor swift",
-            "canonical_album_composition_v1",
+            "canonical_album_composition_v2_rerecord_only",
         )
         l2 = load_album_project_membership(conn, merge_level=2)
+        from backend.domains.playback.l3_album_attribution import (
+            apply_l3_album_attribution_plan,
+        )
+
+        apply_l3_album_attribution_plan(conn)
         l3 = load_album_project_membership(conn, merge_level=3)
         assert set(l2["album_project_name"]) == {"1989", "1989 (Taylor's Version)"}
         assert set(l3["album_project_name"]) == {"1989"}
@@ -371,7 +376,7 @@ def test_manual_release_child_prevents_auto_parent_rewrite_or_archive() -> None:
         conn.close()
 
 
-def test_existing_auto_component_updates_when_a_new_live_project_appears() -> None:
+def test_existing_auto_component_keeps_live_project_outside_rerecord_parent() -> None:
     conn = _connection()
     try:
         original, _rerecord = _prepare_original_and_rerecord(conn)
@@ -385,27 +390,34 @@ def test_existing_auto_component_updates_when_a_new_live_project_appears() -> No
 
         assert len(plan.candidates) == 1
         candidate = plan.candidates[0]
-        assert candidate.action == "update"
-        assert candidate.relation_tags == ("live", "rerecord")
-        assert candidate.album_ids == (10, 20, 30)
+        assert candidate.action == "unchanged"
+        assert candidate.relation_tags == ("rerecord",)
+        assert candidate.album_ids == (10, 20)
         report = apply_album_composition_plan(conn, plan)
         assert report.groups_created == 0
-        assert report.groups_updated == 1
-        assert report.release_children_created == 1
+        assert report.groups_updated == 0
+        assert report.release_children_created == 0
         group_id = candidate.existing_group_id
         assert {
             int(row[0])
             for row in conn.execute(
                 "SELECT album_id FROM release_group_members WHERE group_id=?", (group_id,)
             ).fetchall()
-        } == {10, 20, 30}
+        } == {10, 20}
         assert (
             conn.execute(
                 """SELECT COUNT(*) FROM release_groups
                 WHERE scope='release' AND parent_group_id=?""",
                 (group_id,),
             ).fetchone()[0]
-            == 3
+            == 2
+        )
+        assert (
+            conn.execute(
+                """SELECT COUNT(*) FROM album_projects
+                 WHERE scope='release' AND canonical_name='1989 (Live)'"""
+            ).fetchone()[0]
+            == 1
         )
     finally:
         conn.close()

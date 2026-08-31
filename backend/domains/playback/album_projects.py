@@ -285,6 +285,11 @@ def rebuild_album_projects_for_impact(
             seen_project_ids=seen_project_ids,
             album_ids=set(plan.album_ids),
         )
+        _bootstrap_l3_single_projects(
+            conn,
+            seen_project_ids=seen_project_ids,
+            album_ids=set(plan.album_ids),
+        )
         _bootstrap_compilation_exclusive_projects(
             conn,
             seen_project_ids=seen_project_ids,
@@ -742,6 +747,7 @@ def _populate_album_projects(
     """Populate inferred projects and optionally record identities used this pass."""
     _bootstrap_from_release_groups(conn, seen_project_ids=seen_project_ids)
     _bootstrap_standalone_album_projects(conn, seen_project_ids=seen_project_ids)
+    _bootstrap_l3_single_projects(conn, seen_project_ids=seen_project_ids)
     _bootstrap_compilation_exclusive_projects(conn, seen_project_ids=seen_project_ids)
 
 
@@ -765,6 +771,11 @@ def apply_canonical_song_keys(
         out["canonical_song_name"] = out["track_id"].map(names).fillna("")
     if merge_level <= 1:
         return out
+
+    if merge_level >= 3:
+        from backend.domains.playback.song_work_keys import apply_l3_song_work_keys
+
+        return apply_l3_song_work_keys(out, conn)
 
     from backend.domains.playback.track_groups import load_track_group_keys
 
@@ -793,6 +804,32 @@ def load_album_project_membership(
 ) -> pd.DataFrame:
     """Return one default album project owner per canonical song."""
     ensure_album_projects(conn)
+    has_stable_l1 = conn.execute(
+        """SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='track_l1_identities'"""
+    ).fetchone()
+    if merge_level >= 3 and has_stable_l1:
+        from backend.domains.playback.l3_album_attribution import (
+            load_l3_song_album_attributions,
+        )
+
+        membership = load_l3_song_album_attributions(conn, require_ready=True)
+        if membership.empty:
+            return membership
+        if not include_compilations:
+            membership = membership[membership["project_type"] != "compilation_exclusive"]
+        membership = membership[membership["include_in_charts"] == 1].copy()
+        if membership.empty:
+            return membership
+        membership["track_id"] = membership["representative_track_id"]
+        membership["track_name"] = membership["canonical_song_name"]
+        membership["membership_role"] = membership["attribution_kind"]
+        membership["min_merge_level"] = 3
+        membership["source_album_id"] = membership["primary_album_id"]
+        membership["source_bucket"] = membership["attribution_kind"]
+        membership["is_exclusive"] = 0
+        membership["inferred"] = 1
+        return membership
     has_l1 = (
         conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_source_links'"
@@ -1339,6 +1376,110 @@ def _bootstrap_standalone_album_projects(
                 source_album_id=source_album_id,
                 min_merge_level=2,
                 membership_role="standard",
+            )
+
+
+def _bootstrap_l3_single_projects(
+    conn: sqlite3.Connection,
+    *,
+    seen_project_ids: set[int] | None = None,
+    album_ids: set[int] | None = None,
+) -> None:
+    """Keep Spotify singles as L3-only source projects.
+
+    Singles remain excluded from L2 album charts, but L3 needs their release
+    memberships to fold remix/acoustic packages into the corresponding song
+    work and to explain where a recording was observed.
+    """
+
+    album_filter = ""
+    params: tuple[int, ...] = ()
+    if album_ids is not None:
+        params = tuple(sorted(album_ids))
+        if not params:
+            return
+        album_filter = f"AND al.album_id IN ({','.join('?' for _ in params)})"
+    rows = conn.execute(
+        f"""SELECT al.album_id, al.album_name, al.artist_id, ar.artist_name,
+                   sam.album_type, sam.release_date
+              FROM albums al
+              JOIN artists ar ON ar.artist_id=al.artist_id
+              LEFT JOIN spotify_album_meta sam ON sam.spotify_album_id=(
+                  SELECT source.spotify_album_id
+                    FROM spotify_album_meta source
+                   WHERE lower(source.album_name)=lower(al.album_name)
+                     AND (source.album_artists IS NULL
+                          OR instr(lower(source.album_artists), lower(ar.artist_name)) > 0)
+                   ORDER BY CASE source.album_type
+                              WHEN 'album' THEN 0 WHEN 'ep' THEN 1
+                              WHEN 'single' THEN 2 ELSE 3 END
+                   LIMIT 1
+              )
+             WHERE 1=1 {album_filter}
+             ORDER BY al.album_id""",
+        params,
+    ).fetchall()
+    memberships_by_album: dict[int, list[tuple[int, int]]] = {}
+    for track_id, source_album_id in _tracks_for_albums(
+        conn, [int(row["album_id"]) for row in rows]
+    ):
+        memberships_by_album.setdefault(source_album_id, []).append((track_id, source_album_id))
+
+    for row in rows:
+        album_id = int(row["album_id"])
+        memberships = memberships_by_album.get(album_id, [])
+        if not memberships:
+            continue
+        resolved_type = _resolve_standalone_album_type(conn, album_id, row["album_type"])
+        if resolved_type != "single":
+            continue
+        existing = conn.execute(
+            """SELECT project_id, primary_album_id, is_manual
+                 FROM album_projects
+                WHERE canonical_name=? AND artist_id=? AND scope='release'""",
+            (row["album_name"], row["artist_id"]),
+        ).fetchone()
+        if existing is not None and (
+            int(existing["is_manual"] or 0) != 0
+            or int(existing["primary_album_id"] or 0) != album_id
+        ):
+            # Do not let a same-name single mutate an unrelated album or a
+            # hand-maintained project identity.
+            continue
+        release_date = row["release_date"]
+        if not release_date:
+            linked = _best_spotify_album_for_local_album(conn, album_id)
+            if linked:
+                release_date = linked["release_date"] or release_date
+        project_id = _upsert_project(
+            conn,
+            canonical_name=row["album_name"],
+            artist_id=int(row["artist_id"]),
+            primary_album_id=album_id,
+            release_date=release_date,
+            scope="release",
+            project_type="single",
+            include_in_charts=0,
+            is_manual=0,
+        )
+        if project_id is None:
+            continue
+        if seen_project_ids is not None:
+            seen_project_ids.add(project_id)
+        _insert_project_album(
+            conn,
+            project_id=project_id,
+            album_id=album_id,
+            primary_album_id=album_id,
+        )
+        for track_id, source_album_id in memberships:
+            _insert_project_track(
+                conn,
+                project_id=project_id,
+                track_id=track_id,
+                source_album_id=source_album_id,
+                min_merge_level=3,
+                membership_role="single",
             )
 
 

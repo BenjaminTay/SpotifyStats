@@ -330,12 +330,20 @@ def _refresh_version_merge_dependents(conn=None) -> None:
     """Rebuild album projects and clear cached statistics after relation changes."""
     from backend.core.cache_manager import invalidate
     from backend.domains.playback.album_projects import rebuild_album_projects
+    from backend.domains.playback.l3_album_attribution import (
+        apply_l3_album_attribution_plan,
+        plan_l3_album_attributions,
+    )
 
     owns_conn = conn is None
     if owns_conn:
         conn = get_db(readonly=False)
     try:
         rebuild_album_projects(conn)
+        attribution_plan = plan_l3_album_attributions(conn)
+        if attribution_plan.issues:
+            raise RuntimeError("L3 album attribution has unresolved issues after version mutation")
+        apply_l3_album_attribution_plan(conn, attribution_plan, commit=True)
     finally:
         if owns_conn:
             conn.close()

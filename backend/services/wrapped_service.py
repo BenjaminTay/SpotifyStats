@@ -237,6 +237,9 @@ def _artist_metadata_revision(conn: sqlite3.Connection) -> str:
         TRACK_IDENTITY_POLICY_VERSION,
         get_track_identity_revision,
     )
+    from backend.domains.playback.l3_album_attribution import (
+        get_l3_album_attribution_revision,
+    )
 
     return (
         f"{genre_revision}|display:{GENRE_DISPLAY_TAXONOMY_VERSION}"
@@ -245,6 +248,7 @@ def _artist_metadata_revision(conn: sqlite3.Connection) -> str:
         f"|track_credit:{get_track_credit_revision(conn)}"
         f"|track_identity:{get_track_identity_revision(conn)}"
         f"|track_identity_policy:{TRACK_IDENTITY_POLICY_VERSION}"
+        f"|l3_album_attribution:{get_l3_album_attribution_revision(conn)}"
     )
 
 

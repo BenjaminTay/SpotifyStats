@@ -18,12 +18,15 @@ from backend.domains.metadata.track_identity import (
 from backend.domains.metadata.track_presentation import TRACK_PRESENTATION_POLICY_VERSION
 from backend.domains.music_search.revisions import get_music_search_revision_state
 from backend.domains.playback.album_projects import get_album_project_revision
+from backend.domains.playback.l3_album_attribution import (
+    get_l3_album_attribution_revision,
+)
 
-MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v8_canonical_track"
+MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v9_l3_album_owner"
 # Compatibility name used by existing reports and API terminology.
 MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION
-MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v8_canonical_track"
-MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v8_canonical_track"
+MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v9_l3_album_owner"
+MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v9_l3_album_owner"
 MUSIC_SEARCH_SNAPSHOT_POLICY_VERSION = "music_search_snapshot_policy_v1"
 LEGACY_MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = "music_search_filter_v2"
 
@@ -56,6 +59,7 @@ class MusicSearchFilterContext:
     filter_fingerprint: str
     source_revision: str
     album_project_revision: int = 0
+    l3_album_attribution_revision: int = 0
     track_presentation_policy: str = TRACK_PRESENTATION_POLICY_VERSION
 
     def filter_values(self) -> dict[str, Any]:
@@ -201,6 +205,7 @@ def build_music_search_filter_context(
         "track_identity_revision": get_track_identity_revision(conn),
         "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
         "album_project_revision": get_album_project_revision(conn),
+        "l3_album_attribution_revision": get_l3_album_attribution_revision(conn),
         "track_presentation_policy": TRACK_PRESENTATION_POLICY_VERSION,
     }
     semantic_values = {
@@ -232,6 +237,7 @@ def build_music_search_filter_context(
             "track_identity": values["track_identity_revision"],
             "track_identity_policy": values["track_identity_policy"],
             "album_project_revision": values["album_project_revision"],
+            "l3_album_attribution_revision": values["l3_album_attribution_revision"],
             "track_presentation_policy": values["track_presentation_policy"],
         },
         20,

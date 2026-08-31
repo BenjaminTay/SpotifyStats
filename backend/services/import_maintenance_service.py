@@ -18,7 +18,19 @@ from backend.domains.metadata.spotify_refresh import (
     refresh_missing_spotify_metadata,
 )
 from backend.domains.music_search.revisions import MusicSearchRevisionKind
+from backend.domains.playback.album_composition_auto_merge import (
+    apply_album_composition_plan,
+    plan_album_composition_merges,
+)
+from backend.domains.playback.album_project_auto_merge import (
+    apply_album_project_auto_merge_plan,
+    plan_album_project_auto_merges,
+)
 from backend.domains.playback.album_projects import rebuild_album_projects_for_impact
+from backend.domains.playback.l3_album_attribution import (
+    apply_l3_album_attribution_plan,
+    plan_l3_album_attributions,
+)
 from backend.domains.settings.repository import SettingsRepository
 from backend.providers.spotify.client import SpotifyProvider
 from backend.services.cover_cache_service import enqueue_missing_cover_downloads
@@ -122,6 +134,27 @@ def run_post_streaming_import_maintenance(
             spotify_track_ids=metadata_report.spotify_track_ids_updated,
             impact_scope_exact=targeted_change and metadata_report.impact_scope_exact,
             has_deletions=bool(change_set and change_set.removed_count),
+        )
+        album_merge_report = apply_album_project_auto_merge_plan(
+            conn,
+            plan_album_project_auto_merges(conn),
+            commit=True,
+        )
+        album_composition_report = apply_album_composition_plan(
+            conn,
+            plan_album_composition_merges(conn),
+            commit=True,
+        )
+        attribution_plan = plan_l3_album_attributions(conn)
+        if attribution_plan.issues:
+            raise RuntimeError(
+                "post-import L3 album attribution has unresolved issues: "
+                f"{len(attribution_plan.issues)}"
+            )
+        attribution_report = apply_l3_album_attribution_plan(
+            conn,
+            attribution_plan,
+            commit=True,
         )
         album_projects_seconds = time.perf_counter() - album_projects_started
 
@@ -293,6 +326,10 @@ def run_post_streaming_import_maintenance(
             "cover_seconds": round(cover_seconds, 3),
             "track_grouping_seconds": round(grouping_seconds, 3),
             "album_projects_seconds": round(album_projects_seconds, 3),
+            "album_projects_auto_merged": album_merge_report.projects_merged,
+            "album_composition_groups_created": album_composition_report.groups_created,
+            "l3_album_attributions": attribution_report.decision_count,
+            "l3_album_attribution_revision": attribution_report.attribution_revision,
             "aggregations_seconds": round(aggregations_seconds, 3),
             "agg_track_wks": agg_results.get("tracks", 0),
             "agg_album_wks": agg_results.get("albums", 0),
@@ -342,8 +379,11 @@ def _auto_group_tracks_by_spotify_id(
     if not required.issubset(tables):
         return (0, 0)
     from backend.domains.metadata.l2_track_auto_merge import apply_l2_track_merge_plan
+    from backend.domains.metadata.l3_track_auto_merge import apply_l3_track_merge_plan
 
-    report = apply_l2_track_merge_plan(conn, commit=False)
-    if not report.get("changed"):
-        return (0, 0)
-    return int(report["groups_created"]), int(report["members_added"])
+    l2_report = apply_l2_track_merge_plan(conn, commit=False)
+    l3_report = apply_l3_track_merge_plan(conn, commit=False)
+    return (
+        int(l2_report.get("groups_created", 0)) + int(l3_report.get("groups_created", 0)),
+        int(l2_report.get("members_added", 0)) + int(l3_report.get("members_added", 0)),
+    )

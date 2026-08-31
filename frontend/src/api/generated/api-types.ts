@@ -1796,6 +1796,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version-merge/l3-album-attributions/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * L3 Album Attribution Health
+         * @description Return the published projection state and unresolved governance counts.
+         */
+        get: operations["l3_album_attribution_health_api_version_merge_l3_album_attributions_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/l3-album-attributions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List L3 Album Attributions
+         * @description List auditable L3 song-to-album decisions and unresolved issues.
+         */
+        get: operations["list_l3_album_attributions_api_version_merge_l3_album_attributions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/l3-album-attributions/overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create L3 Album Attribution Override */
+        post: operations["create_l3_album_attribution_override_api_version_merge_l3_album_attributions_overrides_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/l3-album-attributions/overrides/{override_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove L3 Album Attribution Override */
+        delete: operations["remove_l3_album_attribution_override_api_version_merge_l3_album_attributions_overrides__override_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-merge/l3-album-attributions/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rebuild L3 Album Attributions */
+        post: operations["rebuild_l3_album_attributions_api_version_merge_l3_album_attributions_rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version-merge/track-groups/confirm": {
         parameters: {
             query?: never;
@@ -8093,6 +8184,31 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** L3AlbumAttributionOverrideRequest */
+        L3AlbumAttributionOverrideRequest: {
+            /** Anchor Track Id */
+            anchor_track_id: number;
+            /** Target Project Id */
+            target_project_id: number;
+            /**
+             * Action
+             * @default force_target
+             */
+            action: string;
+            /** Reason */
+            reason: string;
+        };
+        /** L3AlbumAttributionOverrideResponse */
+        L3AlbumAttributionOverrideResponse: {
+            /** Status */
+            status: string;
+            /** Override Id */
+            override_id?: number | null;
+            /** Attribution Revision */
+            attribution_revision: number;
+            /** Decision Count */
+            decision_count: number;
+        };
         /**
          * LLMProfileApplyResponse
          * @description Result returned when a saved LLM profile is applied.
@@ -11967,6 +12083,11 @@ export interface components {
             track_group_revision: string;
             /** Album Project Revision */
             album_project_revision: string;
+            /**
+             * L3 Album Attribution Revision
+             * @default 0
+             */
+            l3_album_attribution_revision: number;
             /** Filter Fingerprint */
             filter_fingerprint: string;
         };
@@ -16738,6 +16859,155 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrackGroupCandidateResponse"][];
+                };
+            };
+        };
+    };
+    l3_album_attribution_health_api_version_merge_l3_album_attributions_health_get: {
+        parameters: {
+            query?: {
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_l3_album_attributions_api_version_merge_l3_album_attributions_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                limit?: number;
+                offset?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_l3_album_attribution_override_api_version_merge_l3_album_attributions_overrides_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["L3AlbumAttributionOverrideRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["L3AlbumAttributionOverrideResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_l3_album_attribution_override_api_version_merge_l3_album_attributions_overrides__override_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                override_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["L3AlbumAttributionOverrideResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuild_l3_album_attributions_api_version_merge_l3_album_attributions_rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
                 };
             };
         };

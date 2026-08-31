@@ -296,6 +296,15 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         "version_collab_candidates", "/api/version-merge/track-group-candidates/collaboration"
     ),
     SmokeCase("version_canonical_events", "/api/version-merge/canonical-tracks/events"),
+    SmokeCase(
+        "version_l3_album_attribution_health",
+        "/api/version-merge/l3-album-attributions/health",
+    ),
+    SmokeCase(
+        "version_l3_album_attributions",
+        "/api/version-merge/l3-album-attributions",
+        {"q": "Love", "limit": 20, "offset": 0},
+    ),
     SmokeCase("import_status_missing", "/api/import/status/nonexistent"),
     SmokeCase("import_preflight", "/api/import/preflight"),
     SmokeCase("import_health", "/api/import/health"),

@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryKeys } from '@/api/query-keys'
-import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type TrackGroup, type TrackGroupMember, type UngroupedAlbum, type DetectionResult, type TrackGroupCandidate, type TrackGroupConfirmResult, type TrackCreditTrackCandidate, type AlbumRelationConfirmResult, type CanonicalTrackEvent, type CanonicalTrackMutationResult, type TrackComparison, type RebuildResult, type VersionMergeScope, type TrackGroupScope, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
+import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type TrackGroup, type TrackGroupMember, type UngroupedAlbum, type DetectionResult, type TrackGroupCandidate, type TrackGroupConfirmResult, type TrackCreditTrackCandidate, type AlbumRelationConfirmResult, type CanonicalTrackEvent, type CanonicalTrackMutationResult, type L3AlbumAttributionHealth, type L3AlbumAttributionListResponse, type L3AlbumAttributionMutationResult, type TrackComparison, type RebuildResult, type VersionMergeScope, type TrackGroupScope, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
 import type { StreamingImportOptions } from '@/types/data-import'
 
 // ── useSettings ─────────────────────────────────────────────
@@ -358,6 +358,11 @@ interface UseVersionMergeResult {
   searchTracks: (query: string) => Promise<TrackCreditTrackCandidate[]>
   confirmTrackCandidate: (originalL1Id: number, candidateL1Id: number, scope?: TrackGroupScope) => Promise<TrackGroupConfirmResult>
   rebuildAlbumProjects: () => Promise<{ status: string }>
+  fetchL3AlbumAttributionHealth: () => Promise<L3AlbumAttributionHealth>
+  fetchL3AlbumAttributions: (query?: string) => Promise<L3AlbumAttributionListResponse>
+  rebuildL3AlbumAttributions: () => Promise<{ status: string }>
+  createL3AlbumAttributionOverride: (anchorTrackId: number, targetProjectId: number, reason: string, action?: 'force_target' | 'force_keep_source') => Promise<L3AlbumAttributionMutationResult>
+  removeL3AlbumAttributionOverride: (overrideId: number) => Promise<L3AlbumAttributionMutationResult>
   getGroupMembers: (groupId: number) => Promise<GroupMember[]>
   getTrackGroupMembers: (groupId: number) => Promise<TrackGroupMember[]>
   getUngroupedAlbums: (artistName?: string) => Promise<UngroupedAlbum[]>
@@ -407,7 +412,52 @@ export function useVersionMerge(): UseVersionMergeResult {
     void queryClient.invalidateQueries({ queryKey: queryKeys.analysis.all })
     void queryClient.invalidateQueries({ queryKey: queryKeys.billboard.all })
     void queryClient.invalidateQueries({ queryKey: queryKeys.music.all })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.yearlyReview.all })
   }, [queryClient])
+
+  const fetchL3AlbumAttributionHealth = useCallback(() => {
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.versionMerge.l3AlbumAttributionHealth(),
+      queryFn: () => api.get<L3AlbumAttributionHealth>('/version-merge/l3-album-attributions/health'),
+    })
+  }, [queryClient])
+
+  const fetchL3AlbumAttributions = useCallback((query = '') => {
+    const normalized = query.trim()
+    return queryClient.fetchQuery({
+      queryKey: queryKeys.versionMerge.l3AlbumAttributions(normalized),
+      queryFn: () => api.get<L3AlbumAttributionListResponse>('/version-merge/l3-album-attributions', { q: normalized, limit: 100 }),
+    })
+  }, [queryClient])
+
+  const rebuildL3AlbumAttributions = useCallback(() => {
+    return api.post<{ status: string }>('/version-merge/l3-album-attributions/rebuild').then((result) => {
+      invalidateMergeDependents()
+      return result
+    })
+  }, [invalidateMergeDependents])
+
+  const createL3AlbumAttributionOverride = useCallback(
+    (anchorTrackId: number, targetProjectId: number, reason: string, action: 'force_target' | 'force_keep_source' = 'force_target') =>
+      api.post<L3AlbumAttributionMutationResult>('/version-merge/l3-album-attributions/overrides', {
+        anchor_track_id: anchorTrackId,
+        target_project_id: targetProjectId,
+        action,
+        reason,
+      }).then((result) => {
+        invalidateMergeDependents()
+        return result
+      }),
+    [invalidateMergeDependents],
+  )
+
+  const removeL3AlbumAttributionOverride = useCallback(
+    (overrideId: number) => api.del<L3AlbumAttributionMutationResult>(`/version-merge/l3-album-attributions/overrides/${overrideId}`).then((result) => {
+      invalidateMergeDependents()
+      return result
+    }),
+    [invalidateMergeDependents],
+  )
 
   const detectGroups = useCallback((overlapThreshold: number) => {
     return api.post<DetectionResult[]>(`/version-merge/detect?overlap_threshold=${overlapThreshold}`)
@@ -693,6 +743,11 @@ export function useVersionMerge(): UseVersionMergeResult {
     searchTracks,
     confirmTrackCandidate,
     rebuildAlbumProjects,
+    fetchL3AlbumAttributionHealth,
+    fetchL3AlbumAttributions,
+    rebuildL3AlbumAttributions,
+    createL3AlbumAttributionOverride,
+    removeL3AlbumAttributionOverride,
     getGroupMembers,
     getTrackGroupMembers,
     getUngroupedAlbums,

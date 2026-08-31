@@ -51,6 +51,18 @@ const health: ImportHealthResponse = {
     stale_revision_count: 0,
     artist_identity: {},
     track_credits: {},
+    l3_album_attribution: {
+      current_revision: 1,
+      status: 'ready',
+      policy_version: 'l3_native_album_attribution_v1',
+      expected_policy_version: 'l3_native_album_attribution_v1',
+      track_identity_revision: 9,
+      album_project_revision: 4,
+      attributed_count: 6226,
+      conflict_count: 0,
+      uncovered_count: 0,
+      healthy: true,
+    },
   },
   issues: [
     {

@@ -160,6 +160,18 @@ export interface ImportHealthResponse {
     stale_revision_count: number
     artist_identity: Record<string, unknown>
     track_credits: Record<string, unknown>
+    l3_album_attribution: {
+      current_revision: number
+      status: 'empty' | 'building' | 'ready' | 'failed'
+      policy_version: string
+      expected_policy_version: string
+      track_identity_revision: number
+      album_project_revision: number
+      attributed_count: number
+      conflict_count: number
+      uncovered_count: number
+      healthy: boolean
+    }
   }
   summary?: {
     safe_to_use: boolean

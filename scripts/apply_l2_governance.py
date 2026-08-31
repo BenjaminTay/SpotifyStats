@@ -62,6 +62,13 @@ from backend.domains.playback.album_project_auto_merge import (  # noqa: E402
     plan_album_project_auto_merges,
 )
 from backend.domains.playback.album_projects import rebuild_album_projects  # noqa: E402
+from backend.domains.playback.l3_album_attribution import (  # noqa: E402
+    L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
+    apply_l3_album_attribution_plan,
+    ensure_l3_album_attribution_schema,
+    get_l3_album_attribution_state,
+    plan_l3_album_attributions,
+)
 from backend.services.music_search_maintenance_service import (  # noqa: E402
     mark_music_search_for_rebuild,
     rebuild_current_music_search_derived_data,
@@ -70,7 +77,7 @@ from backend.services.music_search_maintenance_service import (  # noqa: E402
 GOVERNANCE_POLICY_VERSION = (
     f"version_governance_v2:{L2_AUTO_MERGE_POLICY_VERSION}:"
     f"{L3_AUTO_MERGE_POLICY_VERSION}:{ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION}:"
-    f"{ALBUM_COMPOSITION_POLICY_VERSION}"
+    f"{ALBUM_COMPOSITION_POLICY_VERSION}:{L3_ALBUM_ATTRIBUTION_POLICY_VERSION}"
 )
 RAW_FACT_TABLES = ("plays", "tracks", "track_artists")
 EXPECTED_SEARCH_VARIANTS = {(2, 0), (2, 1), (3, 0), (3, 1)}
@@ -181,6 +188,25 @@ def _album_composition_plan_json(plan: Any) -> dict[str, Any]:
         "scanned_project_count": plan.scanned_project_count,
         "skipped_reason_counts": dict(plan.skipped_reason_counts),
         "candidates": [candidate.to_dict() for candidate in plan.candidates],
+    }
+
+
+def _l3_album_attribution_plan_json(plan: Any) -> dict[str, Any]:
+    return {
+        "policy_version": plan.policy_version,
+        "track_identity_revision": plan.track_identity_revision,
+        "album_project_revision": plan.album_project_revision,
+        "input_digest": plan.input_digest,
+        "scanned_song_count": plan.scanned_song_count,
+        "decision_count": len(plan.decisions),
+        "automatic_count": sum(
+            item.decision_source == "automatic" for item in plan.decisions
+        ),
+        "manual_count": sum(item.decision_source == "manual" for item in plan.decisions),
+        "uncovered_count": len(plan.uncovered_song_keys),
+        "conflict_count": len(plan.conflict_song_keys),
+        "changed": plan.changed,
+        "issues": [item.to_dict() for item in plan.issues],
     }
 
 
@@ -309,6 +335,31 @@ def _plan_on_clone(source: sqlite3.Connection, *, apply_l1_safe_splits: bool) ->
             and not convergence["l3_changed"]
             and not convergence["album_l3_changed"]
         )
+        semantic_changed = bool(
+            any(bool(item["report"].get("changed")) for item in l2_rounds)
+            or bool(composition_report.get("changed"))
+            or bool(all_operations)
+        )
+        if semantic_changed:
+            bump_track_identity_revision(clone)
+        ensure_l3_album_attribution_schema(clone)
+        attribution_plan = plan_l3_album_attributions(clone)
+        attribution_report = apply_l3_album_attribution_plan(
+            clone,
+            attribution_plan,
+            commit=False,
+            ensure_schema=False,
+        )
+        convergence_attribution = plan_l3_album_attributions(clone)
+        convergence["l3_album_attribution_changed"] = convergence_attribution.changed
+        convergence["l3_album_attribution_issue_count"] = len(
+            convergence_attribution.issues
+        )
+        converged = bool(
+            converged
+            and not convergence_attribution.changed
+            and not convergence_attribution.issues
+        )
         relation_gate = _relation_gate(clone, before_raw, before_identity)
         return {
             "l1": {
@@ -359,6 +410,13 @@ def _plan_on_clone(source: sqlite3.Connection, *, apply_l1_safe_splits: bool) ->
                 **_album_composition_plan_json(album_composition_plan),
                 "apply_simulation": album_composition_report.to_dict(),
                 "convergence": _album_composition_plan_json(convergence_album_composition),
+            },
+            "l3_album_attribution": {
+                "plan": _l3_album_attribution_plan_json(attribution_plan),
+                "apply_simulation": attribution_report.to_dict(),
+                "convergence": _l3_album_attribution_plan_json(
+                    convergence_attribution
+                ),
             },
         }
     finally:
@@ -879,6 +937,61 @@ def _album_composition_health(conn: sqlite3.Connection) -> dict[str, int]:
     }
 
 
+def _l3_album_attribution_health(conn: sqlite3.Connection) -> dict[str, int]:
+    required = {
+        "l3_song_album_attributions",
+        "l3_song_album_attribution_issues",
+        "l3_album_attribution_revision_state",
+    }
+    existing = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    if not required.issubset(existing):
+        return {"missing_schema_count": len(required - existing)}
+    state = get_l3_album_attribution_state(conn)
+    plan = plan_l3_album_attributions(conn)
+    row_count = int(
+        conn.execute("SELECT COUNT(*) FROM l3_song_album_attributions").fetchone()[0]
+    )
+    duplicate_count = int(
+        conn.execute(
+            """SELECT COUNT(*) FROM (
+                   SELECT canonical_song_key
+                     FROM l3_song_album_attributions
+                    GROUP BY canonical_song_key HAVING COUNT(*)>1
+               )"""
+        ).fetchone()[0]
+    )
+    orphan_count = int(
+        conn.execute(
+            """SELECT COUNT(*)
+                 FROM l3_song_album_attributions attribution
+                 LEFT JOIN album_projects target
+                   ON target.project_id=attribution.target_project_id
+                 LEFT JOIN album_projects origin
+                   ON origin.project_id=attribution.origin_release_project_id
+                WHERE target.project_id IS NULL OR origin.project_id IS NULL"""
+        ).fetchone()[0]
+    )
+    return {
+        "not_ready_count": int(state["status"] != "ready"),
+        "policy_mismatch_count": int(
+            state["policy_version"] != L3_ALBUM_ATTRIBUTION_POLICY_VERSION
+        ),
+        "plan_changed_count": int(plan.changed),
+        "unresolved_issue_count": len(plan.issues),
+        "state_count_mismatch_count": int(
+            int(state["attributed_count"]) != row_count
+            or row_count != len(plan.decisions)
+        ),
+        "duplicate_owner_count": duplicate_count,
+        "orphan_owner_count": orphan_count,
+    }
+
+
 def _relation_gate(
     conn: sqlite3.Connection,
     before_raw: dict[str, dict[str, Any]],
@@ -911,6 +1024,7 @@ def _relation_gate(
     recording = _recording_group_health(conn)
     composition = _composition_group_health(conn)
     album_composition = _album_composition_health(conn)
+    l3_album_attribution = _l3_album_attribution_health(conn)
     integrity = str(conn.execute("PRAGMA integrity_check").fetchone()[0])
     foreign_key_issues = len(conn.execute("PRAGMA foreign_key_check").fetchall())
     passed = bool(
@@ -920,6 +1034,7 @@ def _relation_gate(
         and not any(recording.values())
         and not any(composition.values())
         and not any(album_composition.values())
+        and not any(l3_album_attribution.values())
         and integrity == "ok"
         and foreign_key_issues == 0
     )
@@ -935,6 +1050,7 @@ def _relation_gate(
         "recording_groups": recording,
         "composition_groups": composition,
         "album_composition_groups": album_composition,
+        "l3_album_attribution": l3_album_attribution,
         "integrity_check": integrity,
         "foreign_key_issue_count": foreign_key_issues,
     }
@@ -1285,6 +1401,11 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
     db_mod.DB_PATH = str(db_path)
     run_migrations()
     conn = _connect(db_path, readonly=False)
+    # Legacy test/staging fixtures can declare a schema revision without
+    # containing every table from that revision.  Ensure this additive schema
+    # before opening the governed transaction; executescript must not run
+    # inside the transaction because SQLite would commit it implicitly.
+    ensure_l3_album_attribution_schema(conn)
     run_id = str(uuid.uuid4())
     before_raw = _raw_fact_state(conn)
     backup_conn = _connect(backup_path, readonly=True)
@@ -1304,7 +1425,7 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
     conn.execute(
         """INSERT INTO version_governance_runs(
                run_id, scope, policy_version, status, dry_run, summary_json
-           ) VALUES (?, 'l1+l2+l3+album_project', ?, 'running', 0, ?)""",
+           ) VALUES (?, 'l1+l2+l3+album_project+album_attribution', ?, 'running', 0, ?)""",
         (
             run_id,
             GOVERNANCE_POLICY_VERSION,
@@ -1507,6 +1628,43 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
                 "SELECT current_revision FROM album_project_revision_state WHERE state_id=1"
             ).fetchone()[0]
         )
+        attribution_before = get_l3_album_attribution_state(conn)
+        attribution_plan = plan_l3_album_attributions(conn)
+        if attribution_plan.issues:
+            raise RuntimeError(
+                "L3 album attribution has unresolved issues: "
+                f"conflicts={len(attribution_plan.conflict_song_keys)}, "
+                f"uncovered={len(attribution_plan.uncovered_song_keys)}"
+            )
+        attribution_report = apply_l3_album_attribution_plan(
+            conn,
+            attribution_plan,
+            commit=False,
+            ensure_schema=False,
+        )
+        convergence_attribution = plan_l3_album_attributions(conn)
+        convergence["l3_album_attribution_changed"] = convergence_attribution.changed
+        convergence["l3_album_attribution_issue_count"] = len(
+            convergence_attribution.issues
+        )
+        if convergence_attribution.changed or convergence_attribution.issues:
+            raise RuntimeError(
+                "L3 album attribution governance did not converge: "
+                f"changed={convergence_attribution.changed}, "
+                f"issues={len(convergence_attribution.issues)}"
+            )
+        if attribution_report.changed:
+            _insert_event(
+                conn,
+                run_id=run_id,
+                entity_type="l3_album_attribution",
+                action="publish_projection",
+                survivor_id=None,
+                affected_ids=[],
+                before=attribution_before,
+                after=get_l3_album_attribution_state(conn),
+                evidence=_l3_album_attribution_plan_json(attribution_plan),
+            )
         relation_gate = _relation_gate(conn, before_raw, identity_before)
         if relation_gate["status"] != "pass":
             raise RuntimeError(f"relation validation failed: {relation_gate}")
@@ -1535,6 +1693,13 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
             "album_composition": {
                 "plan": _album_composition_plan_json(album_composition_plan),
                 "report": album_composition_report.to_dict(),
+            },
+            "l3_album_attribution": {
+                "plan": _l3_album_attribution_plan_json(attribution_plan),
+                "report": attribution_report.to_dict(),
+                "convergence": _l3_album_attribution_plan_json(
+                    convergence_attribution
+                ),
             },
             "forced_album_rebuild": forced_album_rebuild,
             "track_identity_revision": {
@@ -1567,6 +1732,7 @@ def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
             semantic_changed
             or album_report.requires_downstream_refresh
             or album_composition_report.requires_downstream_refresh
+            or attribution_report.requires_downstream_refresh
             or forced_album_rebuild
         )
         stage = "derived_maintenance"

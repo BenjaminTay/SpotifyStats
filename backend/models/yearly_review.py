@@ -56,6 +56,7 @@ class YearlyReviewFilterContext(BaseModel):
     track_identity_policy: str = "legacy_track_row"
     track_group_revision: str
     album_project_revision: str
+    l3_album_attribution_revision: int = Field(default=0, ge=0)
     filter_fingerprint: str
 
 

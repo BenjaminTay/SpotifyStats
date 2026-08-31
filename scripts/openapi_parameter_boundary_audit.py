@@ -320,6 +320,12 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         ("music_search_q_too_long",),
         "music search query rejects overlong search strings",
     ),
+    ("query", "q", "string|maxLength=200"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "L3 album attribution governance search enforces its audit-query length bound",
+        ("backend/tests/contract/test_l3_album_attribution_api.py",),
+    ),
     ("query", "search", "string|maxLength=120"): ParameterEvidence(
         "boundary_probe",
         ("account_library_search_too_long", "account_library_special_search"),

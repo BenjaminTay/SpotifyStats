@@ -13,6 +13,9 @@ from backend.domains.metadata.track_identity import (
     TRACK_IDENTITY_POLICY_VERSION,
     get_track_identity_revision,
 )
+from backend.domains.playback.l3_album_attribution import (
+    get_l3_album_attribution_revision,
+)
 
 
 def active_playback_lineage(conn: sqlite3.Connection) -> tuple[str | None, str | None]:
@@ -83,6 +86,7 @@ def music_search_snapshot_dependency_manifest(conn: sqlite3.Connection) -> dict[
         "aggregation": aggregation,
         "track_group_revision": _table_set_revision(conn, _TRACK_GROUP_TABLES),
         "album_project_revision": _album_project_semantic_revision(conn),
+        "l3_album_attribution_revision": get_l3_album_attribution_revision(conn),
         "candidate_normalization_version": str(index_row[0] or "unavailable")
         if index_row
         else "unavailable",

@@ -52,6 +52,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
+- [`plans/2026-08-31-l3-work-and-album-attribution-plan.md`](plans/2026-08-31-l3-work-and-album-attribution-plan.md)：L3 歌曲到原生专辑的显式归属层、Taylor's Version 并集、Live/Remix/Acoustic 逐曲回流、治理 UI 与统一聚合入口已实现；真实库和完整全栈验收正在收口
 - [`plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：B1–B4、R1 及 6 个 Records 子页面（8 个后端记录模块、51 个列表）已完成范围验收；默认完整全栈门禁由既有耗时项继续跟踪
 - [`plans/2026-08-30-playback-records-correctness-and-ranking-plan.md`](plans/2026-08-30-playback-records-correctness-and-ranking-plan.md)：播放记录 5 个板块、20 个可见模块及 API-only 模块的统计正确性、完整候选集和稳定二级排序修复
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收

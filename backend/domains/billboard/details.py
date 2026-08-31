@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import unicodedata
 
@@ -904,22 +905,54 @@ def _get_album_project_payload(
             merge_level=merge_level,
             include_compilations=True,
         )
-        if totals.empty:
-            return None
-
-        match = totals[
-            (totals["album_project_name"] == album_name) & (totals["artist_name"] == artist_name)
-        ]
+        match = (
+            totals[
+                (totals["album_project_name"] == album_name)
+                & (totals["artist_name"] == artist_name)
+            ]
+            if not totals.empty
+            else totals
+        )
+        project_ids = _resolve_album_project_ids(conn, album_name, artist_name)
         if match.empty:
-            project_ids = _resolve_album_project_ids(conn, album_name, artist_name)
             if project_ids:
                 match = totals[totals["album_project_id"].isin(project_ids)]
-        if match.empty:
+        project_row = None
+        if match.empty and project_ids:
+            placeholders = ",".join("?" for _ in project_ids)
+            project_row = conn.execute(
+                f"""SELECT ap.project_id AS album_project_id,
+                           ap.canonical_name AS album_project_name,
+                           artists.artist_name,
+                           COALESCE(ap.release_date, '') AS release_date
+                      FROM album_projects ap
+                      JOIN artists ON artists.artist_id=ap.artist_id
+                     WHERE ap.project_id IN ({placeholders})
+                     ORDER BY ap.include_in_charts DESC, ap.project_id
+                     LIMIT 1""",
+                tuple(sorted(project_ids)),
+            ).fetchone()
+        if match.empty and project_row is None:
             return None
 
-        match = match.sort_values(["play_count", "total_ms"], ascending=[False, False])
-        row = match.iloc[0]
-        project_id = int(row["album_project_id"])
+        if project_row is None:
+            match = match.sort_values(["play_count", "total_ms"], ascending=[False, False])
+            row = match.iloc[0]
+            project_id = int(row["album_project_id"])
+            project_name = str(row["album_project_name"])
+            project_artist_name = str(row["artist_name"])
+            release_date = str(row.get("release_date") or "")
+            play_count = int(row["play_count"])
+            total_ms = int(row["total_ms"])
+            unique_song_count = int(row["unique_canonical_songs"])
+        else:
+            project_id = int(project_row["album_project_id"])
+            project_name = str(project_row["album_project_name"])
+            project_artist_name = str(project_row["artist_name"])
+            release_date = str(project_row["release_date"] or "")
+            play_count = 0
+            total_ms = 0
+            unique_song_count = 0
 
         membership = load_album_project_membership(
             conn,
@@ -946,16 +979,27 @@ def _get_album_project_payload(
                 ["_bucket_rank", "source_album_name"], ascending=[True, True]
             ).drop(columns=["_bucket_rank"])
 
+        source_explanation = (
+            _build_l3_source_project_explanation(
+                conn,
+                df,
+                project_id,
+            )
+            if merge_level >= 3
+            else {}
+        )
+
         return {
             "album_project_id": project_id,
-            "album_project_name": str(row["album_project_name"]),
-            "artist_name": str(row["artist_name"]),
-            "release_date": str(row.get("release_date") or ""),
-            "play_count": int(row["play_count"]),
-            "total_ms": int(row["total_ms"]),
-            "unique_canonical_songs": int(row["unique_canonical_songs"]),
+            "album_project_name": project_name,
+            "artist_name": project_artist_name,
+            "release_date": release_date,
+            "play_count": play_count,
+            "total_ms": total_ms,
+            "unique_canonical_songs": unique_song_count,
             "tracks": df_to_json(project_tracks),
             "source_breakdown": df_to_json(project_breakdown),
+            **source_explanation,
         }
     finally:
         conn.close()
@@ -1008,6 +1052,130 @@ def _resolve_album_project_ids(
         (album_name, *sorted(artist_ids)),
     ).fetchall()
     return {int(row["project_id"]) for row in rows}
+
+
+def _build_l3_source_project_explanation(
+    conn: sqlite3.Connection,
+    df: pd.DataFrame,
+    project_id: int,
+) -> dict:
+    """Explain residual and transferred songs for one physical source release."""
+    table_exists = conn.execute(
+        """SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='l3_song_album_attributions'"""
+    ).fetchone()
+    if table_exists is None:
+        return {
+            "source_play_count": 0,
+            "source_total_ms": 0,
+            "residual_tracks": [],
+            "transferred_tracks": [],
+            "source_tracks": [],
+        }
+
+    attribution_rows = conn.execute(
+        """SELECT attribution.canonical_song_key,
+                  attribution.representative_track_id,
+                  tracks.track_name AS canonical_song_name,
+                  attribution.target_project_id,
+                  target.canonical_name AS target_project_name,
+                  attribution.origin_release_project_id,
+                  origin.canonical_name AS origin_project_name,
+                  attribution.attribution_kind,
+                  attribution.decision_source,
+                  attribution.evidence_json
+             FROM l3_song_album_attributions attribution
+             JOIN tracks ON tracks.track_id=attribution.representative_track_id
+             JOIN album_projects target
+               ON target.project_id=attribution.target_project_id
+             JOIN album_projects origin
+               ON origin.project_id=attribution.origin_release_project_id
+            ORDER BY tracks.track_name, attribution.canonical_song_key"""
+    ).fetchall()
+    source_attributions: dict[str, dict] = {}
+    for raw in attribution_rows:
+        item = dict(raw)
+        try:
+            evidence = json.loads(str(item.pop("evidence_json") or "{}"))
+        except json.JSONDecodeError:
+            evidence = {}
+        source_ids = {int(value) for value in evidence.get("source_project_ids", [])}
+        if project_id not in source_ids:
+            continue
+        item["source_project_ids"] = sorted(source_ids)
+        source_attributions[str(item["canonical_song_key"])] = item
+
+    album_ids = {
+        int(row[0])
+        for row in conn.execute(
+            "SELECT album_id FROM album_project_albums WHERE project_id=?",
+            (project_id,),
+        ).fetchall()
+    }
+    scoped = df.iloc[0:0].copy()
+    if album_ids and "source_album_id" in df.columns:
+        scoped = df[df["source_album_id"].isin(album_ids)].copy()
+    if not scoped.empty:
+        from backend.domains.playback.album_projects import apply_canonical_song_keys
+
+        scoped = apply_canonical_song_keys(scoped, conn, merge_level=3)
+
+    def aggregate(frame: pd.DataFrame, columns: list[str]) -> list[dict]:
+        if frame.empty:
+            return []
+        aggregations: dict[str, tuple[str, str]] = {
+            "total_ms": ("total_ms" if "total_ms" in frame.columns else "ms_played", "sum")
+        }
+        if "play_count" in frame.columns:
+            aggregations["play_count"] = ("play_count", "sum")
+        else:
+            aggregations["play_count"] = ("track_id", "size")
+        rows = frame.groupby(columns, dropna=False).agg(**aggregations).reset_index()
+        rows["play_count"] = rows["play_count"].fillna(0).astype(int)
+        rows["total_ms"] = rows["total_ms"].fillna(0).astype(int)
+        return df_to_json(rows)
+
+    song_counts = {
+        str(item["canonical_song_key"]): item for item in aggregate(scoped, ["canonical_song_key"])
+    }
+    source_tracks = aggregate(
+        scoped,
+        [
+            column
+            for column in ("track_id", "track_name", "canonical_song_key")
+            if column in scoped.columns
+        ],
+    )
+    for item in source_tracks:
+        attribution = source_attributions.get(str(item.get("canonical_song_key")))
+        if attribution:
+            item.update(
+                {
+                    "target_project_id": int(attribution["target_project_id"]),
+                    "target_project_name": str(attribution["target_project_name"]),
+                    "attribution_kind": str(attribution["attribution_kind"]),
+                }
+            )
+
+    residual_tracks: list[dict] = []
+    transferred_tracks: list[dict] = []
+    for key, attribution in source_attributions.items():
+        counts = song_counts.get(key, {})
+        item = {key: value for key, value in attribution.items() if key != "source_project_ids"}
+        item["play_count"] = int(counts.get("play_count", 0))
+        item["total_ms"] = int(counts.get("total_ms", 0))
+        if int(attribution["target_project_id"]) == int(project_id):
+            residual_tracks.append(item)
+        else:
+            transferred_tracks.append(item)
+
+    return {
+        "source_play_count": int(sum(item.get("play_count", 0) for item in source_tracks)),
+        "source_total_ms": int(sum(item.get("total_ms", 0) for item in source_tracks)),
+        "residual_tracks": residual_tracks,
+        "transferred_tracks": transferred_tracks,
+        "source_tracks": source_tracks,
+    }
 
 
 def _load_album_project_detail_events(
@@ -1748,7 +1916,19 @@ def get_album_chart_detail(
         resolved_album = str(entity["album_name"])
         resolved_artist = str(entity["artist_name"])
     else:
-        return {"found": False, "meta": None}
+        # A source release can legitimately have zero L3 residual plays after
+        # every song was transferred to its native studio album.  Keep that
+        # release addressable for source/transfer explanation instead of
+        # treating the absence from the chart aggregate as a missing entity.
+        conn = get_db(readonly=True)
+        try:
+            source_project_ids = _resolve_album_project_ids(conn, album_name, artist_name)
+        finally:
+            conn.close()
+        if not source_project_ids:
+            return {"found": False, "meta": None}
+        resolved_album = str(album_name)
+        resolved_artist = str(artist_name)
 
     mask = album_track_counts["album_name"] == resolved_album
     if resolved_artist:

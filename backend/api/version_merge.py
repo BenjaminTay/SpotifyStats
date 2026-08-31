@@ -316,6 +316,20 @@ class AlbumRelationConfirmResponse(BaseModel):
     message: Optional[str] = None
 
 
+class L3AlbumAttributionOverrideRequest(BaseModel):
+    anchor_track_id: int = Field(ge=1)
+    target_project_id: int = Field(ge=1)
+    action: str = Field(default="force_target", pattern="^(force_target|force_keep_source)$")
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class L3AlbumAttributionOverrideResponse(BaseModel):
+    status: str
+    override_id: Optional[int] = None
+    attribution_revision: int
+    decision_count: int
+
+
 # ── Query endpoints ──────────────────────────────────────────────────────
 
 
@@ -433,6 +447,296 @@ def canonical_track_events(
         }
         for row in rows
     ]
+
+
+@router.get("/l3-album-attributions/health")
+def l3_album_attribution_health(conn: Connection = Depends(get_conn)):
+    """Return the published projection state and unresolved governance counts."""
+    from backend.domains.playback.l3_album_attribution import (
+        L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
+        get_l3_album_attribution_state,
+    )
+
+    state = get_l3_album_attribution_state(conn)
+    tables = {
+        str(row[0])
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    }
+    attributed = (
+        int(conn.execute("SELECT COUNT(*) FROM l3_song_album_attributions").fetchone()[0])
+        if "l3_song_album_attributions" in tables
+        else 0
+    )
+    issues = (
+        int(conn.execute("SELECT COUNT(*) FROM l3_song_album_attribution_issues").fetchone()[0])
+        if "l3_song_album_attribution_issues" in tables
+        else 0
+    )
+    overrides = (
+        int(
+            conn.execute(
+                """SELECT COUNT(*) FROM l3_song_album_attribution_overrides
+                    WHERE active=1"""
+            ).fetchone()[0]
+        )
+        if "l3_song_album_attribution_overrides" in tables
+        else 0
+    )
+    return {
+        **state,
+        "expected_policy_version": L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
+        "published_count": attributed,
+        "issue_count": issues,
+        "active_override_count": overrides,
+        "healthy": bool(
+            state["status"] == "ready"
+            and state["policy_version"] == L3_ALBUM_ATTRIBUTION_POLICY_VERSION
+            and int(state["attributed_count"]) == attributed
+            and issues == 0
+        ),
+    }
+
+
+@router.get("/l3-album-attributions")
+def list_l3_album_attributions(
+    q: str = Query(default="", max_length=200),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    conn: Connection = Depends(get_conn),
+):
+    """List auditable L3 song-to-album decisions and unresolved issues."""
+    pattern = f"%{q.strip()}%"
+    where = """WHERE (?='' OR representative.track_name LIKE ?
+                       OR target.canonical_name LIKE ? OR origin.canonical_name LIKE ?)"""
+    params = (q.strip(), pattern, pattern, pattern)
+    total = int(
+        conn.execute(
+            f"""SELECT COUNT(*)
+                  FROM l3_song_album_attributions attribution
+                  JOIN tracks representative
+                    ON representative.track_id=attribution.representative_track_id
+                  JOIN album_projects target
+                    ON target.project_id=attribution.target_project_id
+                  JOIN album_projects origin
+                    ON origin.project_id=attribution.origin_release_project_id
+                  {where}""",
+            params,
+        ).fetchone()[0]
+    )
+    rows = conn.execute(
+        f"""SELECT attribution.canonical_song_key,
+                   attribution.representative_track_id,
+                   representative.track_name AS canonical_song_name,
+                   attribution.canonical_artist_key,
+                   attribution.target_project_id,
+                   target.canonical_name AS target_project_name,
+                   attribution.origin_release_project_id,
+                   origin.canonical_name AS origin_project_name,
+                   attribution.attribution_kind,
+                   attribution.decision_source,
+                   attribution.confidence,
+                   attribution.evidence_json,
+                   attribution.updated_at
+              FROM l3_song_album_attributions attribution
+              JOIN tracks representative
+                ON representative.track_id=attribution.representative_track_id
+              JOIN album_projects target
+                ON target.project_id=attribution.target_project_id
+              JOIN album_projects origin
+                ON origin.project_id=attribution.origin_release_project_id
+              {where}
+             ORDER BY representative.track_name, attribution.canonical_song_key
+             LIMIT ? OFFSET ?""",
+        (*params, int(limit), int(offset)),
+    ).fetchall()
+    items = []
+    for row in rows:
+        item = dict(row)
+        item["evidence"] = json.loads(str(item.pop("evidence_json") or "{}"))
+        items.append(item)
+    issues = []
+    if conn.execute(
+        """SELECT 1 FROM sqlite_master
+            WHERE type='table' AND name='l3_song_album_attribution_issues'"""
+    ).fetchone():
+        for row in conn.execute(
+            """SELECT canonical_song_key, issue_kind, representative_track_id,
+                      canonical_artist_key, evidence_json, created_at
+                 FROM l3_song_album_attribution_issues
+                ORDER BY canonical_song_key, issue_kind"""
+        ).fetchall():
+            item = dict(row)
+            item["evidence"] = json.loads(str(item.pop("evidence_json") or "{}"))
+            issues.append(item)
+    overrides = [
+        dict(row)
+        for row in conn.execute(
+            """SELECT overrides.override_id, overrides.anchor_track_id,
+                      tracks.track_name AS anchor_track_name,
+                      overrides.target_project_id,
+                      projects.canonical_name AS target_project_name,
+                      overrides.action, overrides.reason, overrides.created_at
+                 FROM l3_song_album_attribution_overrides overrides
+                 JOIN tracks ON tracks.track_id=overrides.anchor_track_id
+                 LEFT JOIN album_projects projects
+                   ON projects.project_id=overrides.target_project_id
+                WHERE overrides.active=1 ORDER BY overrides.override_id DESC"""
+        ).fetchall()
+    ]
+    return {
+        "items": items,
+        "issues": issues,
+        "overrides": overrides,
+        "total": total,
+        "limit": int(limit),
+        "offset": int(offset),
+    }
+
+
+def _apply_l3_attribution_or_409(conn: Connection):
+    from backend.domains.playback.l3_album_attribution import (
+        apply_l3_album_attribution_plan,
+        plan_l3_album_attributions,
+    )
+
+    plan = plan_l3_album_attributions(conn)
+    if plan.issues:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "L3 专辑归属仍有未解决问题",
+                "issues": [item.to_dict() for item in plan.issues[:20]],
+            },
+        )
+    return apply_l3_album_attribution_plan(
+        conn,
+        plan,
+        commit=False,
+        ensure_schema=False,
+    )
+
+
+@router.post(
+    "/l3-album-attributions/overrides",
+    response_model=L3AlbumAttributionOverrideResponse,
+)
+def create_l3_album_attribution_override(
+    body: L3AlbumAttributionOverrideRequest,
+    auth: None = Depends(require_auth),
+):
+    from backend.core.cache_manager import invalidate
+    from backend.core.db import get_db
+
+    conn = get_db(readonly=False)
+    try:
+        if (
+            conn.execute(
+                "SELECT 1 FROM tracks WHERE track_id=?", (body.anchor_track_id,)
+            ).fetchone()
+            is None
+        ):
+            raise HTTPException(status_code=404, detail="歌曲锚点不存在")
+        if (
+            conn.execute(
+                "SELECT 1 FROM album_projects WHERE project_id=?", (body.target_project_id,)
+            ).fetchone()
+            is None
+        ):
+            raise HTTPException(status_code=404, detail="目标专辑项目不存在")
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            """UPDATE l3_song_album_attribution_overrides
+                  SET active=0, updated_at=CURRENT_TIMESTAMP
+                WHERE anchor_track_id=? AND active=1""",
+            (body.anchor_track_id,),
+        )
+        cursor = conn.execute(
+            """INSERT INTO l3_song_album_attribution_overrides(
+                   anchor_track_id, target_project_id, action, reason
+               ) VALUES (?, ?, ?, ?)""",
+            (
+                body.anchor_track_id,
+                body.target_project_id,
+                body.action,
+                body.reason,
+            ),
+        )
+        report = _apply_l3_attribution_or_409(conn)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    for namespace in ("analysis", "billboard", "yearly_review"):
+        invalidate(namespace)
+    _refresh_music_search_derived_data("L3 album attribution override changed")
+    return {
+        "status": "ok",
+        "override_id": int(cursor.lastrowid),
+        "attribution_revision": report.attribution_revision,
+        "decision_count": report.decision_count,
+    }
+
+
+@router.delete(
+    "/l3-album-attributions/overrides/{override_id}",
+    response_model=L3AlbumAttributionOverrideResponse,
+)
+def remove_l3_album_attribution_override(
+    override_id: int,
+    auth: None = Depends(require_auth),
+):
+    from backend.core.cache_manager import invalidate
+    from backend.core.db import get_db
+
+    conn = get_db(readonly=False)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.execute(
+            """UPDATE l3_song_album_attribution_overrides
+                  SET active=0, updated_at=CURRENT_TIMESTAMP
+                WHERE override_id=? AND active=1""",
+            (override_id,),
+        )
+        if cursor.rowcount != 1:
+            raise HTTPException(status_code=404, detail="覆盖记录不存在")
+        report = _apply_l3_attribution_or_409(conn)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    for namespace in ("analysis", "billboard", "yearly_review"):
+        invalidate(namespace)
+    _refresh_music_search_derived_data("L3 album attribution override removed")
+    return {
+        "status": "ok",
+        "override_id": int(override_id),
+        "attribution_revision": report.attribution_revision,
+        "decision_count": report.decision_count,
+    }
+
+
+@router.post("/l3-album-attributions/rebuild", response_model=StatusResponse)
+def rebuild_l3_album_attributions(auth: None = Depends(require_auth)):
+    from backend.core.cache_manager import invalidate
+    from backend.core.db import get_db
+
+    conn = get_db(readonly=False)
+    try:
+        report = _apply_l3_attribution_or_409(conn)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    for namespace in ("analysis", "billboard", "yearly_review"):
+        invalidate(namespace)
+    _refresh_music_search_derived_data("L3 album attributions rebuilt")
+    return {"status": "ok" if report.decision_count >= 0 else "error"}
 
 
 # ── Mutation endpoints ────────────────────────────────────────────────────
@@ -683,6 +987,11 @@ def rebuild_album_project_rows(auth: None = Depends(require_auth)):
     conn = get_db(readonly=False)
     try:
         rebuild_album_projects(conn)
+        _apply_l3_attribution_or_409(conn)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
     invalidate("analysis")

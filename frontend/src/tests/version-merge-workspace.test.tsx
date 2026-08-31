@@ -77,6 +77,52 @@ const { versionMergeMock } = vi.hoisted(() => ({
       .fn()
       .mockResolvedValue({ status: "ok", member_count: 2 }),
     rebuildAlbumProjects: vi.fn(),
+    fetchL3AlbumAttributionHealth: vi.fn().mockResolvedValue({
+      current_revision: 3,
+      status: "ready",
+      policy_version: "l3_native_album_attribution_v1",
+      expected_policy_version: "l3_native_album_attribution_v1",
+      track_identity_revision: 9,
+      album_project_revision: 5,
+      attributed_count: 6226,
+      published_count: 6226,
+      conflict_count: 0,
+      uncovered_count: 0,
+      issue_count: 0,
+      active_override_count: 0,
+      healthy: true,
+      updated_at: "2026-08-31",
+    }),
+    fetchL3AlbumAttributions: vi.fn().mockResolvedValue({
+      items: [{
+        canonical_song_key: "composition:1989-style",
+        representative_track_id: 101,
+        canonical_song_name: "Style",
+        canonical_artist_key: "artist:1",
+        target_project_id: 10,
+        target_project_name: "1989",
+        origin_release_project_id: 11,
+        origin_project_name: "1989 (Taylor's Version)",
+        attribution_kind: "studio_album",
+        decision_source: "automatic",
+        confidence: 1,
+        evidence: { evidence_codes: ["original_studio"] },
+        updated_at: "2026-08-31",
+      }],
+      issues: [],
+      overrides: [],
+      total: 1,
+      limit: 100,
+      offset: 0,
+    }),
+    rebuildL3AlbumAttributions: vi.fn().mockResolvedValue({ status: "ok" }),
+    createL3AlbumAttributionOverride: vi.fn().mockResolvedValue({
+      status: "ok",
+      override_id: 1,
+      attribution_revision: 4,
+      decision_count: 6226,
+    }),
+    removeL3AlbumAttributionOverride: vi.fn(),
     getGroupMembers: vi.fn().mockResolvedValue([]),
     getTrackGroupMembers: vi.fn().mockResolvedValue([
       {
@@ -153,6 +199,28 @@ describe("VersionMergeSection unified workspace", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("曲目重叠率")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /L3 · 作品版本/ })).toBeDisabled();
+  });
+
+  it("shows the machine-published L3 album attribution and saves an explicit exception", async () => {
+    render(<VersionMergeSection initialObjectType="album" />);
+
+    expect(await screen.findByText("L3 歌曲到原生专辑归属")).toBeInTheDocument();
+    expect(await screen.findByText("6,226")).toBeInTheDocument();
+    expect(screen.getByText("归属：1989 · 来源：1989 (Taylor's Version)")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Style/ }));
+    fireEvent.change(screen.getByLabelText("人工覆盖原因"), {
+      target: { value: "确认该作品原生归属" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存覆盖" }));
+
+    await waitFor(() => {
+      expect(versionMergeMock.createL3AlbumAttributionOverride).toHaveBeenCalledWith(
+        101,
+        10,
+        "确认该作品原生归属",
+      );
+    });
   });
 
   it("labels saved items and supports selecting two tracks with an explicit merge level", async () => {

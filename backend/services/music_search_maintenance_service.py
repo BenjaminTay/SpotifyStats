@@ -463,6 +463,21 @@ def rebuild_current_music_search_derived_data(
     shared_full_snapshot_plan: Mapping[str, Any] | None = None,
     atomic_snapshot_set: bool = False,
 ) -> dict[str, Any]:
+    from backend.domains.playback.l3_album_attribution import (
+        apply_l3_album_attribution_plan,
+        plan_l3_album_attributions,
+    )
+
+    attribution_plan = plan_l3_album_attributions(conn)
+    if attribution_plan.issues:
+        raise RuntimeError("L3 album attribution must be resolved before rebuilding music search")
+    if attribution_plan.changed:
+        apply_l3_album_attribution_plan(
+            conn,
+            attribution_plan,
+            commit=False,
+            ensure_schema=False,
+        )
     if not _search_metadata_dependencies_ready(conn):
         raise RuntimeError("music-search metadata aggregate dependency is not ready")
     contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))

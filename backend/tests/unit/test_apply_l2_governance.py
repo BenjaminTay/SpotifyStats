@@ -544,6 +544,8 @@ def test_clone_plan_runs_two_round_simulation_and_reports_aggregate_changes(
         "l3_changed": False,
         "l2_preserved_by_l3": True,
         "album_l3_changed": False,
+        "l3_album_attribution_changed": False,
+        "l3_album_attribution_issue_count": 0,
     }
     assert len(report["l1"]["rounds"]) == 2
     assert len(report["track"]["rounds"]) == 2

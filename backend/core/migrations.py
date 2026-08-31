@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 67
+LATEST_SCHEMA_VERSION = 68
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3694,6 +3694,88 @@ def migrate_067(conn: sqlite3.Connection):
         """CREATE UNIQUE INDEX IF NOT EXISTS idx_album_project_external_primary
                ON album_project_external_ids(project_id, provider)
             WHERE is_primary=1"""
+    )
+
+
+@migration(68, "l3_native_album_attribution")
+def migrate_068(conn: sqlite3.Connection):
+    """Persist auditable one-owner L3 song-to-album attribution."""
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS l3_song_album_attributions (
+            canonical_song_key       TEXT PRIMARY KEY,
+            representative_track_id  INTEGER NOT NULL REFERENCES tracks(track_id),
+            canonical_artist_key     TEXT NOT NULL,
+            target_project_id        INTEGER NOT NULL
+                REFERENCES album_projects(project_id) ON DELETE CASCADE,
+            origin_release_project_id INTEGER NOT NULL
+                REFERENCES album_projects(project_id) ON DELETE CASCADE,
+            attribution_kind         TEXT NOT NULL,
+            decision_source          TEXT NOT NULL
+                CHECK(decision_source IN ('automatic', 'manual')),
+            confidence               REAL NOT NULL DEFAULT 1.0
+                                         CHECK(confidence >= 0 AND confidence <= 1),
+            evidence_json            TEXT NOT NULL DEFAULT '{}',
+            policy_version           TEXT NOT NULL,
+            track_identity_revision  INTEGER NOT NULL,
+            album_project_revision   INTEGER NOT NULL,
+            created_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_l3_song_album_target
+            ON l3_song_album_attributions(target_project_id);
+        CREATE INDEX IF NOT EXISTS idx_l3_song_album_origin
+            ON l3_song_album_attributions(origin_release_project_id);
+
+        CREATE TABLE IF NOT EXISTS l3_song_album_attribution_overrides (
+            override_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            anchor_track_id   INTEGER NOT NULL REFERENCES tracks(track_id),
+            target_project_id INTEGER
+                REFERENCES album_projects(project_id) ON DELETE SET NULL,
+            action            TEXT NOT NULL
+                CHECK(action IN ('force_target', 'force_keep_source')),
+            reason            TEXT NOT NULL,
+            active            INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+            created_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_l3_song_album_override_active_anchor
+            ON l3_song_album_attribution_overrides(anchor_track_id)
+            WHERE active=1;
+
+        CREATE TABLE IF NOT EXISTS l3_song_album_attribution_issues (
+            canonical_song_key       TEXT NOT NULL,
+            issue_kind               TEXT NOT NULL
+                CHECK(issue_kind IN ('conflict', 'uncovered', 'invalid_override')),
+            representative_track_id  INTEGER REFERENCES tracks(track_id),
+            canonical_artist_key     TEXT,
+            evidence_json            TEXT NOT NULL DEFAULT '{}',
+            policy_version           TEXT NOT NULL,
+            track_identity_revision  INTEGER NOT NULL,
+            album_project_revision   INTEGER NOT NULL,
+            created_at               TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(canonical_song_key, issue_kind)
+        );
+
+        CREATE TABLE IF NOT EXISTS l3_album_attribution_revision_state (
+            state_id          INTEGER PRIMARY KEY CHECK(state_id = 1),
+            current_revision  INTEGER NOT NULL DEFAULT 0,
+            status            TEXT NOT NULL DEFAULT 'empty'
+                                   CHECK(status IN ('empty', 'building', 'ready', 'failed')),
+            policy_version    TEXT NOT NULL DEFAULT 'l3_native_album_attribution_v1',
+            track_identity_revision INTEGER NOT NULL DEFAULT 0,
+            album_project_revision  INTEGER NOT NULL DEFAULT 0,
+            mapping_digest    TEXT NOT NULL DEFAULT '',
+            attributed_count  INTEGER NOT NULL DEFAULT 0,
+            conflict_count    INTEGER NOT NULL DEFAULT 0,
+            uncovered_count   INTEGER NOT NULL DEFAULT 0,
+            updated_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT OR IGNORE INTO l3_album_attribution_revision_state(
+            state_id, current_revision, policy_version
+        ) VALUES (1, 0, 'l3_native_album_attribution_v1');
+        """
     )
 
 
