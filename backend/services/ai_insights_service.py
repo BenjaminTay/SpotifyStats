@@ -43,7 +43,7 @@ from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
 from backend.domains.metadata.genre_display_taxonomy import GENRE_DISPLAY_TAXONOMY_VERSION
 from backend.domains.settings.repository import SettingsRepository
 from backend.providers.base import ProviderConfig
-from backend.providers.llm.client import LLMProvider
+from backend.providers.llm.client import LLMProvider, LLMTextCompletion
 from backend.services.llm_translator import PROVIDERS, _get_config
 
 logger = logging.getLogger(__name__)
@@ -403,21 +403,21 @@ def _get_llm(
     )
 
 
-def _llm_chat(
+def _llm_text_completion(
     system_prompt: str,
     user_content: str,
     temperature: float = 0.3,
     max_tokens: int = 2048,
     thinking: bool = False,
-) -> Optional[str]:
-    """Send a single-turn chat to LLM. Returns content string or None."""
+) -> Optional[LLMTextCompletion]:
+    """Send one text turn and retain provider-neutral, public-safe diagnostics."""
     cfg = _get_config()
     llm = _get_llm(cfg)
     if llm is None:
         return None
 
     try:
-        data = llm.chat(
+        return llm.complete_text(
             [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
@@ -427,23 +427,42 @@ def _llm_chat(
             thinking=thinking,
         )
     except Exception:
-        logger.warning("LLM chat call failed", exc_info=True)
-        return None
+        # Keep the provider boundary diagnostic useful without logging the
+        # prompt, API key, raw provider response, or exception detail.
+        logger.warning("LLM text completion failed with an unexpected provider error")
+        return LLMTextCompletion(
+            provider=llm.provider,
+            model=llm.model,
+            empty_reason="provider_error",
+        )
 
-    if not data:
-        return None
 
-    provider = cfg.get("llm_provider", "")
-    if provider == "anthropic":
-        content_list = data.get("content", [])
-        if content_list:
-            return str(content_list[0].get("text", ""))
-        return ""
-    else:
-        choices = data.get("choices", [])
-        if choices:
-            return str(choices[0].get("message", {}).get("content", ""))
-        return ""
+def _llm_chat(
+    system_prompt: str,
+    user_content: str,
+    temperature: float = 0.3,
+    max_tokens: int = 2048,
+    thinking: bool = False,
+) -> Optional[str]:
+    """Compatibility wrapper returning the historical ``str | None`` shape."""
+    completion = _llm_text_completion(
+        system_prompt,
+        user_content,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        thinking=thinking,
+    )
+    if completion is None:
+        return None
+    if completion.empty_reason in {
+        "http_error",
+        "parse_error",
+        "provider_error",
+        "transport_error",
+        "invalid_response",
+    }:
+        return None
+    return completion.content
 
 
 # ── Cache helpers (reuse wikipedia_cache table) ─────────────────────────────

@@ -1,9 +1,7 @@
 """Agent-based yearly report generation with multi-turn tool calling.
 
 Replaces the single-call report_writer.py with a true agent loop:
-  Plan research → Execute tools → Review coverage → Synthesize report.
-
-Shares the same tool registry as the chat agent (14 local data tools + web_search).
+  Plan research → Execute snapshot-backed tools → Review coverage → Write sections.
 """
 
 from __future__ import annotations
@@ -16,15 +14,21 @@ from backend.domains.agent_runtime.native_loop import (
     NativeObservationLoop,
     NativeToolObservation,
 )
-from backend.domains.agent_runtime.tool_selector import (
-    AgentProfile,
-    select_report_profile,
-    tool_schemas_for_profile,
+from backend.domains.ai_reports.agentic_tools import (
+    REPORT_TOOL_NAMES,
+    execute_report_tool,
+    list_report_tools,
+    report_tool_schemas,
 )
-from backend.domains.ai_agent.tool_registry import dispatch_tool, get_default_registry, list_tools
 from backend.domains.ai_reports.report_section_protocol import (
     audit_report_sections,
     strip_unsupported_numeric_sentences,
+)
+from backend.domains.ai_reports.section_writer import (
+    SectionAuditResult,
+    SectionCompletion,
+    SectionWritePlan,
+    write_report_sections,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +44,7 @@ REPORT_PLANNER_SYSTEM_PROMPT = """你是 SpotifyStats 的年度音乐报告研�
 1. 阅读研究任务，制定调查计划
 2. 调用工具获取数据，每次调用后分析结果
 3. 根据发现深入追查——如果数据暗示有趣的故事，继续深挖
-4. 也可以使用 web_search 查询艺人背景、专辑信息等补充资料
+4. 只使用本任务提供的本地只读播放数据工具，不访问外部网络
 5. 当所有重要维度都调查充分后，输出最终研究摘要
 
 ## 输出格式（JSON）
@@ -59,7 +63,7 @@ REPORT_PLANNER_SYSTEM_PROMPT = """你是 SpotifyStats 的年度音乐报告研�
 
 ## 规则
 - 每个维度至少调用 1 个数据工具，重要维度（艺人、专辑）至少调用 2-3 个
-- web_search 用于补充艺人背景、专辑背景、曲风解释等本地数据没有的信息
+- 不得补写本地数据没有提供的艺人背景、专辑背景或外部事件
 - 调查深度优先于调查广度——宁可有 5 个深入分析的维度，不要 10 个浅尝辄止的
 - 发现异常数据（如月度逆转、双榜差异）必须深入追查
 """
@@ -85,19 +89,6 @@ REPORT_WRITER_INSTRUCTION = """
 
 
 # ── Agent loop ────────────────────────────────────────────────────────────────
-
-
-def _build_tools_description(profile: AgentProfile | None = None) -> str:
-    tools = list_tools()
-    if profile is not None:
-        selected = set(profile.tool_names)
-        tools = [item for item in tools if item.get("name") in selected]
-    lines = []
-    for t in tools:
-        name = t.get("name", "?")
-        desc = t.get("description", "")
-        lines.append(f"- **{name}**: {desc}")
-    return "\n".join(lines)
 
 
 def _summarize_chart_data(
@@ -159,6 +150,7 @@ def _native_report_research(
     base_filters: dict[str, Any],
     year: int,
     end_date: str,
+    research_context: dict[str, Any],
     emit_event: Any,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Run report research through the same native observation loop as chat."""
@@ -166,9 +158,7 @@ def _native_report_research(
     from backend.core.config import AI_AGENT_MAX_STEPS, AI_AGENT_MAX_TOOL_CALLS
     from backend.services.ai_agent_v2_service import ConfiguredNativeToolModel
 
-    registry = get_default_registry()
-    profile = select_report_profile(registry)
-    schemas = tool_schemas_for_profile(registry, profile)
+    schemas = report_tool_schemas()
     model = ConfiguredNativeToolModel()
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": planner_prompt},
@@ -179,24 +169,11 @@ def _native_report_research(
 
     def execute_tool(call, _step: int) -> NativeToolObservation:
         try:
-            definition = registry.get(call.name)
-            if call.name not in profile.tool_names:
-                raise ValueError(f"Tool is outside the selected Agent profile: {call.name}")
-            properties = definition.params_model.model_json_schema().get("properties") or {}
             params = dict(call.arguments)
-            for key, value in base_filters.items():
-                if key in properties and key not in params and value is not None:
-                    params[key] = value
-            if "year" in properties and "year" not in params:
-                params["year"] = year
-            if "period" in properties:
-                params.update(
-                    {
-                        "period": "custom",
-                        "start_date": f"{year}-01-01",
-                        "end_date": end_date,
-                    }
-                )
+            if call.name not in REPORT_TOOL_NAMES:
+                raise ValueError(f"Tool is outside the report snapshot profile: {call.name}")
+            params.update({key: value for key, value in base_filters.items() if value is not None})
+            params["year"] = year
             identity = f"{call.name}:{json.dumps(params, ensure_ascii=False, sort_keys=True)}"
             if identity in identities:
                 duplicate = {
@@ -210,7 +187,7 @@ def _native_report_research(
                     counted=False,
                 )
             identities.add(identity)
-            raw = registry.dispatch(call.name, params)
+            raw = execute_report_tool(call.name, params, context=research_context)
             data = raw.get("data") if isinstance(raw.get("data"), dict) else {}
             status = "empty" if data.get("found") is False else "ok"
             item = {
@@ -218,13 +195,14 @@ def _native_report_research(
                 "status": status,
                 "_tool_name": call.name,
                 "_params": params,
+                "result_summary": raw.get("summary") or raw.get("result_summary") or "",
             }
             results.append(item)
             return NativeToolObservation(
                 model_payload={
                     "status": status,
                     "tool_name": call.name,
-                    "result_summary": raw.get("result_summary"),
+                    "result_summary": item["result_summary"],
                     "source_range": raw.get("source_range"),
                     "data": data,
                 },
@@ -249,7 +227,7 @@ def _native_report_research(
                     "stage": "researching",
                     "progress_pct": min(0.75, 0.25 + step * 0.08),
                     "runtime": "v2",
-                    "agent_profile": profile.name,
+                    "agent_profile": "yearly_snapshot_readonly",
                 },
             )
 
@@ -280,6 +258,9 @@ def run_report_agent(
     max_merge_gap_minutes: int | None,
     chart_data: dict[str, Any],
     chart_specs: list[dict[str, Any]],
+    research_context: dict[str, Any] | None = None,
+    runtime_metrics: Any = None,
+    fallback_sections: list[dict[str, Any]] | None = None,
     emit_event: Any = None,
 ) -> dict[str, Any]:
     """Run the multi-turn agent loop to research and write a yearly report.
@@ -289,8 +270,9 @@ def run_report_agent(
     from backend.services.ai_insights_service import _llm_chat
 
     # ── Build tool description for the planner ──
-    report_profile = select_report_profile(get_default_registry())
-    tools_desc = _build_tools_description(report_profile)
+    tools_desc = "\n".join(
+        f"- **{item['name']}**: {item['description']}" for item in list_report_tools()
+    )
 
     # ── Phase 1: Research Planning + Execution ──
     base_filters = {
@@ -306,7 +288,7 @@ def run_report_agent(
         f"数据范围：{year}-01-01 至 {end_date}。\n"
         f"{'这是部分年份（不完全），报告中使用阶段性表述。' if is_partial_year else '这是完整年份。'}\n"
         f"可用图表：{', '.join(s.get('id', '') for s in chart_specs)}。\n"
-        f"请在本地数据工具和 web_search 之间灵活切换，深入调查艺人和专辑的背景信息。"
+        "请只基于本任务的本地只读快照工具调查，不补写外部背景信息。"
     )
 
     planner_prompt = REPORT_PLANNER_SYSTEM_PROMPT.format(tools_description=tools_desc)
@@ -314,8 +296,7 @@ def run_report_agent(
         f"## 研究任务\n{task_description}\n\n"
         f"## 图表数据（由确定性后端生成，可直接引用）\n"
         f"{json.dumps(_summarize_chart_data(chart_data, chart_specs), ensure_ascii=False, indent=2)}\n\n"
-        f"请制定研究计划并执行数据调查。每个维度调用工具后分析结果，发现异常深入追查。"
-        f"也可以使用 web_search 补充艺人/专辑背景信息。"
+        "请制定研究计划并执行数据调查。每个维度调用工具后分析结果，发现异常深入追查。"
     )
 
     if emit_event:
@@ -337,6 +318,7 @@ def run_report_agent(
             base_filters=base_filters,
             year=year,
             end_date=end_date,
+            research_context=research_context or {},
             emit_event=emit_event,
         )
     else:
@@ -362,15 +344,15 @@ def run_report_agent(
             for tc in tool_calls[:6]:
                 tool_name = tc.get("tool_name", "")
                 params = {**base_filters, **(tc.get("params", {}))}
-                if "year" not in params and tool_name in (
-                    "wrapped_yearly",
-                    "analysis_stats",
-                    "analysis_charts",
-                ):
-                    params["year"] = year
+                params["year"] = year
 
                 try:
-                    result = dispatch_tool(tool_name, params)
+                    result = execute_report_tool(
+                        tool_name,
+                        params,
+                        context=research_context or {},
+                    )
+                    result["result_summary"] = result.get("summary") or ""
                     result["_tool_name"] = tool_name
                     result["_params"] = params
                     round_results.append(result)
@@ -425,46 +407,28 @@ def run_report_agent(
         f"可用图表: {', '.join(s.get('id', '') for s in chart_specs)}\n"
     )
 
+    from backend.core.config import AI_REPORT_SECTION_WRITER_V2
+
+    section_writer_metadata: dict[str, Any] | None = None
     sections: list[dict[str, Any]] = []
-    for writer_attempt in range(2):
-        retry_instruction = ""
-        if writer_attempt:
-            retry_instruction = (
-                "\n\n上一次输出没有达到 6 节且 3000 字的结构门槛。"
-                "请重新完整输出，不要解释失败原因，不要省略 JSON 尾部。"
-            )
-        writer_response = _llm_chat(
-            "你是 SpotifyStats 年度音乐报告作者。基于工具数据撰写报告。只输出 JSON。",
-            write_instruction + retry_instruction,
-            temperature=0.35,
-            max_tokens=6144,
+    if AI_REPORT_SECTION_WRITER_V2 and fallback_sections and len(fallback_sections) >= 6:
+        sections, section_writer_metadata = _write_sections_v2(
+            fallback_sections=fallback_sections[:6],
+            research_text=research_text,
+            all_tool_results=all_tool_results,
+            chart_data=chart_data,
+            chart_specs=chart_specs,
+            year=year,
+            end_date=end_date,
+            runtime_metrics=runtime_metrics,
+            emit_event=emit_event,
         )
-        candidate: list[dict[str, Any]] = []
-        if writer_response:
-            candidate = _parse_json_sections(writer_response, chart_specs)
-            if not candidate:
-                candidate = _parse_markdown_sections(writer_response)
-            if not candidate and len(writer_response.strip()) > 50:
-                candidate = [
-                    {"heading": "年度报告", "prose": writer_response.strip(), "chart_refs": []}
-                ]
-        candidate_chars = sum(len(str(item.get("prose") or "")) for item in candidate)
-        current_chars = sum(len(str(item.get("prose") or "")) for item in sections)
-        if (len(candidate), candidate_chars) > (len(sections), current_chars):
-            sections = candidate
-        if len(candidate) >= 6 and candidate_chars >= 2800:
-            break
-        if writer_attempt == 0 and emit_event:
-            emit_event(
-                "report_writer_retry",
-                f"初稿结构不足（{len(candidate)} 节/{candidate_chars} 字），正在重写",
-                {
-                    "stage": "writing_report",
-                    "progress_pct": 0.87,
-                    "section_count": len(candidate),
-                    "article_length": candidate_chars,
-                },
-            )
+    else:
+        sections = _write_full_report_legacy(
+            write_instruction=write_instruction,
+            chart_specs=chart_specs,
+            emit_event=emit_event,
+        )
 
     sections, checkpoints, tool_evidence = audit_report_sections(
         sections,
@@ -573,7 +537,215 @@ def run_report_agent(
         "evidence": all_tool_results,
         "tool_evidence": tool_evidence,
         "section_checkpoints": checkpoints,
+        "section_writer_metadata": section_writer_metadata,
     }
+
+
+def _write_full_report_legacy(
+    *,
+    write_instruction: str,
+    chart_specs: list[dict[str, Any]],
+    emit_event: Any,
+) -> list[dict[str, Any]]:
+    """Rollback path for providers where section writing is disabled."""
+    from backend.services.ai_insights_service import _llm_chat
+
+    sections: list[dict[str, Any]] = []
+    for writer_attempt in range(2):
+        retry_instruction = ""
+        if writer_attempt:
+            retry_instruction = (
+                "\n\n上一次输出没有达到 6 节且 3000 字的结构门槛。"
+                "请重新完整输出，不要解释失败原因，不要省略 JSON 尾部。"
+            )
+        writer_response = _llm_chat(
+            "你是 SpotifyStats 年度音乐报告作者。基于工具数据撰写报告。只输出 JSON。",
+            write_instruction + retry_instruction,
+            temperature=0.35,
+            max_tokens=6144,
+        )
+        candidate: list[dict[str, Any]] = []
+        if writer_response:
+            candidate = _parse_json_sections(writer_response, chart_specs)
+            if not candidate:
+                candidate = _parse_markdown_sections(writer_response)
+            if not candidate and len(writer_response.strip()) > 50:
+                candidate = [
+                    {"heading": "年度报告", "prose": writer_response.strip(), "chart_refs": []}
+                ]
+        candidate_chars = sum(len(str(item.get("prose") or "")) for item in candidate)
+        current_chars = sum(len(str(item.get("prose") or "")) for item in sections)
+        if (len(candidate), candidate_chars) > (len(sections), current_chars):
+            sections = candidate
+        if len(candidate) >= 6 and candidate_chars >= 2800:
+            break
+        if writer_attempt == 0 and emit_event:
+            emit_event(
+                "report_writer_retry",
+                f"初稿结构不足（{len(candidate)} 节/{candidate_chars} 字），正在重写",
+                {
+                    "stage": "writing_report",
+                    "progress_pct": 0.87,
+                    "section_count": len(candidate),
+                    "article_length": candidate_chars,
+                },
+            )
+
+    return sections
+
+
+def _write_sections_v2(
+    *,
+    fallback_sections: list[dict[str, Any]],
+    research_text: str,
+    all_tool_results: list[dict[str, Any]],
+    chart_data: dict[str, Any],
+    chart_specs: list[dict[str, Any]],
+    year: int,
+    end_date: str,
+    runtime_metrics: Any,
+    emit_event: Any,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Write six isolated sections with bounded concurrency and local fallback."""
+    from backend.core.config import AI_REPORT_SECTION_WRITER_CONCURRENCY
+    from backend.services.ai_insights_service import _llm_text_completion
+
+    plans = tuple(
+        SectionWritePlan(
+            section_id=str(section.get("id") or f"section_{index + 1}"),
+            heading=str(section.get("heading") or f"第 {index + 1} 节"),
+            payload={
+                "index": index,
+                "fallback": dict(section),
+                "evidence_refs": list(section.get("evidence_refs") or []),
+                "chart_refs": list(section.get("chart_refs") or []),
+            },
+        )
+        for index, section in enumerate(fallback_sections)
+    )
+    chart_summary = _summarize_chart_data(chart_data, chart_specs)
+
+    def complete(plan: SectionWritePlan, attempt: int) -> SectionCompletion:
+        fallback = dict(plan.payload["fallback"])
+        refs = set(plan.payload.get("evidence_refs") or [])
+        evidence = [
+            {
+                "tool_name": item.get("_tool_name"),
+                "result_summary": item.get("result_summary") or item.get("summary"),
+                "data": item.get("data"),
+            }
+            for item in all_tool_results
+            if not refs or item.get("_tool_name") in refs
+        ]
+        chart_refs = set(plan.payload.get("chart_refs") or [])
+        charts = {key: value for key, value in chart_summary.items() if key in chart_refs}
+        prompt = json.dumps(
+            {
+                "year": year,
+                "end_date": end_date,
+                "section_id": plan.section_id,
+                "heading": plan.heading,
+                "role": fallback.get("role"),
+                "deck": fallback.get("deck"),
+                "research_summary": research_text[:2400],
+                "evidence": evidence,
+                "charts": charts,
+                "allowed_chart_refs": list(chart_refs),
+                "allowed_evidence_refs": sorted(refs),
+                "attempt": attempt,
+                "instruction": (
+                    "围绕本节问题写 500 至 800 个中文字符；每个数字必须逐字来自 evidence 或 charts；"
+                    "不得补写外部背景和用户生活事件；只输出一个章节 JSON 对象。"
+                ),
+            },
+            ensure_ascii=False,
+            default=str,
+        )[:16000]
+        completion = _llm_text_completion(
+            "你是 SpotifyStats 年度报告分章节作者。只输出 JSON："
+            '{"heading":"...","prose":"...","chart_refs":[],"evidence_refs":[]}。',
+            prompt,
+            temperature=0.35,
+            max_tokens=1800,
+        )
+        if completion is None:
+            return SectionCompletion(empty_reason="provider_unavailable")
+        if runtime_metrics is not None:
+            runtime_metrics.record_provider_call(completion, stage=f"section:{plan.section_id}")
+        return SectionCompletion(
+            content=completion.content,
+            finish_reason=completion.finish_reason,
+            usage=completion.usage,
+            empty_reason=completion.empty_reason or None,
+        )
+
+    def parse(plan: SectionWritePlan, content: str) -> dict[str, Any]:
+        parsed = _parse_single_section(content, chart_specs)
+        if parsed is None:
+            raise ValueError("invalid_section_json")
+        fallback = dict(plan.payload["fallback"])
+        return {
+            **fallback,
+            **parsed,
+            "id": fallback.get("id") or plan.section_id,
+            "role": fallback.get("role") or "opening",
+            "deck": fallback.get("deck") or "",
+            "insight_refs": list(fallback.get("insight_refs") or []),
+            "pull_quote": fallback.get("pull_quote"),
+        }
+
+    def audit(plan: SectionWritePlan, section: dict[str, Any]) -> SectionAuditResult:
+        _audited, checkpoints, _evidence = audit_report_sections(
+            [section],
+            tool_results=all_tool_results,
+            chart_data=chart_data,
+            chart_specs=chart_specs,
+            year=year,
+            end_date=end_date,
+        )
+        checkpoint = checkpoints[0] if checkpoints else {"status": "fail", "issues": ["no_audit"]}
+        accepted = checkpoint.get("status") != "fail"
+        return SectionAuditResult(
+            accepted=accepted,
+            issues=tuple(str(issue) for issue in checkpoint.get("issues") or []),
+        )
+
+    def fallback(plan: SectionWritePlan, _attempts: tuple[Any, ...]) -> dict[str, Any]:
+        return dict(plan.payload["fallback"])
+
+    if emit_event:
+        emit_event(
+            "stage_started",
+            "正在分章节撰写年度报告",
+            {
+                "stage": "writing_sections",
+                "progress_pct": 0.85,
+                "section_count": len(plans),
+            },
+        )
+    run = write_report_sections(
+        plans,
+        complete=complete,
+        parse=parse,
+        audit=audit,
+        fallback=fallback,
+        max_workers=AI_REPORT_SECTION_WRITER_CONCURRENCY,
+        max_attempts=2,
+    )
+    if emit_event:
+        for result in run.results:
+            emit_event(
+                "report_section_written",
+                f"章节完成：{result.plan.heading}",
+                {
+                    "stage": "writing_sections",
+                    "progress_pct": 0.90,
+                    "section_id": result.plan.section_id,
+                    "status": result.status,
+                    "attempt_count": len(result.attempts),
+                },
+            )
+    return list(run.sections), run.metadata.to_dict()
 
 
 # ── Fact Auditor (DETERMINISTIC) ──────────────────────────────────────────────

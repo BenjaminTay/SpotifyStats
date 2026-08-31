@@ -25,7 +25,7 @@ REPORT_TOOL_NAMES = {
 class ReportToolDefinition:
     name: str
     description: str
-    handler: Callable[[dict[str, Any]], dict[str, Any]]
+    handler: Callable[[dict[str, Any], dict[str, Any] | None], dict[str, Any]]
     read_only: bool = True
 
     def describe(self) -> dict[str, Any]:
@@ -36,12 +36,14 @@ class ReportToolDefinition:
         }
 
 
-def _period_context(params: dict[str, Any]) -> dict[str, Any]:
+def _period_context(
+    params: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
     year = int(params.get("year") or date.today().year)
     latest = str(params.get("latest_play_date") or "")
     if not latest:
         try:
-            period = _gather_yearly_data_for_tool(params).get("reporting_period") or {}
+            period = _yearly_data(params, context).get("reporting_period") or {}
         except Exception:
             period = {}
         latest = str(period.get("end_date") or period.get("latest_play_date") or f"{year}-12-31")
@@ -69,8 +71,11 @@ def _period_context(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _not_implemented_summary(tool_name: str) -> Callable[[dict[str, Any]], dict[str, Any]]:
-    def handler(params: dict[str, Any]) -> dict[str, Any]:
+def _not_implemented_summary(
+    tool_name: str,
+) -> Callable[[dict[str, Any], dict[str, Any] | None], dict[str, Any]]:
+    def handler(params: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
+        del context
         return {
             "ok": True,
             "data": {"params": params, "pending_live_implementation": True},
@@ -99,8 +104,16 @@ def _gather_yearly_data_for_tool(params: dict[str, Any]) -> dict[str, Any]:
         conn.close()
 
 
-def _yearly_overview(params: dict[str, Any]) -> dict[str, Any]:
-    data = _gather_yearly_data_for_tool(params)
+def _yearly_data(params: dict[str, Any], context: dict[str, Any] | None) -> dict[str, Any]:
+    """Return one immutable task context when available, avoiding cold rebuilds."""
+
+    return context if context is not None else _gather_yearly_data_for_tool(params)
+
+
+def _yearly_overview(
+    params: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    data = _yearly_data(params, context)
     period = data.get("reporting_period") or {}
     hero = data.get("hero") or {}
     total_minutes = float(hero.get("total_minutes") or 0)
@@ -114,8 +127,10 @@ def _yearly_overview(params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "data": {"reporting_period": period, "hero": hero}, "summary": summary}
 
 
-def _yearly_top_entities(params: dict[str, Any]) -> dict[str, Any]:
-    data = _gather_yearly_data_for_tool(params)
+def _yearly_top_entities(
+    params: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    data = _yearly_data(params, context)
     payload = {
         "top_artists": data.get("top_artists") or [],
         "top_tracks": data.get("top_tracks") or [],
@@ -131,8 +146,10 @@ def _yearly_top_entities(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _personal_billboard_year_end(params: dict[str, Any]) -> dict[str, Any]:
-    data = _gather_yearly_data_for_tool(params)
+def _personal_billboard_year_end(
+    params: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    data = _yearly_data(params, context)
     billboard = data.get("billboard_year_end") or {}
     summary = (
         f"Personal Billboard: track {_name(billboard.get('tracks') or [])}, "
@@ -142,8 +159,10 @@ def _personal_billboard_year_end(params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "data": billboard, "summary": summary}
 
 
-def _billboard_yearly_diagnostics(params: dict[str, Any]) -> dict[str, Any]:
-    data = _gather_yearly_data_for_tool(params)
+def _billboard_yearly_diagnostics(
+    params: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    data = _yearly_data(params, context)
     billboard = data.get("billboard_year_end") or {}
     artists = billboard.get("artists") or []
     albums = billboard.get("albums") or []
@@ -177,8 +196,10 @@ def _billboard_yearly_diagnostics(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _yearly_same_period_comparison(params: dict[str, Any]) -> dict[str, Any]:
-    data = _gather_yearly_data_for_tool(params)
+def _yearly_same_period_comparison(
+    params: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    data = _yearly_data(params, context)
     yoy = data.get("year_over_year") if isinstance(data.get("year_over_year"), dict) else {}
     same_period = yoy.get("same_period") if isinstance(yoy.get("same_period"), dict) else {}
     changes = same_period.get("changes") if isinstance(same_period.get("changes"), dict) else {}
@@ -194,8 +215,10 @@ def _yearly_same_period_comparison(params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "data": yoy, "summary": summary}
 
 
-def _genre_distribution(params: dict[str, Any]) -> dict[str, Any]:
-    data = _gather_yearly_data_for_tool(params)
+def _genre_distribution(
+    params: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    data = _yearly_data(params, context)
     summary_data = data.get("genre_summary") if isinstance(data.get("genre_summary"), dict) else {}
     top_genres = summary_data.get("top_genres") or data.get("top_genres") or []
     leader = _name(top_genres)
@@ -207,8 +230,10 @@ def _genre_distribution(params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "data": {**summary_data, "top_genres": top_genres}, "summary": summary}
 
 
-def _discovery_and_returns(params: dict[str, Any]) -> dict[str, Any]:
-    data = _gather_yearly_data_for_tool(params)
+def _discovery_and_returns(
+    params: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    data = _yearly_data(params, context)
     new_artists = data.get("new_artists") or []
     longest_love = data.get("longest_love")
     leader = _name(new_artists)
@@ -227,8 +252,10 @@ def _discovery_and_returns(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _highlight_day_detail(params: dict[str, Any]) -> dict[str, Any]:
-    data = _gather_yearly_data_for_tool(params)
+def _highlight_day_detail(
+    params: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    data = _yearly_data(params, context)
     highlight = data.get("most_active_day") if isinstance(data.get("most_active_day"), dict) else {}
     summary = "No highlight day available."
     if highlight:
@@ -239,8 +266,8 @@ def _highlight_day_detail(params: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "data": highlight, "summary": summary}
 
 
-def _entity_stats(params: dict[str, Any]) -> dict[str, Any]:
-    data = _gather_yearly_data_for_tool(params)
+def _entity_stats(params: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
+    data = _yearly_data(params, context)
     payload = {
         "top_artists": data.get("top_artists") or [],
         "top_tracks": data.get("top_tracks") or [],
@@ -381,11 +408,33 @@ def list_report_tools() -> list[dict[str, Any]]:
     return [_TOOLS[name].describe() for name in sorted(_TOOLS)]
 
 
-def execute_report_tool(tool_name: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+def report_tool_schemas() -> list[dict[str, Any]]:
+    """Return compact native-tool schemas for snapshot-backed report research."""
+
+    return [
+        {
+            "name": definition.name,
+            "description": definition.description,
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        }
+        for definition in (_TOOLS[name] for name in sorted(_TOOLS))
+    ]
+
+
+def execute_report_tool(
+    tool_name: str,
+    params: dict[str, Any] | None = None,
+    *,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     try:
         definition = _TOOLS[tool_name]
     except KeyError as exc:
         raise ValueError(f"Unknown report tool: {tool_name}") from exc
     if not definition.read_only:
         raise ValueError(f"Report tool is not read-only: {tool_name}")
-    return definition.handler(params or {})
+    return definition.handler(params or {}, context)

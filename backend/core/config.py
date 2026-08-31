@@ -71,6 +71,15 @@ AI_AGENT_CONTEXT_SOURCE = _get("AI_AGENT_CONTEXT_SOURCE", "memory").strip().lowe
 if AI_AGENT_CONTEXT_SOURCE not in {"memory", "event_log"}:
     AI_AGENT_CONTEXT_SOURCE = "memory"
 
+# V5 report-performance switches remain explicit rollback boundaries.  Both
+# paths are read-only and keep the V4 quality gates in place.
+AI_YEARLY_CONTEXT_SNAPSHOT_V1 = _get_bool("AI_YEARLY_CONTEXT_SNAPSHOT_V1", True)
+AI_REPORT_SECTION_WRITER_V2 = _get_bool("AI_REPORT_SECTION_WRITER_V2", True)
+AI_REPORT_SECTION_WRITER_CONCURRENCY = max(
+    1,
+    min(2, int(_get("AI_REPORT_SECTION_WRITER_CONCURRENCY", "2"))),
+)
+
 # ── Remote access auth (Task 5) ──────────────────────────────────────
 
 SPOTIFY_STATS_REQUIRE_AUTH = _get("SPOTIFY_STATS_REQUIRE_AUTH", "0")

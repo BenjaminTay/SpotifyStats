@@ -7,6 +7,7 @@ Uses the shared HttpClient for HTTP transport.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -16,6 +17,8 @@ from backend.infrastructure.http.client import HttpClient
 from backend.providers.base import (
     BaseProvider,
     ProviderConfig,
+    ProviderHTTPError,
+    ProviderNetworkError,
     ProviderParseError,
     provider_error_from_status,
 )
@@ -38,6 +41,37 @@ class LLMCompletion:
     tool_calls: list[LLMToolCall] = field(default_factory=list)
     finish_reason: str = ""
     usage: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LLMTextCompletion:
+    """Provider-neutral result for one text-only model turn.
+
+    The result intentionally contains neither the request messages nor the raw
+    provider response.  ``empty_reason`` is a stable, low-cardinality value
+    suitable for metrics and diagnostics without exposing user data.
+    """
+
+    content: str = ""
+    provider: str = ""
+    model: str = ""
+    finish_reason: str = ""
+    usage: dict[str, Any] = field(default_factory=dict)
+    elapsed_ms: int = 0
+    empty_reason: str = ""
+
+    def to_metrics(self) -> dict[str, Any]:
+        """Return only low-cardinality diagnostics safe for task metadata."""
+
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "finish_reason": self.finish_reason,
+            "usage": dict(self.usage),
+            "elapsed_ms": self.elapsed_ms,
+            "empty_reason": self.empty_reason,
+            "content_chars": len(self.content),
+        }
 
 
 @dataclass(frozen=True)
@@ -171,6 +205,150 @@ class LLMProvider(BaseProvider):
         if resp.status == 200:
             return resp.json()
         return None
+
+    def complete_text(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        temperature: float = 0.3,
+        max_tokens: int = 4096,
+        thinking: bool = False,
+    ) -> LLMTextCompletion:
+        """Run one text-only turn and retain safe completion diagnostics.
+
+        Unlike the legacy :meth:`chat` API, this method always returns a
+        normalized result for expected provider, transport, and parse
+        failures.  It never stores the request messages or raw response.
+        """
+
+        started = time.perf_counter()
+        try:
+            payload = self.chat(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                thinking=thinking,
+            )
+        except ProviderNetworkError:
+            return self._empty_text_completion(started, "transport_error")
+        except ProviderHTTPError:
+            return self._empty_text_completion(started, "http_error")
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError):
+            return self._empty_text_completion(started, "parse_error")
+        except Exception:  # Defensive provider boundary; never expose raw error details.
+            return self._empty_text_completion(started, "provider_error")
+
+        if payload is None:
+            return self._empty_text_completion(started, "http_error")
+        if not isinstance(payload, dict):
+            return self._empty_text_completion(started, "invalid_response")
+
+        elapsed_ms = self._elapsed_ms(started)
+        if self.provider == "anthropic":
+            return self._parse_anthropic_text_completion(payload, elapsed_ms)
+        return self._parse_openai_text_completion(payload, elapsed_ms)
+
+    @staticmethod
+    def _elapsed_ms(started: float) -> int:
+        return max(0, round((time.perf_counter() - started) * 1000))
+
+    def _empty_text_completion(self, started: float, reason: str) -> LLMTextCompletion:
+        return LLMTextCompletion(
+            provider=self.provider,
+            model=self.model,
+            elapsed_ms=self._elapsed_ms(started),
+            empty_reason=reason,
+        )
+
+    def _parse_openai_text_completion(
+        self,
+        payload: dict[str, Any],
+        elapsed_ms: int,
+    ) -> LLMTextCompletion:
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            return LLMTextCompletion(
+                provider=self.provider,
+                model=self.model,
+                usage=self._safe_usage(payload),
+                elapsed_ms=elapsed_ms,
+                empty_reason="missing_choices",
+            )
+        choice = choices[0]
+        if not isinstance(choice, dict):
+            return LLMTextCompletion(
+                provider=self.provider,
+                model=self.model,
+                usage=self._safe_usage(payload),
+                elapsed_ms=elapsed_ms,
+                empty_reason="invalid_choice",
+            )
+        finish_reason = str(choice.get("finish_reason") or "")
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            return LLMTextCompletion(
+                provider=self.provider,
+                model=self.model,
+                finish_reason=finish_reason,
+                usage=self._safe_usage(payload),
+                elapsed_ms=elapsed_ms,
+                empty_reason="missing_message",
+            )
+        content_value = message.get("content")
+        content = content_value if isinstance(content_value, str) else ""
+        return LLMTextCompletion(
+            content=content,
+            provider=self.provider,
+            model=self.model,
+            finish_reason=finish_reason,
+            usage=self._safe_usage(payload),
+            elapsed_ms=elapsed_ms,
+            empty_reason=self._content_empty_reason(content, finish_reason),
+        )
+
+    def _parse_anthropic_text_completion(
+        self,
+        payload: dict[str, Any],
+        elapsed_ms: int,
+    ) -> LLMTextCompletion:
+        finish_reason = str(payload.get("stop_reason") or "")
+        blocks = payload.get("content")
+        if not isinstance(blocks, list):
+            return LLMTextCompletion(
+                provider=self.provider,
+                model=self.model,
+                finish_reason=finish_reason,
+                usage=self._safe_usage(payload),
+                elapsed_ms=elapsed_ms,
+                empty_reason="missing_content_blocks",
+            )
+        content = "\n".join(
+            str(block.get("text") or "")
+            for block in blocks
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+        return LLMTextCompletion(
+            content=content,
+            provider=self.provider,
+            model=self.model,
+            finish_reason=finish_reason,
+            usage=self._safe_usage(payload),
+            elapsed_ms=elapsed_ms,
+            empty_reason=self._content_empty_reason(content, finish_reason),
+        )
+
+    @staticmethod
+    def _safe_usage(payload: dict[str, Any]) -> dict[str, Any]:
+        usage = payload.get("usage")
+        return dict(usage) if isinstance(usage, dict) else {}
+
+    @staticmethod
+    def _content_empty_reason(content: str, finish_reason: str) -> str:
+        if content.strip():
+            return ""
+        if finish_reason in {"length", "max_tokens"}:
+            return "max_tokens_without_content"
+        return "empty_content"
 
     def complete_with_tools(
         self,
