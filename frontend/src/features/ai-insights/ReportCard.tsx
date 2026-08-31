@@ -126,6 +126,9 @@ export function ReportCard({
   const exactTime = formatReportTimestamp(cachedAt)
   const suggestions = onFollowUp ? followUpQuestions(reportType, entities) : []
   const fallbackLevel = typeof metadata?.fallback_level === 'string' ? metadata.fallback_level : null
+  const sectionFallbackCount = typeof metadata?.section_writer_fallback_count === 'number'
+    ? metadata.section_writer_fallback_count
+    : 0
   const articleLength = typeof metadata?.article_length === 'number' ? metadata.article_length : null
   const finalArtifactQualityPassed = typeof metadata?.final_artifact_quality_passed === 'boolean'
     ? metadata.final_artifact_quality_passed
@@ -206,9 +209,14 @@ export function ReportCard({
               报告质量未通过校验
             </span>
           )}
-          {!qualityRejected && fallbackLevel && (
+          {!qualityRejected && sectionFallbackCount > 0 && (
             <span className="rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-amber-600 dark:text-amber-400">
-              基础模式生成
+              {sectionFallbackCount} 个章节已用本地数据补齐
+            </span>
+          )}
+          {!qualityRejected && fallbackLevel && sectionFallbackCount === 0 && (
+            <span className="rounded-full border border-amber-500/20 bg-amber-500/[0.06] px-2 py-0.5 text-amber-600 dark:text-amber-400">
+              已用本地数据生成完整版本
             </span>
           )}
           {articleLength !== null && (

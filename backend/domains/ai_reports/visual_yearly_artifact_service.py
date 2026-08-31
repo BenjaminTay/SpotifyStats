@@ -607,6 +607,13 @@ def _run_visual_research(
                 get_or_build_yearly_agent_context,
             )
 
+            _emit(
+                emit_event,
+                "stage_started",
+                "正在准备本次年度分析数据",
+                "preparing_context",
+                0.16,
+            )
             built = get_or_build_yearly_agent_context(request)
             payload = built.payload
             context = built.context
@@ -623,6 +630,13 @@ def _run_visual_research(
                 "chart_data": payload.get("chart_data") or {},
             }
             evidence = [item for item in payload.get("evidence") or [] if isinstance(item, dict)]
+            _emit(
+                emit_event,
+                "stage_completed",
+                "已复用准备好的年度数据" if built.cache_hit else "年度分析数据已准备完成",
+                "context_ready",
+                0.40,
+            )
             return evidence, context
         except Exception:
             # The flag is a safe rollout seam. A snapshot/cache failure must

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.evaluate_ai_question_matrix import MatrixCase, _grade_case
+from scripts.evaluate_ai_question_matrix import (
+    MatrixCase,
+    _grade_case,
+    _performance_gate,
+    _performance_summary,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -102,3 +107,59 @@ def test_live_quality_gate_rejects_missing_answer_contract_or_tool_evidence() ->
     assert graded["grade"] == "Fail"
     assert any("answer quality contract" in issue for issue in graded["issues"])
     assert any("tool_evidence_v2" in issue for issue in graded["issues"])
+
+
+def test_performance_summary_and_gate_use_nearest_rank_p95() -> None:
+    results = [
+        {
+            "grade": "Pass",
+            "runtime_metrics": {
+                "total_elapsed_ms": index * 1_000,
+                "model_elapsed_ms": index * 600,
+                "tool_elapsed_ms": index * 300,
+            },
+        }
+        for index in range(1, 31)
+    ]
+    summary = _performance_summary({"results": results})
+
+    assert summary["sample_count"] == 30
+    assert summary["pass_rate"] == 1.0
+    assert summary["total_elapsed_ms"]["p95"] == 29_000
+    assert summary["tool_elapsed_ms"]["p95"] == 8_700
+    assert (
+        _performance_gate(
+            summary,
+            min_samples=30,
+            min_pass_rate=1.0,
+            max_p95_ms=60_000,
+            max_tool_p95_ms=45_000,
+        )
+        == []
+    )
+
+
+def test_performance_gate_rejects_missing_samples_and_slow_p95() -> None:
+    summary = _performance_summary(
+        {
+            "results": [
+                {
+                    "grade": "Partial",
+                    "runtime_metrics": {
+                        "total_elapsed_ms": 61_000,
+                        "tool_elapsed_ms": 46_000,
+                    },
+                }
+            ]
+        }
+    )
+
+    failures = _performance_gate(
+        summary,
+        min_samples=30,
+        min_pass_rate=1.0,
+        max_p95_ms=60_000,
+        max_tool_p95_ms=45_000,
+    )
+
+    assert len(failures) == 4

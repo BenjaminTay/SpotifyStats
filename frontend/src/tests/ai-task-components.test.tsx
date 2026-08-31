@@ -101,6 +101,35 @@ describe('AITaskProgress', () => {
     expect(screen.getByText('75%')).toBeInTheDocument()
   })
 
+  it('renders context and section writer stages with user-facing labels', () => {
+    render(
+      <AITaskProgress
+        task={{
+          found: true,
+          task_id: 'task-section-writer',
+          task_type: 'ai_report_yearly',
+          status: 'running',
+          stage: 'writing_sections',
+          progress_pct: 0.85,
+          message: '正在分章节撰写年度报告',
+        }}
+        events={[
+          {
+            event_id: 1,
+            task_id: 'task-section-writer',
+            event_type: 'stage_completed',
+            stage: 'context_ready',
+            message: '已复用准备好的年度数据',
+            created_at: '2026-08-31T00:00:00',
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('逐章撰写年度报告')).toBeInTheDocument()
+    expect(screen.getByText('已复用准备好的年度数据')).toBeInTheDocument()
+  })
+
   it('renders task errors when the task fails', () => {
     render(
       <AITaskProgress
