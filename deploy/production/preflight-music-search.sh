@@ -15,7 +15,7 @@ usage() {
   --json-report <新报告路径> --image <目标 backend 镜像>
 
 脚本拒绝 production data/ 下的数据库和未解析路径。常规发布只允许精确复用
-六套统计；若统计语义真实变化则快速失败，必须先执行独立维护。只有临时工作
+四套统计；若统计语义真实变化则快速失败，必须先执行独立维护。只有临时工作
 副本通过复用与数据库契约校验后，才会原子更新传入副本。
 EOF
 }
@@ -133,7 +133,7 @@ case "$resume_db_path" in
     ;;
 esac
 
-minimum_available_mib="${SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB:-1280}"
+minimum_available_mib="${SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB:-2304}"
 if [[ ! "$minimum_available_mib" =~ ^[1-9][0-9]*$ ]]; then
   echo "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB 必须是正整数。" >&2
   exit 2

@@ -15,7 +15,8 @@ usage() {
 用法：bootstrap-music-search-statistics.sh --revision <40位commit SHA> \
   --json-report <全新报告路径>
 
-只对 SQLite Online Backup 副本执行一次性六变体统计构建，可从同源的部分成果续建。
+只对 SQLite Online Backup 副本执行一次性 Billboard 与四变体搜索统计构建，
+可从同源的部分成果续建。
 脚本不会停止/重启生产容器、修改 .env、替换生产数据库或执行部署。
 EOF
 }
@@ -174,7 +175,7 @@ if [[ -e "$resume_path" ]]; then
 fi
 
 minimum_available_mib="${SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB:-$(get_env SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB)}"
-minimum_available_mib="${minimum_available_mib:-1280}"
+minimum_available_mib="${minimum_available_mib:-2304}"
 if [[ ! "$minimum_available_mib" =~ ^[1-9][0-9]*$ ]]; then
   echo "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB 必须是正整数。" >&2
   exit 2
@@ -214,7 +215,41 @@ print(
 )
 PY
 
-echo "一次性六变体统计构建开始；失败或超时会保留同源部分成果供下次续建。" >&2
+echo "一次性 Billboard v4 聚合构建开始；生产数据库保持不变。" >&2
+docker run --rm --init --user "$host_uid:$host_gid" \
+  -e SPOTIFY_STATS_WARMUP=0 -e SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0 \
+  --mount "type=bind,src=$resume_dir,dst=/resume" \
+  "$image" python - "/resume/$resume_file" <<'PY' > "$work_dir/aggregation.json"
+import json
+import sys
+
+from backend.core import db as db_module
+
+db_module.DB_PATH = sys.argv[1]
+
+from backend.core.migrations import run_migrations
+from backend.domains.settings.repository import SettingsRepository
+
+run_migrations()
+conn = db_module.get_db(readonly=True)
+try:
+    settings = SettingsRepository(conn).load_all()
+finally:
+    conn.close()
+
+result = db_module.build_aggregations(
+    min_ms=int(settings.get("min_ms", 30_000)),
+    music_only=bool(settings.get("music_only", True)),
+    week_start_dow=int(settings.get("bb_week_start_dow", 4)),
+    week_start_hour=int(settings.get("bb_week_start_hour", 0)),
+    dynamic_threshold=True,
+    max_merge_gap_minutes=int(settings.get("max_merge_gap_minutes", 5)),
+)
+print(json.dumps(result, ensure_ascii=True, sort_keys=True))
+PY
+echo "一次性 Billboard v4 聚合构建完成。" >&2
+
+echo "一次性四变体搜索统计构建开始；失败或超时会保留同源部分成果供下次续建。" >&2
 rebuild_started="$SECONDS"
 docker run --name "$container_name" --rm --init --user "$host_uid:$host_gid" \
   -e SPOTIFY_STATS_WARMUP=0 -e SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=0 \

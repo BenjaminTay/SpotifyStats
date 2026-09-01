@@ -179,6 +179,14 @@ FastAPI TestClient 指向同一验收副本，未连接 live 数据库：
 - `/api/billboard/weekly` 的 2026 年响应包含 990 条歌曲周榜、660 条专辑周榜、660 条艺人周榜，最小 `play_count=1`。
 - 响应继续使用 `total_plays`、`total_hours`、`play_events`、`total_ms` 等既有字段；没有新增“合格播放”“全部播放总收听时长”等前端展示名称。
 
-## 9. 发布边界
+## 9. 本机更新与发布边界
 
-当前结论是“本地代码已提交、自动化与真实 Online Backup 副本已验收”。没有 push，也没有生产 deploy、服务器 SHA、health 或 runtime gate 证据；因此不能表述为线上已经采用新口径。生产发布时必须再次从当时 live 库创建 Online Backup，在副本完成聚合和四套搜索快照重建，再按生产门禁替换。
+2026-09-01 已将本机 `data/spotify_stats.db` 更新到新口径：
+
+- 从运行中的本机库创建两份 SQLite Online Backup，在副本构建 Billboard v4 并精确复用四套已完成的搜索 v10 快照；切换前再次创建 quiescent 回滚备份。
+- `source_marker` 与 `plays`、`tracks`、`track_artists`、`settings` 双向集合对比均无漂移，再将通过验收的副本原子替换为本机当前数据库。
+- 更新后 `integrity_check=ok`、原始播放仍为 92,908 条，runtime gate 为 migration 69、四变体 ready、搜索 builder v10、Billboard builder v4、时长策略 `all_music_intervals_v1`、orphan=0，精确/模糊/简繁/短 CJK 搜索均通过。
+- 本机真实 HTTP API 返回播放分析 66,419 次、4,224.3 小时；`track:2560` 为 0 次、0.1 小时，搜索上下文为 0 次、240,722 ms；2026 年歌曲/专辑/艺人周榜分别 990/660/660 行，最小播放次数均为 1。
+- 回滚文件保留在 `data/backups/spotify_stats-20260901T111048-before-all-duration-v4-v10.db` 和 `data/backups/spotify_stats-20260901T111048-quiescent-before-switch.db`。
+
+当前结论是“本机代码与本机数据库已经采用新口径”。仍没有 push、远程生产 deploy、服务器 SHA 或远程 health 证据，因此不能表述为服务器生产环境已经更新。远程发布时仍须从当时的生产 live 库创建 Online Backup，在副本完成 Billboard v4 和四套搜索 v10 统计，再按生产门禁替换。

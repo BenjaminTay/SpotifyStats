@@ -56,7 +56,7 @@ grep -q './showcase-access-entrypoint.sh:/docker-entrypoint.d/15-showcase-access
 grep -q 'SPOTIFY_STATS_SEARCH_STARTUP_REBUILD: ${SPOTIFY_STATS_SEARCH_STARTUP_REBUILD:-1}' \
   "$COMPOSE_FILE"
 grep -q '^SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=1$' "$ENV_TEMPLATE"
-grep -q '^SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=1280$' "$ENV_TEMPLATE"
+grep -q '^SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=2304$' "$ENV_TEMPLATE"
 grep -q '^SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB=640$' "$ENV_TEMPLATE"
 grep -q -- '--require-all-ready' "$DEPLOY_DIR/preflight-music-search.sh"
 grep -q -- '--statistics-reuse-only' "$DEPLOY_DIR/preflight-music-search.sh"

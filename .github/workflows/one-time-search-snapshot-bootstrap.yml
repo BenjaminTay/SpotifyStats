@@ -24,7 +24,7 @@ env:
 
 jobs:
   initialize_search_snapshots:
-    name: Initialize six search snapshot variants
+    name: Initialize Billboard and four search snapshot variants
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
@@ -82,7 +82,7 @@ jobs:
             -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" "$SERVER_USER@$SERVER_HOST" \
             "timeout --signal=TERM --kill-after=10s 1m docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
 
-      - name: Build six statistics variants on a resumable Online Backup without deployment
+      - name: Build Billboard and four statistics variants on a resumable Online Backup without deployment
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
@@ -126,11 +126,14 @@ jobs:
           production = payload["production_validation"]
           resources = payload["resources"]
           assert payload["status"] == "ready"
-          assert gate["all_six_ready"] is True
+          assert gate["all_four_ready"] is True
+          assert production["aggregation_builder_version"] == "billboard_aggregation_v4_all_duration"
+          assert production["listening_duration_policy_version"] == "all_music_intervals_v1"
           assert production["context_orphan_count"] == 0
           with open(sys.argv[1] + ".summary", "w", encoding="utf-8") as handle:
               handle.write("## One-time music-search statistics bootstrap\n\n")
-              handle.write(f"- Variants: {gate['ready_variant_count']}/6 ready\n")
+              handle.write(f"- Variants: {gate['ready_variant_count']}/4 ready\n")
+              handle.write("- Billboard aggregation: v4 all-duration ready\n")
               handle.write(f"- Snapshot elapsed: {payload['snapshot_elapsed_ms'] / 1000:.3f}s\n")
               handle.write(f"- Peak RSS: {resources['peak_rss_mib']:.3f} MiB\n")
               handle.write("- Production containers: unchanged\n")

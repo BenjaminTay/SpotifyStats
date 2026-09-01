@@ -15,7 +15,9 @@ from typing import Any
 # import the backend package in production.  Keep this release contract in
 # lockstep with MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION.
 EXPECTED_BUILDER_VERSION = "music_search_snapshot_v10_all_duration"
-REQUIRED_MIGRATION_VERSION = 58
+EXPECTED_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v4_all_duration"
+EXPECTED_DURATION_POLICY_VERSION = "all_music_intervals_v1"
+REQUIRED_MIGRATION_VERSION = 69
 EXPECTED_VARIANTS = {
     (2, False),
     (2, True),
@@ -164,6 +166,11 @@ def validate_database(
                    WHERE meta.snapshot_key IS NULL"""
             ).fetchone()[0]
         )
+        aggregation_config = dict(conn.execute("SELECT key, value FROM agg_config").fetchall())
+        aggregation_rows = {
+            family: int(conn.execute(f"SELECT COUNT(*) FROM agg_weekly_{family}").fetchone()[0])
+            for family in ("tracks", "albums", "artists")
+        }
     except sqlite3.Error as exc:
         raise SystemExit(
             "music-search production preflight failed: database contract query failed"
@@ -189,6 +196,19 @@ def validate_database(
         "database has a non-current snapshot builder",
     )
     require(orphan_count == 0, "music-search context orphan count is not zero")
+    require(
+        aggregation_config.get("builder_version") == EXPECTED_AGGREGATION_BUILDER_VERSION,
+        "Billboard aggregation builder is not current",
+    )
+    require(
+        aggregation_config.get("listening_duration_policy_version")
+        == EXPECTED_DURATION_POLICY_VERSION,
+        "listening duration policy is not current",
+    )
+    require(
+        all(row_count > 0 for row_count in aggregation_rows.values()),
+        "a Billboard aggregation table is empty",
+    )
     return {
         "integrity_check": integrity,
         "required_migration_version": REQUIRED_MIGRATION_VERSION,
@@ -197,6 +217,9 @@ def validate_database(
         "required_variants": 4,
         "builder_version": EXPECTED_BUILDER_VERSION,
         "context_orphan_count": orphan_count,
+        "aggregation_builder_version": EXPECTED_AGGREGATION_BUILDER_VERSION,
+        "listening_duration_policy_version": EXPECTED_DURATION_POLICY_VERSION,
+        "aggregation_rows": aggregation_rows,
     }
 
 
@@ -236,7 +259,8 @@ def main() -> int:
     print(
         "Music-search production preflight passed: "
         f"migration={REQUIRED_MIGRATION_VERSION} variants=4/4 "
-        f"builder={EXPECTED_BUILDER_VERSION} orphans=0"
+        f"builder={EXPECTED_BUILDER_VERSION} "
+        f"aggregation={EXPECTED_AGGREGATION_BUILDER_VERSION} orphans=0"
     )
     return 0
 

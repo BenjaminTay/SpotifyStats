@@ -4,20 +4,37 @@
 from __future__ import annotations
 
 import re
+import sys
 import time
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
-from backend.core.db import get_db
-from backend.core.migrations import LATEST_SCHEMA_VERSION
-from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
-from backend.domains.music_search.normalization import expand_chinese_search_variants
-from backend.domains.music_search.repository import (
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from backend.core.db import _BILLBOARD_AGGREGATION_BUILDER_VERSION, get_db  # noqa: E402
+from backend.core.migrations import LATEST_SCHEMA_VERSION  # noqa: E402
+from backend.domains.music_search.context import (  # noqa: E402
+    MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+)
+from backend.domains.music_search.normalization import (  # noqa: E402
+    expand_chinese_search_variants,
+)
+from backend.domains.music_search.repository import (  # noqa: E402
     MusicSearchRepositoryResult,
     search_music_index,
 )
-from backend.domains.music_search.variants import build_music_search_variant_contexts
-from backend.services.music_search_maintenance_service import _current_filter_values
+from backend.domains.music_search.variants import (  # noqa: E402
+    build_music_search_variant_contexts,
+)
+from backend.domains.playback.logical_timeline import (  # noqa: E402
+    LISTENING_DURATION_POLICY_VERSION,
+)
+from backend.services.music_search_maintenance_service import (  # noqa: E402
+    _current_filter_values,
+)
 
 
 def _result_items(result: MusicSearchRepositoryResult) -> Iterable[Any]:
@@ -144,6 +161,15 @@ def main() -> int:
                 f"music-search runtime gate failed: migration {LATEST_SCHEMA_VERSION} missing"
             )
 
+        aggregation_config = dict(conn.execute("SELECT key, value FROM agg_config").fetchall())
+        if aggregation_config.get("builder_version") != _BILLBOARD_AGGREGATION_BUILDER_VERSION:
+            raise SystemExit("music-search runtime gate failed: Billboard builder is not current")
+        if (
+            aggregation_config.get("listening_duration_policy_version")
+            != LISTENING_DURATION_POLICY_VERSION
+        ):
+            raise SystemExit("music-search runtime gate failed: duration policy is not current")
+
         contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
         semantic_base_key = contexts[0].semantic_base_key
         rows = conn.execute(
@@ -200,7 +226,8 @@ def main() -> int:
     print(
         "Music-search runtime gate passed: "
         f"migration={LATEST_SCHEMA_VERSION} variants=4/4 "
-        f"builder={MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION} orphans=0 "
+        f"builder={MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION} "
+        f"aggregation={_BILLBOARD_AGGREGATION_BUILDER_VERSION} orphans=0 "
         f"exact={search_status['exact']} fuzzy={search_status['fuzzy']} "
         f"cjk={search_status['cjk']} short_cjk={search_status['short_cjk']} "
         f"semantic_smoke_ms={elapsed_ms:.3f}"

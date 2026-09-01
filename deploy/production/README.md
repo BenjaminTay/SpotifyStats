@@ -212,27 +212,29 @@ Online Backup，但不得停服或替换数据库。
 2. 将备份复制到 `backups/.release-stage.*`，在目标 API 镜像中关闭
    `SPOTIFY_STATS_SEARCH_STARTUP_REBUILD`，执行一次
    `rebuild_music_search_derived_data.py --require-all-ready --statistics-reuse-only`；候选版本变化时只重建
-   候选，统计 fingerprint 没有变化时六个变体必须精确复用；
-3. 只有 migration 36、当前语义精确六个 fingerprint、builder v2、搜索 context orphan=0、
+   候选，统计 fingerprint 没有变化时四个变体必须精确复用；
+3. 只有 migration 69、当前语义精确四个 fingerprint、搜索 builder v10、Billboard 聚合 v4、
+   收听时长策略 `all_music_intervals_v1`、搜索 context orphan=0、
    `integrity_check=ok` 以及宿主容量全部通过，才保留预检副本；报告写入
    `backups/music-search-preflight-<sha>-<timestamp>.json`；
 4. 停止 Backend 后再创建一份 quiescent Online Backup，并与第一份源备份逐字节比较；若预检期间
    数据发生变化，恢复旧服务并拒绝用旧副本覆盖；
-5. 原子替换 SQLite 后启动新 SHA，执行 runtime 精确六变体、精确/模糊/简繁/短 CJK 搜索、网关、
+5. 原子替换 SQLite 后启动新 SHA，执行 runtime 精确四变体、精确/模糊/简繁/短 CJK 搜索、网关、
    端口、能力与写操作门禁；
 6. 任一新版本验收失败，同时恢复发布前 SQLite、上一 SHA 和上一 deployment mode。
 
-旧生产库第一次升级到 migration 36 时，先单独运行手动
-`one-time-search-snapshot-bootstrap.yml` 建立六套统计；该 workflow 需要显式输入
+旧生产库第一次升级到 migration 69 时，先单独运行手动
+`one-time-search-snapshot-bootstrap.yml` 在 Online Backup 副本建立 Billboard v4 与四套搜索统计；该 workflow 需要显式输入
 `INITIALIZE_SEARCH_SNAPSHOTS`，且不部署应用。完成一次性引导后，
-正常 UI、部署脚本、查询匹配或 Git SHA 变化不得再次冷建六套统计。
+正常 UI、部署脚本、查询匹配或 Git SHA 变化不得再次冷建四套统计。
 
-一次性统计引导默认要求 `MemAvailable >= 1280MiB`；正常发布固定使用
+一次性统计引导默认要求 `MemAvailable >= 2304MiB`，覆盖当前真实库约 1.83GiB 的冷建峰值并留出
+约 20% 余量。正常发布固定使用
 `--statistics-reuse-only`，统计不能精确复用时会在任何候选/统计重建前失败，因此独立使用
-`SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB=640` 的候选索引预算。前者来自六变体峰值
-876.758MiB，后者相对候选重建峰值 318.984MiB 保留超过 2 倍预算；两者都不得在没有新实测的
+`SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB=640` 的候选索引预算。前者应覆盖当前四变体真实冷建峰值
+约 1.83GiB，后者相对候选重建峰值 318.984MiB 保留约 2 倍预算；两者都不得在没有新实测的
 情况下继续调低。可用磁盘始终要求 `>= max(1GiB, 数据库大小 × 4)`。发布脚本不会在 live DB 上
-执行首次六变体冷构建，也不会启用或关闭任何外部 HTTPS 入口。
+执行首次四变体冷构建，也不会启用或关闭任何外部 HTTPS 入口。
 
 手动命令：
 
@@ -277,7 +279,8 @@ VERIFY_EXTERNAL_INGRESS=1 ./verify.sh  # 仅在确实配置了外部入口时使
 - 能力响应分别为 `private-admin` / `public-readonly`；
 - 简化版设置写操作返回 403；
 - SQLite `PRAGMA integrity_check` 返回 `ok`。
-- 当前服务端 Settings 推导出的六个搜索 fingerprint 精确存在且全部 `ready + builder v2`；
+- 当前服务端 Settings 推导出的四个搜索 fingerprint 精确存在且全部 `ready + builder v10`；
+- `agg_config` 为 `billboard_aggregation_v4_all_duration`，且时长策略为 `all_music_intervals_v1`；
 - `music_search_entity_context` 不存在指向已删除 snapshot meta 的孤儿。
 
 静态发布门禁可在开发机或 CI 执行：

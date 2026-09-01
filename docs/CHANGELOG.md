@@ -7,6 +7,8 @@
 - 30 秒及动态阈值只决定逻辑播放次数；全部正时长音乐收听区间独立贡献时长，孤立短片段和连续合并后的未计次余数不再从分析、详情、首页、搜索、年度与 Billboard 同次数裁决中消失。
 - Billboard 继续以播放次数为首要排序键，并在排名前排除 `play_count=0` 的候选；因此允许普通统计出现“0 次但有时长”，但不能单靠时长入榜。
 - 聚合与搜索快照升级语义版本，真实 Online Backup 副本完成原始数据守恒、三类榜单即时/预聚合逐行一致、四套搜索快照和真实 API 验收；前端代码、字段名与显示文案均未修改。详细证据见 [`reports/2026-08-31-billboard-count-duration-semantics-research.md`](reports/2026-08-31-billboard-count-duration-semantics-research.md)。
+- 一次性生产引导现在会在 Online Backup 副本依次构建 Billboard v4 与四套搜索 v10 统计；发布前和 runtime 门禁同时校验 migration 69、聚合 builder、时长策略、搜索 builder 与四变体完整性，冷建内存门槛按真实峰值提高到 2304 MiB。
+- 本机主库通过运行中备份、重建副本、quiescent 防漂移比较和原子替换完成更新；92,908 条原始播放保持不变，健康检查、真实播放分析、实体详情、搜索与三类周榜复验通过，并保留两份本地回滚备份。
 
 ## 2026-08-31 — L2/L3 身份与专辑归属完整性收口
 

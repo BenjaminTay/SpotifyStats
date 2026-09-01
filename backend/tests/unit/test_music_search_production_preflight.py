@@ -13,6 +13,7 @@ import yaml  # type: ignore[import-untyped]
 
 from backend.core.migrations import LATEST_SCHEMA_VERSION
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+from backend.domains.playback.logical_timeline import LISTENING_DURATION_POLICY_VERSION
 from scripts.rebuild_music_search_derived_data import _success_report
 
 pytestmark = pytest.mark.unit
@@ -20,7 +21,8 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[3]
 PRODUCTION = ROOT / "deploy" / "production"
 BUILDER_VERSION = MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
-REQUIRED_MUSIC_SEARCH_MIGRATION = 58
+REQUIRED_MUSIC_SEARCH_MIGRATION = LATEST_SCHEMA_VERSION
+AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v4_all_duration"
 VARIANTS = ((2, True), (3, True), (2, False), (3, False))
 
 
@@ -48,6 +50,16 @@ def _build_preflight_fixture(
             snapshot_key TEXT NOT NULL,
             entity_key TEXT NOT NULL
         );
+        CREATE TABLE agg_config(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE agg_weekly_tracks(play_count INTEGER, total_ms INTEGER);
+        CREATE TABLE agg_weekly_albums(play_count INTEGER, total_ms INTEGER);
+        CREATE TABLE agg_weekly_artists(play_count INTEGER, total_ms INTEGER);
+        INSERT INTO agg_config(key, value) VALUES
+            ('builder_version', 'billboard_aggregation_v4_all_duration'),
+            ('listening_duration_policy_version', 'all_music_intervals_v1');
+        INSERT INTO agg_weekly_tracks VALUES (1, 30000);
+        INSERT INTO agg_weekly_albums VALUES (1, 30000);
+        INSERT INTO agg_weekly_artists VALUES (1, 30000);
         """
     )
     migrations = [
@@ -201,6 +213,9 @@ def test_preflight_validator_requires_migration_variants_builder_and_zero_orphan
     assert payload["production_validation"] == {
         "builder_version": BUILDER_VERSION,
         "context_orphan_count": 0,
+        "aggregation_builder_version": AGGREGATION_BUILDER_VERSION,
+        "listening_duration_policy_version": LISTENING_DURATION_POLICY_VERSION,
+        "aggregation_rows": {"tracks": 1, "albums": 1, "artists": 1},
         "integrity_check": "ok",
         "required_migration_version": REQUIRED_MUSIC_SEARCH_MIGRATION,
         "required_migration_applied": True,
@@ -294,6 +309,41 @@ def test_preflight_validator_fails_on_current_fingerprint_mismatch(tmp_path: Pat
 
     assert completed.returncode == 1
     assert "fingerprints do not match" in completed.stderr
+    assert not output.exists()
+
+
+def test_preflight_validator_rejects_legacy_billboard_duration_semantics(
+    tmp_path: Path,
+) -> None:
+    database, rebuild_report, capacity_report = _build_preflight_fixture(tmp_path)
+    conn = sqlite3.connect(database)
+    conn.execute(
+        "UPDATE agg_config SET value='billboard_aggregation_v3_l1' WHERE key='builder_version'"
+    )
+    conn.commit()
+    conn.close()
+    output = tmp_path / "legacy-billboard.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(PRODUCTION / "validate-music-search-preflight.py"),
+            "--db-path",
+            str(database),
+            "--rebuild-report",
+            str(rebuild_report),
+            "--capacity-report",
+            str(capacity_report),
+            "--json-output",
+            str(output),
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert completed.returncode == 1
+    assert "Billboard aggregation builder is not current" in completed.stderr
     assert not output.exists()
 
 
@@ -442,6 +492,7 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB" in deploy
     assert "${search_preflight_min_mib:-640}" in deploy
     assert "verify-music-search-runtime.py" in verify
+    assert "PROJECT_ROOT" in runtime_gate
     assert "LATEST_SCHEMA_VERSION" in runtime_gate
     assert "version=?" in runtime_gate
     assert "filter_fingerprint" in runtime_gate
@@ -461,7 +512,7 @@ def test_production_compose_and_workflow_ship_search_release_gates() -> None:
     )
     env_template = (PRODUCTION / ".env.example").read_text(encoding="utf-8")
     assert "SPOTIFY_STATS_SEARCH_STARTUP_REBUILD=1" in env_template
-    assert "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=1280" in env_template
+    assert "SEARCH_PREFLIGHT_MIN_AVAILABLE_MIB=2304" in env_template
     assert "SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB=640" in env_template
 
     workflow = (ROOT / ".github" / "workflows" / "production-release.yml").read_text(
@@ -498,6 +549,9 @@ def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -
 
     assert "source.backup(target)" in bootstrap
     assert "--require-all-ready" in bootstrap
+    assert "build_aggregations" in bootstrap
+    assert "dynamic_threshold=True" in bootstrap
+    assert "一次性四变体搜索统计构建开始" in bootstrap
     assert "--statistics-reuse-only" not in bootstrap
     assert "compose_all stop" not in bootstrap
     assert "replace_live_database" not in bootstrap
@@ -507,6 +561,9 @@ def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -
     assert "src=$DEPLOY_DIR,dst=/bootstrap" not in bootstrap
     assert "src=$PREPARE_HELPER" in bootstrap
     assert 'sudo chown -- "$host_uid:$host_gid" "$baseline_path"' in bootstrap
-    assert bootstrap.count('--user "$host_uid:$host_gid"') == 2
+    assert bootstrap.count('--user "$host_uid:$host_gid"') == 3
     assert "source_equivalent_partial_statistics_resume" in helper
     assert "ALLOWED_PARTIAL_STATUSES" in helper
+    assert 'gate["all_four_ready"]' in workflow
+    assert "/4 ready" in workflow
+    assert "all_six_ready" not in workflow
