@@ -297,3 +297,74 @@ P0 的阶段化、同轮去重、局部重跑、前置条件状态和 JSON 报�
 2026-08-25 已完成首轮 P1 profile：`test_api.py` 的两个测试用相同参数重复请求 Taylor Swift 发行周期 overview，单次分别为 160.67s 和 165.30s。两者只对同一个只读响应做不同字段断言，并不验证重复请求缓存，因此改为 module-scoped 响应夹具；封面 URL 仍继续真实 GET。定向复验中唯一构建 149.27s，第二个测试 0.01s；整个文件由 405.73s 降到 278.79s，即使后一次主机负载更高仍减少 126.94s。
 
 修改后的默认完整门禁再次 Full Pass，但在持续外部 CPU/浏览器负载下为 34 分 8 秒，后端、API、前端和浏览器阶段均同时变慢，不能作为 25 分钟干净基线。当前已证明重复计算被消除、覆盖未减少和完整功能回归通过；尚未证明低干扰环境下三次中位数不高于 25 分钟，因此计划继续保留。下一步只需在可控负载窗口重新执行三次默认计时；除非新的 profile 提供隔离证据，不继续引入 xdist 或自动性能重试。
+
+## 11. 2026-09-01 新增待办：验收时间与重复重跑治理
+
+L2/L3 身份与专辑归属修复的最终验收进一步证明，当前问题已经不只是“低干扰环境下再计时”：
+
+- 单轮默认门禁中，后端 2,542 项约需 21–29 分钟；API smoke、boundary 与 22 轮 benchmark
+  合计约 14–16 分钟；完整路由、交互、inventory、长列表和三浏览器还需继续串行执行。
+- 另一工作区同时执行 API/性能探针时，`/api/billboard/data` 曾超时，`/api/dashboard/full` 热 P95
+  达 871ms；无竞争复测后所有热 P95 恢复到 240ms 以内。性能门禁缺少跨任务排他机制。
+- `/analysis/records` 和 `/billboard/year-end` 首次 Desktop 检查触发昂贵冷建，内容 marker 在等待窗口
+  内未出现；随后 Mobile 和缓存就绪后的完整轮均通过。当前路由门禁把“冷建仍在进行”与“页面内容
+  缺失”混为同一种失败。
+- schema 版本断言、归档文档相对链接等廉价问题位于完整流程中；修复后为了取得“同一轮完整 Pass”
+  必须从头重复后端、API 和浏览器阶段，单个小错误可额外增加 40–60 分钟。
+- `/tmp/spotify_fullstack_verification.json` 是固定路径，多个工作区并行运行会互相覆盖汇总文件，既影响
+  状态观察，也削弱证据可追溯性。
+
+这些事实不授权减少覆盖、放宽 500ms 性能阈值、删除 Firefox/WebKit 或把局部结果直接描述为单轮
+完整 Pass。新增待办按优先级执行：
+
+### P1-A：廉价失败前置与分层反馈
+
+- 在进入完整后端前增加确定性 preflight：migration 最新版本断言、全部 Markdown（含 archive）链接、
+  脚本合同、OpenAPI 静态审计和 `git diff --check`。
+- 输出“预计耗时”和当前阶段累计耗时；失败时明确建议最小 `--only` / `--from` 复验范围。
+- 保留最终交付至少一次默认完整门禁，但日常修复先走 5–10 分钟的影响面门禁，避免每次编辑都启动
+  全应用矩阵。
+
+### P1-B：性能与共享服务排他
+
+- 为 API benchmark、真实数据库冷建和浏览器性能阶段增加跨工作区 lock/lease；检测到其他 SpotifyStats
+  pytest、API probe、benchmark 或同端口重建时标记 `BLOCKED`，不产出容易误判的性能 FAIL。
+- summary JSON 使用带 run id / 工作区指纹的独立路径，并维护一个原子 latest pointer；禁止不同工作区
+  直接覆盖同一个 `/tmp/spotify_fullstack_verification.json`。
+- 报告记录 CPU/内存压力、并发相关进程、服务启动时间、缓存 revision 和 benchmark cold/warm 状态，
+  使性能尖峰可以复核。
+
+### P1-C：冷建与页面正确性解耦
+
+- 在浏览器路由阶段前显式检查必要 snapshot/cache readiness；允许受控 prewarm，但必须记录冷建耗时、
+  revision 和是否复用既有 ready 结果。
+- 将“页面壳可用、正在构建”“内容 marker 最终出现”和“热页面交互”拆成不同断言；冷建超时报告为
+  `BLOCKED/WARMING` 或独立 cold-performance 失败，不能伪装成页面内容缺失。
+- 仍保留冷启动专项门禁，验证冷建不会破坏 LKG 和页面可用性；不得只测预热后的理想路径。
+
+### P1-D：后端慢测试继续剖析
+
+- 每次低干扰基线保存 `pytest --durations=100`，按纯单元、SQLite 隔离库、真实统计 builder、进程/端口
+  测试分类累计耗时，而不只看单个最慢测试。
+- 优先消除重复建库、重复 fixture、相同参数重复 builder 和可共享的只读派生事实。
+- 仅对已经证明不共享 SQLite 写入、模块缓存、环境变量、端口或后台线程的集合试用 xdist；串行集合
+  使用显式 marker，比较结果与串行运行完全一致后才纳入默认门禁。
+
+### P2：同一证据指纹的安全续跑与分片
+
+- 设计 evidence manifest，至少绑定 Git HEAD、dirty diff digest、依赖锁摘要、数据库 fingerprint、关系/
+  缓存 revision、服务配置、平台和测试清单版本。任一指纹变化均拒绝复用。
+- 允许失败后从失败阶段续跑，并把此前阶段的不可变 Pass 证据纳入一个“组合验收”报告；报告必须明确
+  区分 `single-run PASS` 与 `composed PASS`，在团队确认发布口径前不能替代最终单轮完整门禁。
+- CI 可按相同 evidence manifest 分片 backend、API、Chromium 主矩阵和 Firefox/WebKit；性能 benchmark
+  保持独占。所有分片完成后由只读汇总器校验指纹和覆盖全集。
+
+### 新的量化目标
+
+- 日常影响面反馈：5–10 分钟内给出可行动结果。
+- `quality + backend`：低干扰 P50 不高于 15 分钟；先以 profile 证明优化来源，不直接硬设超时。
+- 默认完整单轮：继续以 25 分钟为目标；若在不降覆盖前提下暂时无法达到，阶段 P50/P95 和主要成本
+  必须可解释，不能只报告总时长。
+- 晚阶段失败后的安全复验：局部反馈不高于 5 分钟；未来 composed evidence 的汇总时间不高于 1 分钟。
+- 连续三次低干扰默认运行不得出现共享状态、固定 summary 路径、并发 benchmark 或冷建 marker 造成的
+  偶发失败。

@@ -9,7 +9,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 |
 |---|---|---|---|---|
-| `SS-2026-08-24-004` | 全栈总门禁的 25 分钟目标与低干扰环境连续三次稳定运行尚未达成 | `PARTIAL` · 工程验收尾项 | 两次完整运行约 27:48、29:07，另一次遇到 API 性能尾部尖峰失败；后续 34:08 的通过轮受共享主机负载干扰，不能作为稳定基线。见 [`fullstack-gate-duration-optimization.md`](../reports/2026-08-24-fullstack-gate-duration-optimization.md)。 | 只在可控负载窗口重新执行三次默认完整门禁并记录阶段耗时；不通过删减覆盖或放宽阈值换取达标。 |
+| `SS-2026-08-24-004` | 全栈总门禁时间过长，且并发性能竞争、冷建等待和失败后整轮重跑放大交付成本 | `PARTIAL` · 工程验收尾项 | 早期完整运行约 27:48、29:07，后续受负载影响的通过轮为 34:08。2026-09-01 的 L2/L3 交付验收中，后端 2,542 项约 21–29 分钟，API 阶段约 14–16 分钟；并发任务曾造成接口超时和 871ms 热 P95，无竞争时恢复到 240ms 内。两个 Desktop 页面首次冷建又因内容 marker 等待超时触发整轮重跑；固定 summary 路径还会被其他工作区覆盖。见 [`fullstack-gate-duration-optimization-plan.md`](../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)。 | 依次实施廉价 preflight、跨工作区 benchmark lock、run-id summary、冷建/readiness 分层、`pytest --durations=100` 剖析与安全并行；再设计严格 evidence manifest 的失败阶段续跑。保持覆盖、三浏览器和 500ms 阈值不变。 |
 | `SS-2026-08-06-005` | PWA/移动网页完成后，iPhone Safari 与 Android Chrome 真机安装、返回、安全区和 OAuth 验收仍未完成；Capacitor 尚未决策 | `PARTIAL` · 路线尾项 | 当前规划明确写为等待真机验收，不能把本地浏览器验收当作真机完成。见 [`appification-pwa-capacitor-plan.md`](../plans/2026-08-06-appification-pwa-capacitor-plan.md)。 | 有真实设备和 HTTPS/认证条件后再做真机验收；在此之前不宣称已完成 App 化。 |
 | `SS-2026-08-31-001` | Billboard 周榜的 30 秒阈值、连续合并后余数和同次数 `total_ms` 是否应分成“次数轨/时长轨” | `RESOLVED` · 本地实施与验收完成 | 后端已按“阈值只约束 `play_count`、`total_ms` 统计全部有效音乐收听区间”实现，前端字段与文案未改。提交 `911256f1`；真实 Online Backup 副本完成聚合与四套搜索快照重建，曲目/专辑/艺人即时计算对预聚合均为 0 差异，真实 API 证明允许 0 次且有时长，但 Billboard 最小入榜次数仍为 1。详见 [`2026-08-31-billboard-count-duration-semantics-research.md`](../reports/2026-08-31-billboard-count-duration-semantics-research.md)。 | 本地规则已闭环；如需发布，另按生产发布流程使用数据库副本重建并留存 deploy、服务器 SHA、health 与 runtime gate 证据。 |
 
