@@ -228,6 +228,7 @@ PUBLIC_SAFE_GET_TEMPLATES = frozenset(
         "/api/billboard/release-cycle/artist/{artist_name:path}/album/{album_name:path}",
         "/api/billboard/track/{track_id}",
         "/api/billboard/track/l1/{track_id}",
+        "/api/billboard/track/canonical/{track_id}",
         "/api/billboard/artist/{artist_name:path}",
         "/api/billboard/album/{album_name:path}",
         "/api/billboard/entity-lists",

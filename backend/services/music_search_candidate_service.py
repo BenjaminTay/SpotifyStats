@@ -17,9 +17,8 @@ from backend.domains.ai_agent.entity_resolver import EntityType, resolve_entitie
 from backend.domains.music_search.contracts import make_music_search_entity_key
 from backend.domains.music_search.deny_overlay import denied_music_search_entity_keys
 from backend.domains.music_search.index import (
-    get_music_search_candidate_maintenance_state,
     get_music_search_index_state,
-    music_search_source_revision,
+    music_search_candidate_index_is_current,
 )
 from backend.domains.music_search.normalization import analyze_search_query, normalize_search_text
 from backend.domains.music_search.repository import search_music_index
@@ -151,21 +150,8 @@ def _published_candidate_freshness(
     conn: sqlite3.Connection,
 ) -> tuple[MusicSearchCandidateFreshness, str | None]:
     serving = get_music_search_index_state(conn)
-    maintenance = get_music_search_candidate_maintenance_state(conn)
-    active_source = str(serving.get("source_revision") or "")
     active_version = str(serving.get("candidate_index_version") or "")
-    target_source = str(maintenance.get("target_source_revision") or "")
-    target_version = str(maintenance.get("target_candidate_index_version") or "")
-    current_source = music_search_source_revision(conn)
-    target_matches_active = (not target_source or target_source == active_source) and (
-        not target_version or target_version == active_version
-    )
-    is_current = (
-        bool(active_source)
-        and active_source == current_source
-        and target_matches_active
-        and str(maintenance.get("maintenance_status") or "missing") == "ready"
-    )
+    is_current = music_search_candidate_index_is_current(conn)
     return ("current" if is_current else "last_known_good"), active_version or None
 
 

@@ -2,13 +2,15 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
-## 2026-09-12 — Agent V5 与当前主线本地集成
+## 2026-09-12 — Agent V5 主线集成与发布前修复
 
 - 将已经完成独立验收的 Agent Runtime V2、质量 V3/V4 和性能 V5 作为一条连续集成线合入本地 `main`；旧 V2/V3/V4 分支均已包含在 V5 中，不需要重复合并。
 - 合并保留当前主线的 L2/L3 专辑归属、全部收听时长、Billboard v4 和搜索发布门禁，同时接入 Agent 原生工具循环、证据契约、任务恢复、SSE 续传及年度报告共享上下文。
 - schema 升至 73：migration 72 幂等修复 Agent 事件日志，migration 73 幂等补齐另一条历史中已占用 migration 69 的 L3 归属结构，使两种既有数据库升级历史收敛到同一 schema。
 - 重新生成 CI seed、OpenAPI 和前端 API 类型；本地后端 unit 1672 passed / 2 skipped、contract 419 passed，前端 78 files / 622 tests 及 production build 通过。
-- 本次仅整理和合并本地代码；没有 push、没有生产部署、没有改动服务器或本地主数据库。
+- public-readonly 明确放行前端正在使用的 canonical track detail；公开详情不再被后端访问面策略伪装为 404。
+- 搜索启动恢复统一核对 active generation、当前 source revision、candidate index version 与 maintenance target；任一不一致时安排 candidate documents shadow rebuild，全部一致时保持轻量统计检查。
+- 当前集成候选只发布到 `codex/agent-v5-main-integration`；未 push `origin/main`、未生产部署，也没有改动服务器或本地主数据库。
 
 ## 2026-09-01 — 播放次数与全部收听时长双轨统一
 

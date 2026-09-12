@@ -10,6 +10,8 @@ from backend.domains.music_search.deny_overlay import deny_music_search_entities
 from backend.domains.music_search.index import (
     get_music_search_candidate_maintenance_state,
     get_music_search_index_state,
+    music_search_candidate_index_is_current,
+    music_search_candidate_index_needs_rebuild,
     rebuild_music_search_index,
 )
 from backend.domains.music_search.repository import search_music_index
@@ -175,6 +177,42 @@ def test_superseded_shadow_failure_does_not_overwrite_newer_pending_target(monke
     assert maintenance["target_source_revision"] == "source-new"
     assert maintenance["target_candidate_index_version"] == "candidate-new"
     assert maintenance["last_error"] is None
+
+
+def test_ready_maintenance_with_mismatched_target_is_not_current() -> None:
+    conn = _conn()
+    rebuild_music_search_index(conn)
+    assert music_search_candidate_index_is_current(conn) is True
+    assert music_search_candidate_index_needs_rebuild(conn) is False
+
+    conn.execute(
+        """UPDATE music_search_candidate_maintenance_state
+              SET maintenance_status='ready', target_source_revision='stale-target'
+            WHERE state_id=1"""
+    )
+    conn.commit()
+
+    assert music_search_candidate_index_is_current(conn) is False
+    assert music_search_candidate_index_needs_rebuild(conn) is True
+
+
+def test_current_source_with_outdated_candidate_version_needs_rebuild() -> None:
+    conn = _conn()
+    rebuild_music_search_index(conn)
+    conn.execute(
+        """UPDATE music_search_index_state
+              SET candidate_index_version='outdated-version'
+            WHERE state_id=1"""
+    )
+    conn.execute(
+        """UPDATE music_search_candidate_maintenance_state
+              SET target_candidate_index_version='outdated-version'
+            WHERE state_id=1"""
+    )
+    conn.commit()
+
+    assert music_search_candidate_index_is_current(conn) is True
+    assert music_search_candidate_index_needs_rebuild(conn) is True
 
 
 def test_rebuild_excludes_dimensions_unreachable_from_active_plays() -> None:

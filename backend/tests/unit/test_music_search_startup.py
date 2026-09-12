@@ -30,11 +30,18 @@ def test_music_search_startup_rebuild_flag_is_independent_from_cache_warmup(
     assert _music_search_startup_rebuild_enabled() is True
 
 
+@pytest.mark.parametrize(
+    ("candidate_index_rebuild_required", "expected_rebuild_documents"),
+    [(False, False), (True, True)],
+)
 def test_import_maintenance_recovery_is_registered_and_scanned_before_search_startup(
     monkeypatch,
+    candidate_index_rebuild_required: bool,
+    expected_rebuild_documents: bool,
 ) -> None:
     from backend.core import job_queue as job_queue_module
     from backend.domains.metadata import artist_identity, track_credits
+    from backend.domains.music_search import index as music_search_index
     from backend.services import cover_cache_service
     from backend.services import (
         import_maintenance_recovery_service as recovery,
@@ -74,10 +81,14 @@ def test_import_maintenance_recovery_is_registered_and_scanned_before_search_sta
             else pytest.fail("startup used a different queue")
         ),
     )
+    search_options: list[dict[str, object]] = []
+
+    def capture_search_enqueue(**kwargs):
+        events.append("search:enqueue")
+        search_options.append(kwargs)
+
     monkeypatch.setattr(
-        music_search,
-        "enqueue_music_search_snapshot_rebuild",
-        lambda **_kwargs: events.append("search:enqueue"),
+        music_search, "enqueue_music_search_snapshot_rebuild", capture_search_enqueue
     )
     monkeypatch.setattr(
         cover_cache_service,
@@ -95,6 +106,11 @@ def test_import_maintenance_recovery_is_registered_and_scanned_before_search_sta
     }
     monkeypatch.setattr(artist_identity, "get_identity_state", lambda _conn: ready_state)
     monkeypatch.setattr(track_credits, "get_track_credit_state", lambda _conn: ready_state)
+    monkeypatch.setattr(
+        music_search_index,
+        "music_search_candidate_index_needs_rebuild",
+        lambda _conn: candidate_index_rebuild_required,
+    )
     monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setenv("SPOTIFY_STATS_SEARCH_STARTUP_REBUILD", "1")
     monkeypatch.setenv("SPOTIFY_STATS_WARMUP", "0")
@@ -111,6 +127,7 @@ def test_import_maintenance_recovery_is_registered_and_scanned_before_search_sta
     assert events.index("queue:start") < events.index("cover:recover")
     assert events.index("cover:recover") < events.index("search:enqueue")
     assert events.index("queue:start") < events.index("search:enqueue")
+    assert search_options == [{"rebuild_documents": expected_rebuild_documents}]
 
 
 @pytest.mark.parametrize(

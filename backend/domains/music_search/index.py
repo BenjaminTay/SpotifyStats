@@ -195,6 +195,33 @@ def get_music_search_candidate_maintenance_state(
     return dict(row) if row else {"maintenance_status": "missing"}
 
 
+def music_search_candidate_index_is_current(conn: sqlite3.Connection) -> bool:
+    """Return whether the published generation and maintenance target agree."""
+
+    serving = get_music_search_index_state(conn)
+    maintenance = get_music_search_candidate_maintenance_state(conn)
+    active_source = str(serving.get("source_revision") or "")
+    active_version = str(serving.get("candidate_index_version") or "")
+    target_source = str(maintenance.get("target_source_revision") or "")
+    target_version = str(maintenance.get("target_candidate_index_version") or "")
+    return (
+        bool(serving.get("active_generation_id"))
+        and active_source == music_search_source_revision(conn)
+        and str(maintenance.get("maintenance_status") or "missing") == "ready"
+        and (not target_source or target_source == active_source)
+        and (not target_version or target_version == active_version)
+    )
+
+
+def music_search_candidate_index_needs_rebuild(conn: sqlite3.Connection) -> bool:
+    """Return whether startup must rebuild candidate documents."""
+
+    if not music_search_candidate_index_is_current(conn):
+        return True
+    serving = get_music_search_index_state(conn)
+    return serving.get("candidate_index_version") != expected_candidate_index_version(conn)
+
+
 def mark_music_search_candidate_maintenance_pending(
     conn: sqlite3.Connection,
     *,

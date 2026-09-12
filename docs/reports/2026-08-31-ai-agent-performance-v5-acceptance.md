@@ -13,7 +13,7 @@
 
 ## 2026-09-12 本地集成补记
 
-V5 已与当前本地主线完成隔离合并和回归，不再是待合并功能分支。集成保留主线的 L2/L3、全部收听时长、Billboard v4 与搜索发布门禁，并通过 migration 72/73 的幂等 repair 兼容主线与 Agent 分支曾经各自占用 schema 69 的两种历史。合并后的本地验证为：后端 unit 1672 passed / 2 skipped、contract 419 passed，前端 78 files / 622 tests 和 production build 通过。该补记只改变本地 Git 集成状态；仍未 push、未部署，也没有改动 live SQLite。
+V5 已与当前本地主线完成隔离合并和回归，不再是待合并功能分支。集成保留主线的 L2/L3、全部收听时长、Billboard v4 与搜索发布门禁，并通过 migration 72/73 的幂等 repair 兼容主线与 Agent 分支曾经各自占用 schema 69 的两种历史。合并后的本地验证为：后端 unit 1672 passed / 2 skipped、contract 419 passed，前端 78 files / 622 tests 和 production build 通过。集成候选随后发布到远端 `codex/agent-v5-main-integration` 运行 No Deploy 门禁；`origin/main` 仍未更新，未生产部署，也没有改动 live SQLite。
 
 ## 目标与结论
 

@@ -153,14 +153,14 @@ async def lifespan(_app: FastAPI):
     from backend.domains.metadata.artist_identity import get_identity_state
     from backend.domains.metadata.track_credits import get_track_credit_state
     from backend.domains.music_search.index import (
-        get_music_search_candidate_maintenance_state,
+        music_search_candidate_index_needs_rebuild,
     )
 
     identity_conn = get_db()
     try:
         identity_state = get_identity_state(identity_conn)
         credit_state = get_track_credit_state(identity_conn)
-        candidate_maintenance = get_music_search_candidate_maintenance_state(identity_conn)
+        candidate_index_rebuild_required = music_search_candidate_index_needs_rebuild(identity_conn)
     finally:
         identity_conn.close()
     if identity_state.get("rebuild_status") in {"pending", "failed"}:
@@ -185,10 +185,7 @@ async def lifespan(_app: FastAPI):
 
     outside_pytest = "PYTEST_CURRENT_TEST" not in os.environ
     if _music_search_startup_rebuild_enabled() and outside_pytest:
-        enqueue_music_search_snapshot_rebuild(
-            rebuild_documents=str(candidate_maintenance.get("maintenance_status") or "missing")
-            in {"missing", "pending", "building", "failed"}
-        )
+        enqueue_music_search_snapshot_rebuild(rebuild_documents=candidate_index_rebuild_required)
     if os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0" and outside_pytest:
         start_warmup_thread()
     yield
