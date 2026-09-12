@@ -21,6 +21,9 @@ from backend.domains.billboard.chart_ranking import (
 )
 from backend.domains.billboard.chart_record_inputs import prepare_track_record_inputs
 from backend.domains.billboard.chart_staged_api import (
+    compute_all_time_staged as compute_all_time_staged,  # noqa: F401
+)
+from backend.domains.billboard.chart_staged_api import (
     compute_power_scores_staged as compute_power_scores_staged,  # noqa: F401
 )
 from backend.domains.billboard.chart_staged_api import (
@@ -54,6 +57,7 @@ from backend.domains.billboard.data_loader import (
     load_track_album_map,
 )
 from backend.domains.billboard.latest_snapshot_cache import store_latest_snapshot_for_locals
+from backend.domains.billboard.persistent_cache import get_or_build_billboard_snapshot
 
 
 @lru_cache(maxsize=8)
@@ -194,23 +198,46 @@ def compute_billboard_data(
     max_merge_gap_minutes=5,
     include_compilations=False,
     merge_enabled=True,
+    *,
+    force_rebuild=False,
 ):
     """Compute all Billboard data with normalized cache keys."""
-    return _compute_billboard_data_cached(
-        min_ms,
-        music_only,
-        bb_top_n,
-        bb_album_top_n,
-        bb_artist_top_n,
-        bb_week_start_dow,
-        bb_week_start_hour,
-        year_start,
-        year_end,
-        merge_level,
-        dynamic_threshold=dynamic_threshold,
-        max_merge_gap_minutes=max_merge_gap_minutes,
-        include_compilations=include_compilations,
-        merge_enabled=merge_enabled,
+    params = {
+        "min_ms": min_ms,
+        "music_only": music_only,
+        "bb_top_n": bb_top_n,
+        "bb_album_top_n": bb_album_top_n,
+        "bb_artist_top_n": bb_artist_top_n,
+        "bb_week_start_dow": bb_week_start_dow,
+        "bb_week_start_hour": bb_week_start_hour,
+        "year_start": year_start,
+        "year_end": year_end,
+        "merge_level": merge_level,
+        "dynamic_threshold": dynamic_threshold,
+        "max_merge_gap_minutes": max_merge_gap_minutes,
+        "include_compilations": include_compilations,
+        "merge_enabled": merge_enabled,
+    }
+    return get_or_build_billboard_snapshot(
+        "full_data",
+        params,
+        lambda: _compute_billboard_data_cached(
+            min_ms,
+            music_only,
+            bb_top_n,
+            bb_album_top_n,
+            bb_artist_top_n,
+            bb_week_start_dow,
+            bb_week_start_hour,
+            year_start,
+            year_end,
+            merge_level,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            include_compilations=include_compilations,
+            merge_enabled=merge_enabled,
+        ),
+        force_rebuild=force_rebuild,
     )
 
 

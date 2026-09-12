@@ -108,7 +108,7 @@ describe('Phase 5 query hook migration', () => {
   it('allows the deterministic year-end cold build to outlive the default API timeout', async () => {
     const client = createClient()
     vi.spyOn(api, 'get').mockResolvedValue({
-      meta: { year: 2026, available_years: [] },
+      meta: { year: 2026, available_years: [2025, 2026] },
       tracks: [],
       albums: [],
       artists: [],
@@ -125,6 +125,7 @@ describe('Phase 5 query hook migration', () => {
       { year: 2026, merge_level: 2, include_compilations: false },
       300_000,
     )
+    expect(api.get).toHaveBeenCalledTimes(1)
   })
 
   it('follows weekly URL history and restores the latest week when the query is removed', async () => {

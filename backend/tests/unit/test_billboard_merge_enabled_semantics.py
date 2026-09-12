@@ -61,6 +61,11 @@ def test_staged_weekly_forwards_merge_enabled_into_revision_key(monkeypatch):
         return {"ok": True}
 
     monkeypatch.setattr(chart_staged_api, "call_with_billboard_revision_cache", fake_call)
+    monkeypatch.setattr(
+        chart_staged_api,
+        "get_or_build_billboard_snapshot",
+        lambda _family, _params, builder, **_kwargs: builder(),
+    )
 
     assert chart_staged_api.compute_weekly_data(merge_enabled=False) == {"ok": True}
     assert captured["args"][-1] is False

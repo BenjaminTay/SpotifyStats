@@ -215,6 +215,11 @@ def update_settings(
         finally:
             search_conn.close()
         start_yearly_review_prewarm_thread()
+        from backend.services.billboard_snapshot_service import (
+            enqueue_billboard_snapshot_rebuild,
+        )
+
+        enqueue_billboard_snapshot_rebuild("Billboard settings changed", conn=conn)
 
     return _build_settings_response(conn)
 
@@ -263,6 +268,14 @@ def rebuild_aggregations(
             conn=write_conn,
         )
         enqueue_music_search_snapshot_rebuild(conn=write_conn)
+        from backend.services.billboard_snapshot_service import (
+            enqueue_billboard_snapshot_rebuild,
+        )
+
+        billboard_snapshot_job_id = enqueue_billboard_snapshot_rebuild(
+            "Billboard aggregations rebuilt",
+            conn=write_conn,
+        )
         return {
             "status": "done",
             "dynamic_threshold": dynamic_threshold,
@@ -272,6 +285,11 @@ def rebuild_aggregations(
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "background_tasks": [
                 {"name": "search_snapshots", "status": "warming"},
+                {
+                    "name": "billboard_snapshots",
+                    "status": "warming" if billboard_snapshot_job_id else "unavailable",
+                    "job_id": billboard_snapshot_job_id,
+                },
             ],
             **result,
         }

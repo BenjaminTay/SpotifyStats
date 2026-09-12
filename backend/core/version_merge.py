@@ -350,6 +350,11 @@ def _refresh_version_merge_dependents(conn=None) -> None:
     invalidate("analysis")
     invalidate("billboard")
     invalidate("yearly_review")
+    from backend.services.billboard_snapshot_service import (
+        enqueue_billboard_snapshot_rebuild,
+    )
+
+    enqueue_billboard_snapshot_rebuild("version merge dependents refreshed")
 
 
 def get_all_groups() -> pd.DataFrame:

@@ -34,6 +34,7 @@ def _clear_billboard_runtime_caches():
         load_billboard_raw,
         load_billboard_raw_for_artists,
     )
+    from backend.domains.billboard.persistent_cache import clear_persisted_snapshots
 
     db_mod._load_plays_cached.cache_clear()
     db_mod._load_plays_for_artists_cached.cache_clear()
@@ -44,6 +45,7 @@ def _clear_billboard_runtime_caches():
     _compute_summaries_cached.cache_clear()
     _compute_records_cached.cache_clear()
     _load_and_rank_cached.cache_clear()
+    clear_persisted_snapshots()
 
 
 @pytest.fixture(scope="function")

@@ -288,21 +288,6 @@ function cacheResolvedBillboardYearEndYear(
   }
 }
 
-function prefetchBillboardYearEndYears(
-  queryClientForHook: QueryClient,
-  years: number[],
-  mergeLevel: number,
-  includeCompilations: boolean,
-): void {
-  years.forEach((availableYear) => {
-    const params = billboardYearEndParams(availableYear, mergeLevel, includeCompilations)
-    void queryClientForHook.prefetchQuery({
-      queryKey: queryKeys.billboard.yearEnd(params),
-      queryFn: () => api.get<BillboardYearEndResponse>('/billboard/year-end', params, YEAR_END_REQUEST_TIMEOUT_MS),
-    })
-  })
-}
-
 export function useBillboardYearEnd(
   year: number | null,
   mergeLevel = 2,
@@ -317,15 +302,9 @@ export function useBillboardYearEnd(
     placeholderData: keepPreviousData,
     enabled,
   })
-  const availableYearKey = query.data?.meta.available_years.join(',') ?? ''
-
   useEffect(() => {
     cacheResolvedBillboardYearEndYear(queryClientForHook, query.data, mergeLevel, includeCompilations)
-
-    const availableYears = query.data?.meta.available_years ?? []
-    if (availableYears.length === 0) return
-    prefetchBillboardYearEndYears(queryClientForHook, availableYears, mergeLevel, includeCompilations)
-  }, [availableYearKey, includeCompilations, mergeLevel, query.data, queryClientForHook])
+  }, [includeCompilations, mergeLevel, query.data, queryClientForHook])
 
   return {
     data: query.data ?? null,

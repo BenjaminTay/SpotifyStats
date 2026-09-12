@@ -72,6 +72,14 @@ def _refresh_music_search_derived_data(reason: str) -> None:
         conn.close()
 
 
+def _schedule_billboard_snapshot_rebuild(reason: str) -> None:
+    from backend.services.billboard_snapshot_service import (
+        enqueue_billboard_snapshot_rebuild,
+    )
+
+    enqueue_billboard_snapshot_rebuild(reason)
+
+
 # ── Request models ───────────────────────────────────────────────────────────
 
 
@@ -739,6 +747,7 @@ def create_l3_album_attribution_override(
         conn.close()
     for namespace in ("analysis", "billboard", "yearly_review"):
         invalidate(namespace)
+    _schedule_billboard_snapshot_rebuild("L3 album attribution override changed")
     _refresh_music_search_derived_data("L3 album attribution override changed")
     return {
         "status": "ok",
@@ -779,6 +788,7 @@ def remove_l3_album_attribution_override(
         conn.close()
     for namespace in ("analysis", "billboard", "yearly_review"):
         invalidate(namespace)
+    _schedule_billboard_snapshot_rebuild("L3 album attribution override removed")
     _refresh_music_search_derived_data("L3 album attribution override removed")
     return {
         "status": "ok",
@@ -804,6 +814,7 @@ def rebuild_l3_album_attributions(auth: None = Depends(require_auth)):
         conn.close()
     for namespace in ("analysis", "billboard", "yearly_review"):
         invalidate(namespace)
+    _schedule_billboard_snapshot_rebuild("L3 album attributions rebuilt")
     _refresh_music_search_derived_data("L3 album attributions rebuilt")
     return {"status": "ok" if report.decision_count >= 0 else "error"}
 
@@ -1066,6 +1077,7 @@ def rebuild_album_project_rows(auth: None = Depends(require_auth)):
     invalidate("analysis")
     invalidate("billboard")
     invalidate("yearly_review")
+    _schedule_billboard_snapshot_rebuild("album projects rebuilt")
     _refresh_music_search_derived_data("album projects rebuilt")
     return {"status": "ok"}
 

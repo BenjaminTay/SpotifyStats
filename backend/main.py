@@ -101,6 +101,11 @@ async def lifespan(_app: FastAPI):
         handle_wikipedia_enrich,
     )
     from backend.services.artist_identity_rebuild_service import handle_artist_identity_rebuild
+    from backend.services.billboard_snapshot_service import (
+        BILLBOARD_SNAPSHOT_REBUILD_JOB_TYPE,
+        enqueue_billboard_snapshot_rebuild,
+        handle_billboard_snapshot_rebuild,
+    )
     from backend.services.import_maintenance_recovery_service import (
         PLAYBACK_IMPORT_MAINTENANCE_JOB_TYPE,
         enqueue_pending_import_maintenance,
@@ -126,6 +131,7 @@ async def lifespan(_app: FastAPI):
         handle_import_maintenance_recovery,
     )
     job_queue.register("music_search_snapshot_rebuild", handle_music_search_snapshot_rebuild)
+    job_queue.register(BILLBOARD_SNAPSHOT_REBUILD_JOB_TYPE, handle_billboard_snapshot_rebuild)
     # Resolve the configured database at lifespan start. Tests and maintenance
     # tools intentionally replace ``db_module.DB_PATH`` with an isolated copy;
     # importing the string at module load would make the persistent JobQueue
@@ -142,6 +148,9 @@ async def lifespan(_app: FastAPI):
         db_module.DB_PATH,
         priority_job_types=(PLAYBACK_IMPORT_MAINTENANCE_JOB_TYPE,),
     )
+    outside_pytest = "PYTEST_CURRENT_TEST" not in os.environ
+    if outside_pytest:
+        enqueue_billboard_snapshot_rebuild("application startup", queue=job_queue)
     from backend.services.cover_cache_service import enqueue_failed_cover_download_recovery
 
     # Recover only a bounded slice of previously failed covers after the strict
@@ -183,7 +192,6 @@ async def lifespan(_app: FastAPI):
             queue=job_queue,
         )
 
-    outside_pytest = "PYTEST_CURRENT_TEST" not in os.environ
     if _music_search_startup_rebuild_enabled() and outside_pytest:
         enqueue_music_search_snapshot_rebuild(rebuild_documents=candidate_index_rebuild_required)
     if os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0" and outside_pytest:

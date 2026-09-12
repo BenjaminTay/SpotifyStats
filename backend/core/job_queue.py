@@ -414,6 +414,7 @@ class JobQueue:
                 "track_credit_rebuild",
                 "playback_import_maintenance",
                 "music_search_snapshot_rebuild",
+                "billboard_snapshot_rebuild",
             }
             with self._cpu_heavy_gate if cpu_heavy else nullcontext():
                 handler(job)

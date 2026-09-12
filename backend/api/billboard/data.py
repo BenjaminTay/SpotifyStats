@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from backend.dependencies import BillboardFilters, MergeConfig
 from backend.services.billboard_service import (
+    compute_all_time_staged,
     compute_billboard_data,
     compute_power_scores_staged,
     compute_records_staged,
@@ -262,17 +263,8 @@ def get_billboard_all_time(
     Returns power-scores + summaries + weekly data.
     Used by NumberOnesPage and AllTimeChartsPage.
     """
-    params = _billboard_params(filters)
-    ml = merge_cfg.merge_level
-    weekly = compute_weekly_data(
-        **params,
-        merge_level=ml,
+    return compute_all_time_staged(
+        **_billboard_params(filters),
+        merge_level=merge_cfg.merge_level,
         include_compilations=include_compilations,
     )
-    power = compute_power_scores_staged(
-        **params, merge_level=ml, include_compilations=include_compilations
-    )
-    summaries = compute_summaries_staged(
-        **params, merge_level=ml, include_compilations=include_compilations
-    )
-    return {**weekly, **power, **summaries}

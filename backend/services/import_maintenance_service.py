@@ -280,6 +280,15 @@ def run_post_streaming_import_maintenance(
                 f"ready={snapshot_set['ready_count']} failed={snapshot_set['failed_count']}"
             )
 
+        from backend.services.billboard_snapshot_service import (
+            enqueue_billboard_snapshot_rebuild,
+        )
+
+        billboard_snapshot_job_id = enqueue_billboard_snapshot_rebuild(
+            "streaming import maintenance published",
+            conn=conn,
+        )
+
         status = "ok"
         if not metadata_report.provider_available or metadata_report.errors:
             status = "partial"
@@ -343,6 +352,7 @@ def run_post_streaming_import_maintenance(
             "music_search_snapshot_failed_count": search_report["snapshot_set"]["failed_count"],
             "music_search_snapshot_job_id": search_report.get("job_id"),
             "music_search_snapshot_strategy": search_report["snapshot_set"].get("strategy", "full"),
+            "billboard_snapshot_job_id": billboard_snapshot_job_id,
             **health,
         }
     finally:

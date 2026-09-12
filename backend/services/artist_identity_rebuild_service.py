@@ -194,3 +194,8 @@ def handle_artist_identity_rebuild(job: Job) -> None:
     finally:
         conn.close()
         invalidate_all()
+        from backend.services.billboard_snapshot_service import (
+            enqueue_billboard_snapshot_rebuild,
+        )
+
+        enqueue_billboard_snapshot_rebuild("artist identity aggregate published")
