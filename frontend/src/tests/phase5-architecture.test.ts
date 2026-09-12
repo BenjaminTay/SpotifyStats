@@ -198,10 +198,10 @@ describe('Phase 5 architecture guardrails', () => {
     expect(yearEndHonorsSource).not.toContain('xl:grid-cols-4')
   })
 
-  it('prefetches all Billboard Year-End years and keeps previous data while switching', () => {
-    expect(useBillboardSource).toContain('prefetchBillboardYearEndYears')
+  it('loads only the selected Billboard Year-End year and keeps previous data while switching', () => {
+    expect(useBillboardSource).not.toContain('prefetchBillboardYearEndYears')
     expect(useBillboardSource).toContain('placeholderData: keepPreviousData')
-    expect(useBillboardSource).toContain('available_years')
+    expect(useBillboardSource).toContain('cacheResolvedBillboardYearEndYear')
     expect(useBillboardSource).toContain('getQueryData')
   })
 

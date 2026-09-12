@@ -3,37 +3,23 @@
 from functools import lru_cache
 
 from backend.core.json_helpers import df_to_json as _df_to_json
-from backend.domains.billboard.chart_power_score import (
+from backend.domains.billboard.chart_power_score import (  # noqa: F401
     compute_album_power_scores,
     compute_artist_power_scores,
+    compute_power_scores,
 )
-from backend.domains.billboard.chart_power_score import (
-    compute_power_scores as compute_power_scores,  # noqa: F401
-)
-from backend.domains.billboard.chart_ranking import (
-    compute_album_weekly_rankings as compute_album_weekly_rankings,  # noqa: F401
-)
-from backend.domains.billboard.chart_ranking import (
-    compute_artist_weekly_rankings as compute_artist_weekly_rankings,  # noqa: F401
-)
-from backend.domains.billboard.chart_ranking import (
-    compute_weekly_rankings as compute_weekly_rankings,  # noqa: F401
+from backend.domains.billboard.chart_ranking import (  # noqa: F401
+    compute_album_weekly_rankings,
+    compute_artist_weekly_rankings,
+    compute_weekly_rankings,
 )
 from backend.domains.billboard.chart_record_inputs import prepare_track_record_inputs
-from backend.domains.billboard.chart_staged_api import (
-    compute_all_time_staged as compute_all_time_staged,  # noqa: F401
-)
-from backend.domains.billboard.chart_staged_api import (
-    compute_power_scores_staged as compute_power_scores_staged,  # noqa: F401
-)
-from backend.domains.billboard.chart_staged_api import (
-    compute_records_staged as compute_records_staged,  # noqa: F401
-)
-from backend.domains.billboard.chart_staged_api import (
-    compute_summaries_staged as compute_summaries_staged,  # noqa: F401
-)
-from backend.domains.billboard.chart_staged_api import (
-    compute_weekly_data as compute_weekly_data,  # noqa: F401
+from backend.domains.billboard.chart_staged_api import (  # noqa: F401
+    compute_all_time_staged,
+    compute_power_scores_staged,
+    compute_records_staged,
+    compute_summaries_staged,
+    compute_weekly_data,
 )
 from backend.domains.billboard.chart_staged_cache import (
     _compute_power_scores_cached,
@@ -244,7 +230,6 @@ def compute_billboard_data(
 compute_billboard_data.cache_clear = _compute_billboard_data_cached.cache_clear  # type: ignore[attr-defined]
 compute_billboard_data.cache_info = _compute_billboard_data_cached.cache_info  # type: ignore[attr-defined]
 
-# ── Cache registration ─────────────────────────────────────────────────
 from backend.core.cache_manager import register_lru  # noqa: E402
 
 register_lru("billboard", "full_data", _compute_billboard_data_cached)

@@ -6,6 +6,7 @@
 
 ### 播放统计与详情
 
+- [`2026-09-13-billboard-persistent-snapshot-optimization.md`](2026-09-13-billboard-persistent-snapshot-optimization.md)
 - [`2026-08-29-l2-track-album-presentation.md`](2026-08-29-l2-track-album-presentation.md)
 - [`2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](2026-08-29-billboard-records-consistency-and-ranking-hardening.md)
 - [`2026-08-31-billboard-count-duration-semantics-research.md`](2026-08-31-billboard-count-duration-semantics-research.md)

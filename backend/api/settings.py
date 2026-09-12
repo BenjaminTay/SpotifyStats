@@ -276,6 +276,15 @@ def rebuild_aggregations(
             "Billboard aggregations rebuilt",
             conn=write_conn,
         )
+        background_tasks = [{"name": "search_snapshots", "status": "warming"}]
+        if billboard_snapshot_job_id:
+            background_tasks.append(
+                {
+                    "name": "billboard_snapshots",
+                    "status": "warming",
+                    "job_id": billboard_snapshot_job_id,
+                }
+            )
         return {
             "status": "done",
             "dynamic_threshold": dynamic_threshold,
@@ -283,14 +292,7 @@ def rebuild_aggregations(
             "rebuild_pending": False,
             "aggregation_status": "ready",
             "completed_at": datetime.now(timezone.utc).isoformat(),
-            "background_tasks": [
-                {"name": "search_snapshots", "status": "warming"},
-                {
-                    "name": "billboard_snapshots",
-                    "status": "warming" if billboard_snapshot_job_id else "unavailable",
-                    "job_id": billboard_snapshot_job_id,
-                },
-            ],
+            "background_tasks": background_tasks,
             **result,
         }
     finally:

@@ -2,6 +2,8 @@
 
 状态：`IN_PROGRESS`
 
+本地实现与验证：`PASS（2026-09-13，隔离 seed 数据库）`；提交：`a50f4fc4` 加本次验收收口变更；远端：`UNPUSHED`；生产：`NOT_DEPLOYED`。生产数据副本预建、部署和线上验收仍待授权与执行。
+
 范围：Billboard 周榜、年榜、总榜及其共享确定性计算链路。目标是让榜单 GET 在数据和统计规则没有变化时直接读取磁盘快照；播放导入、元数据治理、统计设置或规则版本变化后，由后台任务生成新快照，旧快照在新快照完成前继续作为 last-known-good（LKG）返回。
 
 ## 当前基线
@@ -60,6 +62,8 @@
 
 ### Phase 5：历史快照、发布与验收
 
+- [x] 在隔离 seed 数据库完成周榜、年榜持久化快照写入、清空进程内 LRU 后命中及 JSON 等价性探针。
+- [x] 完成本地 unit、Billboard 关键/完整 contract、前端全测、前端 production build 和文档审计。
 - [ ] 在生产数据副本上完成一次完整默认参数快照预建，核对 API 新旧结果等价。
 - [ ] 发布前修复/确认当前分支已有的版本与 contract 门禁问题，使用 commit SHA 生成镜像。
 - [ ] 按 `backup -> deploy -> health/ready -> exact hit -> restart hit -> mutation rebuild -> rollback` 顺序验收。

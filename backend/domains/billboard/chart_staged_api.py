@@ -23,175 +23,69 @@ _CACHE_PARAM_NAMES = (
     "include_compilations",
     "merge_enabled",
 )
-_CACHE_DEFAULTS = {
-    "min_ms": 30000,
-    "music_only": True,
-    "bb_top_n": 30,
-    "bb_album_top_n": 20,
-    "bb_artist_top_n": 20,
-    "bb_week_start_dow": 4,
-    "bb_week_start_hour": 0,
-    "year_start": None,
-    "year_end": None,
-    "merge_level": 2,
-    "dynamic_threshold": False,
-    "max_merge_gap_minutes": 5,
-    "include_compilations": False,
-    "merge_enabled": True,
-}
+_CACHE_DEFAULTS = (30000, True, 30, 20, 20, 4, 0, None, None, 2, False, 5, False, True)
 
 
-def _cache_params(values: dict) -> dict:
-    return {name: values.get(name, _CACHE_DEFAULTS[name]) for name in _CACHE_PARAM_NAMES}
+def _resolve(args: tuple, kwargs: dict) -> tuple[tuple, dict]:
+    if len(args) > len(_CACHE_PARAM_NAMES):
+        raise TypeError("too many positional Billboard parameters")
+    values = list(_CACHE_DEFAULTS)
+    values[: len(args)] = args
+    for name, value in kwargs.items():
+        if name not in _CACHE_PARAM_NAMES:
+            raise TypeError(f"unexpected Billboard parameter: {name}")
+        values[_CACHE_PARAM_NAMES.index(name)] = value
+    resolved = tuple(values)
+    return resolved, dict(zip(_CACHE_PARAM_NAMES, resolved))
 
 
-def compute_weekly_data(
-    min_ms=30000,
-    music_only=True,
-    bb_top_n=30,
-    bb_album_top_n=20,
-    bb_artist_top_n=20,
-    bb_week_start_dow=4,
-    bb_week_start_hour=0,
-    year_start=None,
-    year_end=None,
-    merge_level=2,
-    dynamic_threshold=False,
-    max_merge_gap_minutes=5,
-    include_compilations=False,
-    merge_enabled=True,
-    *,
-    force_rebuild=False,
-):
-    values = locals().copy()
-    args = tuple(values[name] for name in _CACHE_PARAM_NAMES)
-    params = _cache_params(values)
-    return get_or_build_billboard_snapshot(
-        "weekly",
-        params,
-        lambda: call_with_billboard_revision_cache(_compute_weekly_data_cached, args),
-        force_rebuild=force_rebuild,
-    )
+def _run(family, builder, args=(), kwargs=None, force_rebuild=False, *, revision=False):
+    values, params = _resolve(args, kwargs or {})
+
+    def build():
+        return call_with_billboard_revision_cache(builder, values) if revision else builder(*values)
+
+    return get_or_build_billboard_snapshot(family, params, build, force_rebuild=force_rebuild)
 
 
-def compute_power_scores_staged(
-    min_ms=30000,
-    music_only=True,
-    bb_top_n=30,
-    bb_album_top_n=20,
-    bb_artist_top_n=20,
-    bb_week_start_dow=4,
-    bb_week_start_hour=0,
-    year_start=None,
-    year_end=None,
-    merge_level=2,
-    dynamic_threshold=False,
-    max_merge_gap_minutes=5,
-    include_compilations=False,
-    merge_enabled=True,
-    *,
-    force_rebuild=False,
-):
-    values = locals().copy()
-    args = tuple(values[name] for name in _CACHE_PARAM_NAMES)
-    params = _cache_params(values)
-    return get_or_build_billboard_snapshot(
-        "power_scores",
-        params,
-        lambda: _compute_power_scores_cached(
-            *args[:10],
-            dynamic_threshold=args[10],
-            max_merge_gap_minutes=args[11],
-            include_compilations=args[12],
-            merge_enabled=args[13],
-        ),
-        force_rebuild=force_rebuild,
-    )
+def compute_weekly_data(*args, force_rebuild=False, **kwargs):
+    return _run("weekly", _compute_weekly_data_cached, args, kwargs, force_rebuild, revision=True)
 
 
-def compute_summaries_staged(
-    min_ms=30000,
-    music_only=True,
-    bb_top_n=30,
-    bb_album_top_n=20,
-    bb_artist_top_n=20,
-    bb_week_start_dow=4,
-    bb_week_start_hour=0,
-    year_start=None,
-    year_end=None,
-    merge_level=2,
-    dynamic_threshold=False,
-    max_merge_gap_minutes=5,
-    include_compilations=False,
-    merge_enabled=True,
-    *,
-    force_rebuild=False,
-):
-    values = locals().copy()
-    args = tuple(values[name] for name in _CACHE_PARAM_NAMES)
-    params = _cache_params(values)
-    return get_or_build_billboard_snapshot(
-        "summaries",
-        params,
-        lambda: _compute_summaries_cached(
-            *args[:10],
-            dynamic_threshold=args[10],
-            max_merge_gap_minutes=args[11],
-            include_compilations=args[12],
-            merge_enabled=args[13],
-        ),
-        force_rebuild=force_rebuild,
-    )
+def compute_power_scores_staged(*args, force_rebuild=False, **kwargs):
+    return _run("power_scores", _compute_power_scores_cached, args, kwargs, force_rebuild)
 
 
-def compute_records_staged(*args, **kwargs):
+def compute_summaries_staged(*args, force_rebuild=False, **kwargs):
+    return _run("summaries", _compute_summaries_cached, args, kwargs, force_rebuild)
+
+
+def compute_records_staged(*args, force_rebuild=False, **kwargs):
     """Return the records slice while preserving the cached facade contract."""
-    force_rebuild = bool(kwargs.pop("force_rebuild", False))
-    values = dict(zip(_CACHE_PARAM_NAMES, args))
-    values.update(kwargs)
-    params = _cache_params(values)
-    return get_or_build_billboard_snapshot(
-        "records",
-        params,
-        lambda: _compute_records_cached(*args, **kwargs),
-        force_rebuild=force_rebuild,
-    )
+    return _run("records", _compute_records_cached, args, kwargs, force_rebuild)
 
 
-def compute_all_time_staged(
-    min_ms=30000,
-    music_only=True,
-    bb_top_n=30,
-    bb_album_top_n=20,
-    bb_artist_top_n=20,
-    bb_week_start_dow=4,
-    bb_week_start_hour=0,
-    year_start=None,
-    year_end=None,
-    merge_level=2,
-    dynamic_threshold=False,
-    max_merge_gap_minutes=5,
-    include_compilations=False,
-    merge_enabled=True,
-    *,
-    force_rebuild=False,
-):
+def compute_all_time_staged(*args, force_rebuild=False, **kwargs):
     """Return the all-time composition through one durable response snapshot."""
-    params = _cache_params(locals())
+    values, params = _resolve(args, kwargs)
 
-    def build() -> dict:
-        common = dict(params)
-        weekly = compute_weekly_data(**common, force_rebuild=force_rebuild)
-        power = compute_power_scores_staged(**common, force_rebuild=force_rebuild)
-        summaries = compute_summaries_staged(**common, force_rebuild=force_rebuild)
+    def build():
+        weekly = _run(
+            "weekly",
+            _compute_weekly_data_cached,
+            values,
+            force_rebuild=force_rebuild,
+            revision=True,
+        )
+        power = _run(
+            "power_scores", _compute_power_scores_cached, values, force_rebuild=force_rebuild
+        )
+        summaries = _run(
+            "summaries", _compute_summaries_cached, values, force_rebuild=force_rebuild
+        )
         return {**weekly, **power, **summaries}
 
-    return get_or_build_billboard_snapshot(
-        "all_time",
-        params,
-        build,
-        force_rebuild=force_rebuild,
-    )
+    return get_or_build_billboard_snapshot("all_time", params, build, force_rebuild=force_rebuild)
 
 
 compute_weekly_data.cache_clear = _compute_weekly_data_cached.cache_clear  # type: ignore[attr-defined]

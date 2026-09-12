@@ -52,7 +52,7 @@ def enqueue_billboard_snapshot_rebuild(
     target_queue = queue or get_job_queue()
     # A queue created by a standalone unit/maintenance function has no worker
     # lifecycle yet. Do not leave an in-memory job that can never run.
-    if target_queue.database_path is None:
+    if getattr(target_queue, "database_path", None) is None:
         return None
     try:
         from backend.domains.billboard.chart_load_rank import billboard_revision_state
@@ -88,11 +88,26 @@ def rebuild_default_billboard_snapshots() -> dict[str, object]:
     compute_weekly_data(**filters, force_rebuild=True)
     compute_all_time_staged(**filters, force_rebuild=True)
     compute_billboard_data(**filters, force_rebuild=True)
-    latest = compute_year_end_staged(**filters, year=None, force_rebuild=True)
+    year_end_filter_names = (
+        "min_ms",
+        "music_only",
+        "bb_top_n",
+        "bb_album_top_n",
+        "bb_artist_top_n",
+        "bb_week_start_dow",
+        "bb_week_start_hour",
+        "merge_level",
+        "dynamic_threshold",
+        "max_merge_gap_minutes",
+        "include_compilations",
+        "merge_enabled",
+    )
+    year_end_filters = {key: filters[key] for key in year_end_filter_names if key in filters}
+    latest = compute_year_end_staged(**year_end_filters, year=None, force_rebuild=True)
     years = latest.get("meta", {}).get("available_years", [])
     rebuilt_years: list[int] = []
     for year in years:
-        compute_year_end_staged(**filters, year=int(year), force_rebuild=True)
+        compute_year_end_staged(**year_end_filters, year=int(year), force_rebuild=True)
         rebuilt_years.append(int(year))
     return {"families": ["weekly", "all_time", "full_data", "year_end"], "years": rebuilt_years}
 
