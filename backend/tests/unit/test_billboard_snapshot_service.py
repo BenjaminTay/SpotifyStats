@@ -56,6 +56,71 @@ def test_enqueue_snapshot_rebuild_is_deduplicated(tmp_path):
     assert row == ("billboard_snapshot_rebuild", "default", "pending")
 
 
+def test_startup_snapshot_rebuild_skips_when_all_default_rows_are_current(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "spotify_stats.db"
+    _init_jobs_db(db_path)
+    queue = JobQueue(max_workers=1)
+    queue.prepare(str(db_path))
+    filters = {
+        "min_ms": 30_000,
+        "music_only": True,
+        "merge_enabled": True,
+        "bb_top_n": 30,
+        "bb_album_top_n": 20,
+        "bb_artist_top_n": 20,
+        "bb_week_start_dow": 4,
+        "bb_week_start_hour": 0,
+        "year_start": None,
+        "year_end": None,
+        "dynamic_threshold": True,
+        "max_merge_gap_minutes": 5,
+        "merge_level": 2,
+        "include_compilations": False,
+    }
+    monkeypatch.setattr(snapshot_service, "configured_billboard_filters", lambda: filters)
+    monkeypatch.setattr(
+        "backend.domains.billboard.chart_load_rank.billboard_revision_state",
+        lambda: (1, 1, 1, 1, "ready:ready"),
+    )
+
+    def fake_context(family, params):
+        return {
+            "cache_key": f"{family}:{params.get('year')}",
+            "request_key": family,
+            "family": family,
+            "source_revision": "current",
+            "builder_version": "test",
+            "params": params,
+        }
+
+    def fake_load(context, *, allow_lkg=True, cache_path=None):
+        if context["family"] == "year_end" and context["params"]["year"] is None:
+            return {"meta": {"available_years": [2025, 2026]}}
+        return {"meta": {}}
+
+    monkeypatch.setattr(
+        "backend.domains.billboard.persistent_cache.build_cache_context",
+        fake_context,
+    )
+    monkeypatch.setattr(
+        "backend.domains.billboard.persistent_cache.load_persisted_snapshot",
+        fake_load,
+    )
+
+    assert (
+        snapshot_service.enqueue_billboard_snapshot_rebuild(
+            "application startup",
+            queue=queue,
+        )
+        is None
+    )
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM background_jobs").fetchone()[0] == 0
+
+
 def test_rebuild_default_snapshots_builds_latest_and_each_year(monkeypatch):
     filters = {"merge_level": 2, "include_compilations": False}
     calls: list[tuple[str, dict]] = []
