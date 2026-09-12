@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 import time
@@ -15,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MATRIX_PATH = ROOT / "docs" / "verification" / "2026-07-03-ai-question-test-matrix.md"
+DEFAULT_MATRIX_PATH = ROOT / "docs" / "reports" / "2026-07-03-ai-question-test-matrix.md"
 DEFAULT_GOLDEN_PATH = ROOT / "backend" / "tests" / "fixtures" / "ai_agent_golden_questions.json"
 
 _TABLE_ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|")
@@ -244,9 +245,15 @@ def _poll_task(
 
 def _task_events(backend_url: str, task_id: str) -> dict[str, Any]:
     try:
-        return _http_json("GET", _api_url(backend_url, f"/api/ai/tasks/{task_id}/events"))
+        payload = _http_json("GET", _api_url(backend_url, f"/api/ai/tasks/{task_id}/events"))
+        trajectory = _http_json(
+            "GET",
+            _api_url(backend_url, f"/api/ai/tasks/{task_id}/trajectory"),
+        )
+        payload["trajectory"] = trajectory.get("events", [])
+        return payload
     except RuntimeError:
-        return {"found": False, "events": [], "tool_calls": []}
+        return {"found": False, "events": [], "tool_calls": [], "trajectory": []}
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -317,10 +324,11 @@ def _p0_specific_issues(
     question_frame = _as_dict(result.get("question_frame"))
 
     if case.case_id == "P0-01":
-        if (
-            interpretation.get("start_date") != "2025-06-01"
-            or interpretation.get("end_date") != "2025-08-31"
-        ):
+        effective_start = interpretation.get("effective_start_date") or interpretation.get(
+            "start_date"
+        )
+        effective_end = interpretation.get("effective_end_date") or interpretation.get("end_date")
+        if effective_start != "2025-06-01" or effective_end != "2025-08-31":
             fail.append("去年夏天时间范围不是 2025-06-01..2025-08-31")
         if "2024" in answer and "2025" not in answer:
             fail.append("回答疑似仍把去年夏天解释为 2024")
@@ -407,10 +415,75 @@ def _grade_case(
         )
     if not answer.strip():
         fail_issues.append("empty answer")
+    if result.get("agent_runtime") != "v2":
+        fail_issues.append(f"expected agent_runtime=v2, got {result.get('agent_runtime')!r}")
+    trajectory = _as_list(events_payload.get("trajectory"))
+    trajectory_types = {
+        str(event.get("event_type") or "") for event in trajectory if isinstance(event, dict)
+    }
+    if not {"turn_started", "turn_ended"}.issubset(trajectory_types):
+        fail_issues.append("missing replayable V2 turn_started/turn_ended trajectory")
+    if "model_message" not in trajectory_types:
+        fail_issues.append("trajectory does not contain model-visible messages")
 
     validation_issues = [str(issue) for issue in _as_list(result.get("validation_issues"))]
     if validation_issues:
         partial_issues.extend(f"validation: {issue}" for issue in validation_issues)
+
+    evidence_coverage = result.get("evidence_coverage")
+    if not isinstance(evidence_coverage, (int, float)) or isinstance(evidence_coverage, bool):
+        fail_issues.append("missing numeric evidence_coverage")
+    elif float(evidence_coverage) < 1.0:
+        fail_issues.append(
+            f"numeric evidence coverage is {float(evidence_coverage):.1%}, expected 100%"
+        )
+    claim_ledger = _as_dict(result.get("claim_ledger"))
+    unsupported_literals = _as_list(claim_ledger.get("unsupported_literals"))
+    if unsupported_literals:
+        fail_issues.append(f"unsupported numeric claims: {unsupported_literals[:8]}")
+
+    answer_contract = _as_dict(result.get("answer_contract"))
+    if answer_contract.get("classification") != "pass" or answer_contract.get("ok") is not True:
+        fail_issues.append(
+            "answer quality contract did not pass: "
+            f"{answer_contract.get('classification') or 'missing'}"
+        )
+    else:
+        dimensions = _as_dict(answer_contract.get("dimensions"))
+        required_dimensions = {
+            "grounded",
+            "complete",
+            "informative",
+            "constraint_compliant",
+            "readable",
+        }
+        if not required_dimensions.issubset(dimensions):
+            fail_issues.append("answer quality contract is missing required dimensions")
+
+    tool_names = _tool_names(result, events_payload)
+    tool_evidence = [
+        item for item in _as_list(result.get("tool_evidence")) if isinstance(item, dict)
+    ]
+    if tool_names and not tool_evidence:
+        fail_issues.append("tool calls exist but tool_evidence_v2 is missing")
+    elif any(item.get("schema_version") != "tool_evidence_v2" for item in tool_evidence):
+        fail_issues.append("tool evidence does not use tool_evidence_v2")
+    elif any(not item.get("constraint_fingerprint") for item in tool_evidence):
+        fail_issues.append("tool evidence is missing constraint_fingerprint")
+    # A deterministic fallback is an intentional Agent safety path. It remains
+    # visible in the result, but is not itself a quality failure when the final
+    # answer has complete evidence coverage and no validation issues.
+
+    runtime_metrics = _as_dict(result.get("runtime_metrics"))
+    if not runtime_metrics:
+        fail_issues.append("missing runtime_metrics")
+    else:
+        total_elapsed_ms = runtime_metrics.get("total_elapsed_ms")
+        if isinstance(total_elapsed_ms, (int, float)) and total_elapsed_ms > 180_000:
+            partial_issues.append(f"turn latency {int(total_elapsed_ms)}ms exceeds 180000ms")
+        tool_calls = runtime_metrics.get("tool_call_count")
+        if isinstance(tool_calls, (int, float)) and tool_calls > 8:
+            partial_issues.append(f"tool call count {int(tool_calls)} exceeds quality target 8")
 
     if case.case_id.startswith("P0-"):
         fail, partial = _p0_specific_issues(case, result, events_payload)
@@ -430,9 +503,12 @@ def _grade_case(
         "status": status,
         "grade": grade,
         "issues": fail_issues + partial_issues,
-        "tool_names": _tool_names(result, events_payload),
+        "tool_names": tool_names,
         "answer_preview": answer[:500],
         "validation_issues": validation_issues,
+        "evidence_coverage": evidence_coverage,
+        "runtime_metrics": runtime_metrics,
+        "grounded_fallback_used": result.get("grounded_fallback_used") is True,
     }
 
 
@@ -621,6 +697,81 @@ def _combine_live_results(parts: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    rank = max(0, math.ceil(percentile * len(ordered)) - 1)
+    return round(float(ordered[rank]), 2)
+
+
+def _performance_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    results = [item for item in payload.get("results", []) if isinstance(item, dict)]
+    metrics = [
+        item.get("runtime_metrics")
+        for item in results
+        if isinstance(item.get("runtime_metrics"), dict)
+    ]
+
+    def values(key: str) -> list[float]:
+        return [
+            float(metric[key])
+            for metric in metrics
+            if isinstance(metric.get(key), (int, float)) and not isinstance(metric.get(key), bool)
+        ]
+
+    total = len(results)
+    passed = sum(1 for item in results if item.get("grade") == "Pass")
+    return {
+        "schema_version": "ai_question_performance_v1",
+        "sample_count": total,
+        "metrics_sample_count": len(metrics),
+        "pass_rate": round(passed / max(1, total), 4),
+        "total_elapsed_ms": {
+            "p50": _percentile(values("total_elapsed_ms"), 0.50),
+            "p95": _percentile(values("total_elapsed_ms"), 0.95),
+            "max": max(values("total_elapsed_ms"), default=None),
+        },
+        "model_elapsed_ms": {
+            "p50": _percentile(values("model_elapsed_ms"), 0.50),
+            "p95": _percentile(values("model_elapsed_ms"), 0.95),
+        },
+        "tool_elapsed_ms": {
+            "p50": _percentile(values("tool_elapsed_ms"), 0.50),
+            "p95": _percentile(values("tool_elapsed_ms"), 0.95),
+        },
+    }
+
+
+def _performance_gate(
+    summary: dict[str, Any],
+    *,
+    min_samples: int,
+    min_pass_rate: float,
+    max_p95_ms: float,
+    max_tool_p95_ms: float,
+) -> list[str]:
+    failures: list[str] = []
+    sample_count = int(summary.get("sample_count") or 0)
+    metrics_sample_count = int(summary.get("metrics_sample_count") or 0)
+    if sample_count < min_samples:
+        failures.append(f"performance samples {sample_count} < {min_samples}")
+    if metrics_sample_count != sample_count:
+        failures.append(
+            f"runtime metrics coverage {metrics_sample_count}/{sample_count} is incomplete"
+        )
+    pass_rate = float(summary.get("pass_rate") or 0)
+    if pass_rate < min_pass_rate:
+        failures.append(f"pass rate {pass_rate:.1%} < {min_pass_rate:.1%}")
+    total_p95 = _as_dict(summary.get("total_elapsed_ms")).get("p95")
+    if isinstance(total_p95, (int, float)) and total_p95 > max_p95_ms:
+        failures.append(f"turn latency p95 {total_p95:.0f}ms > {max_p95_ms:.0f}ms")
+    tool_p95 = _as_dict(summary.get("tool_elapsed_ms")).get("p95")
+    if isinstance(tool_p95, (int, float)) and tool_p95 > max_tool_p95_ms:
+        failures.append(f"tool latency p95 {tool_p95:.0f}ms > {max_tool_p95_ms:.0f}ms")
+    return failures
+
+
 def _quality_gate(mode: str, payload: dict[str, Any]) -> tuple[bool, list[str]]:
     counts = payload["counts"]
     failures: list[str] = []
@@ -658,6 +809,11 @@ def main() -> int:
     parser.add_argument("--poll-timeout", type=float, default=210.0)
     parser.add_argument("--poll-interval", type=float, default=1.5)
     parser.add_argument("--max-cases", type=int, default=None)
+    parser.add_argument("--repeat", type=int, default=1)
+    parser.add_argument("--min-performance-samples", type=int, default=0)
+    parser.add_argument("--min-pass-rate", type=float, default=1.0)
+    parser.add_argument("--max-p95-ms", type=float, default=60_000.0)
+    parser.add_argument("--max-tool-p95-ms", type=float, default=45_000.0)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     args = parser.parse_args()
@@ -667,6 +823,9 @@ def main() -> int:
         selected = _select_cases(_extract_cases(markdown), args.mode)
         if args.max_cases is not None:
             selected = selected[: args.max_cases]
+        if args.repeat < 1:
+            raise SystemExit("--repeat must be at least 1")
+        selected = selected * args.repeat
         if not selected:
             raise SystemExit(f"no matrix cases selected for mode={args.mode}")
         if args.mode == "full":
@@ -712,9 +871,20 @@ def main() -> int:
                 poll_interval=args.poll_interval,
             )
         ok, gate_failures = _quality_gate(args.mode, result)
+        performance = _performance_summary(result)
+        performance_failures = _performance_gate(
+            performance,
+            min_samples=args.min_performance_samples,
+            min_pass_rate=args.min_pass_rate,
+            max_p95_ms=args.max_p95_ms,
+            max_tool_p95_ms=args.max_tool_p95_ms,
+        )
+        gate_failures.extend(performance_failures)
+        ok = ok and not performance_failures
         result["ok"] = ok
         result["mode"] = args.mode
         result["gate_failures"] = gate_failures
+        result["performance"] = performance
         if args.output:
             args.output.write_text(
                 json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -730,6 +900,15 @@ def main() -> int:
                 f"Pass={result['counts']['Pass']} "
                 f"Partial={result['counts']['Partial']} "
                 f"Fail={result['counts']['Fail']}"
+            )
+            total_latency = _as_dict(performance.get("total_elapsed_ms"))
+            tool_latency = _as_dict(performance.get("tool_elapsed_ms"))
+            print(
+                "performance: "
+                f"samples={performance['sample_count']} "
+                f"pass_rate={performance['pass_rate']:.1%} "
+                f"turn_p95={total_latency.get('p95')}ms "
+                f"tool_p95={tool_latency.get('p95')}ms"
             )
             if gate_failures:
                 print("FAIL")

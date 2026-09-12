@@ -13,10 +13,16 @@ from typing import Any
 
 from backend.core.db import get_db
 from backend.domains.ai_reports.visual_artifact_models import VISUAL_YEARLY_REPORT_MODE
-from backend.domains.ai_tasks.repository import AiTaskRepository
+from backend.domains.ai_tasks.cancellation import cancellation_registry
+from backend.domains.ai_tasks.repository import TASK_LEASE_SECONDS, AiTaskRepository
 from backend.services import ai_insights_service, wikipedia_service
 
 logger = logging.getLogger(__name__)
+
+# Task dispatch is intentionally patchable by synchronous contract tests. Lease
+# heartbeats must remain real background threads or a synchronous test adapter
+# would block inside Event.wait().
+_LeaseHeartbeatThread = threading.Thread
 
 TaskHandler = Callable[[str, dict[str, Any]], None]
 TERMINAL_STATUSES = {"done", "error", "cancelled"}
@@ -31,6 +37,7 @@ _AGENTIC_STAGE_PROGRESS = {
     "writing_report": 0.80,
     "reviewing_visual_artifact": 0.88,
 }
+TASK_LEASE_HEARTBEAT_SECONDS = max(10, TASK_LEASE_SECONDS // 3)
 
 
 def new_task_id() -> str:
@@ -54,6 +61,17 @@ def get_task_events(
         if repo.get_run(task_id) is None:
             return None
         return repo.list_events(task_id), repo.list_tool_calls(task_id)
+    finally:
+        conn.close()
+
+
+def get_agent_trajectory(task_id: str) -> list[dict[str, Any]] | None:
+    conn = get_db(readonly=True)
+    try:
+        repo = AiTaskRepository(conn)
+        if repo.get_run(task_id) is None:
+            return None
+        return repo.list_agent_turn_events(task_id)
     finally:
         conn.close()
 
@@ -112,10 +130,70 @@ def _run_handler_safely(
     request: dict[str, Any],
     handler: TaskHandler,
 ) -> None:
+    lease_owner = f"worker:{uuid.uuid4().hex}"
+    supports_worker_leases = False
+    conn = get_db(readonly=False)
+    try:
+        repo = AiTaskRepository(conn)
+        supports_worker_leases = repo.supports_worker_leases
+        claimed = repo.claim_run(
+            task_id,
+            lease_owner=lease_owner,
+        )
+    finally:
+        conn.close()
+    if not claimed:
+        logger.info("Skipped AI task %s because another worker owns its lease", task_id)
+        return
+    heartbeat_stop = threading.Event()
+    heartbeat_thread: threading.Thread | None = None
+    if supports_worker_leases:
+        heartbeat_thread = _LeaseHeartbeatThread(
+            target=_renew_worker_lease,
+            args=(task_id, lease_owner, heartbeat_stop),
+            daemon=True,
+            name=f"ai-task-lease-{task_id}",
+        )
+        heartbeat_thread.start()
+    cancellation_registry.token_for(task_id)
     try:
         handler(task_id, request)
     except Exception as exc:
         mark_task_error(task_id, exc)
+    finally:
+        cancellation_registry.discard(task_id)
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=2.0)
+        conn = get_db(readonly=False)
+        try:
+            AiTaskRepository(conn).release_run(task_id, lease_owner=lease_owner)
+        finally:
+            conn.close()
+
+
+def _renew_worker_lease(
+    task_id: str,
+    lease_owner: str,
+    stop_event: threading.Event,
+) -> None:
+    """Keep ownership alive while a tool or model call is blocking the task thread."""
+
+    while not stop_event.wait(TASK_LEASE_HEARTBEAT_SECONDS):
+        conn = get_db(readonly=False)
+        try:
+            renewed = AiTaskRepository(conn).renew_run(
+                task_id,
+                lease_owner=lease_owner,
+            )
+        except Exception:
+            logger.exception("Failed to renew AI task lease for %s", task_id)
+            continue
+        finally:
+            conn.close()
+        if not renewed:
+            logger.warning("Stopped AI task lease heartbeat after ownership loss: %s", task_id)
+            return
 
 
 def mark_task_done(
@@ -288,12 +366,23 @@ def start_report_task(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def start_chat_agent_task(request: dict[str, Any]) -> dict[str, Any]:
-    from backend.services.ai_agent_service import run_chat_agent_task
+    from backend.core.config import AI_AGENT_RUNTIME
+
+    if AI_AGENT_RUNTIME == "legacy":
+        from backend.services.ai_agent_service import run_chat_agent_task
+    else:
+        from backend.services.ai_agent_v2_service import (
+            run_chat_agent_task_v2 as run_chat_agent_task,
+        )
 
     return create_task(
         task_type="ai_chat_agent",
         stage="queued",
-        message="准备启动 Agent Chat",
+        message=(
+            "准备启动 Agent Chat（旧运行时）"
+            if AI_AGENT_RUNTIME == "legacy"
+            else "准备启动 Agent Chat V2"
+        ),
         request=request,
         handler=run_chat_agent_task,
     )
@@ -897,6 +986,23 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
         if metadata.get("report_mode") in {"agentic_longform", "visual_yearly_artifact"}:
             _persist_report_tool_calls(repo, task_id=task_id, result=result)
 
+        if metadata.get("report_mode") == "visual_yearly_artifact" and any(
+            metadata.get(key) is False
+            for key in (
+                "critic_passed",
+                "fact_validation_passed",
+                "final_artifact_quality_passed",
+                "section_checkpoints_passed",
+            )
+        ):
+            _mark_report_task_error(
+                repo,
+                task_id=task_id,
+                message="年度报告质量门禁未通过，结果未写入缓存。",
+                result=result,
+            )
+            return
+
         if result.get("success"):
             cache_written_at = (
                 _report_cache_write_timestamp() if _report_result_is_cacheable(result) else None
@@ -963,10 +1069,10 @@ def cancel_task(task_id: str) -> dict[str, Any] | None:
 
         updated = repo.update_run_if_not_terminal(
             task_id=task_id,
-            status="cancelled",
-            stage="cancelled",
+            status="cancelling",
+            stage="cancelling",
             progress_pct=float(task.get("progress_pct") or 0.0),
-            message="任务已取消",
+            message="正在取消任务",
             result=None,
             error=None,
         )
@@ -974,11 +1080,144 @@ def cancel_task(task_id: str) -> dict[str, Any] | None:
             return repo.get_run(task_id)
         repo.add_event(
             task_id=task_id,
-            event_type="stage_completed",
-            stage="cancelled",
-            message="任务已取消",
+            event_type="cancellation_requested",
+            stage="cancelling",
+            message="正在取消任务",
             payload=None,
         )
+        cancellation_registry.request_cancel(task_id)
+
+        # Persist the terminal state in the same short request.  A worker that
+        # is blocked in provider I/O will observe either the token or this
+        # durable state before it can start another tool call.
+        cancelled = repo.update_run_if_not_terminal(
+            task_id=task_id,
+            status="cancelled",
+            stage="cancelled",
+            progress_pct=float(task.get("progress_pct") or 0.0),
+            message="任务已取消",
+            result=None,
+            error=None,
+        )
+        if cancelled:
+            repo.add_event(
+                task_id=task_id,
+                event_type="cancellation_completed",
+                stage="cancelled",
+                message="任务已取消",
+                payload=None,
+            )
         return repo.get_run(task_id)
     finally:
         conn.close()
+
+
+def enqueue_agent_input(
+    task_id: str,
+    *,
+    action: str,
+    content: str,
+) -> dict[str, Any] | None:
+    """Persist steering/follow-up input for the next safe Agent boundary."""
+
+    if action == "cancel":
+        task = cancel_task(task_id)
+        if task is None:
+            return None
+        return {
+            "accepted": True,
+            "task_id": task_id,
+            "action": action,
+            "inbox_id": None,
+            "status": str(task["status"]),
+        }
+    conn = get_db(readonly=False)
+    try:
+        repo = AiTaskRepository(conn)
+        task = repo.get_run(task_id)
+        if task is None:
+            return None
+        if task.get("task_type") != "ai_chat_agent" or task.get("status") not in {
+            "queued",
+            "running",
+        }:
+            return {
+                "accepted": False,
+                "task_id": task_id,
+                "action": action,
+                "inbox_id": None,
+                "status": str(task.get("status") or "rejected"),
+            }
+        request = task.get("request")
+        session_id = request.get("session_id") if isinstance(request, dict) else None
+        inbox_id = repo.enqueue_agent_input(
+            task_id=task_id,
+            session_id=session_id if isinstance(session_id, int) else None,
+            input_type=action,
+            content=content.strip(),
+        )
+        repo.add_event(
+            task_id=task_id,
+            event_type="agent_input_received",
+            stage=str(task.get("stage") or "agent_running"),
+            message="Agent 已收到补充要求",
+            payload={"inbox_id": inbox_id, "input_type": action},
+        )
+        return {
+            "accepted": True,
+            "task_id": task_id,
+            "action": action,
+            "inbox_id": inbox_id,
+            "status": "pending",
+        }
+    finally:
+        conn.close()
+
+
+def recover_interrupted_agent_tasks() -> int:
+    """Resume durable read-only Agent turns left active by a process restart."""
+
+    from backend.core.config import AI_AGENT_RUNTIME
+
+    if AI_AGENT_RUNTIME == "legacy":
+        return 0
+    conn = get_db(readonly=False)
+    try:
+        runs = AiTaskRepository(conn).list_recoverable_agent_runs()
+    finally:
+        conn.close()
+
+    recovered = 0
+    for task in runs:
+        task_id = str(task["task_id"])
+        if task.get("status") == "cancelling":
+            cancel_task(task_id)
+            continue
+        request = task.get("request")
+        if not isinstance(request, dict):
+            mark_task_error(task_id, ValueError("Agent 恢复失败：任务请求缺失"))
+            continue
+
+        def resume_handler(
+            recovered_task_id: str,
+            recovered_request: dict[str, Any],
+        ) -> None:
+            from backend.services.ai_agent_v2_service import run_chat_agent_task_v2
+
+            run_chat_agent_task_v2(
+                recovered_task_id,
+                recovered_request,
+                resume=True,
+            )
+
+        thread = threading.Thread(
+            target=_run_handler_safely,
+            args=(task_id, request, resume_handler),
+            daemon=True,
+            name=f"ai-agent-recovery-{task_id}",
+        )
+        thread.start()
+        recovered += 1
+    if recovered:
+        logger.info("Recovered %d interrupted AI Agent task(s)", recovered)
+    return recovered

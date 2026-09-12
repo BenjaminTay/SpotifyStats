@@ -564,6 +564,9 @@ def generate_all_posts(
     max_merge_gap_minutes: int | None = 5,
     merge_level: int = 2,
     include_compilations: bool = False,
+    include_collection: bool = True,
+    include_cover_images: bool = True,
+    include_engagement_metrics: bool = True,
 ) -> list[CommunityPost]:
     """Main entry point: generate all community posts by iterating chart history.
 
@@ -592,29 +595,36 @@ def generate_all_posts(
     # Shallow copy so we can extend without mutating the cached list
     posts: list[CommunityPost] = list(core_posts)
 
-    # Collection posts (need DB conn)
-    if conn is not None:
-        collection_data = _load_collection_data(conn)
-    else:
-        collection_data = {
-            "total_saved": 0,
-            "first_save": None,
-            "forgotten": [],
-            "forgotten_count": 0,
-        }
+    if include_collection:
+        # Collection posts need the database connection and are optional for
+        # read-only Agent queries that only ask about chart activity.
+        if conn is not None:
+            collection_data = _load_collection_data(conn)
+        else:
+            collection_data = {
+                "total_saved": 0,
+                "first_save": None,
+                "forgotten": [],
+                "forgotten_count": 0,
+            }
 
-    posts.extend(_gen_collection_posts(collection_data, state))
-    posts.extend(_gen_collection_milestone(collection_data, state))
+        posts.extend(_gen_collection_posts(collection_data, state))
+        posts.extend(_gen_collection_milestone(collection_data, state))
 
     # Cover images (need DB conn)
-    cover_maps = _load_cover_maps(conn) if conn else {}
-    for post in posts:
-        _enrich_post_images(post, cover_maps)
+    if include_cover_images:
+        cover_maps = _load_cover_maps(conn) if conn else {}
+        for post in posts:
+            _enrich_post_images(post, cover_maps)
 
     # Engagement metrics — always fresh (randomized)
-    for post in posts:
-        acct = ACCOUNT_BY_HANDLE.get(post.account_handle, {})
-        post.metrics = _generate_metrics(post.significance, str(acct.get("follower_tier", "mid")))
+    if include_engagement_metrics:
+        for post in posts:
+            acct = ACCOUNT_BY_HANDLE.get(post.account_handle, {})
+            post.metrics = _generate_metrics(
+                post.significance,
+                str(acct.get("follower_tier", "mid")),
+            )
 
     posts.sort(key=lambda p: p.posted_at, reverse=True)
     return posts

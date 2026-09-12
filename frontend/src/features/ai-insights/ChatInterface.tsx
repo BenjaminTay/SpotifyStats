@@ -2,7 +2,10 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { ArrowLeft, X } from 'lucide-react'
 
 import { useChatSession, useCreateSession, useAddMessage, useSuggestedQuestions } from '@/hooks/useAiInsights'
-import { useAiTask, useCancelAiTask, useStartChatAgentTask } from '@/hooks/useAiTasks'
+import {
+  useAiTask,
+  useStartChatAgentTask,
+} from '@/hooks/useAiTasks'
 import { useSettings } from '@/hooks/useSettings'
 import { SuggestedQuestions } from './SuggestedQuestions'
 import { ChatMessageList } from './ChatMessageList'
@@ -12,6 +15,9 @@ import { buildChatAgentFilterPayload } from './aiTaskFilters'
 import { chatAgentMeta, chatMessageToMetaJson, chatTaskAnswer, chatTaskError, recordToChatMessage } from '@/types/ai-insights'
 import type { ChatMessage, ReportType } from '@/types/ai-insights'
 import type { AiTaskRun } from '@/types/ai-tasks'
+import { isActiveAiTask, isTerminalAiTask } from './aiTaskStatus'
+import { useRunningAgentSteering } from './useRunningAgentSteering'
+import { useAgentCancellation, type ActiveAgentTask } from './useAgentCancellation'
 
 interface Props {
   initialQuestion?: string | null
@@ -21,20 +27,6 @@ interface Props {
   onBackToReport?: () => void
   sessionId: number | null
   onSessionCreated: (id: number) => void
-}
-
-interface ActiveChatTask {
-  taskId: string
-  question: string
-  sessionId: number | null
-}
-
-function isActiveStatus(status: AiTaskRun['status'] | null | undefined): boolean {
-  return status === 'queued' || status === 'running'
-}
-
-function isTerminalStatus(status: AiTaskRun['status'] | null | undefined): boolean {
-  return status === 'done' || status === 'error' || status === 'cancelled'
 }
 
 export function ChatInterface({
@@ -51,7 +43,7 @@ export function ChatInterface({
   const [thinkingMode, setThinkingMode] = useState(true)
   const [retryingIdx, setRetryingIdx] = useState<number | null>(null)
   const [sessionError, setSessionError] = useState<string | null>(null)
-  const [activeChatTask, setActiveChatTask] = useState<ActiveChatTask | null>(null)
+  const [activeChatTask, setActiveChatTask] = useState<ActiveAgentTask | null>(null)
   const { questions, isLoading: questionsLoading } = useSuggestedQuestions(reportContext)
   const bottomRef = useRef<HTMLDivElement>(null)
   const loadedSessionRef = useRef<number | null>(null)
@@ -62,11 +54,11 @@ export function ChatInterface({
   const createSession = useCreateSession()
   const addMessage = useAddMessage()
   const startChatTask = useStartChatAgentTask()
-  const cancelChatTask = useCancelAiTask()
   const { settings } = useSettings()
   const activeTaskState = useAiTask(activeChatTask?.taskId ?? null)
   const activeStatus = activeTaskState.task?.status
-  const asking = startChatTask.isPending || isActiveStatus(activeStatus)
+  const asking = startChatTask.isPending || isActiveAiTask(activeStatus)
+  const composerDisabled = startChatTask.isPending || activeStatus === 'cancelling'
   const displayedTask: AiTaskRun | null = activeTaskState.task ?? (startChatTask.isPending
     ? { found: true, status: 'queued', stage: 'starting', progress_pct: 0, message: '正在启动 Agent Chat' }
     : null)
@@ -87,6 +79,14 @@ export function ChatInterface({
     },
     [addMessage],
   )
+  const { steerRunningAgent, steeringInputs } = useRunningAgentSteering({
+    taskId: activeChatTask?.taskId ?? null,
+    sessionId: activeChatTask?.sessionId ?? null,
+    active: isActiveAiTask(activeStatus),
+    setMessages,
+    saveMessage,
+    setError: setSessionError,
+  })
 
   const ensureSession = useCallback(async (): Promise<number | null> => {
     if (sessionId !== null) return sessionId
@@ -120,6 +120,7 @@ export function ChatInterface({
         handledTaskIdRef.current = null
         const task = await startChatTask.mutateAsync({
           question,
+          ...(sid !== null ? { session_id: sid } : {}),
           conversation_history: history,
           question_time: new Date().toISOString(),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -144,8 +145,10 @@ export function ChatInterface({
   const submitQuestion = useCallback(
     async (question: string, appendUser = true) => {
       const q = question.trim()
-      if (!q || asking) return
+      if (!q || startChatTask.isPending) return
       setInput('')
+
+      if (await steerRunningAgent(q)) return
 
       const sid = await ensureSession()
       if (sid === null) {
@@ -158,7 +161,13 @@ export function ChatInterface({
       }
       await startAgentTask(q, sid)
     },
-    [asking, ensureSession, saveMessage, startAgentTask],
+    [
+      ensureSession,
+      saveMessage,
+      steerRunningAgent,
+      startAgentTask,
+      startChatTask.isPending,
+    ],
   )
 
   useEffect(() => {
@@ -191,7 +200,7 @@ export function ChatInterface({
 
   useEffect(() => {
     const task = activeTaskState.task
-    if (!activeChatTask || !task || !isTerminalStatus(task.status)) return
+    if (!activeChatTask || !task || !isTerminalAiTask(task.status)) return
     if (task.status === 'done' && activeTaskState.toolCalls.length === 0 && activeTaskState.fetching) return
     if (handledTaskIdRef.current === activeChatTask.taskId) return
     handledTaskIdRef.current = activeChatTask.taskId
@@ -241,36 +250,14 @@ export function ChatInterface({
     setRetryingIdx(null)
   }
 
-  const handleCancel = async () => {
-    if (!activeChatTask) return
-    const taskContext = activeChatTask
-    try {
-      const task = await cancelChatTask.mutateAsync(taskContext.taskId)
-      const answer = task.status === 'done' ? chatTaskAnswer(task) : null
-      const meta = chatAgentMeta(task, activeTaskState.toolCalls, {
-        success: Boolean(answer),
-        answer: answer ?? '',
-        error: answer ? undefined : task.status === 'cancelled' ? '回答已取消' : chatTaskError(task),
-        cancelled: task.status === 'cancelled',
-      })
-      const message: ChatMessage = answer
-        ? { role: 'assistant', content: answer, meta }
-        : { role: 'error', content: taskContext.question, meta }
-      handledTaskIdRef.current = taskContext.taskId
-      setMessages((prev) => [...prev, message])
-      saveMessage(taskContext.sessionId, message.role, message.content, chatMessageToMetaJson(message))
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '取消失败'
-      const message: ChatMessage = {
-        role: 'error',
-        content: taskContext.question,
-        meta: { success: false, answer: '', error: msg, task_id: taskContext.taskId, result: null, tool_calls: activeTaskState.toolCalls },
-      }
-      setMessages((prev) => [...prev, message])
-      saveMessage(taskContext.sessionId, 'error', taskContext.question, chatMessageToMetaJson(message))
-    }
-    setActiveChatTask(null)
-  }
+  const handleCancel = useAgentCancellation({
+    task: activeChatTask,
+    toolCalls: activeTaskState.toolCalls,
+    setMessages,
+    saveMessage,
+    markHandled: (taskId) => { handledTaskIdRef.current = taskId },
+    clearTask: () => setActiveChatTask(null),
+  })
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -299,7 +286,13 @@ export function ChatInterface({
           messages={messages}
           asking={asking}
           sessionLoading={sessionLoading}
-          activeTask={{ task: displayedTask, events: activeTaskState.events, toolCalls: activeTaskState.toolCalls }}
+          activeTask={{
+            task: displayedTask,
+            events: activeTaskState.events,
+            toolCalls: activeTaskState.toolCalls,
+            streamedAnswer: activeTaskState.streamedAnswer,
+            steeringInputs,
+          }}
           retryingIdx={retryingIdx}
           reportContext={reportContext}
           onRetry={handleRetry}
@@ -333,8 +326,9 @@ export function ChatInterface({
 
         <ChatComposer
           value={input}
-          disabled={asking}
+          disabled={composerDisabled}
           thinkingMode={thinkingMode}
+          placeholder={asking ? '可继续补充时间范围或分析要求…' : undefined}
           onChange={setInput}
           onThinkingModeChange={setThinkingMode}
           onSend={handleSend}

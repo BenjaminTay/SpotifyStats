@@ -4814,6 +4814,10 @@
     min-height: 44px;
   }
 
+  [data-mobile-ai-reports='panel'] button {
+    min-width: 44px;
+  }
+
   .mobile-ai-report-card {
     padding: 15px;
     border-radius: 17px;

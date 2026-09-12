@@ -30,19 +30,18 @@ def recipe_for_frame(frame: QuestionFrame | dict[str, object]) -> EvidenceRecipe
     family = parsed_frame.family
 
     if family == "preference_comparison":
-        required_axes = ["cumulative", "recency", "intensity"]
+        required_axes = ["cumulative", "intensity"]
+        if parsed_frame.time_scope != "lifetime":
+            required_axes.append("recency")
         if "personal_billboard" in parsed_frame.analysis_axes:
             required_axes.append("personal_billboard")
         return EvidenceRecipe(
             family=family,
             required_axes=required_axes,
             conditional_axes=["fairness"],
-            required_tool_patterns=[
-                {"tool_name": "compare_entities"},
-                {"tool_name": "entity_stats", "period": "last_6_months"},
-                {"tool_name": "entity_stats", "period": "last_4_weeks"},
-            ],
-            max_followup_calls=5,
+            required_tool_patterns=[{"tool_name": "compare_entities"}],
+            required_context={"time_scope": parsed_frame.time_scope},
+            max_followup_calls=2,
         )
 
     if family == "identity_preference":
@@ -130,6 +129,15 @@ def recipe_for_frame(frame: QuestionFrame | dict[str, object]) -> EvidenceRecipe
             required_tool_patterns=[{"tool_name": "community_trending"}],
             recommended_tool_patterns=[{"tool_name": "community_feed_search"}],
             max_followup_calls=2,
+        )
+
+    if family == "taste_profile":
+        return EvidenceRecipe(
+            family=family,
+            required_axes=["taste", "period"],
+            required_tool_patterns=[{"tool_name": "taste_profile"}],
+            required_context={"time_scope": parsed_frame.time_scope},
+            max_followup_calls=1,
         )
 
     if family == "safety_boundary":

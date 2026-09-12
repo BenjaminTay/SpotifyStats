@@ -22,6 +22,7 @@ QuestionFamily = Literal[
     "account_collection",
     "search_behavior",
     "community_lookup",
+    "taste_profile",
     "safety_boundary",
     "habit_summary",
 ]
@@ -44,6 +45,7 @@ AnalysisAxis = Literal[
     "collection",
     "search",
     "community",
+    "taste",
     "safety",
 ]
 
@@ -155,6 +157,21 @@ def _family(question: str, intent: QuestionIntent) -> QuestionFamily:
         return "search_behavior"
     if _contains_any(
         question,
+        (
+            "什么类型的音乐",
+            "哪种类型的音乐",
+            "音乐类型",
+            "曲风",
+            "风格分布",
+            "语种分布",
+            "语言分布",
+            "华语还是",
+            "欧美还是",
+        ),
+    ):
+        return "taste_profile"
+    if _contains_any(
+        question,
         ("收藏", "收藏夹", "已保存", "saved", "liked", "账号", "歌单", "playlist", "关注"),
     ):
         return "account_collection"
@@ -216,6 +233,8 @@ def _axes_for_family(family: QuestionFamily, intent: QuestionIntent) -> list[Ana
         return ["search", "behavior"]
     if family == "community_lookup":
         return ["community", "ranking"]
+    if family == "taste_profile":
+        return ["taste", "period"]
     if family == "safety_boundary":
         return ["safety"]
     if family == "scoped_ranking":
@@ -244,6 +263,7 @@ def _contract_for_family(family: QuestionFamily) -> AnswerContract:
         "account_collection": "account_collection_answer",
         "search_behavior": "search_behavior_answer",
         "community_lookup": "community_lookup_answer",
+        "taste_profile": "habit_summary_answer",
         "safety_boundary": "readonly_refusal_answer",
         "habit_summary": "habit_summary_answer",
     }

@@ -7,7 +7,7 @@ from typing import Any, Literal, Union
 from pydantic import BaseModel, Field, model_validator
 
 JsonPayload = Union[dict[str, Any], list[Any]]
-AiTaskStatus = Literal["queued", "running", "done", "error", "cancelled"]
+AiTaskStatus = Literal["queued", "running", "cancelling", "done", "error", "cancelled"]
 
 
 class AiTaskRun(BaseModel):
@@ -68,6 +68,42 @@ class AiTaskEventsResponse(BaseModel):
     tool_calls: list[AiToolCall]
 
 
+class AiAgentTurnEvent(BaseModel):
+    event_id: int
+    task_id: str
+    session_id: int | None = None
+    turn_id: str
+    sequence: int
+    step_index: int | None = None
+    event_type: str
+    payload: JsonPayload
+    created_at: str
+
+
+class AiAgentTrajectoryResponse(BaseModel):
+    found: bool
+    events: list[AiAgentTurnEvent]
+
+
+class AiAgentInboxRequest(BaseModel):
+    action: Literal["steer", "followup", "cancel"]
+    content: str = Field(default="", max_length=500)
+
+    @model_validator(mode="after")
+    def validate_content(self) -> AiAgentInboxRequest:
+        if self.action != "cancel" and not self.content.strip():
+            raise ValueError("steer and followup require content")
+        return self
+
+
+class AiAgentInboxResponse(BaseModel):
+    accepted: bool
+    task_id: str
+    action: Literal["steer", "followup", "cancel"]
+    inbox_id: int | None = None
+    status: str
+
+
 class AiTaskCreateResponse(BaseModel):
     task_id: str
     task_type: str | None = None
@@ -118,6 +154,7 @@ class ReportTaskRequest(BaseModel):
 
 class ChatAgentTaskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500)
+    session_id: int | None = Field(default=None, ge=1)
     conversation_history: list[dict[str, str]] | None = None
     question_time: str | None = Field(default=None, max_length=80)
     timezone: str | None = Field(default=None, max_length=80)

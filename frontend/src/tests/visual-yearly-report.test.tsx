@@ -454,7 +454,36 @@ describe('VisualYearlyReport', () => {
       />,
     )
 
-    expect(screen.getByText('基础模式生成')).toBeInTheDocument()
+    expect(screen.getByText('已用本地数据生成完整版本')).toBeInTheDocument()
     expect(screen.queryByText('Agent 合成')).not.toBeInTheDocument()
+  })
+
+  it('ReportCard explains section-level fallback without exposing pipeline internals', () => {
+    const value = artifact()
+    value.metadata = {
+      ...value.metadata,
+      fallback_level: 'section_writer_partial_fallback',
+      section_writer_fallback_count: 2,
+    }
+
+    render(
+      <ReportCard
+        artifact={value}
+        cached={false}
+        cachedAt={null}
+        entities={null}
+        error={null}
+        fetching={false}
+        loading={false}
+        metadata={value.metadata}
+        onRetry={() => undefined}
+        report={null}
+        reportType="yearly"
+        title="年度叙事 · 2025"
+      />,
+    )
+
+    expect(screen.getByText('2 个章节已用本地数据补齐')).toBeInTheDocument()
+    expect(screen.queryByText('section_writer_partial_fallback')).not.toBeInTheDocument()
   })
 })

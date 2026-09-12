@@ -370,6 +370,7 @@ describe('Phase 5 architecture guardrails', () => {
 
   it('keeps the home route container thin and mounts phone/desktop presentations exclusively', () => {
     expect(dashboardPageSource).toContain("useViewportMode() === 'phone'")
+    expect(dashboardPageSource).toContain('rediscovery: selectedRediscovery')
     expect(dashboardPageSource).toContain('<HomePhoneExperience data={presentationData} />')
     expect(dashboardPageSource).toContain('<HomeDesktopExperience data={presentationData} />')
     expect(dashboardPageSource).not.toContain('MonthlyTrendChart')

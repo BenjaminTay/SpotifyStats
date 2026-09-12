@@ -7,12 +7,19 @@ from typing import Any
 
 from backend.core.db import get_db
 from backend.domains.ai_agent.analytical_brief import build_analytical_brief
+from backend.domains.ai_agent.answer_contract import evaluate_answer_contract
 from backend.domains.ai_agent.answer_critic import critique_answer
 from backend.domains.ai_agent.answer_obligations import build_answer_obligations
+from backend.domains.ai_agent.claim_ledger import (
+    build_claim_ledger,
+    claim_ledger_issues,
+    render_grounded_fallback,
+)
 from backend.domains.ai_agent.coverage_review import review_evidence_sufficiency
 from backend.domains.ai_agent.evidence import compact_evidence_cards
 from backend.domains.ai_agent.evidence_builders import build_evidence_cards
 from backend.domains.ai_agent.evidence_recipes import recipe_for_frame
+from backend.domains.ai_agent.fact_catalog import build_fact_catalog
 from backend.domains.ai_agent.project_context import (
     PROJECT_CONTEXT_VERSION,
     build_final_answer_system_prompt,
@@ -26,6 +33,7 @@ from backend.domains.ai_agent.temporal_context import (
     build_temporal_context,
     temporal_answer_issues,
 )
+from backend.domains.ai_agent.tool_evidence import build_tool_evidence_envelopes
 from backend.domains.ai_agent.tool_registry import describe_for_model, dispatch_tool
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.services import ai_insights_service
@@ -67,6 +75,7 @@ DATA.coverage 是硬约束：coverage 标记为 found 的实体或榜单，不�
 DATA.question_frame.family 决定回答形状，DATA.answer_contract 或 DATA.analytical_brief.answer_contract 是硬约束。
 DATA.analytical_brief 是回答底稿；必须覆盖 must_explain，不得出现 forbidden_claims。
 DATA.answer_obligations 是硬约束；凡是其中要求的 token 或日期，都必须在最终回答正文中体现。
+DATA.fact_catalog 是最终回答允许公开数字的事实目录；每一个数字、日期、百分比和排名都必须能直接或通过 derived_from 追溯到其中的 fact_id。不要补充目录中不存在的歌曲数、专辑数、平均值或最近播放日期。
 DATA.answer_style 是硬约束，用来决定回答长短和结构。
 DATA.temporal_context 和 DATA.temporal_guard 是硬约束；回答中的时间标签、年份与工具 source_range 必须一致。
 如果 DATA.answer_style.style=concise，用 3-6 句或最多 3 个 bullet 直接回答；不要输出「我查了什么」「依据」「自检与限制」等固定小节，除非证据不足。
@@ -87,6 +96,7 @@ DATA.coverage 是硬约束：coverage 标记为 found 的实体或榜单，不�
 DATA.question_frame.family 决定回答形状，DATA.answer_contract 或 DATA.analytical_brief.answer_contract 是硬约束。
 DATA.analytical_brief 是回答底稿；必须覆盖 must_explain，不得出现 forbidden_claims。
 DATA.answer_obligations 是硬约束；凡是其中要求的 token 或日期，都必须在最终回答正文中体现。
+DATA.fact_catalog 是最终回答允许公开数字的事实目录；每一个数字、日期、百分比和排名都必须能直接或通过 derived_from 追溯到其中的 fact_id。不要补充目录中不存在的歌曲数、专辑数、平均值或最近播放日期。
 DATA.answer_style 是硬约束；思考模式只表示工具核对更充分，不表示回答必须变长。
 DATA.temporal_context 和 DATA.temporal_guard 是硬约束；回答中的时间标签、年份与工具 source_range 必须一致。
 如果 DATA.answer_style.style=concise，用 3-6 句或最多 3 个 bullet 直接回答；不要输出「我查了什么」「依据」「自检与限制」等固定小节，除非证据不足。
@@ -361,10 +371,83 @@ def _question_context(request: dict[str, Any]) -> dict[str, Any]:
     intent = parse_question_intent(question)
     frame = build_question_frame(question, intent)
     recipe = recipe_for_frame(frame)
+    intent_payload = intent.model_dump()
+    frame_payload = frame.model_dump()
+    recipe_payload = recipe.model_dump()
+    session_state = request.get("_agent_session_state")
+    excluded = (
+        {
+            str(item)
+            for item in session_state.get("excluded_dimensions", [])
+            if isinstance(item, str)
+        }
+        if isinstance(session_state, dict)
+        else set()
+    )
+    state_metrics = (
+        [
+            str(item)
+            for item in session_state.get("metrics", [])
+            if isinstance(item, str) and item not in excluded
+        ]
+        if isinstance(session_state, dict)
+        else []
+    )
+    if excluded or state_metrics:
+        metrics = [
+            str(item)
+            for item in intent_payload.get("requested_metrics", [])
+            if str(item) not in excluded
+        ]
+        for metric in state_metrics:
+            if metric not in metrics:
+                metrics.append(metric)
+        intent_payload["requested_metrics"] = metrics or ["summary"]
+        frame_payload["requested_metrics"] = list(intent_payload["requested_metrics"])
+        frame_payload["analysis_axes"] = [
+            axis for axis in frame_payload.get("analysis_axes", []) if axis not in excluded
+        ]
+        recipe_payload["required_axes"] = [
+            axis for axis in recipe_payload.get("required_axes", []) if axis not in excluded
+        ]
+        recipe_payload["conditional_axes"] = [
+            axis for axis in recipe_payload.get("conditional_axes", []) if axis not in excluded
+        ]
+        if "personal_billboard" in excluded:
+            intent_payload["needs_fairness_note"] = False
+            recipe_payload["required_tool_patterns"] = [
+                pattern
+                for pattern in recipe_payload.get("required_tool_patterns", [])
+                if not (
+                    isinstance(pattern, dict)
+                    and pattern.get("tool_name") == "billboard_entity_detail"
+                )
+            ]
+            recipe_payload["recommended_tool_patterns"] = [
+                pattern
+                for pattern in recipe_payload.get("recommended_tool_patterns", [])
+                if not (
+                    isinstance(pattern, dict)
+                    and pattern.get("tool_name") == "billboard_entity_detail"
+                )
+            ]
     return {
-        "question_intent": intent.model_dump(),
-        "question_frame": frame.model_dump(),
-        "evidence_recipe": recipe.model_dump(),
+        "question_intent": intent_payload,
+        "question_frame": frame_payload,
+        "evidence_recipe": recipe_payload,
+        "routing_signals": {
+            "explicit_billboard": "personal_billboard" not in excluded
+            and _question_contains_any(
+                question,
+                (
+                    "billboard",
+                    "个人榜",
+                    "power score",
+                    "冠军周",
+                    "在榜周",
+                ),
+            )
+        },
     }
 
 
@@ -1198,6 +1281,21 @@ def _final_payload(
         question_frame=context["question_frame"],
         evidence_sufficiency=evidence_sufficiency,
     )
+    fact_catalog = build_fact_catalog(
+        compact_cards,
+        tool_results=tool_results,
+        temporal_context=temporal_context,
+        temporal_guard=temporal_guard,
+    )
+    tool_evidence = build_tool_evidence_envelopes(
+        tool_results,
+        fact_catalog=fact_catalog,
+        constraint_state=(
+            request.get("_agent_session_state")
+            if isinstance(request.get("_agent_session_state"), dict)
+            else context.get("question_frame")
+        ),
+    )
     return {
         "question": request.get("question", ""),
         "conversation_history": (request.get("conversation_history") or [])[-6:],
@@ -1211,6 +1309,8 @@ def _final_payload(
         "analytical_brief": analytical_brief,
         "answer_obligations": answer_obligations,
         "evidence_cards": compact_cards,
+        "fact_catalog": fact_catalog,
+        "tool_evidence": tool_evidence,
         "tool_results": compact_results,
     }
 
@@ -1291,6 +1391,8 @@ def _combined_answer_issues(answer: str, final_payload: dict[str, Any]) -> list[
     critic_result = critique_answer(answer, final_payload)
     if not critic_result["ok"]:
         issues.extend(str(issue) for issue in critic_result.get("issues", []))
+    ledger = build_claim_ledger(answer, final_payload.get("fact_catalog") or [])
+    issues.extend(claim_ledger_issues(ledger))
     return _dedupe_issues(issues)
 
 
@@ -1316,6 +1418,8 @@ def _obligation_fallback_note(obligation: dict[str, Any]) -> str | None:
         return (
             f"数据边界：本地播放数据截至 {date}。" if date else "数据边界：本地播放数据有截止日期。"
         )
+    if kind == "effective_data_range" and len(required_values) >= 2:
+        return f"实际分析范围：{required_values[0]} 至 {required_values[1]}。"
     if kind == "evidence_limitation":
         return "限制：当前证据不足，只能基于已查到的只读工具结果保守判断。"
     if kind == "local_personal_billboard":
@@ -1384,12 +1488,20 @@ def _result_payload(
     final_payload: dict[str, Any],
     answer_retried: bool,
     validation_issues: list[str],
+    grounded_fallback_used: bool = False,
 ) -> dict[str, Any]:
+    claim_ledger = build_claim_ledger(answer, final_payload.get("fact_catalog") or [])
+    answer_contract = evaluate_answer_contract(
+        answer,
+        final_payload,
+        claim_ledger=claim_ledger,
+    )
     return {
         "answer": answer,
         "tool_call_count": len(tool_results),
         "thinking_mode": _thinking_mode_enabled(request),
         "answer_retried": answer_retried,
+        "grounded_fallback_used": grounded_fallback_used,
         "project_context_version": PROJECT_CONTEXT_VERSION,
         "validation_issues": validation_issues,
         "coverage": final_payload["coverage"],
@@ -1400,6 +1512,10 @@ def _result_payload(
         "analytical_brief": final_payload["analytical_brief"],
         "answer_obligations": final_payload["answer_obligations"],
         "evidence_cards": final_payload["evidence_cards"],
+        "claim_ledger": claim_ledger,
+        "answer_contract": answer_contract,
+        "evidence_coverage": claim_ledger["evidence_coverage"],
+        "tool_evidence": final_payload.get("tool_evidence", []),
         "tools": [
             {
                 "tool_name": item["tool_name"],
@@ -1413,15 +1529,33 @@ def _result_payload(
     }
 
 
+def _ensure_grounded_answer(
+    answer: str,
+    final_payload: dict[str, Any],
+    issues: list[str],
+) -> tuple[str, list[str], bool]:
+    """Never publish numeric claims that cannot be traced to the fact catalog."""
+
+    if not any(issue.startswith("回答包含无法追溯到事实目录的数字：") for issue in issues):
+        return answer, issues, False
+    fallback = render_grounded_fallback(final_payload.get("fact_catalog") or [])
+    fallback_issues = _combined_answer_issues(fallback, final_payload)
+    fallback = _apply_obligation_fallback_notes(fallback, final_payload, fallback_issues)
+    fallback_issues = _combined_answer_issues(fallback, final_payload)
+    unsupported = [
+        issue for issue in fallback_issues if issue.startswith("回答包含无法追溯到事实目录的数字：")
+    ]
+    if unsupported:
+        raise ChatAgentError("事实目录回退回答仍包含无法追溯的数字，已拒绝发布")
+    return fallback, fallback_issues, True
+
+
 def _retry_user_content(
     payload: dict[str, Any],
     previous_answer: str,
     issues: list[str],
 ) -> str:
     retry_payload = {
-        **payload,
-        "previous_answer": previous_answer,
-        "validation_issues": issues,
         "instruction": (
             "上一版回答与工具证据或回答契约矛盾。请只基于 coverage、"
             "evidence_sufficiency、analytical_brief 和 tool_results 重新回答；"
@@ -1429,6 +1563,20 @@ def _retry_user_content(
             "必须满足 answer_obligations，并严格遵守 project_context_version、answer_style "
             "和 Project Context 的项目语境要求。"
         ),
+        "previous_answer": previous_answer,
+        "validation_issues": issues,
+        "question": payload.get("question"),
+        "project_context_version": payload.get("project_context_version"),
+        "project_context": payload.get("project_context"),
+        "answer_style": payload.get("answer_style"),
+        "coverage": payload.get("coverage"),
+        "evidence_sufficiency": payload.get("evidence_sufficiency"),
+        "analytical_brief": payload.get("analytical_brief"),
+        "answer_obligations": payload.get("answer_obligations"),
+        # Keep compact tool summaries before optional evidence projections so
+        # size bounding can never remove the facts needed for a correction.
+        "tool_results": payload.get("tool_results"),
+        "tool_evidence": payload.get("tool_evidence"),
     }
     return _compact_json(retry_payload, limit=16000)
 
@@ -1647,6 +1795,11 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 validation_issues = _combined_answer_issues(answer, final_payload)
         answer = _apply_obligation_fallback_notes(answer, final_payload, validation_issues)
         validation_issues = _combined_answer_issues(answer, final_payload)
+        answer, validation_issues, grounded_fallback_used = _ensure_grounded_answer(
+            answer,
+            final_payload,
+            validation_issues,
+        )
 
         _mark_done(
             repo,
@@ -1659,6 +1812,7 @@ def run_chat_agent_task(task_id: str, request: dict[str, Any]) -> None:
                 final_payload=final_payload,
                 answer_retried=answer_retried,
                 validation_issues=validation_issues,
+                grounded_fallback_used=grounded_fallback_used,
             ),
         )
     except ChatAgentError as exc:

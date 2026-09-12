@@ -2,6 +2,14 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-09-12 — Agent V5 与当前主线本地集成
+
+- 将已经完成独立验收的 Agent Runtime V2、质量 V3/V4 和性能 V5 作为一条连续集成线合入本地 `main`；旧 V2/V3/V4 分支均已包含在 V5 中，不需要重复合并。
+- 合并保留当前主线的 L2/L3 专辑归属、全部收听时长、Billboard v4 和搜索发布门禁，同时接入 Agent 原生工具循环、证据契约、任务恢复、SSE 续传及年度报告共享上下文。
+- schema 升至 73：migration 72 幂等修复 Agent 事件日志，migration 73 幂等补齐另一条历史中已占用 migration 69 的 L3 归属结构，使两种既有数据库升级历史收敛到同一 schema。
+- 重新生成 CI seed、OpenAPI 和前端 API 类型；本地后端 unit 1672 passed / 2 skipped、contract 419 passed，前端 78 files / 622 tests 及 production build 通过。
+- 本次仅整理和合并本地代码；没有 push、没有生产部署、没有改动服务器或本地主数据库。
+
 ## 2026-09-01 — 播放次数与全部收听时长双轨统一
 
 - 30 秒及动态阈值只决定逻辑播放次数；全部正时长音乐收听区间独立贡献时长，孤立短片段和连续合并后的未计次余数不再从分析、详情、首页、搜索、年度与 Billboard 同次数裁决中消失。
@@ -22,6 +30,42 @@
   《同名專輯 (Remastered)》归入同一 project，2004 年《孫燕姿STEFANIE同名專輯》保持独立，
   原始三表行数与哈希不变。详细证据见
   [`reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md`](reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)。
+## 2026-08-31 — AI Agent 证据、恢复与报告质量 V4
+
+- 新增五维 Answer Quality Contract、`tool_evidence_v2` 和 Constraint Patch V2；空时间窗不再误判为有效证据，社区问答必须返回真实主体或活动。
+- 社区检索优先使用候选索引和周榜 scoped snapshot，真实工具耗时从约 227 秒降至约 0.1–0.2 秒；变更问题矩阵在真实数据库副本和当前 DeepSeek 配置上 11/11 Pass。
+- Worker 改为 90 秒短租约与独立心跳；真实杀进程恢复从第 3 步继续，3 个已完成工具没有重复。SSE 组合 cursor 从答案分片 1 重连只重放分片 2–4。
+- 年度报告增加逐节 checkpoint、同证据写作重试、可验证确定性回退和硬质量门禁。真实 2025 报告 6 节/3345 字，critic、事实、最终 artifact、6/6 checkpoint 全部通过并缓存；但 677 秒冷路径与模型 writer 空完成仍分别标记性能 Fail、模型写作 Partial。
+- Desktop/390px 真实浏览器问答通过；移动思考开关和发送按钮修复为至少 44×44px。详细见 [`designs/2026-08-31-ai-agent-quality-v4.md`](designs/2026-08-31-ai-agent-quality-v4.md) 与 [`reports/2026-08-31-ai-agent-quality-v4-acceptance.md`](reports/2026-08-31-ai-agent-quality-v4-acceptance.md)。
+
+## 2026-08-31 — 生产发布门禁与当前测试数据库契约修复
+
+- GitHub Actions 将项目虚拟环境加入后续步骤的 `PATH`，性能与基准脚本测试改用当前解释器，避免子进程误用 runner 全局 Python 并缺少项目依赖。
+- migration 1 只对真正空库注入当前 schema；既有无版本数据库按顺序升级。migration 14 对已经具备 scope/parent 的发行分组直接幂等返回，避免重建时丢失 composition 分组。
+- 重新生成的 CI seed 会真实执行全部迁移再写版本记录，同时写入当前 L1 分组投影并校验 schema 65、完整性、外键和关键触发器；小页尺寸继续把 115 张契约表控制在 1 MB 内。
+- 当前 L1 同 scope 分组合并先归档来源组再迁移成员，满足唯一性触发器；合辑独占项目不会被 provider catalog 误提升为普通专辑归属。相关 contract 已切到当前 schema 路径。
+- Billboard Records 的连续周数与 Top 20 排序抽为共享帮助函数，`records_longevity.py` / `records_endurance.py` 回到架构行数门槛；同一 seed 下重构前后 60 个记录族的序列化结果保持逐字节一致。
+- 首页架构断言同步当前 rediscovery presentation 数据流；发布前仍以完整后端 unit/contract、前端测试/构建和三种生产 profile 门禁为准。
+
+## 2026-08-31 — AI Agent 真实数据质量与运行中转向 V3
+
+- 对照 Pi 的小核心循环与 DeepSeek Harness 的 Turn/Step、事件溯源，保留 SpotifyStats 确定性事实和只读权限边界；V3 仍是应用内最小 Agent，不扩展为通用 Shell、SQL、联网或多 Agent 平台。
+- 增加 Question Frame、Evidence Recipe、Fact Catalog、Claim Ledger 和不可追溯数字硬门禁；Provider 空完成、降级或预算耗尽时，使用已观察证据生成高质量排行/比较答案。
+- 全部时间实体比较优先读取精确 ready 的已发布快照；真实冷路径从约 120.2 秒降至约 1 秒。普通比较不再无条件构建或展示个人 Billboard。
+- Session Inbox 转向改为结构化状态：混合子句可同时替换年份、排除 Billboard、增加时长；旧约束证据显式失效，最终工具、证据充分性和回答只消费新约束结果。
+- 真实数据库 Online Backup 副本 + DeepSeek 变更门禁 11/11 Pass；真实转向后四个证据轴均 covered、覆盖率 100%、校验问题为 0。Desktop/390px 浏览器验收无页面横向溢出或控制台错误。详细见 [`designs/2026-08-31-ai-agent-quality-v3.md`](designs/2026-08-31-ai-agent-quality-v3.md) 与 [`reports/2026-08-31-ai-agent-quality-v3-acceptance.md`](reports/2026-08-31-ai-agent-quality-v3-acceptance.md)。
+
+## 2026-08-31 — AI Agent 原生工具调用运行时 V2
+
+- AI 问答从一次性文本规划升级为原生 tool calling 的 Turn/Step 循环：模型观察每次只读工具结果后继续决策，并由步骤数、工具数、回合时间及重复调用保护限制运行范围。
+- 新增结构化 Tool Runtime 和迁移 68 的可重放事件日志；工具结果区分 `ok/empty/partial/error`，大型上下文保持合法 JSON，任务 trajectory 可经只读 API 查询。
+- 年度视觉报告的补充研究阶段复用原生工具调用协议；确定性图表、统计 builder、evidence cards、时间门禁、回答校验和事实审核继续保留。
+- 偏好比较改为单次、时间窗一致的 `compare_entities`：普通比较跳过个人 Billboard 冷构建，并输出窗口周均强度；只有用户明确询问榜单指标时才计算 Billboard，避免重复单实体查询导致超时。
+- 默认 `AI_AGENT_RUNTIME=v2`，保留 `legacy` 显式回退；详细契约见 [`designs/2026-08-31-ai-agent-runtime-v2.md`](designs/2026-08-31-ai-agent-runtime-v2.md)。
+- 增加问题相关 AgentProfile、运行耗时/Token/cache 指标、revision-aware 工具缓存和最多 2 路的受控只读并行；机械性时间/证据义务由确定性补丁完成，只有语义矛盾才再次调用模型。
+- Chat 与年度报告研究共用 `NativeObservationLoop`；迁移 69 增加 Session Inbox，运行中的问答可继续补充范围或取消，长会话压缩仍保留时间范围、revision 和 evidence reference。
+- 新增安全 SSE 和前端 polling 回退；取消 ACK 不等待模型请求结束。事件日志可投影上下文并从进程中断处恢复，已完成工具不会重复执行。
+- 真实数据库副本的 DeepSeek 复杂比较 37.5 秒完成；真实浏览器进一步验证运行中追加范围、两项只读工具受控并行、证据/轨迹呈现及 390px 无横向溢出。后端 contract 415 项、前端 611 项与生产 build 通过；整仓 unit 1499 passed / 2 skipped，另有 5 项为未带入本工作树的 Album Project 基线审计缺口。
 
 ## 2026-08-31 — L3 曲目与专辑自动治理落地
 

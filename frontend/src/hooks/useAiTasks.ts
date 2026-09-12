@@ -1,16 +1,22 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
+import { streamAiTask, type AiTaskStreamEnvelope } from '@/api/ai-task-stream'
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
-import type { AiTaskCreatePayload, AiTaskEventsPayload, AiTaskRun } from '@/types/ai-tasks'
+import type {
+  AiAgentInboxPayload,
+  AiTaskCreatePayload,
+  AiTaskEventsPayload,
+  AiTaskRun,
+} from '@/types/ai-tasks'
 import type { ReportType } from '@/types/ai-insights'
 import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 const POLL_INTERVAL_MS = 1_000
 
 function isActiveStatus(status: AiTaskRun['status'] | null | undefined): boolean {
-  return status === 'queued' || status === 'running'
+  return status === 'queued' || status === 'running' || status === 'cancelling'
 }
 
 function isTerminalStatus(status: AiTaskRun['status'] | null | undefined): boolean {
@@ -45,6 +51,7 @@ export interface ReportTaskRequest {
 
 export interface ChatAgentTaskRequest {
   question: string
+  session_id?: number
   conversation_history?: Array<{ role: string; content: string }>
   question_time?: string
   timezone?: string
@@ -120,8 +127,30 @@ export function useCancelAiTask() {
   })
 }
 
+export function useSendAiAgentInput() {
+  const { capabilities } = useRuntimeCapabilities()
+  return useMutation({
+    mutationFn: (payload: {
+      taskId: string
+      action: 'steer' | 'followup'
+      content: string
+    }) => {
+      if (!capabilities.ai) return Promise.reject(new Error('当前部署未开放 AI 功能'))
+      return api.post<AiAgentInboxPayload>(`/ai/tasks/${payload.taskId}/inbox`, {
+        action: payload.action,
+        content: payload.content,
+      })
+    },
+  })
+}
+
 export function useAiTask(taskId: string | null) {
   const enabled = Boolean(taskId)
+  const [streamState, setStreamState] = useState<'idle' | 'connecting' | 'open' | 'failed'>('idle')
+  const [streamTask, setStreamTask] = useState<AiTaskRun | null>(null)
+  const [streamEvents, setStreamEvents] = useState<AiTaskEventsPayload['events']>([])
+  const [streamToolCalls, setStreamToolCalls] = useState<AiTaskEventsPayload['tool_calls']>([])
+  const [streamedAnswer, setStreamedAnswer] = useState('')
   const previousTaskStateRef = useRef<{ taskId: string | null; status: AiTaskRun['status'] | null }>({
     taskId: null,
     status: null,
@@ -134,14 +163,18 @@ export function useAiTask(taskId: string | null) {
     queryFn: () => api.get<AiTaskRun>(`/ai/tasks/${taskId}`),
     enabled,
     refetchInterval: (query) =>
-      isActiveTask(query.state.data as AiTaskRun | null | undefined) ? POLL_INTERVAL_MS : false,
+      streamState !== 'open' && isActiveTask(query.state.data as AiTaskRun | null | undefined)
+        ? POLL_INTERVAL_MS
+        : false,
   })
 
   const eventsQuery = useQuery({
     queryKey: eventsKey,
     queryFn: () => api.get<AiTaskEventsPayload>(`/ai/tasks/${taskId}/events`),
     enabled,
-    refetchInterval: () => (isActiveTask(taskQuery.data) ? POLL_INTERVAL_MS : false),
+    refetchInterval: () => (
+      streamState !== 'open' && isActiveTask(taskQuery.data) ? POLL_INTERVAL_MS : false
+    ),
   })
   const refetchEvents = eventsQuery.refetch
 
@@ -157,10 +190,95 @@ export function useAiTask(taskId: string | null) {
     }
   }, [refetchEvents, taskId, taskQuery.data?.status])
 
+  useEffect(() => {
+    // A task id change is an external stream identity change; stale data must
+    // be cleared before opening the next connection.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamTask(null)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamEvents([])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamToolCalls([])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamedAnswer('')
+    if (!taskId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setStreamState('idle')
+      return
+    }
+
+    const controller = new AbortController()
+    let cursor: string | undefined
+    let completed = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamState('connecting')
+    const handlers = {
+      onCursor: (nextCursor: string) => {
+        cursor = nextCursor
+      },
+      onEvent: (event: AiTaskStreamEnvelope) => {
+        setStreamState('open')
+        if (event.type === 'stream.error') {
+          setStreamState('failed')
+          return
+        }
+        if (event.type === 'task.snapshot' || event.type === 'task.completed') {
+          setStreamTask(event.data)
+          if (event.type === 'task.completed') completed = true
+          return
+        }
+        if (event.type === 'task.progress') {
+          setStreamEvents((current) => current.some((item) => item.event_id === event.data.event_id)
+            ? current
+            : [...current, event.data])
+          return
+        }
+        if (event.type === 'task.tool') {
+          setStreamToolCalls((current) => current.some((item) => item.tool_call_id === event.data.tool_call_id)
+            ? current
+            : [...current, event.data])
+          return
+        }
+        if (event.type === 'task.answer_delta') {
+          setStreamedAnswer((current) => current + event.data.delta)
+        }
+      },
+    }
+    const connectWithReplay = async () => {
+      for (let attempt = 0; attempt < 4 && !controller.signal.aborted; attempt += 1) {
+        try {
+          await streamAiTask(taskId, handlers, controller.signal, cursor)
+          if (completed || controller.signal.aborted) return
+        } catch {
+          if (controller.signal.aborted) return
+        }
+        setStreamState('connecting')
+        await new Promise<void>((resolve) => {
+          const timeout = window.setTimeout(resolve, Math.min(4_000, 500 * (2 ** attempt)))
+          controller.signal.addEventListener('abort', () => {
+            window.clearTimeout(timeout)
+            resolve()
+          }, { once: true })
+        })
+      }
+      if (!controller.signal.aborted && !completed) setStreamState('failed')
+    }
+    void connectWithReplay()
+    return () => controller.abort()
+  }, [taskId])
+
+  const task = streamTask ?? taskQuery.data ?? null
+  const events = streamEvents.length > 0 ? streamEvents : (eventsQuery.data?.events ?? [])
+  const toolCalls = streamToolCalls.length > 0
+    ? streamToolCalls
+    : (eventsQuery.data?.tool_calls ?? [])
+
   return {
-    task: taskQuery.data ?? null,
-    events: eventsQuery.data?.events ?? [],
-    toolCalls: eventsQuery.data?.tool_calls ?? [],
+    task,
+    events,
+    toolCalls,
+    streamedAnswer,
+    transport: streamState === 'open' ? 'sse' as const : 'polling' as const,
     loading: taskQuery.isLoading || eventsQuery.isLoading,
     fetching: taskQuery.isFetching || eventsQuery.isFetching,
     error: queryErrorMessage(taskQuery.error ?? eventsQuery.error),

@@ -16,11 +16,21 @@ from backend.domains.account_archive.journey import get_collection_journey
 from backend.domains.account_archive.overview import get_archive_overview
 from backend.domains.account_archive.returns import get_archive_returns
 from backend.domains.ai_agent.comparison import summarize_entity_comparison
+from backend.domains.ai_agent.entity_comparison_service import build_entity_comparison_rows
 from backend.domains.ai_agent.entity_resolver import resolve_entities
+from backend.domains.ai_agent.tool_cache import (
+    cache_tool_result,
+    get_cached_tool_result,
+    make_cache_key,
+)
 from backend.domains.ai_agent.tool_registry import AgentToolDefinition, AgentToolResult
 from backend.domains.billboard import details as billboard_details
 from backend.domains.community import feed_generator as community_feed_generator
 from backend.domains.community.post_types import HIGHLIGHT_POST_TYPES
+from backend.domains.metadata.genre_display_taxonomy import build_consumer_taste_profile
+from backend.domains.music_search.context import build_music_search_filter_context
+from backend.domains.music_search.normalization import normalize_search_text
+from backend.domains.music_search.snapshot import get_serving_music_search_snapshot
 from backend.services import (
     analysis_records_service,
     analysis_stats_service,
@@ -67,6 +77,13 @@ class AnalysisStatsParams(BaseModel):
 
     @model_validator(mode="after")
     def validate_custom_range(self) -> AnalysisStatsParams:
+        # Explicit bounds are authoritative. Models occasionally emit a
+        # leftover named period together with concrete dates; silently
+        # ignoring those dates can turn an empty historical query into a
+        # lifetime answer. Normalize at the tool boundary so every handler
+        # observes one unambiguous time scope.
+        if self.start_date is not None or self.end_date is not None:
+            self.period = "custom"
         if self.period == "custom" and self.start_date and self.end_date:
             if date.fromisoformat(self.start_date) > date.fromisoformat(self.end_date):
                 raise ValueError("start_date must be before or equal to end_date")
@@ -80,6 +97,10 @@ class AnalysisChartsParams(AnalysisStatsParams):
     offset: int = Field(default=0, ge=0, le=10000)
     merge_level: int = Field(default=2, ge=2, le=3)
     include_compilations: bool = False
+
+
+class TasteProfileParams(AnalysisStatsParams):
+    """A bounded taste-only read that avoids building unrelated stats panels."""
 
 
 class PlaybackRecordsParams(AnalysisStatsParams):
@@ -169,15 +190,11 @@ class ResolveEntityParams(BaseModel):
     limit: int = Field(default=5, ge=1, le=10)
 
 
-class CompareEntitiesParams(BaseModel):
+class CompareEntitiesParams(AnalysisStatsParams):
     entity_type: Literal["track", "album", "artist"] = "album"
     names: list[str] = Field(..., min_length=2, max_length=4)
-    min_ms: int = Field(default=30000, ge=0, le=3_600_000)
-    music_only: bool = True
-    merge_enabled: bool = True
-    dynamic_threshold: bool = True
-    max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
     merge_level: int = Field(default=2, ge=2, le=3)
+    include_billboard: bool = True
 
     @field_validator("names")
     @classmethod
@@ -329,6 +346,20 @@ def _charts_result_summary(data: dict[str, Any]) -> str:
     entity = data.get("entity") or "track"
     metric = data.get("metric") or "plays"
     return f"{entity} {metric} rows={row_count}/{total}"
+
+
+def _taste_profile_result_summary(data: dict[str, Any]) -> str:
+    profile = data.get("taste_profile")
+    if not isinstance(profile, dict):
+        return "taste profile unavailable"
+    styles = profile.get("primary_styles")
+    languages = profile.get("language_dist")
+    style_buckets = styles.get("buckets") if isinstance(styles, dict) else []
+    language_buckets = languages.get("buckets") if isinstance(languages, dict) else []
+    return (
+        f"styles={len(style_buckets) if isinstance(style_buckets, list) else 0}, "
+        f"languages={len(language_buckets) if isinstance(language_buckets, list) else 0}"
+    )
 
 
 def _records_result_summary(data: dict[str, Any]) -> str:
@@ -631,14 +662,143 @@ def analysis_stats_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
+        cache_key = make_cache_key(conn, tool_name="analysis_stats", params=parsed)
+        if cached := get_cached_tool_result(cache_key):
+            return cached
         data = analysis_stats_service.get_analysis_stats(conn, **_filter_kwargs(parsed))
     finally:
         conn.close()
-    return AgentToolResult(
+    summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+    if int(summary.get("total_plays") or 0) == 0:
+        data = {**data, "status": "empty"}
+    result = AgentToolResult(
         data=data,
         result_summary=_stats_result_summary(data),
         source_range=_source_range(data),
     )
+    cache_tool_result(cache_key, result)
+    return result
+
+
+def taste_profile_handler(params: BaseModel) -> AgentToolResult:
+    parsed = (
+        params
+        if isinstance(params, TasteProfileParams)
+        else TasteProfileParams.model_validate(params)
+    )
+    conn = get_db(readonly=True)
+    try:
+        cache_key = make_cache_key(conn, tool_name="taste_profile", params=parsed)
+        if cached := get_cached_tool_result(cache_key):
+            return cached
+        _, plays, resolved = analysis_stats_service.load_period_plays(
+            conn,
+            parsed.min_ms,
+            parsed.music_only,
+            parsed.merge_enabled,
+            parsed.period,
+            parsed.start_date,
+            parsed.end_date,
+            dynamic_threshold=parsed.dynamic_threshold,
+            max_merge_gap_minutes=parsed.max_merge_gap_minutes,
+            attach_duration_slices=False,
+        )
+        data = {
+            "period": resolved,
+            "taste_profile": build_consumer_taste_profile(conn, plays),
+        }
+    finally:
+        conn.close()
+    result = AgentToolResult(
+        data=data,
+        result_summary=_taste_profile_result_summary(data),
+        source_range=_source_range(data),
+    )
+    cache_tool_result(cache_key, result)
+    return result
+
+
+def _ready_yearly_chart(
+    conn: sqlite3.Connection,
+    parsed: AnalysisChartsParams,
+) -> dict[str, Any] | None:
+    """Reuse an exact ready annual artifact without ever triggering a build."""
+    if parsed.period != "custom" or not parsed.start_date or not parsed.end_date:
+        return None
+    try:
+        start = date.fromisoformat(parsed.start_date)
+        end = date.fromisoformat(parsed.end_date)
+    except ValueError:
+        return None
+    if start.month != 1 or start.day != 1 or end.month != 12 or end.day != 31:
+        return None
+    if start.year != end.year:
+        return None
+
+    from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
+    from backend.domains.yearly_review.context import build_yearly_review_context
+    from backend.services.yearly_review_service import get_cached_yearly_review
+
+    settings = SettingsRepository(conn).load_all()
+    context = build_yearly_review_context(
+        conn,
+        {
+            "min_ms": parsed.min_ms,
+            "music_only": parsed.music_only,
+            "merge_enabled": parsed.merge_enabled,
+            "dynamic_threshold": parsed.dynamic_threshold,
+            "max_merge_gap_minutes": parsed.max_merge_gap_minutes,
+            "merge_level": parsed.merge_level,
+            "include_compilations": parsed.include_compilations,
+            "bb_top_n": settings.get("bb_top_n", SETTINGS_DEFAULTS["bb_top_n"]),
+            "bb_album_top_n": settings.get("bb_album_top_n", SETTINGS_DEFAULTS["bb_album_top_n"]),
+            "bb_artist_top_n": settings.get(
+                "bb_artist_top_n", SETTINGS_DEFAULTS["bb_artist_top_n"]
+            ),
+            "bb_week_start_dow": settings.get(
+                "bb_week_start_dow", SETTINGS_DEFAULTS["bb_week_start_dow"]
+            ),
+            "bb_week_start_hour": settings.get(
+                "bb_week_start_hour", SETTINGS_DEFAULTS["bb_week_start_hour"]
+            ),
+        },
+    )
+    report = get_cached_yearly_review(start.year, context)
+    if report is None:
+        return None
+    key = f"{parsed.entity}_by_{parsed.metric}"
+    available_rows = report.appendix.play_charts.get(key) or []
+    requested_end = parsed.offset + parsed.limit
+    if requested_end > len(available_rows):
+        return None
+    total = len(available_rows)
+    metric_key = {
+        "track": "unique_tracks",
+        "album": "unique_albums",
+        "artist": "unique_artists",
+    }[parsed.entity]
+    if report.passport is not None:
+        metric = next(
+            (item for item in report.passport.metrics if item.key == metric_key),
+            None,
+        )
+        if metric is not None and isinstance(metric.value, (int, float)):
+            total = int(metric.value)
+    return {
+        "period": {
+            "period": "custom",
+            "label": "自定义",
+            "start_date": parsed.start_date,
+            "end_date": parsed.end_date,
+        },
+        "entity": parsed.entity,
+        "metric": parsed.metric,
+        "total": total,
+        "limit": parsed.limit,
+        "offset": parsed.offset,
+        "rows": [dict(row) for row in available_rows[parsed.offset : requested_end]],
+        "cache_source": "yearly_review_ready_artifact",
+    }
 
 
 def analysis_charts_handler(params: BaseModel) -> AgentToolResult:
@@ -649,32 +809,41 @@ def analysis_charts_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
+        cache_key = make_cache_key(conn, tool_name="analysis_charts", params=parsed)
+        if cached := get_cached_tool_result(cache_key):
+            return cached
         if parsed.entity == "album" and parsed.merge_level > 1 and not _album_projects_ready(conn):
             return _album_projects_unavailable("analysis_charts")
-        data = analysis_stats_service.get_analysis_charts(
-            conn,
-            min_ms=parsed.min_ms,
-            music_only=parsed.music_only,
-            merge_enabled=parsed.merge_enabled,
-            period=parsed.period,
-            start_date=parsed.start_date,
-            end_date=parsed.end_date,
-            entity=parsed.entity,
-            metric=parsed.metric,
-            limit=parsed.limit,
-            offset=parsed.offset,
-            merge_level=parsed.merge_level,
-            dynamic_threshold=parsed.dynamic_threshold,
-            max_merge_gap_minutes=parsed.max_merge_gap_minutes,
-            include_compilations=parsed.include_compilations,
-        )
+        data = _ready_yearly_chart(conn, parsed)
+        if data is None:
+            data = analysis_stats_service.get_analysis_charts(
+                conn,
+                min_ms=parsed.min_ms,
+                music_only=parsed.music_only,
+                merge_enabled=parsed.merge_enabled,
+                period=parsed.period,
+                start_date=parsed.start_date,
+                end_date=parsed.end_date,
+                entity=parsed.entity,
+                metric=parsed.metric,
+                limit=parsed.limit,
+                offset=parsed.offset,
+                merge_level=parsed.merge_level,
+                dynamic_threshold=parsed.dynamic_threshold,
+                max_merge_gap_minutes=parsed.max_merge_gap_minutes,
+                include_compilations=parsed.include_compilations,
+            )
     finally:
         conn.close()
-    return AgentToolResult(
+    if not data.get("rows"):
+        data = {**data, "status": "empty"}
+    result = AgentToolResult(
         data=data,
         result_summary=_charts_result_summary(data),
         source_range=_source_range(data),
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def playback_records_handler(params: BaseModel) -> AgentToolResult:
@@ -724,6 +893,8 @@ def wrapped_yearly_handler(params: BaseModel) -> AgentToolResult:
         )
     finally:
         conn.close()
+    if data.get("empty") is True:
+        data = {**data, "status": "empty"}
     return AgentToolResult(
         data=data,
         result_summary=_wrapped_yearly_result_summary(data),
@@ -739,6 +910,9 @@ def entity_stats_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
+        cache_key = make_cache_key(conn, tool_name="entity_stats", params=parsed)
+        if cached := get_cached_tool_result(cache_key):
+            return cached
         if parsed.entity == "album" and not _album_projects_ready(conn):
             return _album_projects_unavailable("entity_stats")
         if parsed.entity == "track":
@@ -764,11 +938,13 @@ def entity_stats_handler(params: BaseModel) -> AgentToolResult:
             )
     finally:
         conn.close()
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_entity_result_summary(data),
         source_range=_source_range(data),
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
@@ -779,6 +955,14 @@ def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
+        cache_key = make_cache_key(
+            conn,
+            tool_name="billboard_entity_detail",
+            params=parsed,
+            include_billboard=True,
+        )
+        if cached := get_cached_tool_result(cache_key):
+            return cached
         if parsed.entity == "album" and parsed.merge_level > 1 and not _album_projects_ready(conn):
             return _album_projects_unavailable("billboard_entity_detail")
         if parsed.entity == "track":
@@ -831,11 +1015,13 @@ def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
             )
     finally:
         conn.close()
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_billboard_detail_result_summary(data),
         source_range=_year_bounds_source_range(parsed.year_start, parsed.year_end),
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def listening_hours_handler(params: BaseModel) -> AgentToolResult:
@@ -943,6 +1129,9 @@ def _compare_filter_kwargs(parsed: CompareEntitiesParams) -> dict[str, Any]:
         "dynamic_threshold": parsed.dynamic_threshold,
         "max_merge_gap_minutes": parsed.max_merge_gap_minutes,
         "merge_level": parsed.merge_level,
+        "period": parsed.period,
+        "start_date": parsed.start_date,
+        "end_date": parsed.end_date,
     }
 
 
@@ -1058,6 +1247,7 @@ def _comparison_row(
         or playback.get("latest_play_date")
         or summary.get("latest_play_date")
         or summary.get("last_played"),
+        "period": playback.get("period"),
         "power_score": metric_source.get("power_score"),
         "power_rank": metric_source.get("power_rank"),
         "no1_weeks": metric_source.get("no1_weeks")
@@ -1107,9 +1297,13 @@ def _compare_album_or_artist_row(parsed: CompareEntitiesParams, name: str) -> di
         billboard_params["artist_name"] = name
 
     playback = entity_stats_handler(EntityStatsParams.model_validate(base_params)).data
-    billboard = billboard_entity_detail_handler(
-        BillboardEntityDetailParams.model_validate(billboard_params)
-    ).data
+    billboard = (
+        billboard_entity_detail_handler(
+            BillboardEntityDetailParams.model_validate(billboard_params)
+        ).data
+        if parsed.include_billboard
+        else {}
+    )
     return _comparison_row(
         requested_name=name,
         entity_type=parsed.entity_type,
@@ -1143,15 +1337,19 @@ def _compare_track_row(parsed: CompareEntitiesParams, name: str) -> dict[str, An
             }
         )
     ).data
-    billboard = billboard_entity_detail_handler(
-        BillboardEntityDetailParams.model_validate(
-            {
-                "entity": "track",
-                "track_id": int(track_id),
-                **_compare_billboard_kwargs(parsed),
-            }
-        )
-    ).data
+    billboard = (
+        billboard_entity_detail_handler(
+            BillboardEntityDetailParams.model_validate(
+                {
+                    "entity": "track",
+                    "track_id": int(track_id),
+                    **_compare_billboard_kwargs(parsed),
+                }
+            )
+        ).data
+        if parsed.include_billboard
+        else {}
+    )
     return _comparison_row(
         requested_name=name,
         entity_type="track",
@@ -1167,18 +1365,54 @@ def compare_entities_handler(params: BaseModel) -> AgentToolResult:
         if isinstance(params, CompareEntitiesParams)
         else CompareEntitiesParams.model_validate(params)
     )
-    rows = [
-        _compare_track_row(parsed, name)
-        if parsed.entity_type == "track"
-        else _compare_album_or_artist_row(parsed, name)
-        for name in parsed.names
-    ]
+    conn = get_db(readonly=True)
+    try:
+        cache_key = make_cache_key(
+            conn,
+            tool_name="compare_entities",
+            params=parsed,
+            include_billboard=parsed.include_billboard,
+        )
+        if cached := get_cached_tool_result(cache_key):
+            return cached
+        if parsed.entity_type == "album" and not _album_projects_ready(conn):
+            return _album_projects_unavailable("compare_entities")
+        rows = build_entity_comparison_rows(
+            conn,
+            entity_type=parsed.entity_type,
+            names=parsed.names,
+            min_ms=parsed.min_ms,
+            music_only=parsed.music_only,
+            merge_enabled=parsed.merge_enabled,
+            period=parsed.period,
+            start_date=parsed.start_date,
+            end_date=parsed.end_date,
+            dynamic_threshold=parsed.dynamic_threshold,
+            max_merge_gap_minutes=parsed.max_merge_gap_minutes,
+            merge_level=parsed.merge_level,
+            include_billboard=parsed.include_billboard,
+        )
+    finally:
+        conn.close()
     data = summarize_entity_comparison(entity_type=parsed.entity_type, entities=rows)
-    return AgentToolResult(
+    data["period"] = {
+        "period": parsed.period,
+        "start_date": parsed.start_date,
+        "end_date": parsed.end_date,
+    }
+    data["includes_personal_billboard"] = parsed.include_billboard
+    source_range = (
+        f"{parsed.start_date or ''}..{parsed.end_date or ''}"
+        if parsed.period == "custom"
+        else parsed.period
+    )
+    result = AgentToolResult(
         data=data,
         result_summary=_comparison_result_summary(data),
-        source_range="comparison",
+        source_range=source_range,
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def account_summary_handler(params: BaseModel) -> AgentToolResult:
@@ -1256,15 +1490,171 @@ def search_history_handler(params: BaseModel) -> AgentToolResult:
     )
 
 
-def _community_posts(parsed: CommunityFeedSearchParams) -> list[Any]:
-    conn = get_db(readonly=True)
-    try:
-        return community_feed_generator.generate_all_posts(
-            conn=conn,
-            **_community_generation_kwargs(parsed),
+def _community_posts(
+    conn: sqlite3.Connection,
+    parsed: CommunityFeedSearchParams,
+) -> list[Any]:
+    return community_feed_generator.generate_all_posts(
+        conn=conn,
+        **_community_generation_kwargs(parsed),
+        include_cover_images=False,
+        include_engagement_metrics=False,
+    )
+
+
+def _community_snapshot_search(
+    conn: sqlite3.Connection,
+    parsed: CommunityFeedSearchParams,
+) -> dict[str, Any] | None:
+    """Build scoped community activity cards from a ready search snapshot.
+
+    The public community feed replays every historical chart week because it
+    must derive global records and milestones.  A text search does not need
+    that full history.  Reuse the exact/LKG music-search chart ledger instead,
+    while keeping the response honest about snapshot freshness.
+    """
+
+    if not parsed.search:
+        return None
+    normalized = normalize_search_text(parsed.search)
+    if not normalized or normalized.startswith("@"):
+        return None
+    context = build_music_search_filter_context(conn, parsed)
+    serving = get_serving_music_search_snapshot(
+        conn,
+        filter_fingerprint=context.filter_fingerprint,
+        merge_level=parsed.merge_level,
+        dynamic_threshold=parsed.dynamic_threshold,
+    )
+    snapshot_key = serving.get("snapshot_key")
+    if not isinstance(snapshot_key, str) or not snapshot_key:
+        return None
+    generation = conn.execute(
+        "SELECT active_generation_id FROM music_search_index_state WHERE state_id=1"
+    ).fetchone()
+    if generation is None or not generation[0]:
+        return None
+
+    conditions = [
+        "d.generation_id=?",
+        "w.snapshot_key=?",
+        "(d.kind='artist' OR d.merge_level=?)",
+        "(instr(d.normalized_label, ?) > 0 "
+        "OR instr(d.normalized_secondary, ?) > 0 "
+        "OR instr(d.normalized_alias, ?) > 0)",
+        "w.family=CASE d.kind WHEN 'album_project' THEN 'album' ELSE d.kind END",
+    ]
+    values: list[Any] = [
+        str(generation[0]),
+        snapshot_key,
+        parsed.merge_level,
+        normalized,
+        normalized,
+        normalized,
+    ]
+    if parsed.date_from:
+        conditions.append("w.week>=?")
+        values.append(parsed.date_from[:10])
+    if parsed.date_to:
+        conditions.append("w.week<=?")
+        values.append(parsed.date_to[:10])
+    if parsed.year_start is not None:
+        conditions.append("w.week>=?")
+        values.append(f"{parsed.year_start:04d}-01-01")
+    if parsed.year_end is not None:
+        conditions.append("w.week<=?")
+        values.append(f"{parsed.year_end:04d}-12-31")
+    if parsed.highlights_only:
+        conditions.append("w.rank=1")
+
+    query = f"""
+        SELECT d.entity_key, d.kind, d.label, d.secondary,
+               d.artist_name, d.album_name,
+               w.week, w.rank, w.play_count, w.total_ms
+          FROM music_search_documents d
+          JOIN music_search_weekly_chart_context w
+            ON w.entity_key=d.entity_key
+         WHERE {" AND ".join(conditions)}
+         ORDER BY w.week DESC, w.rank ASC,
+                  CASE d.kind WHEN 'artist' THEN 0 WHEN 'album_project' THEN 1 ELSE 2 END,
+                  d.entity_key
+         LIMIT ?
+    """
+    values.append(parsed.limit + 1)
+    rows = conn.execute(query, values).fetchall()
+    if not rows:
+        return {
+            "status": "empty",
+            "retrieval_mode": "scoped_chart_snapshot",
+            "snapshot": serving,
+            "meta": {"total": 0, "total_all": 0, "returned": 0, "limit": parsed.limit},
+            "highlights_only": parsed.highlights_only,
+            "posts": [],
+        }
+
+    posts: list[dict[str, Any]] = []
+    for row in rows[: parsed.limit]:
+        kind = str(row[1])
+        family = "album" if kind == "album_project" else kind
+        label = str(row[2])
+        artist_name = str(row[4] or "")
+        if family == "artist":
+            subject = label
+        elif artist_name:
+            subject = f"{label} — {artist_name}"
+        else:
+            subject = label
+        family_label = {"artist": "艺人", "album": "专辑", "track": "单曲"}.get(family, "音乐")
+        posts.append(
+            {
+                "id": f"snapshot:{snapshot_key[:12]}:{family}:{row[0]}:{row[6]}",
+                "account_handle": "@spotifydata",
+                "posted_at": str(row[6]),
+                "content": (
+                    f"本周个人{family_label}榜：{subject} 排名第 {int(row[7])}，"
+                    f"播放 {int(row[8])} 次。"
+                ),
+                "post_type": "scoped_chart_activity",
+                "tags": ["weekly", "chart", "scoped_search"],
+                "significance": 1.0 if int(row[7]) == 1 else 0.55,
+                "linked_entities": [
+                    {
+                        "type": family,
+                        "name": label,
+                        "id": str(row[0]).split(":", 1)[-1],
+                    },
+                    *(
+                        [{"type": "artist", "name": artist_name}]
+                        if artist_name and family != "artist"
+                        else []
+                    ),
+                ],
+                "metrics": {"likes": 0, "retweets": 0, "replies": 0, "views": 0},
+                "chart": {
+                    "family": family,
+                    "week": str(row[6]),
+                    "rank": int(row[7]),
+                    "play_count": int(row[8]),
+                    "total_ms": int(row[9]),
+                },
+            }
         )
-    finally:
-        conn.close()
+    return {
+        "retrieval_mode": "scoped_chart_snapshot",
+        "snapshot": serving,
+        "meta": {
+            "total": len(rows),
+            "total_all": len(rows),
+            "returned": len(posts),
+            "limit": parsed.limit,
+            "has_more": len(rows) > parsed.limit,
+        },
+        "highlights_only": parsed.highlights_only,
+        "posts": posts,
+        "limitations": [
+            "文本窄查询返回确定性周榜活动卡片；全历史纪录与里程碑帖子仍由完整社区 Feed 生成。"
+        ],
+    }
 
 
 def community_feed_search_handler(params: BaseModel) -> AgentToolResult:
@@ -1273,7 +1663,28 @@ def community_feed_search_handler(params: BaseModel) -> AgentToolResult:
         if isinstance(params, CommunityFeedSearchParams)
         else CommunityFeedSearchParams.model_validate(params)
     )
-    posts = _community_posts(parsed)
+    conn = get_db(readonly=True)
+    try:
+        cache_key = make_cache_key(
+            conn,
+            tool_name="community_feed_search",
+            params=parsed,
+            include_billboard=True,
+        )
+        if cached := get_cached_tool_result(cache_key):
+            return cached
+        scoped = _community_snapshot_search(conn, parsed)
+        if scoped is not None:
+            result = AgentToolResult(
+                data=scoped,
+                result_summary=_community_feed_result_summary(scoped),
+                source_range="community_feed:scoped_chart_snapshot",
+            )
+            cache_tool_result(cache_key, result)
+            return result
+        posts = _community_posts(conn, parsed)
+    finally:
+        conn.close()
     search_lower = parsed.search.casefold() if parsed.search else None
     filtered = []
     total_all = 0
@@ -1308,11 +1719,13 @@ def community_feed_search_handler(params: BaseModel) -> AgentToolResult:
         "highlights_only": parsed.highlights_only,
         "posts": [_post_to_dict(post) for post in page],
     }
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_community_feed_result_summary(data),
         source_range="community_feed",
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 def community_trending_handler(params: BaseModel) -> AgentToolResult:
@@ -1321,7 +1734,19 @@ def community_trending_handler(params: BaseModel) -> AgentToolResult:
         if isinstance(params, CommunityTrendingParams)
         else CommunityTrendingParams.model_validate(params)
     )
-    posts = _community_posts(parsed)
+    conn = get_db(readonly=True)
+    try:
+        cache_key = make_cache_key(
+            conn,
+            tool_name="community_trending",
+            params=parsed,
+            include_billboard=True,
+        )
+        if cached := get_cached_tool_result(cache_key):
+            return cached
+        posts = _community_posts(conn, parsed)
+    finally:
+        conn.close()
     artist_counts: dict[str, int] = {}
     track_counts: dict[str, int] = {}
     track_to_id: dict[str, str | int] = {}
@@ -1391,11 +1816,13 @@ def community_trending_handler(params: BaseModel) -> AgentToolResult:
         if latest_debut_post
         else None,
     }
-    return AgentToolResult(
+    result = AgentToolResult(
         data=data,
         result_summary=_community_trending_result_summary(data),
         source_range="community_trending",
     )
+    cache_tool_result(cache_key, result)
+    return result
 
 
 ANALYSIS_STATS_TOOL = AgentToolDefinition(
@@ -1404,6 +1831,14 @@ ANALYSIS_STATS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=AnalysisStatsParams,
     handler=analysis_stats_handler,
+    cost="medium",
+    timeout_seconds=45,
+    cacheability="revision",
+    best_for=("周期概览", "播放习惯摘要", "轻量统计核对"),
+    covers=("cumulative", "period", "behavior"),
+    cold_build_risk="low",
+    avoid_when=("需要实体排行明细", "需要单个实体详情"),
+    fallback=("analysis_charts",),
 )
 
 ANALYSIS_CHARTS_TOOL = AgentToolDefinition(
@@ -1412,6 +1847,32 @@ ANALYSIS_CHARTS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=AnalysisChartsParams,
     handler=analysis_charts_handler,
+    cost="high",
+    timeout_seconds=60,
+    cacheability="revision",
+    best_for=("Top N 排行", "周期排行", "排行趋势核对"),
+    covers=("ranking", "cumulative", "recency", "period", "trend"),
+    cold_build_risk="medium",
+    avoid_when=("比较 2-4 个已知实体", "只需要轻量总览"),
+    fallback=("analysis_stats",),
+)
+
+TASTE_PROFILE_TOOL = AgentToolDefinition(
+    name="taste_profile",
+    description=(
+        "Read structured style, regional-pop, and language distributions for a bounded period."
+    ),
+    read_only=True,
+    params_model=TasteProfileParams,
+    handler=taste_profile_handler,
+    cost="medium",
+    timeout_seconds=45,
+    cacheability="revision",
+    best_for=("曲风与类型分布", "语种分布", "地区流行偏好"),
+    covers=("taste", "period"),
+    cold_build_risk="low",
+    avoid_when=("只需要歌曲、专辑或艺人排行",),
+    fallback=("analysis_stats",),
 )
 
 PLAYBACK_RECORDS_TOOL = AgentToolDefinition(
@@ -1420,6 +1881,11 @@ PLAYBACK_RECORDS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=PlaybackRecordsParams,
     handler=playback_records_handler,
+    best_for=("冠军记录", "连续播放纪录", "播放里程碑"),
+    covers=("consistency", "peak", "behavior"),
+    cold_build_risk="low",
+    avoid_when=("普通排行", "实体间比较"),
+    fallback=("analysis_stats",),
 )
 
 WRAPPED_YEARLY_TOOL = AgentToolDefinition(
@@ -1428,6 +1894,13 @@ WRAPPED_YEARLY_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=WrappedYearlyParams,
     handler=wrapped_yearly_handler,
+    cost="medium",
+    cacheability="revision",
+    best_for=("单个完整年份总结", "年度排行与习惯"),
+    covers=("cumulative", "ranking", "period", "behavior"),
+    cold_build_risk="medium",
+    avoid_when=("非完整自然年窗口", "实体间比较"),
+    fallback=("analysis_stats", "analysis_charts"),
 )
 
 ENTITY_STATS_TOOL = AgentToolDefinition(
@@ -1436,6 +1909,14 @@ ENTITY_STATS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=EntityStatsParams,
     handler=entity_stats_handler,
+    cost="high",
+    timeout_seconds=60,
+    cacheability="revision",
+    best_for=("单个歌曲专辑或艺人详情", "实体内部歌曲或专辑排行", "单实体趋势"),
+    covers=("scope", "detail", "cumulative", "recency", "intensity", "ranking", "trend"),
+    cold_build_risk="medium",
+    avoid_when=("比较 2-4 个已知同类实体",),
+    fallback=("resolve_entity", "analysis_charts"),
 )
 
 BILLBOARD_ENTITY_DETAIL_TOOL = AgentToolDefinition(
@@ -1444,6 +1925,14 @@ BILLBOARD_ENTITY_DETAIL_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=BillboardEntityDetailParams,
     handler=billboard_entity_detail_handler,
+    cost="high",
+    timeout_seconds=120,
+    cacheability="revision",
+    best_for=("明确询问个人 Billboard", "Power Score", "峰值与在榜周"),
+    covers=("personal_billboard", "consistency", "peak", "detail"),
+    cold_build_risk="high",
+    avoid_when=("用户未明确询问个人 Billboard", "只比较本地播放次数或时长"),
+    fallback=("entity_stats",),
 )
 
 LISTENING_HOURS_TOOL = AgentToolDefinition(
@@ -1452,6 +1941,13 @@ LISTENING_HOURS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=ListeningHoursParams,
     handler=listening_hours_handler,
+    cost="medium",
+    cacheability="revision",
+    best_for=("时段热力图", "深夜或小时偏好", "工作日与周末时段"),
+    covers=("time_of_day", "behavior", "ranking"),
+    cold_build_risk="low",
+    avoid_when=("不涉及收听时段",),
+    fallback=("analysis_stats",),
 )
 
 RESOLVE_ENTITY_TOOL = AgentToolDefinition(
@@ -1460,17 +1956,38 @@ RESOLVE_ENTITY_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=ResolveEntityParams,
     handler=resolve_entity_handler,
+    best_for=("实体名称模糊", "需要稳定实体标识", "同名消歧"),
+    covers=("entity_resolution", "scope"),
+    cold_build_risk="none",
+    avoid_when=("实体名称已明确且下游工具可直接解析",),
+    fallback=("entity_stats",),
 )
 
 COMPARE_ENTITIES_TOOL = AgentToolDefinition(
     name="compare_entities",
     description=(
-        "Compare two to four known tracks, albums, or artists using local playback "
-        "statistics and personal Billboard evidence."
+        "Compare two to four known tracks, albums, or artists in one requested period "
+        "using local playback statistics. Set include_billboard=true only when the user "
+        "explicitly asks about their personal Billboard, Power Score, ranks, or chart weeks."
     ),
     read_only=True,
     params_model=CompareEntitiesParams,
     handler=compare_entities_handler,
+    cost="high",
+    timeout_seconds=120,
+    cacheability="revision",
+    best_for=("比较 2-4 个同类实体", "一次获取比较所需播放次数时长与强度", "公平性比较"),
+    covers=(
+        "cumulative",
+        "recency",
+        "intensity",
+        "fairness",
+        "ranking",
+        "personal_billboard",
+    ),
+    cold_build_risk="medium",
+    avoid_when=("只查询单个实体", "比较不同实体类型"),
+    fallback=("entity_stats", "resolve_entity"),
 )
 
 ACCOUNT_SUMMARY_TOOL = AgentToolDefinition(
@@ -1482,6 +1999,11 @@ ACCOUNT_SUMMARY_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=AccountSummaryParams,
     handler=account_summary_handler,
+    best_for=("音乐档案概览", "收藏规模与覆盖范围"),
+    covers=("collection", "behavior", "cumulative"),
+    cold_build_risk="none",
+    avoid_when=("需要单项收藏旅程明细",),
+    fallback=("account_collection_insights",),
 )
 
 ACCOUNT_COLLECTION_INSIGHTS_TOOL = AgentToolDefinition(
@@ -1493,6 +2015,12 @@ ACCOUNT_COLLECTION_INSIGHTS_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=AccountCollectionInsightsParams,
     handler=account_collection_insights_handler,
+    cost="medium",
+    best_for=("收藏旅程", "收藏后播放关系", "回访与沉睡收藏"),
+    covers=("collection", "behavior", "recency", "detail"),
+    cold_build_risk="low",
+    avoid_when=("只需要账户收藏计数概览",),
+    fallback=("account_summary",),
 )
 
 SEARCH_HISTORY_TOOL = AgentToolDefinition(
@@ -1501,6 +2029,11 @@ SEARCH_HISTORY_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=SearchHistoryParams,
     handler=search_history_handler,
+    best_for=("搜索历史", "高频搜索词", "搜索行为"),
+    covers=("search", "behavior", "ranking"),
+    cold_build_risk="none",
+    avoid_when=("播放排行或播放趋势",),
+    fallback=(),
 )
 
 COMMUNITY_FEED_SEARCH_TOOL = AgentToolDefinition(
@@ -1509,6 +2042,14 @@ COMMUNITY_FEED_SEARCH_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=CommunityFeedSearchParams,
     handler=community_feed_search_handler,
+    best_for=("按文本或日期查社区动态", "社区帖子详情"),
+    covers=("community", "detail", "period"),
+    cost="high",
+    timeout_seconds=75,
+    cacheability="revision",
+    cold_build_risk="high",
+    avoid_when=("只需要社区趋势排行",),
+    fallback=("community_trending",),
 )
 
 COMMUNITY_TRENDING_TOOL = AgentToolDefinition(
@@ -1517,4 +2058,12 @@ COMMUNITY_TRENDING_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=CommunityTrendingParams,
     handler=community_trending_handler,
+    best_for=("社区趋势", "社区热门艺人与歌曲", "最新冠军或空降信号"),
+    covers=("community", "ranking", "peak"),
+    cost="high",
+    timeout_seconds=75,
+    cacheability="revision",
+    cold_build_risk="high",
+    avoid_when=("按关键词查找特定帖子",),
+    fallback=("community_feed_search",),
 )

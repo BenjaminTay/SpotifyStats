@@ -16,22 +16,27 @@ class WebSearchParams(BaseModel):
     limit: int = Field(default=3, ge=1, le=5, description="Max results")
 
 
-def _web_search_handler(params: WebSearchParams) -> AgentToolResult:
+def _web_search_handler(params: BaseModel) -> AgentToolResult:
     """Execute a web search via Wikipedia and return structured results."""
+    parsed = WebSearchParams.model_validate(params)
     try:
         provider = WikipediaProvider()
-        results = provider.search(params.query, language=params.language, limit=params.limit)
+        results = provider.search(
+            parsed.query,
+            language=parsed.language,
+            limit=parsed.limit,
+        )
     except Exception:
         return AgentToolResult(
-            data={"results": [], "query": params.query},
-            result_summary=f"web_search failed for '{params.query}'",
+            data={"results": [], "query": parsed.query},
+            result_summary=f"web_search failed for '{parsed.query}'",
             source_range="web",
         )
 
     if not results:
         return AgentToolResult(
-            data={"results": [], "query": params.query},
-            result_summary=f"no Wikipedia results for '{params.query}'",
+            data={"results": [], "query": parsed.query},
+            result_summary=f"no Wikipedia results for '{parsed.query}'",
             source_range="web",
         )
 
@@ -43,8 +48,8 @@ def _web_search_handler(params: WebSearchParams) -> AgentToolResult:
         summaries.append({"title": title, "snippet": snippet[:500], "url": url})
 
     return AgentToolResult(
-        data={"results": summaries, "query": params.query},
-        result_summary=f"web_search '{params.query}': {len(summaries)} results — {summaries[0]['title'] if summaries else 'none'}",
+        data={"results": summaries, "query": parsed.query},
+        result_summary=f"web_search '{parsed.query}': {len(summaries)} results — {summaries[0]['title'] if summaries else 'none'}",
         source_range="web",
     )
 
@@ -55,4 +60,11 @@ WEB_SEARCH_TOOL = AgentToolDefinition(
     read_only=True,
     params_model=WebSearchParams,
     handler=_web_search_handler,
+    cost="medium",
+    supports_parallel=False,
+    best_for=("本地数据没有的补充音乐背景", "艺人或专辑百科背景"),
+    covers=("external_context",),
+    cold_build_risk="none",
+    avoid_when=("用户询问本地播放事实", "用户未请求外部背景"),
+    fallback=(),
 )

@@ -140,7 +140,7 @@ def _comparison_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard
         metrics,
         _metric(
             "winner_by_intensity",
-            "单位在榜周强度胜出",
+            "单位时间强度胜出",
             data.get("winner_by_intensity"),
         ),
     )
@@ -158,6 +158,7 @@ def _comparison_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard
             ("power_rank", "个人榜单排名", None),
             ("weeks_on_chart", "在榜周数", "weeks"),
             ("plays_per_chart_week", "单位在榜周播放", "plays/week"),
+            ("plays_per_window_week", "所选窗口周均播放", "plays/week"),
         ):
             _append_metric(
                 metrics,
@@ -176,7 +177,7 @@ def _comparison_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCard
         source=_source(item),
         metrics=metrics,
         observations=observations,
-        limitations=["比较结果同时包含累计播放/时长与单位在榜周归一化强度，最终回答必须说明口径。"],
+        limitations=["比较结果同时包含播放/时长与单位时间归一化强度，最终回答必须说明口径。"],
     )
 
 
@@ -204,7 +205,10 @@ def _analysis_charts_card(item: dict[str, Any], data: dict[str, Any]) -> Evidenc
     metric_label = "播放次数" if metric == "plays" else "播放时长"
     metrics: list[EvidenceMetric] = []
     _append_metric(metrics, _metric("total_ranked_entities", "候选数量", data.get("total")))
-    for row in rows[:3]:
+    # Five rows are still compact enough for the final context and are needed
+    # to satisfy explicit Top 5 / comparison-table requests without inventing
+    # facts outside the evidence catalog.
+    for row in rows[:5]:
         if not isinstance(row, dict):
             continue
         rank = row.get("rank")

@@ -19,10 +19,12 @@ class SyncThread:
         target: Callable[..., None],
         args: tuple[Any, ...] = (),
         daemon: bool | None = None,
+        name: str | None = None,
     ):
         self.target = target
         self.args = args
         self.daemon = daemon
+        self.name = name
 
     def start(self) -> None:
         self.target(*self.args)
@@ -112,7 +114,8 @@ def test_mark_task_done_keeps_cancelled_task_cancelled(ai_task_db: Path):
     assert events is not None
     assert [event["event_type"] for event in events[0]] == [
         "stage_started",
-        "stage_completed",
+        "cancellation_requested",
+        "cancellation_completed",
     ]
 
 
@@ -151,6 +154,35 @@ def test_handler_exception_marks_task_error(
     assert events[0][-1]["payload"] == {"error": "boom"}
 
 
+def test_startup_recovery_resumes_queued_agent_task(
+    ai_task_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del ai_task_db
+    from backend.core import config as runtime_config
+    from backend.services import ai_agent_v2_service
+
+    monkeypatch.setattr(runtime_config, "AI_AGENT_RUNTIME", "v2")
+    monkeypatch.setattr(ai_task_service.threading, "Thread", SyncThread)
+    observed: list[tuple[str, dict[str, Any], bool]] = []
+
+    def fake_resume(task_id: str, request: dict[str, Any], *, resume: bool = False) -> None:
+        observed.append((task_id, request, resume))
+
+    monkeypatch.setattr(ai_agent_v2_service, "run_chat_agent_task_v2", fake_resume)
+    task = ai_task_service.create_task(
+        task_type="ai_chat_agent",
+        stage="queued",
+        message="等待 Agent",
+        request={"question": "恢复这个问题"},
+    )
+
+    recovered = ai_task_service.recover_interrupted_agent_tasks()
+
+    assert recovered == 1
+    assert observed == [(task["task_id"], {"question": "恢复这个问题"}, True)]
+
+
 def test_handler_exception_does_not_overwrite_cancelled_task(
     ai_task_db: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -182,5 +214,49 @@ def test_handler_exception_does_not_overwrite_cancelled_task(
     assert events is not None
     assert [event["event_type"] for event in events[0]] == [
         "stage_started",
-        "stage_completed",
+        "cancellation_requested",
+        "cancellation_completed",
     ]
+
+
+def test_start_chat_agent_uses_v2_by_default(monkeypatch: pytest.MonkeyPatch):
+    import backend.core.config as runtime_config
+    from backend.services import ai_agent_v2_service
+
+    captured: dict[str, Any] = {}
+
+    def fake_v2_handler(task_id: str, request: dict[str, Any]) -> None:
+        del task_id, request
+
+    def fake_create_task(**kwargs):
+        captured.update(kwargs)
+        return {"task_id": "v2", "status": "queued", "stage": kwargs["stage"]}
+
+    monkeypatch.setattr(runtime_config, "AI_AGENT_RUNTIME", "v2")
+    monkeypatch.setattr(ai_agent_v2_service, "run_chat_agent_task_v2", fake_v2_handler)
+    monkeypatch.setattr(ai_task_service, "create_task", fake_create_task)
+
+    result = ai_task_service.start_chat_agent_task({"question": "test"})
+
+    assert result["task_id"] == "v2"
+    assert captured["handler"] is fake_v2_handler
+    assert captured["message"] == "准备启动 Agent Chat V2"
+
+
+def test_start_chat_agent_keeps_explicit_legacy_rollback(monkeypatch: pytest.MonkeyPatch):
+    import backend.core.config as runtime_config
+    from backend.services import ai_agent_service
+
+    captured: dict[str, Any] = {}
+
+    def fake_create_task(**kwargs):
+        captured.update(kwargs)
+        return {"task_id": "legacy", "status": "queued", "stage": kwargs["stage"]}
+
+    monkeypatch.setattr(runtime_config, "AI_AGENT_RUNTIME", "legacy")
+    monkeypatch.setattr(ai_task_service, "create_task", fake_create_task)
+
+    ai_task_service.start_chat_agent_task({"question": "test"})
+
+    assert captured["handler"] is ai_agent_service.run_chat_agent_task
+    assert "旧运行时" in captured["message"]

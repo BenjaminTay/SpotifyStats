@@ -38,6 +38,7 @@ vi.mock('@/hooks/useAiTasks', () => ({
   }),
   useStartChatAgentTask: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCancelAiTask: () => ({ mutate: vi.fn() }),
+  useSendAiAgentInput: () => ({ mutateAsync: vi.fn() }),
 }))
 
 function makeSession(overrides: Partial<ChatSession> = {}): ChatSession {

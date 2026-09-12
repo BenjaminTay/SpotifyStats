@@ -1,4 +1,4 @@
-export type AiTaskStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled'
+export type AiTaskStatus = 'queued' | 'running' | 'cancelling' | 'done' | 'error' | 'cancelled'
 
 export type AiTaskJsonPayload = Record<string, unknown> | unknown[]
 
@@ -71,6 +71,37 @@ export interface AiTaskEventsPayload {
   found: boolean
   events: AiTaskEvent[]
   tool_calls: AiToolCall[]
+}
+
+export interface AiAgentTurnEvent {
+  event_id: number
+  task_id: string
+  session_id?: number | null
+  turn_id: string
+  sequence: number
+  step_index?: number | null
+  event_type: string
+  payload: AiTaskJsonPayload
+  created_at: string
+}
+
+export interface AiAgentTrajectoryPayload {
+  found: boolean
+  events: AiAgentTurnEvent[]
+}
+
+export interface AiAgentInboxPayload {
+  accepted: boolean
+  task_id: string
+  action: 'steer' | 'followup' | 'cancel'
+  inbox_id?: number | null
+  status: string
+}
+
+export interface AiAgentSteeringInput {
+  inboxId: number | null
+  content: string
+  status: string
 }
 
 export interface AiTaskCreatePayload {

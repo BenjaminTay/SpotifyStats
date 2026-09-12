@@ -30,6 +30,8 @@ describe('M6 mobile community, AI, account and settings architecture', () => {
     expect(chatDrawerSource).toContain('MobileBottomSheet')
     expect(chatDrawerSource).toContain('ai-history')
     expect(chatComposerSource).toContain('data-mobile-input-mode="true"')
+    expect(chatComposerSource).toContain("'inline-flex h-11 items-center")
+    expect(chatComposerSource).toContain('className="flex h-11 w-11')
     expect(aiExperienceSource).toContain('mobile-ai-mode-switch')
   })
 

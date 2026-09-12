@@ -8,6 +8,7 @@ interface ChatComposerProps {
   onChange: (value: string) => void
   onThinkingModeChange: (value: boolean) => void
   onSend: () => void
+  placeholder?: string
 }
 
 export function ChatComposer({
@@ -17,6 +18,7 @@ export function ChatComposer({
   onChange,
   onThinkingModeChange,
   onSend,
+  placeholder = '输入问题，如「我今年听最多的艺人是谁？」',
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -56,7 +58,7 @@ export function ChatComposer({
           onClick={() => onThinkingModeChange(!thinkingMode)}
           title="开启后 AI 将展示推理过程，回答更深入但耗时更长"
           className={[
-            'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold transition-colors',
+            'inline-flex h-11 items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold transition-colors',
             thinkingMode
               ? 'border-accent-foreground/25 bg-accent-foreground text-card'
               : 'border-border/60 bg-card/30 text-muted-foreground hover:text-foreground',
@@ -73,7 +75,7 @@ export function ChatComposer({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入问题，如「我今年听最多的艺人是谁？」"
+          placeholder={placeholder}
           disabled={disabled}
           maxLength={500}
           rows={1}
@@ -83,7 +85,7 @@ export function ChatComposer({
           onClick={onSend}
           disabled={disabled || !value.trim()}
           aria-label="发送问题"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-foreground text-card transition-opacity hover:opacity-85 disabled:opacity-30"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-foreground text-card transition-opacity hover:opacity-85 disabled:opacity-30"
         >
           <Send className="h-4 w-4" />
         </button>

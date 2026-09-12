@@ -58,6 +58,9 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 ## 已确认但仍有实现参考价值的设计
 
+- [`designs/2026-08-31-ai-agent-quality-v4.md`](designs/2026-08-31-ai-agent-quality-v4.md)：Answer Contract、Tool Evidence V2、Constraint Patch V2、Worker lease/SSE 恢复与年度报告硬门禁
+- [`designs/2026-08-31-ai-agent-quality-v3.md`](designs/2026-08-31-ai-agent-quality-v3.md)：对照 Pi / DeepSeek Harness 的应用内最小真实 Agent、证据门禁、运行中转向与降级设计
+- [`designs/2026-08-31-ai-agent-runtime-v2.md`](designs/2026-08-31-ai-agent-runtime-v2.md)：原生工具调用、Turn/Step 状态机、只读 Tool Runtime、可重放事件日志与 legacy 回退契约
 - [`designs/2026-07-04-genre-review-settings-design.md`](designs/2026-07-04-genre-review-settings-design.md)：Settings 流派审核面板
 - [`designs/2026-08-12-yearly-review-v2-content-data-contract.md`](designs/2026-08-12-yearly-review-v2-content-data-contract.md)：年度总结 V2 内容与数据契约
 - [`designs/2026-08-23-yearly-artifact-key-invalidation-contract.md`](designs/2026-08-23-yearly-artifact-key-invalidation-contract.md)：年度事实等价、受影响年份失效与路径历史 key 契约
@@ -69,6 +72,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
 - [`reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md`](reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)：等价发行 Album Project、stable work、归属 coverage、L1 风险队列、双副本与孙燕姿同名专辑定向治理证据
+- [`reports/2026-08-31-ai-agent-performance-v5-acceptance.md`](reports/2026-08-31-ai-agent-performance-v5-acceptance.md)：最小真实 Agent 的共享年度上下文、分章节 Writer、真实模型性能、崩溃恢复、SSE 和响应式验收证据
 - [`reports/2026-08-31-l3-governance-execution-and-acceptance.md`](reports/2026-08-31-l3-governance-execution-and-acceptance.md)：L2/L3 分层语义、歌曲与专辑 composition 自动治理、两份副本演练、真实主库发布、API 与响应式全栈验收证据
 - [`reports/2026-08-31-l3-native-album-attribution-execution-and-acceptance.md`](reports/2026-08-31-l3-native-album-attribution-execution-and-acceptance.md)：L3 歌曲到原生专辑唯一归属、Taylor 并集、Live 逐曲回流、双副本确定性、主库守恒和完整全栈验收证据
 - [`reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)：聚合 proof、Records parity/参数、6 个子页面/8 个后端模块/51 个列表稳定排序、播放排行 tie-breaker、真实库和响应式验收证据

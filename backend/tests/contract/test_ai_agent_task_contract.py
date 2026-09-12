@@ -27,6 +27,15 @@ class SyncThread:
         self.target(*self.args)
 
 
+@pytest.fixture(autouse=True)
+def use_legacy_runtime_for_legacy_contracts(monkeypatch):
+    """This module preserves the rollback runtime's detailed contract suite."""
+
+    import backend.core.config as runtime_config
+
+    monkeypatch.setattr(runtime_config, "AI_AGENT_RUNTIME", "legacy")
+
+
 def test_chat_agent_prompts_include_project_context(monkeypatch) -> None:
     class FakeConn:
         def close(self) -> None:
@@ -462,7 +471,7 @@ def test_chat_agent_retries_final_answer_when_it_contradicts_found_album_evidenc
     assert len(llm_calls) == 3
 
 
-def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
+def test_chat_agent_collapses_preference_followups_into_one_compare(
     client,
     monkeypatch,
 ):
@@ -583,7 +592,7 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
     events_payload = client.get(f"/api/ai/tasks/{task_id}/events").json()
 
     assert status_payload["status"] == "done"
-    assert status_payload["result"]["tool_call_count"] == 8
+    assert status_payload["result"]["tool_call_count"] == 4
     assert dispatched[3] == (
         "compare_entities",
         {
@@ -595,30 +604,16 @@ def test_chat_agent_adds_sufficiency_followups_with_total_tool_cap(
             "dynamic_threshold": False,
             "max_merge_gap_minutes": 45,
             "merge_level": 3,
+            "period": "lifetime",
+            "include_billboard": True,
         },
     )
-    assert dispatched[4][0] == "entity_stats"
-    assert dispatched[4][1]["album_name"] == "GUTS"
-    assert dispatched[4][1]["period"] == "last_6_months"
-    assert dispatched[5][0] == "entity_stats"
-    assert dispatched[5][1]["album_name"] == "The Life of a Showgirl"
-    assert dispatched[5][1]["period"] == "last_6_months"
-    assert dispatched[6][0] == "entity_stats"
-    assert dispatched[6][1]["album_name"] == "GUTS"
-    assert dispatched[6][1]["period"] == "last_4_weeks"
-    assert dispatched[7][0] == "entity_stats"
-    assert dispatched[7][1]["album_name"] == "The Life of a Showgirl"
-    assert dispatched[7][1]["period"] == "last_4_weeks"
     assert "reviewing_coverage" in [event["stage"] for event in events_payload["events"]]
     assert [call["tool_name"] for call in events_payload["tool_calls"]] == [
         "entity_stats",
         "billboard_entity_detail",
         "entity_stats",
         "compare_entities",
-        "entity_stats",
-        "entity_stats",
-        "entity_stats",
-        "entity_stats",
     ]
     assert status_payload["result"]["coverage"]["comparison"]["compare_entities"] == "found"
     assert status_payload["result"]["evidence_sufficiency"]["sufficient"] is True

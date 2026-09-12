@@ -33,6 +33,27 @@ def test_relative_time_answer_obligations_include_data_cutoff_when_data_lags_tod
     assert "2026-06-23" in cutoff["required_values"]
 
 
+def test_clipped_window_requires_effective_analysis_range() -> None:
+    question = "比较最近 6 个月的艺人偏好"
+    frame = build_question_frame(question, parse_question_intent(question))
+    temporal_context = build_temporal_context(
+        {"question_time": "2026-08-31T10:00:00+08:00"},
+        data_range={"data_start_date": "2022-07-01", "data_end_date": "2026-08-21"},
+    )
+    _, temporal_guard = apply_temporal_guard(question, temporal_context, [])
+
+    obligations = build_answer_obligations(
+        question=question,
+        question_frame=frame.model_dump(),
+        temporal_context=temporal_context,
+        temporal_guard=temporal_guard,
+        evidence_sufficiency={"sufficient": True},
+    )
+
+    effective = next(item for item in obligations if item["kind"] == "effective_data_range")
+    assert effective["required_values"] == ["2026-03-04", "2026-08-21"]
+
+
 def test_critic_requires_obligation_values_when_present() -> None:
     payload = {
         "answer_obligations": [

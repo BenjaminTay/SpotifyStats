@@ -76,6 +76,15 @@ def test_metric_boundary_question_is_habit_summary_not_simple_ranking() -> None:
 
     assert frame.family == "habit_summary"
     assert frame.answer_contract == "habit_summary_answer"
+
+
+def test_music_type_question_routes_to_structured_taste_profile() -> None:
+    intent = parse_question_intent("去年夏天我最常听什么类型的音乐？")
+    frame = build_question_frame("去年夏天我最常听什么类型的音乐？", intent)
+
+    assert frame.family == "taste_profile"
+    assert frame.analysis_axes == ["taste", "period"]
+    assert frame.answer_contract == "habit_summary_answer"
     assert frame.requires_layered_conclusion is False
 
 

@@ -64,6 +64,19 @@ def build_answer_obligations(
                 "description": "用户请求超出只读查询分析边界时，必须明确拒绝写操作。",
                 "required_tokens_any": ["只读", "不能", "无法", "不会"],
                 "required_values": [],
+                "quality_dimension": "constraint_compliant",
+                "required_claim_types": ["safe_refusal"],
+            },
+        )
+        _append_once(
+            obligations,
+            {
+                "kind": "safe_alternative",
+                "description": "安全拒绝必须给出允许的只读替代能力，不能只说做不到。",
+                "required_tokens_any": ["只读", "允许", "可以", "你可以", "改为"],
+                "required_values": [],
+                "quality_dimension": "informative",
+                "required_claim_types": ["safe_alternative"],
             },
         )
         return obligations
@@ -83,8 +96,113 @@ def build_answer_obligations(
                     "只能",
                 ],
                 "required_values": [],
+                "quality_dimension": "complete",
+                "required_claim_types": ["limitation"],
             },
         )
+        _append_once(
+            obligations,
+            {
+                "kind": "no_data_explanation",
+                "description": "无数据或证据不足时必须解释缺失边界，而不是只报告查询状态。",
+                "required_tokens_any": [
+                    "证据不足",
+                    "数据不足",
+                    "缺少",
+                    "未覆盖",
+                    "无法确定",
+                    "限制",
+                ],
+                "required_values": [],
+                "quality_dimension": "informative",
+                "required_claim_types": ["no_data"],
+            },
+        )
+
+    if sufficiency.get("sufficient") is not False:
+        if family in {"simple_ranking", "scoped_ranking", "time_of_day_ranking"}:
+            _append_once(
+                obligations,
+                {
+                    "kind": "ranking_result",
+                    "description": "排行回答必须给出实际排名实体、排序指标和直接结论。",
+                    "required_tokens_any": [
+                        "排名",
+                        "排行",
+                        "第",
+                        "Top",
+                        "最常",
+                        "最高",
+                        "播放次数",
+                        "播放时长",
+                    ],
+                    "required_values": [],
+                    "quality_dimension": "informative",
+                    "required_claim_types": ["ranking"],
+                },
+            )
+        if family in {"preference_comparison", "period_comparison", "identity_preference"}:
+            entities = [
+                entity
+                for entity in frame.get("entities", [])
+                if isinstance(entity, str) and entity.strip()
+            ]
+            _append_once(
+                obligations,
+                {
+                    "kind": "comparison_coverage",
+                    "description": "比较回答必须覆盖全部比较对象。",
+                    "required_tokens_any": [],
+                    "required_values": entities,
+                    "quality_dimension": "complete",
+                    "required_claim_types": ["comparison"],
+                },
+            )
+            _append_once(
+                obligations,
+                {
+                    "kind": "comparison_conclusion",
+                    "description": "比较回答必须给出直接或分口径结论。",
+                    "required_tokens_any": [
+                        "更高",
+                        "更低",
+                        "更多",
+                        "更少",
+                        "领先",
+                        "胜出",
+                        "占优",
+                        "相近",
+                        "持平",
+                        "不同口径",
+                        "更喜欢",
+                    ],
+                    "required_values": [],
+                    "quality_dimension": "informative",
+                    "required_claim_types": ["comparison"],
+                },
+            )
+        if family in {"trend_preference", "change_explanation"}:
+            _append_once(
+                obligations,
+                {
+                    "kind": "trend_direction",
+                    "description": "趋势回答必须说明方向和时间口径。",
+                    "required_tokens_any": [
+                        "上升",
+                        "下降",
+                        "增加",
+                        "减少",
+                        "回升",
+                        "回落",
+                        "稳定",
+                        "持平",
+                        "波动",
+                    ],
+                    "required_values": [],
+                    "quality_dimension": "informative",
+                    "required_claim_types": ["direction", "time_range"],
+                },
+            )
 
     latest_play_date = temporal.get("latest_play_date")
     today = temporal.get("today")
@@ -102,8 +220,32 @@ def build_answer_obligations(
                 "description": "相对时间问题必须说明本地播放数据截止日期，避免把 today 当作数据最新日期。",
                 "required_tokens_any": ["数据截止", "截至", "只覆盖到", "最新播放数据"],
                 "required_values": [latest_play_date],
+                "quality_dimension": "constraint_compliant",
+                "required_claim_types": ["time_range"],
             },
         )
+
+    if interpretation.get("coverage_clipped") is True:
+        effective_start = interpretation.get("effective_start_date")
+        effective_end = interpretation.get("effective_end_date")
+        effective_values = [
+            value for value in (effective_start, effective_end) if isinstance(value, str) and value
+        ]
+        if len(effective_values) == 2:
+            _append_once(
+                obligations,
+                {
+                    "kind": "effective_data_range",
+                    "description": (
+                        "请求范围超出本地数据覆盖时，必须明确说明实际分析范围，"
+                        "不能把未观察到的日期写成已分析范围。"
+                    ),
+                    "required_tokens_any": ["实际分析范围", "实际数据范围", "只覆盖到"],
+                    "required_values": effective_values,
+                    "quality_dimension": "constraint_compliant",
+                    "required_claim_types": ["time_range"],
+                },
+            )
 
     if interpretation.get("is_cross_year_season") is True:
         values = [
@@ -122,6 +264,8 @@ def build_answer_obligations(
                 "description": "跨年季节必须使用显示标签或完整日期范围，避免只写单一年份。",
                 "required_tokens_any": [],
                 "required_values": values,
+                "quality_dimension": "constraint_compliant",
+                "required_claim_types": ["time_range"],
             },
         )
 
@@ -138,6 +282,8 @@ def build_answer_obligations(
                     "个人榜单",
                 ],
                 "required_values": [],
+                "quality_dimension": "constraint_compliant",
+                "required_claim_types": ["scope_boundary"],
             },
         )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import urllib.error
 
 import pytest
@@ -55,6 +56,200 @@ def test_llm_provider_redacts_api_key():
 
     assert redacted["api_key"] != "sk-1234567890abcdef"  # pragma: allowlist secret
     assert redacted["api_key"].endswith("***")
+
+
+def test_llm_text_completion_normalizes_openai_observability(monkeypatch):
+    from backend.providers.llm.client import LLMProvider
+
+    provider = LLMProvider(
+        provider="openai",
+        api_key="sk-test",  # pragma: allowlist secret
+        model="gpt-test",
+    )
+    monkeypatch.setattr(
+        provider,
+        "chat",
+        lambda *_args, **_kwargs: {
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {"content": "完成"},
+                }
+            ],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 2},
+        },
+    )
+
+    result = provider.complete_text([{"role": "user", "content": "问题"}])
+
+    assert result.content == "完成"
+    assert result.provider == "openai"
+    assert result.model == "gpt-test"
+    assert result.finish_reason == "stop"
+    assert result.usage == {"prompt_tokens": 8, "completion_tokens": 2}
+    assert result.elapsed_ms >= 0
+    assert result.empty_reason == ""
+
+
+def test_llm_text_completion_normalizes_anthropic_and_empty_reason(monkeypatch):
+    from backend.providers.llm.client import LLMProvider
+
+    provider = LLMProvider(
+        provider="anthropic",
+        api_key="anthropic-test",  # pragma: allowlist secret
+        model="claude-test",
+    )
+    responses = iter(
+        [
+            {
+                "stop_reason": "end_turn",
+                "content": [
+                    {"type": "text", "text": "第一段"},
+                    {"type": "text", "text": "第二段"},
+                ],
+                "usage": {"input_tokens": 9, "output_tokens": 3},
+            },
+            {
+                "stop_reason": "max_tokens",
+                "content": [{"type": "text", "text": ""}],
+                "usage": {"input_tokens": 9, "output_tokens": 0},
+            },
+        ]
+    )
+    monkeypatch.setattr(provider, "chat", lambda *_args, **_kwargs: next(responses))
+
+    success = provider.complete_text([{"role": "user", "content": "问题"}])
+    empty = provider.complete_text([{"role": "user", "content": "问题"}])
+
+    assert success.content == "第一段\n第二段"
+    assert success.finish_reason == "end_turn"
+    assert success.usage == {"input_tokens": 9, "output_tokens": 3}
+    assert success.empty_reason == ""
+    assert empty.content == ""
+    assert empty.finish_reason == "max_tokens"
+    assert empty.empty_reason == "max_tokens_without_content"
+
+
+def test_llm_text_completion_classifies_transport_failure(monkeypatch):
+    from backend.providers.base import ProviderNetworkError
+    from backend.providers.llm.client import LLMProvider
+
+    provider = LLMProvider(
+        provider="openai",
+        api_key="sk-test",  # pragma: allowlist secret
+        model="gpt-test",
+    )
+
+    def fail(*_args, **_kwargs):
+        raise ProviderNetworkError("openai", "network unavailable")
+
+    monkeypatch.setattr(provider, "chat", fail)
+
+    result = provider.complete_text([{"role": "user", "content": "问题"}])
+
+    assert result.content == ""
+    assert result.provider == "openai"
+    assert result.model == "gpt-test"
+    assert result.empty_reason == "transport_error"
+
+
+def test_deepseek_explicitly_switches_thinking_mode(monkeypatch):
+    from backend.providers.llm.client import LLMProvider
+
+    provider = LLMProvider(
+        provider="deepseek",
+        api_key="deepseek-test",  # pragma: allowlist secret
+        model="deepseek-v4-flash",
+        base_url="https://api.deepseek.com",
+    )
+    bodies: list[dict] = []
+
+    class Response:
+        status = 200
+
+        @staticmethod
+        def json():
+            return {"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]}
+
+    def post(_url, *, data, headers):  # noqa: ARG001
+        bodies.append(data)
+        return Response()
+
+    monkeypatch.setattr(provider._http, "post", post)
+
+    provider.chat([{"role": "user", "content": "直接回答"}], thinking=False)
+    provider.chat([{"role": "user", "content": "先分析"}], thinking=True)
+
+    assert bodies[0]["thinking"] == {"type": "disabled"}
+    assert bodies[1]["thinking"] == {"type": "enabled"}
+
+
+def test_ai_insights_structured_helper_keeps_legacy_wrapper_compatible(monkeypatch):
+    from backend.providers.llm.client import LLMTextCompletion
+    from backend.services import ai_insights_service
+
+    completions = iter(
+        [
+            LLMTextCompletion(
+                content="结构化结果",
+                provider="deepseek",
+                model="deepseek-test",
+                finish_reason="stop",
+                usage={"total_tokens": 12},
+                elapsed_ms=7,
+            ),
+            LLMTextCompletion(
+                provider="deepseek",
+                model="deepseek-test",
+                empty_reason="transport_error",
+            ),
+        ]
+    )
+
+    class FakeProvider:
+        provider = "deepseek"
+        model = "deepseek-test"
+
+        def complete_text(self, *_args, **_kwargs):
+            return next(completions)
+
+    monkeypatch.setattr(ai_insights_service, "_get_config", lambda: {})
+    monkeypatch.setattr(ai_insights_service, "_get_llm", lambda _cfg: FakeProvider())
+
+    structured = ai_insights_service._llm_text_completion("system", "data")
+    failed_legacy = ai_insights_service._llm_chat("system", "data")
+
+    assert structured is not None
+    assert structured.content == "结构化结果"
+    assert structured.finish_reason == "stop"
+    assert structured.usage == {"total_tokens": 12}
+    assert failed_legacy is None
+
+
+def test_ai_insights_structured_helper_does_not_log_sensitive_inputs(monkeypatch, caplog):
+    from backend.services import ai_insights_service
+
+    class BrokenProvider:
+        provider = "custom"
+        model = "model-test"
+
+        def complete_text(self, *_args, **_kwargs):
+            raise RuntimeError("raw-provider-response")
+
+    monkeypatch.setattr(ai_insights_service, "_get_config", lambda: {})
+    monkeypatch.setattr(ai_insights_service, "_get_llm", lambda _cfg: BrokenProvider())
+
+    with caplog.at_level(logging.WARNING):
+        result = ai_insights_service._llm_text_completion(
+            "system-secret-prompt",
+            "user-private-data",
+        )
+
+    assert result is not None
+    assert result.empty_reason == "provider_error"
+    assert "system-secret-prompt" not in caplog.text
+    assert "user-private-data" not in caplog.text
+    assert "raw-provider-response" not in caplog.text
 
 
 def test_llm_translator_uses_provider_for_openai_compatible(monkeypatch):

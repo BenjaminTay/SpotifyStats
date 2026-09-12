@@ -443,9 +443,13 @@ def _correct_catalog_memberships(
             contained = bool(ids.intersection(catalog)) or bool(
                 identity_isrcs.intersection(catalog_isrcs)
             )
-            if contained and (
-                candidate.membership_role != "standard"
-                or candidate.source_bucket != "original_album"
+            if (
+                candidate.project_type != "compilation_exclusive"
+                and contained
+                and (
+                    candidate.membership_role != "standard"
+                    or candidate.source_bucket != "original_album"
+                )
             ):
                 candidate = replace(
                     candidate,

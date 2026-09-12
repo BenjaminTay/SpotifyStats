@@ -6,6 +6,7 @@ from backend.domains.ai_reports.agentic_tools import (
     REPORT_TOOL_NAMES,
     execute_report_tool,
     list_report_tools,
+    report_tool_schemas,
 )
 
 pytestmark = pytest.mark.unit
@@ -64,6 +65,39 @@ def test_report_period_context_tool_uses_real_reporting_period_when_latest_missi
 def test_unknown_report_tool_is_rejected():
     with pytest.raises(ValueError, match="Unknown report tool"):
         execute_report_tool("arbitrary_sql", {"sql": "select * from plays"})
+
+
+def test_report_tools_project_one_precomputed_context_without_rebuilding(monkeypatch):
+    from backend.domains.ai_reports import agentic_tools
+
+    monkeypatch.setattr(
+        agentic_tools,
+        "_gather_yearly_data_for_tool",
+        lambda params: pytest.fail("precomputed context must avoid yearly rebuild"),
+    )
+    context = {
+        "reporting_period": {
+            "year": 2026,
+            "start_date": "2026-01-01",
+            "end_date": "2026-08-21",
+            "is_partial_year": True,
+        },
+        "hero": {"total_plays": 123, "total_minutes": 600},
+        "top_artists": [{"name": "Artist A"}],
+        "top_tracks": [{"name": "Track A"}],
+        "top_albums": [{"name": "Album A"}],
+    }
+
+    overview = execute_report_tool("yearly_overview", {}, context=context)
+    entities = execute_report_tool("yearly_top_entities", {}, context=context)
+    period = execute_report_tool("report_period_context", {}, context=context)
+
+    assert overview["data"]["hero"]["total_plays"] == 123
+    assert entities["data"]["top_artists"][0]["name"] == "Artist A"
+    assert period["data"]["end_date"] == "2026-08-21"
+    assert {item["name"] for item in report_tool_schemas()} == {
+        item["name"] for item in list_report_tools()
+    }
 
 
 def test_yearly_overview_tool_summarizes_wrapped_payload(monkeypatch):

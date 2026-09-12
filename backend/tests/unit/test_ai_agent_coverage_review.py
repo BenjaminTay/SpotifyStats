@@ -135,7 +135,7 @@ def _frame_and_recipe(question: str):
     return frame, recipe_for_frame(frame)
 
 
-def test_preference_comparison_requests_recent_followups_when_lifetime_compare_exists() -> None:
+def test_preference_comparison_is_sufficient_with_one_complete_compare() -> None:
     question = (
         "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl"
         "这两张专辑的喜爱程度哪张专辑更甚？"
@@ -178,18 +178,15 @@ def test_preference_comparison_requests_recent_followups_when_lifetime_compare_e
         coverage={"comparison": {"compare_entities": "found"}},
     )
 
-    assert review["sufficient"] is False
+    assert review["sufficient"] is True
     assert review["axis_coverage"]["cumulative"] == "covered"
-    assert review["axis_coverage"]["recency"] == "missing"
+    assert "recency" not in review["axis_coverage"]
     assert review["axis_coverage"]["intensity"] == "covered"
     assert review["axis_coverage"]["personal_billboard"] == "covered"
-    assert any(
-        call["params"]["period"] == "last_6_months" for call in review["followup_tool_calls"]
-    )
-    assert any(call["params"]["period"] == "last_4_weeks" for call in review["followup_tool_calls"])
+    assert review["followup_tool_calls"] == []
 
 
-def test_preference_comparison_keeps_missing_entity_recent_followups() -> None:
+def test_preference_comparison_retries_incomplete_compare_as_one_call() -> None:
     question = (
         "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl"
         "这两张专辑的喜爱程度哪张专辑更甚？"
@@ -221,14 +218,17 @@ def test_preference_comparison_keeps_missing_entity_recent_followups() -> None:
         coverage={"comparison": {"compare_entities": "found"}},
     )
 
-    assert {
-        "tool_name": "entity_stats",
-        "params": {
-            "entity": "album",
-            "album_name": "The Life of a Showgirl",
-            "period": "last_6_months",
-        },
-    } in review["followup_tool_calls"]
+    assert review["followup_tool_calls"] == [
+        {
+            "tool_name": "compare_entities",
+            "params": {
+                "entity_type": "album",
+                "names": ["GUTS", "The Life of a Showgirl"],
+                "period": "lifetime",
+                "include_billboard": True,
+            },
+        }
+    ]
 
 
 def test_time_of_day_ranking_is_sufficient_with_late_night_tool() -> None:
@@ -300,6 +300,34 @@ def test_simple_ranking_followup_uses_recipe_required_context() -> None:
     ]
 
 
+def test_empty_ranking_results_are_evidence_of_no_data_not_a_completed_ranking() -> None:
+    frame, recipe = _frame_and_recipe("2010年我最常听什么？")
+
+    review = review_evidence_sufficiency(
+        question_frame=frame.model_dump(),
+        evidence_recipe=recipe.model_dump(),
+        tool_results=[
+            {
+                "tool_name": "analysis_charts",
+                "status": "empty",
+                "source_range": "2010-01-01..2010-12-31",
+                "params": {
+                    "entity": "track",
+                    "metric": "plays",
+                    "period": "custom",
+                    "start_date": "2010-01-01",
+                    "end_date": "2010-12-31",
+                },
+                "data": {"status": "empty", "rows": []},
+            }
+        ],
+        coverage={},
+    )
+
+    assert review["sufficient"] is False
+    assert review["axis_coverage"]["ranking"] == "missing"
+
+
 def test_simple_ranking_wrong_entity_chart_does_not_satisfy_required_context() -> None:
     frame, recipe = _frame_and_recipe("2023年我播放量最高的艺人是谁？")
 
@@ -343,7 +371,7 @@ def test_simple_ranking_wrong_entity_chart_does_not_satisfy_required_context() -
     ]
 
 
-def test_simple_ranking_accepts_temporal_guarded_custom_chart_context() -> None:
+def test_taste_profile_accepts_temporal_guarded_custom_context() -> None:
     frame, recipe = _frame_and_recipe("去年夏天我最常听什么类型的音乐？")
     recipe_payload = recipe.model_dump()
     recipe_payload["required_context"].update(
@@ -360,19 +388,20 @@ def test_simple_ranking_accepts_temporal_guarded_custom_chart_context() -> None:
         evidence_recipe=recipe_payload,
         tool_results=[
             {
-                "tool_name": "analysis_charts",
+                "tool_name": "taste_profile",
                 "status": "done",
                 "source_range": "2025-06-01..2025-08-31",
-                "params_summary": "entity=track, metric=plays, period=custom",
+                "params_summary": "period=custom",
                 "data": {
-                    "entity": "track",
-                    "metric": "plays",
                     "period": {
                         "period": "custom",
                         "start_date": "2025-06-01",
                         "end_date": "2025-08-31",
                     },
-                    "rows": [{"rank": 1, "track_name": "Manchild", "plays": 53}],
+                    "taste_profile": {
+                        "primary_styles": {"buckets": [{"label": "流行", "hours": 12.3}]},
+                        "language_dist": {"buckets": [{"label": "英语", "hours": 10.1}]},
+                    },
                 },
             }
         ],
@@ -380,7 +409,8 @@ def test_simple_ranking_accepts_temporal_guarded_custom_chart_context() -> None:
     )
 
     assert review["sufficient"] is True
-    assert review["axis_coverage"]["ranking"] == "covered"
+    assert review["axis_coverage"]["taste"] == "covered"
+    assert review["axis_coverage"]["period"] == "covered"
     assert review["followup_tool_calls"] == []
 
 
@@ -541,6 +571,8 @@ def test_compare_entities_for_wrong_objects_does_not_satisfy_preference_comparis
         "params": {
             "entity_type": "album",
             "names": ["GUTS", "The Life of a Showgirl"],
+            "period": "lifetime",
+            "include_billboard": True,
         },
     } in review["followup_tool_calls"]
 
@@ -608,7 +640,7 @@ def test_required_partial_axes_keep_identity_preference_insufficient() -> None:
     assert review["sufficient"] is False
 
 
-def test_preference_comparison_cold_start_followups_cover_compare_and_all_recent_windows() -> None:
+def test_preference_comparison_cold_start_uses_one_bounded_compare() -> None:
     question = (
         "从播放次数和billboard榜单成绩来看，我对GUTS和The Life of a Showgirl"
         "这两张专辑的喜爱程度哪张专辑更甚？"
@@ -629,30 +661,64 @@ def test_preference_comparison_cold_start_followups_cover_compare_and_all_recent
             "params": {
                 "entity_type": "album",
                 "names": ["GUTS", "The Life of a Showgirl"],
-            },
-        },
-        {
-            "tool_name": "entity_stats",
-            "params": {"entity": "album", "album_name": "GUTS", "period": "last_6_months"},
-        },
-        {
-            "tool_name": "entity_stats",
-            "params": {
-                "entity": "album",
-                "album_name": "The Life of a Showgirl",
-                "period": "last_6_months",
-            },
-        },
-        {
-            "tool_name": "entity_stats",
-            "params": {"entity": "album", "album_name": "GUTS", "period": "last_4_weeks"},
-        },
-        {
-            "tool_name": "entity_stats",
-            "params": {
-                "entity": "album",
-                "album_name": "The Life of a Showgirl",
-                "period": "last_4_weeks",
+                "period": "lifetime",
+                "include_billboard": True,
             },
         },
     ]
+
+
+def test_steered_preference_comparison_uses_bounded_result_not_old_lifetime_result() -> None:
+    question = (
+        "从播放次数来看，比较 GUTS 和 The Life of a Showgirl 这两张专辑；只看今年；再比较播放时长。"
+    )
+    frame, recipe = _frame_and_recipe(question)
+    tool_results = [
+        {
+            "tool_name": "compare_entities",
+            "status": "ok",
+            "data": {
+                "entity_type": "album",
+                "period": {"period": "lifetime"},
+                "winner_by_cumulative_plays": "GUTS",
+                "winner_by_intensity": "GUTS",
+                "entities": [
+                    {"name": "GUTS", "found": True},
+                    {"name": "The Life of a Showgirl", "found": True},
+                ],
+            },
+        },
+        {
+            "tool_name": "compare_entities",
+            "status": "ok",
+            "data": {
+                "entity_type": "album",
+                "period": {
+                    "period": "custom",
+                    "start_date": "2026-01-01",
+                    "end_date": "2026-08-21",
+                },
+                "winner_by_cumulative_plays": "The Life of a Showgirl",
+                "winner_by_total_hours": "The Life of a Showgirl",
+                "winner_by_intensity": "The Life of a Showgirl",
+                "entities": [
+                    {"name": "GUTS", "found": True},
+                    {"name": "The Life of a Showgirl", "found": True},
+                ],
+                "fairness_notes": ["对象进入播放历史的时间不同。"],
+            },
+        },
+    ]
+
+    review = review_evidence_sufficiency(
+        question_frame=frame.model_dump(),
+        evidence_recipe=recipe.model_dump(),
+        tool_results=tool_results,
+        coverage={"comparison": {"compare_entities": "found"}},
+    )
+
+    assert review["sufficient"] is True
+    assert review["axis_coverage"]["cumulative"] == "covered"
+    assert review["axis_coverage"]["intensity"] == "covered"
+    assert review["axis_coverage"]["recency"] == "covered"
+    assert review["followup_tool_calls"] == []

@@ -34,6 +34,13 @@ def test_detects_trend_question() -> None:
     assert "recent_window" in intent.requested_metrics
 
 
+def test_detects_spaced_six_month_scope() -> None:
+    intent = parse_question_intent("Taylor Swift 和 Olivia Rodrigo 最近 6 个月谁的播放量更高？")
+
+    assert intent.task_type == "comparison"
+    assert intent.time_scope == "last_6_months"
+
+
 def test_detects_late_night_favorite_tracks_question() -> None:
     intent = parse_question_intent("我深夜最爱听什么歌？")
 
@@ -63,6 +70,14 @@ def test_ignores_markdown_table_format_instruction_when_extracting_entities() ->
 
     assert intent.task_type == "comparison"
     assert intent.entity_type == "album"
+    assert intent.entities == ["GUTS", "The Life of a Showgirl"]
+
+
+def test_ignores_plain_comparison_verb_when_extracting_entities() -> None:
+    intent = parse_question_intent(
+        "从播放次数来看，比较 GUTS 和 The Life of a Showgirl 这两张专辑。"
+    )
+
     assert intent.entities == ["GUTS", "The Life of a Showgirl"]
 
 

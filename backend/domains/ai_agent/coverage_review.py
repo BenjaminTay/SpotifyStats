@@ -153,6 +153,7 @@ _ALLOWED_FOLLOWUP_TOOLS = {
     "search_history",
     "community_feed_search",
     "community_trending",
+    "taste_profile",
 }
 
 _PERIOD_NAMES = {
@@ -263,7 +264,7 @@ def _item_period_date(item: dict[str, Any], key: str) -> str:
 
 def _has_tool(tool_results: list[dict[str, Any]], tool_name: str) -> bool:
     return any(
-        item.get("tool_name") == tool_name and item.get("status") != "error"
+        item.get("tool_name") == tool_name and item.get("status") not in {"error", "empty"}
         for item in tool_results
     )
 
@@ -271,7 +272,7 @@ def _has_tool(tool_results: list[dict[str, Any]], tool_name: str) -> bool:
 def _has_late_night_tool(tool_results: list[dict[str, Any]]) -> bool:
     return any(
         item.get("tool_name") == "listening_hours"
-        and item.get("status") != "error"
+        and item.get("status") not in {"error", "empty"}
         and _view_from_item(item) == "late_night_tracks"
         for item in tool_results
     )
@@ -311,18 +312,25 @@ def _compare_item_matches_names(
     row_names = _compare_entity_names(data)
     if row_names:
         return all(name in row_names for name in normalized_names)
-    text = _item_text(item).casefold()
-    return all(name in text for name in normalized_names)
+    return False
 
 
 def _compare_item_matches_frame(item: dict[str, Any], frame: dict[str, Any]) -> bool:
     entity_type = str(frame.get("entity_type") or "")
     names = _requested_frame_entities(frame)
-    return _compare_item_matches_names(
+    if not _compare_item_matches_names(
         item,
         names=names,
         entity_type=entity_type if entity_type in {"album", "artist", "track"} else None,
-    )
+    ):
+        return False
+    time_scope = str(frame.get("time_scope") or "lifetime")
+    item_period = _period_from_item(item)
+    if time_scope == "lifetime":
+        return item_period in {"", "lifetime", "全部时间"}
+    # A steered relative scope is normalized to a bounded custom range by the
+    # temporal guard.  Do not let an earlier lifetime comparison satisfy it.
+    return item_period not in {"", "lifetime", "全部时间"}
 
 
 def _compare_data(tool_results: list[dict[str, Any]], frame: dict[str, Any]) -> dict[str, Any]:
@@ -428,7 +436,9 @@ def _item_matches_pattern(
     *,
     entity_name: str | None = None,
 ) -> bool:
-    if item.get("status") == "error" or item.get("tool_name") != pattern.get("tool_name"):
+    if item.get("status") in {"error", "empty"} or item.get("tool_name") != pattern.get(
+        "tool_name"
+    ):
         return False
     if entity_name and not _item_mentions_entity(item, entity_name):
         return False
@@ -614,10 +624,18 @@ def _tool_calls_for_pattern(
         entities = _requested_frame_entities(frame)
         entity_type = str(frame.get("entity_type") or "unknown")
         if entity_type in {"album", "artist", "track"} and len(entities) >= 2:
+            include_billboard = "personal_billboard" in (
+                frame.get("analysis_axes") or frame.get("requested_metrics") or []
+            )
             return [
                 {
                     "tool_name": "compare_entities",
-                    "params": {"entity_type": entity_type, "names": entities[:4]},
+                    "params": {
+                        "entity_type": entity_type,
+                        "names": entities[:4],
+                        **_period_params_from_scope(frame.get("time_scope")),
+                        "include_billboard": include_billboard,
+                    },
                 }
             ]
         return []
@@ -655,6 +673,10 @@ def _tool_calls_for_pattern(
         period = pattern.get("period")
         params = _period_params_from_scope(period) if isinstance(period, str) else {}
         return [{"tool_name": "analysis_stats", "params": params}]
+
+    if tool_name == "taste_profile":
+        period_params = _period_params_from_context(required_context, frame.get("time_scope"))
+        return [{"tool_name": "taste_profile", "params": period_params}]
 
     if tool_name == "listening_hours":
         view = pattern.get("view")
@@ -794,6 +816,10 @@ def _axis_coverage_for(
         return "covered" if has_cumulative else "missing"
 
     if axis == "recency":
+        if family == "preference_comparison" and comparison:
+            return (
+                "covered" if str(frame.get("time_scope") or "lifetime") != "lifetime" else "missing"
+            )
         periods = _required_recent_periods(recipe)
         if periods:
             return (
@@ -846,6 +872,9 @@ def _axis_coverage_for(
             else "missing"
         )
 
+    if axis == "taste":
+        return "covered" if _has_tool(tool_results, "taste_profile") else "missing"
+
     if axis == "safety":
         return "covered"
 
@@ -887,6 +916,7 @@ def _axis_coverage_for(
             "covered"
             if _has_tool(tool_results, "wrapped_yearly")
             or _has_tool(tool_results, "analysis_charts")
+            or _has_tool(tool_results, "taste_profile")
             else "missing"
         )
 
@@ -1006,7 +1036,13 @@ def review_evidence_sufficiency(
         ):
             add_followup(call)
 
-    if "personal_billboard" in missing_axes:
+    compare_will_include_billboard = any(
+        call.get("tool_name") == "compare_entities"
+        and isinstance(call.get("params"), dict)
+        and call["params"].get("include_billboard") is True
+        for call in followups
+    )
+    if "personal_billboard" in missing_axes and not compare_will_include_billboard:
         for call in _entity_tool_calls("billboard_entity_detail", frame, {}):
             add_followup(call)
     if "time_of_day" in missing_axes:
@@ -1019,15 +1055,19 @@ def review_evidence_sufficiency(
         ):
             add_followup(call)
 
-    legacy_review = review_coverage(
-        question_intent={
-            "task_type": frame.get("task_type"),
-            "entity_type": frame.get("entity_type"),
-            "entities": frame.get("entities", []),
-            "requested_metrics": frame.get("requested_metrics", []),
-        },
-        coverage=coverage,
-    )
+    legacy_review: dict[str, Any]
+    if frame.get("family") in {"preference_comparison", "taste_profile"}:
+        legacy_review = {"sufficient": True, "reasons": [], "followup_tool_calls": []}
+    else:
+        legacy_review = review_coverage(
+            question_intent={
+                "task_type": frame.get("task_type"),
+                "entity_type": frame.get("entity_type"),
+                "entities": frame.get("entities", []),
+                "requested_metrics": frame.get("requested_metrics", []),
+            },
+            coverage=coverage,
+        )
     for call in legacy_review.get("followup_tool_calls", []):
         if isinstance(call, dict):
             add_followup(call)

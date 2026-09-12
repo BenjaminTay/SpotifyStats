@@ -534,6 +534,56 @@ def test_run_report_generation_task_success_writes_done_result(
     assert stages[-1] == "done"
 
 
+def test_visual_report_quality_gate_marks_task_error(
+    ai_report_task_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    request = {
+        **_base_report_request(action="generate", force=True),
+        "report_type": "yearly",
+        "year": 2025,
+        "report_mode": "visual_yearly_artifact",
+        "writer_pipeline": "agent_synthesis_v2",
+    }
+    task = ai_task_service.create_task(
+        task_type="ai_report_yearly",
+        stage="checking_cache",
+        message="准备生成 AI 报告",
+        request=request,
+    )
+    monkeypatch.setattr(
+        ai_task_service,
+        "_run_report_generator",
+        lambda *args, **kwargs: {
+            "success": True,
+            "report": "不合格报告",
+            "artifact": {"sections": []},
+            "cached": False,
+            "metadata": {
+                "report_mode": "visual_yearly_artifact",
+                "critic_passed": False,
+                "fact_validation_passed": True,
+                "final_artifact_quality_passed": True,
+                "section_checkpoints_passed": False,
+            },
+            "tool_evidence": [],
+        },
+    )
+
+    ai_task_service.run_report_generation_task(task["task_id"], request)
+
+    stored = ai_task_service.get_task(task["task_id"])
+    assert stored is not None
+    assert stored["status"] == "error"
+    assert stored["result"]["report"] == "不合格报告"
+    assert "质量门禁未通过" in stored["message"]
+    conn = sqlite3.connect(ai_report_task_db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM wikipedia_cache").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
 def test_run_report_generation_task_writes_report_cache_after_generation(
     ai_report_task_db: Path,
     monkeypatch: pytest.MonkeyPatch,

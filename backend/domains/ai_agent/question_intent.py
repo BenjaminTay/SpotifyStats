@@ -15,6 +15,7 @@ _CONNECTOR_SPLIT_PATTERN = re.compile(r"\s+(?:and|vs|v|VS|Vs|V)\s+")
 _FORMAT_PREFIX_PATTERN = re.compile(
     r"^(?:请)?用\s*(?:Markdown|markdown)?\s*(?:表格|列表)?\s*(?:来)?(?:比较|对比)\s*"
 )
+_COMPARISON_PREFIX_PATTERN = re.compile(r"^(?:(?:今年|本年|20\d{2}年)\s*)?(?:请)?(?:比较|对比)\s*")
 _CONTEXT_ENTITY_PATTERN = re.compile(
     r"(?:我对|对)?"
     r"(?P<left>[^，,。？！?；;：:\n]{1,100}?)"
@@ -88,7 +89,7 @@ def _task_type(question: str) -> TaskType:
 
 
 def _time_scope(question: str) -> str:
-    if _contains_any(question, ("六个月", "6个月", "半年")):
+    if _contains_any(question, ("六个月", "半年")) or re.search(r"6\s*个?\s*月", question):
         return "last_6_months"
     if _contains_any(question, ("今年", "本年", "2026")):
         return "this_year"
@@ -137,7 +138,8 @@ def _metrics(question: str, time_scope: str) -> list[str]:
 def _clean_entity(value: str) -> str | None:
     cleaned = value.strip(" \t\r\n,，。？?：:；;（）()[]【】")
     cleaned = _FORMAT_PREFIX_PATTERN.sub("", cleaned).strip()
-    for prefix in ("我对", "对"):
+    cleaned = _COMPARISON_PREFIX_PATTERN.sub("", cleaned).strip()
+    for prefix in ("请比较", "请对比", "我对", "比较", "对比", "对"):
         if cleaned.startswith(prefix):
             cleaned = cleaned[len(prefix) :].strip()
     tokens = cleaned.split()

@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from backend.domains.ai_reports.final_artifact_quality import evaluate_final_artifact_quality
 from backend.domains.ai_reports.report_agent import run_report_agent
+from backend.domains.ai_reports.report_section_protocol import (
+    audit_report_sections,
+    strip_unsupported_numeric_sentences,
+)
+from backend.domains.ai_reports.runtime_metrics import ReportRuntimeMetrics
 from backend.domains.ai_reports.yearly_validator import validate_yearly_report
 
 WRITER_PIPELINE_REQUEST_VALUE = "agent_synthesis_v2"
 WRITER_PIPELINE_VERSION = "agent_synthesis_v2"
 VISUAL_YEARLY_CONTRACT_VERSION = "visual_yearly_v1"
 VISUAL_YEARLY_REPORT_MODE = "visual_yearly_artifact"
+
+logger = logging.getLogger(__name__)
 
 
 def report_writer_metadata(accepted: bool) -> dict[str, Any]:
@@ -72,25 +80,49 @@ def generate_visual_yearly_artifact(
     emit_event: ReportAgentEvent | None = None,
 ) -> dict[str, Any]:
     """Generate a visual yearly artifact using Agent-synthesis style LLM writing."""
-    evidence, context = _run_visual_research(request, emit_event=emit_event)
+    runtime_metrics = ReportRuntimeMetrics()
+    with runtime_metrics.stage("context_snapshot"):
+        evidence, context = _run_visual_research(request, emit_event=emit_event)
+    context = dict(context)
+    snapshot_metadata = _dict(context.pop("_agent_context_snapshot", {}))
+    precomputed = _dict(context.pop("_agent_precomputed", {}))
+    if snapshot_metadata:
+        runtime_metrics.record_context_snapshot(
+            cache_hit=bool(snapshot_metadata.get("cache_hit")),
+            snapshot_key=str(snapshot_metadata.get("snapshot_key") or ""),
+            built=bool(snapshot_metadata.get("built")),
+        )
     context = {**context, "request_filters": _request_filters(request)}
 
     # Phase B: Deterministic chart planning and data
     _emit(emit_event, "stage_started", "正在选择年报图表", "planning_visuals", 0.50)
-    coverage = chart_coverage(context)
-    # Build a minimal narrative for visual brief (only chart planning, no LLM)
-    narrative = _minimal_narrative(context)
-    visual = build_visual_brief(narrative, coverage)
-    chart_specs = list(visual.get("chart_specs") or _default_chart_specs())
+    with runtime_metrics.stage("visual_planning"):
+        if precomputed:
+            narrative = _dict(precomputed.get("narrative")) or _minimal_narrative(context)
+            visual = _dict(precomputed.get("visual"))
+            chart_specs = list(precomputed.get("chart_specs") or _default_chart_specs())
+        else:
+            coverage = chart_coverage(context)
+            # Build a minimal narrative for visual brief (only chart planning, no LLM)
+            narrative = _minimal_narrative(context)
+            visual = build_visual_brief(narrative, coverage)
+            chart_specs = list(visual.get("chart_specs") or _default_chart_specs())
     _emit(emit_event, "stage_started", "正在准备图表数据", "building_chart_data", 0.62)
-    chart_data = build_visual_chart_data(context, chart_specs)
+    with runtime_metrics.stage("chart_data"):
+        chart_data = _dict(precomputed.get("chart_data")) if precomputed else {}
+        if not chart_data:
+            chart_data = build_visual_chart_data(context, chart_specs)
     context = {**context, "chart_data": chart_data}
+    fallback_insights = build_story_insights(context, narrative)
+    prepared_fallback_sections = _ensure_chart_observation_interpretations(
+        _compose_sections(context, narrative, fallback_insights, visual),
+        chart_data,
+    )
 
-    # Phase D: Agent multi-turn research + report writing
-    # Agent output is non-deterministic. Retry if the report is too short.
+    # Phase D: Agent multi-turn research + report writing. Research is expensive,
+    # so writer retries happen inside run_report_agent and never repeat tools.
     period = _period(context)
-    agent_result: dict[str, Any] = {"sections": [], "research_summary": "", "evidence": []}
-    for attempt in range(3):
+    with runtime_metrics.stage("agent_research_and_writer"):
         agent_result = run_report_agent(
             year=int(period.get("year") or 0),
             is_partial_year=bool(period.get("is_partial_year")),
@@ -102,19 +134,15 @@ def generate_visual_yearly_artifact(
             max_merge_gap_minutes=request.get("max_merge_gap_minutes"),
             chart_data=chart_data,
             chart_specs=chart_specs,
+            research_context=context,
+            runtime_metrics=runtime_metrics,
+            fallback_sections=(
+                [section.to_dict() for section in prepared_fallback_sections[:6]]
+                if _writer_pipeline(request) == WRITER_PIPELINE_REQUEST_VALUE
+                else None
+            ),
             emit_event=emit_event,
         )
-        total_chars = sum(len(s.get("prose", "")) for s in agent_result.get("sections", []))
-        if total_chars >= 300 and len(agent_result.get("sections", [])) >= 1:
-            break  # Good enough
-        if attempt < 2:
-            _emit(
-                emit_event,
-                "stage_started",
-                f"报告过短（{len(agent_result.get('sections', []))}节/{total_chars}字），正在重试（{attempt + 2}/3）",
-                "researching",
-                0.40 + attempt * 0.05,
-            )
 
     def _sanitize_prose(text: str) -> str:
         text = text.replace("她的", "其").replace("他的", "其")
@@ -126,8 +154,76 @@ def generate_visual_yearly_artifact(
         return text
 
     raw_sections = agent_result.get("sections", [])
-    writer_accepted = len(raw_sections) >= 1
-    evidence = agent_result.get("evidence", evidence)
+    total_agent_chars = sum(len(str(s.get("prose") or "")) for s in raw_sections)
+    checkpoints = agent_result.get("section_checkpoints") or []
+    section_writer_metadata = _dict(agent_result.get("section_writer_metadata"))
+    strict_agent_protocol = (
+        _writer_pipeline(request) == WRITER_PIPELINE_REQUEST_VALUE
+        and "section_checkpoints" in agent_result
+    )
+    assembled_quality = (
+        len(raw_sections) >= 6
+        and total_agent_chars >= 2800
+        and bool(checkpoints)
+        and all(item.get("status") != "fail" for item in checkpoints if isinstance(item, dict))
+    )
+    if not strict_agent_protocol:
+        # Compatibility for deterministic/test writers predating the protocol.
+        writer_accepted = bool(raw_sections)
+    else:
+        writer_accepted = assembled_quality and not bool(
+            section_writer_metadata.get("fallback_count")
+        )
+    agent_evidence = [item for item in agent_result.get("evidence") or [] if isinstance(item, dict)]
+    evidence = [*evidence, *agent_evidence]
+
+    success_fallback_level: str | None = None
+    if strict_agent_protocol and not assembled_quality:
+        _emit(
+            emit_event,
+            "stage_started",
+            "Agent 初稿未通过结构门槛，正在生成可验证的确定性回退稿",
+            "reviewing_sections",
+            0.96,
+        )
+        fallback_sections = prepared_fallback_sections
+        context_result = {
+            "_tool_name": "report_period_context",
+            "_params": _request_filters(request),
+            "status": "done",
+            "result_summary": "年度报告确定性上下文",
+            "data": context,
+        }
+        audited, checkpoints, fallback_evidence = audit_report_sections(
+            [item.to_dict() for item in fallback_sections],
+            tool_results=[context_result, *agent_evidence],
+            chart_data=chart_data,
+            chart_specs=chart_specs,
+            year=int(period.get("year") or 0),
+            end_date=str(period.get("end_date") or ""),
+        )
+        for checkpoint in checkpoints:
+            if checkpoint.get("status") != "fail":
+                continue
+            index = int(checkpoint["section_index"])
+            audited[index]["prose"] = strip_unsupported_numeric_sentences(
+                str(audited[index].get("prose") or ""),
+                [str(item) for item in checkpoint.get("unsupported_numbers") or []],
+            )
+        audited, checkpoints, fallback_evidence = audit_report_sections(
+            audited,
+            tool_results=[context_result, *agent_evidence],
+            chart_data=chart_data,
+            chart_specs=chart_specs,
+            year=int(period.get("year") or 0),
+            end_date=str(period.get("end_date") or ""),
+        )
+        raw_sections = audited
+        agent_result["section_checkpoints"] = checkpoints
+        agent_result["tool_evidence"] = fallback_evidence
+        success_fallback_level = "agent_writer_quality_fallback"
+    elif section_writer_metadata.get("fallback_count"):
+        success_fallback_level = "section_writer_partial_fallback"
 
     if raw_sections:
         sections = tuple(
@@ -164,18 +260,63 @@ def generate_visual_yearly_artifact(
         )
         writer_accepted = False
 
-    result = _finalize_visual_artifact_result(
-        sections=sections,
-        skip_story_obligations=True,
-        writer_accepted=writer_accepted,
-        context=context,
-        narrative=narrative,
-        visual=visual,
-        chart_specs=chart_specs,
-        chart_data=chart_data,
-        evidence=evidence if isinstance(evidence, list) else [],
-        emit_event=emit_event,
+    with runtime_metrics.stage("final_quality"):
+        result = _finalize_visual_artifact_result(
+            sections=sections,
+            skip_story_obligations=True,
+            writer_accepted=writer_accepted,
+            context=context,
+            narrative=narrative,
+            visual=visual,
+            chart_specs=chart_specs,
+            chart_data=chart_data,
+            evidence=evidence if isinstance(evidence, list) else [],
+            emit_event=emit_event,
+            success_fallback_level=success_fallback_level,
+        )
+    checkpoints = agent_result.get("section_checkpoints") or []
+    tool_evidence = agent_result.get("tool_evidence") or []
+    checkpoint_passed = bool(checkpoints) and all(
+        isinstance(item, dict) and item.get("status") != "fail" for item in checkpoints
     )
+    result["section_checkpoints"] = checkpoints
+    result["tool_evidence"] = tool_evidence
+    result["section_writer_metadata"] = section_writer_metadata
+    artifact = result.get("artifact")
+    if isinstance(artifact, dict):
+        artifact["section_checkpoints"] = checkpoints
+        artifact["tool_evidence"] = tool_evidence
+        artifact["section_writer_metadata"] = section_writer_metadata
+        artifact_metadata = artifact.get("metadata")
+        if isinstance(artifact_metadata, dict):
+            artifact_metadata.update(
+                {
+                    "section_checkpoint_count": len(checkpoints),
+                    "section_checkpoints_passed": checkpoint_passed,
+                    "section_writer_fallback_count": int(
+                        section_writer_metadata.get("fallback_count") or 0
+                    ),
+                }
+            )
+    metadata = result.get("metadata")
+    if isinstance(metadata, dict):
+        metadata.update(
+            {
+                "section_checkpoint_count": len(checkpoints),
+                "section_checkpoints_passed": checkpoint_passed,
+                "section_writer_fallback_count": int(
+                    section_writer_metadata.get("fallback_count") or 0
+                ),
+            }
+        )
+    runtime_payload = runtime_metrics.to_dict()
+    result["runtime_metrics"] = runtime_payload
+    if isinstance(metadata, dict):
+        metadata["runtime_metrics"] = runtime_payload
+    if isinstance(artifact, dict):
+        artifact_metadata = artifact.get("metadata")
+        if isinstance(artifact_metadata, dict):
+            artifact_metadata["runtime_metrics"] = runtime_payload
     return result
 
 
@@ -458,6 +599,52 @@ def _run_visual_research(
     request: dict[str, Any],
     emit_event: ReportAgentEvent | None = None,
 ):
+    from backend.core.config import AI_YEARLY_CONTEXT_SNAPSHOT_V1
+
+    if AI_YEARLY_CONTEXT_SNAPSHOT_V1:
+        try:
+            from backend.domains.ai_reports.context_builder import (
+                get_or_build_yearly_agent_context,
+            )
+
+            _emit(
+                emit_event,
+                "stage_started",
+                "正在准备本次年度分析数据",
+                "preparing_context",
+                0.16,
+            )
+            built = get_or_build_yearly_agent_context(request)
+            payload = built.payload
+            context = built.context
+            context["_agent_context_snapshot"] = {
+                "snapshot_key": built.snapshot_key,
+                "cache_hit": built.cache_hit,
+                "built": built.built,
+                "build_elapsed_ms": built.build_elapsed_ms,
+            }
+            context["_agent_precomputed"] = {
+                "narrative": payload.get("narrative") or {},
+                "visual": payload.get("visual") or {},
+                "chart_specs": payload.get("chart_specs") or [],
+                "chart_data": payload.get("chart_data") or {},
+            }
+            evidence = [item for item in payload.get("evidence") or [] if isinstance(item, dict)]
+            _emit(
+                emit_event,
+                "stage_completed",
+                "已复用准备好的年度数据" if built.cache_hit else "年度分析数据已准备完成",
+                "context_ready",
+                0.40,
+            )
+            return evidence, context
+        except Exception:
+            # The flag is a safe rollout seam. A snapshot/cache failure must
+            # never make the existing deterministic research path unavailable.
+            logger.warning(
+                "Yearly Agent context snapshot failed; using legacy research plan",
+                exc_info=True,
+            )
     from backend.services.yearly_report_agent_service import _run_research_plan
 
     return _run_research_plan(request, emit_event=emit_event)

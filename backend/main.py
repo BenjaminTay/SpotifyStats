@@ -86,6 +86,13 @@ async def lifespan(_app: FastAPI):
         finally:
             startup_conn.close()
 
+    # Agent tools are read-only and every completed call is recorded before
+    # another model step. Resume interrupted turns only after deterministic
+    # L3 attribution has reached a consistent startup state.
+    from backend.services.ai_task_service import recover_interrupted_agent_tasks
+
+    recover_interrupted_agent_tasks()
+
     # Start background job queue for async enrichment & cover downloads
     from backend.core.job_queue import get_job_queue
     from backend.jobs.handlers import (

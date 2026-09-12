@@ -9,6 +9,7 @@ from typing import Any, Union
 
 JsonPayload = Union[dict[str, Any], list[Any]]
 TERMINAL_STATUSES = ("done", "error", "cancelled")
+TASK_LEASE_SECONDS = 90
 
 
 def _json_dump(value: JsonPayload | None) -> str | None:
@@ -26,6 +27,27 @@ def _json_load(value: str | None) -> JsonPayload | None:
 class AiTaskRepository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+        try:
+            columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(ai_task_runs)")}
+        except sqlite3.Error:
+            columns = set()
+        self._supports_leases = {
+            "lease_owner",
+            "lease_expires_at",
+            "attempt_count",
+        }.issubset(columns)
+
+    @property
+    def supports_worker_leases(self) -> bool:
+        return self._supports_leases
+
+    def _lease_refresh_sql(self) -> str:
+        if not self._supports_leases:
+            return ""
+        return (
+            "lease_expires_at = CASE WHEN lease_owner IS NOT NULL "
+            f"THEN datetime('now', '+{TASK_LEASE_SECONDS} seconds') ELSE NULL END,"
+        )
 
     def create_run(
         self,
@@ -45,6 +67,71 @@ class AiTaskRepository:
         )
         self.conn.commit()
 
+    def claim_run(
+        self,
+        task_id: str,
+        *,
+        lease_owner: str,
+        lease_seconds: int = TASK_LEASE_SECONDS,
+    ) -> bool:
+        if not self._supports_leases:
+            row = self.conn.execute(
+                "SELECT status FROM ai_task_runs WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            return bool(row and str(row[0]) not in TERMINAL_STATUSES)
+        modifier = f"+{max(30, int(lease_seconds))} seconds"
+        cursor = self.conn.execute(
+            """UPDATE ai_task_runs
+               SET lease_owner = ?, lease_expires_at = datetime('now', ?),
+                   attempt_count = attempt_count + 1, updated_at = datetime('now')
+               WHERE task_id = ?
+                 AND status NOT IN (?, ?, ?)
+                 AND (
+                     lease_owner IS NULL OR lease_owner = ?
+                     OR lease_expires_at IS NULL OR lease_expires_at <= datetime('now')
+                 )""",
+            (lease_owner, modifier, task_id, *TERMINAL_STATUSES, lease_owner),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def renew_run(
+        self,
+        task_id: str,
+        *,
+        lease_owner: str,
+        lease_seconds: int = TASK_LEASE_SECONDS,
+    ) -> bool:
+        """Extend an active worker lease without changing the attempt counter."""
+
+        if not self._supports_leases:
+            return True
+        modifier = f"+{max(30, int(lease_seconds))} seconds"
+        cursor = self.conn.execute(
+            """UPDATE ai_task_runs
+               SET lease_expires_at = datetime('now', ?),
+                   updated_at = datetime('now')
+               WHERE task_id = ? AND lease_owner = ?
+                 AND status NOT IN (?, ?, ?)""",
+            (modifier, task_id, lease_owner, *TERMINAL_STATUSES),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def release_run(self, task_id: str, *, lease_owner: str) -> bool:
+        if not self._supports_leases:
+            return True
+        cursor = self.conn.execute(
+            """UPDATE ai_task_runs
+               SET lease_owner = NULL, lease_expires_at = NULL,
+                   updated_at = datetime('now')
+               WHERE task_id = ? AND lease_owner = ?""",
+            (task_id, lease_owner),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
     def update_run(
         self,
         *,
@@ -57,10 +144,11 @@ class AiTaskRepository:
         error: str | None = None,
     ) -> None:
         self.conn.execute(
-            """UPDATE ai_task_runs
+            f"""UPDATE ai_task_runs
                SET status = ?, stage = ?, progress_pct = ?, message = ?,
                    result_json = COALESCE(?, result_json),
                    error = ?,
+                   {self._lease_refresh_sql()}
                    updated_at = datetime('now')
                WHERE task_id = ?""",
             (
@@ -87,10 +175,11 @@ class AiTaskRepository:
         error: str | None = None,
     ) -> bool:
         cursor = self.conn.execute(
-            """UPDATE ai_task_runs
+            f"""UPDATE ai_task_runs
                SET status = ?, stage = ?, progress_pct = ?, message = ?,
                    result_json = COALESCE(?, result_json),
                    error = ?,
+                   {self._lease_refresh_sql()}
                    updated_at = datetime('now')
                WHERE task_id = ? AND status NOT IN (?, ?, ?)""",
             (
@@ -122,10 +211,11 @@ class AiTaskRepository:
         try:
             self.conn.execute("BEGIN IMMEDIATE")
             cursor = self.conn.execute(
-                """UPDATE ai_task_runs
+                f"""UPDATE ai_task_runs
                    SET status = ?, stage = ?, progress_pct = ?, message = ?,
                        result_json = COALESCE(?, result_json),
                        error = ?,
+                       {self._lease_refresh_sql()}
                        updated_at = datetime('now')
                    WHERE task_id = ? AND status NOT IN (?, ?, ?)""",
                 (
@@ -263,3 +353,112 @@ class AiTaskRepository:
             (task_id,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_agent_turn_events(self, task_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """SELECT event_id, task_id, session_id, turn_id, sequence,
+                      step_index, event_type, payload_json, created_at
+               FROM ai_agent_turn_events
+               WHERE task_id = ? ORDER BY event_id ASC""",
+            (task_id,),
+        ).fetchall()
+        events = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = _json_load(item.pop("payload_json", None)) or {}
+            events.append(item)
+        return events
+
+    def list_agent_session_events(
+        self,
+        session_id: int,
+        *,
+        exclude_task_id: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        params: list[Any] = [session_id]
+        predicate = "session_id = ?"
+        if exclude_task_id:
+            predicate += " AND task_id <> ?"
+            params.append(exclude_task_id)
+        params.append(max(1, min(limit, 2000)))
+        rows = self.conn.execute(
+            f"""SELECT event_id, task_id, session_id, turn_id, sequence,
+                       step_index, event_type, payload_json, created_at
+                FROM ai_agent_turn_events
+                WHERE {predicate}
+                ORDER BY event_id DESC LIMIT ?""",
+            params,
+        ).fetchall()
+        events = []
+        for row in reversed(rows):
+            item = dict(row)
+            item["payload"] = _json_load(item.pop("payload_json", None)) or {}
+            events.append(item)
+        return events
+
+    def enqueue_agent_input(
+        self,
+        *,
+        task_id: str,
+        session_id: int | None,
+        input_type: str,
+        content: str,
+    ) -> int:
+        cursor = self.conn.execute(
+            """INSERT INTO ai_agent_session_inbox
+               (task_id, session_id, input_type, content)
+               VALUES (?, ?, ?, ?)""",
+            (task_id, session_id, input_type, content),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def consume_agent_inputs(self, task_id: str, *, limit: int = 8) -> list[dict[str, Any]]:
+        """Atomically claim pending steering messages in insertion order."""
+
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            rows = self.conn.execute(
+                """SELECT inbox_id, task_id, session_id, input_type, content, created_at
+                   FROM ai_agent_session_inbox
+                   WHERE task_id = ? AND status = 'pending'
+                   ORDER BY inbox_id ASC LIMIT ?""",
+                (task_id, max(1, min(limit, 20))),
+            ).fetchall()
+            ids = [int(row["inbox_id"]) for row in rows]
+            if ids:
+                placeholders = ",".join("?" for _ in ids)
+                self.conn.execute(
+                    f"""UPDATE ai_agent_session_inbox
+                        SET status = 'consumed', consumed_at = datetime('now')
+                        WHERE inbox_id IN ({placeholders}) AND status = 'pending'""",
+                    ids,
+                )
+            self.conn.commit()
+            return [dict(row) for row in rows]
+        except Exception:
+            self.conn.rollback()
+            raise
+
+    def list_recoverable_agent_runs(self) -> list[dict[str, Any]]:
+        lease_predicate = (
+            """AND (lease_owner IS NULL OR lease_expires_at IS NULL
+                     OR lease_expires_at <= datetime('now'))"""
+            if self._supports_leases
+            else ""
+        )
+        rows = self.conn.execute(
+            f"""SELECT * FROM ai_task_runs
+               WHERE task_type = 'ai_chat_agent'
+                 AND status IN ('queued', 'running', 'cancelling')
+                 {lease_predicate}
+               ORDER BY created_at ASC"""
+        ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["request"] = _json_load(item.pop("request_json", None))
+            item["result"] = _json_load(item.pop("result_json", None))
+            result.append(item)
+        return result

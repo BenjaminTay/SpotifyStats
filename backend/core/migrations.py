@@ -20,7 +20,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 69
+LATEST_SCHEMA_VERSION = 73
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -44,7 +44,14 @@ def migration(version: int, name: str):
 
 @migration(1, "initial_schema")
 def migrate_001(conn: sqlite3.Connection):
-    """Baseline: create all tables and indexes with IF NOT EXISTS."""
+    """Create the current schema only for an actually empty database.
+
+    Existing unversioned databases must advance through the registered
+    migrations in order.  Injecting the latest ``SCHEMA`` into one of those
+    databases can create triggers that reference columns introduced by later
+    migrations, which makes an earlier SQLite table rebuild fail while the
+    schema is being reparsed.
+    """
     existing_tables = {
         row[0]
         for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
@@ -58,6 +65,7 @@ def migrate_001(conn: sqlite3.Connection):
             conn.execute("ALTER TABLE plays ADD COLUMN spotify_track_id_at_play TEXT")
         if "spotify_album_id_at_play" not in play_columns:
             conn.execute("ALTER TABLE plays ADD COLUMN spotify_album_id_at_play TEXT")
+        return
     conn.executescript(SCHEMA)
 
 
@@ -170,6 +178,9 @@ def migrate_014(conn: sqlite3.Connection):
 
     SQLite cannot alter UNIQUE constraints in place, so we rebuild the table.
     """
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(release_groups)")}
+    if {"scope", "parent_group_id"} <= columns:
+        return
     conn.execute("PRAGMA foreign_keys=OFF")
     conn.execute(
         """CREATE TABLE IF NOT EXISTS release_groups_new (
@@ -3812,6 +3823,95 @@ def migrate_069(conn: sqlite3.Connection):
         );
         """
     )
+
+
+def _ensure_ai_agent_turn_event_log(conn: sqlite3.Connection):
+    """Add the append-only event log used to reconstruct Agent V2 turns."""
+
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_agent_turn_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            session_id INTEGER REFERENCES chat_sessions(id) ON DELETE SET NULL,
+            turn_id TEXT NOT NULL,
+            sequence INTEGER NOT NULL,
+            step_index INTEGER,
+            event_type TEXT NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(turn_id, sequence)
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_ai_agent_turn_events_task
+               ON ai_agent_turn_events(task_id, event_id)"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_ai_agent_turn_events_session
+               ON ai_agent_turn_events(session_id, event_id)"""
+    )
+
+
+@migration(70, "ai_agent_session_inbox")
+def migrate_070(conn: sqlite3.Connection):
+    """Add durable user steering messages consumed at Agent step boundaries."""
+
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS ai_agent_session_inbox (
+            inbox_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            session_id INTEGER REFERENCES chat_sessions(id) ON DELETE SET NULL,
+            input_type TEXT NOT NULL CHECK(input_type IN ('steer', 'followup')),
+            content TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending', 'consumed', 'rejected')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            consumed_at TEXT
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_ai_agent_inbox_pending
+               ON ai_agent_session_inbox(task_id, status, inbox_id)"""
+    )
+
+
+@migration(71, "ai_task_worker_leases")
+def migrate_071(conn: sqlite3.Connection):
+    """Prevent duplicate task execution across restart and multi-worker races."""
+
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(ai_task_runs)")}
+    if "lease_owner" not in columns:
+        conn.execute("ALTER TABLE ai_task_runs ADD COLUMN lease_owner TEXT")
+    if "lease_expires_at" not in columns:
+        conn.execute("ALTER TABLE ai_task_runs ADD COLUMN lease_expires_at TEXT")
+    if "attempt_count" not in columns:
+        conn.execute("ALTER TABLE ai_task_runs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0")
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_ai_task_runs_recovery_lease
+               ON ai_task_runs(task_type, status, lease_expires_at)"""
+    )
+
+
+@migration(72, "ai_agent_turn_event_log_repair")
+def migrate_072(conn: sqlite3.Connection):
+    """Repair databases where historical migration 69 had another meaning.
+
+    Some already-upgraded databases recorded version 69 as
+    ``l3_album_attribution_coverage_v2`` before the Agent V2 branch assigned
+    that number to its event log.  A version-only runner therefore skipped the
+    Agent table even though later inbox/lease migrations applied.  Replaying
+    the idempotent table creation under a new version makes both histories
+    converge without rewriting migration history.
+    """
+
+    _ensure_ai_agent_turn_event_log(conn)
+
+
+@migration(73, "l3_album_attribution_coverage_v2_repair")
+def migrate_073(conn: sqlite3.Connection):
+    """Repair Agent-branch databases whose historical version 69 was the event log."""
+
+    migrate_069(conn)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

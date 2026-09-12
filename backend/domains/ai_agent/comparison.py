@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 _BILLBOARD_METRICS = (
@@ -49,6 +50,23 @@ def _has_billboard_metrics(entity: dict[str, Any]) -> bool:
     return any(entity.get(metric) is not None for metric in _BILLBOARD_METRICS)
 
 
+def _comparison_window_weeks(entity: dict[str, Any]) -> float | None:
+    period = entity.get("period")
+    if not isinstance(period, dict):
+        return None
+    start = period.get("start_date")
+    end = period.get("end_date")
+    if not isinstance(start, str) or not isinstance(end, str):
+        return None
+    try:
+        inclusive_days = (date.fromisoformat(end) - date.fromisoformat(start)).days + 1
+    except ValueError:
+        return None
+    if inclusive_days <= 0:
+        return None
+    return max(1.0, inclusive_days / 7.0)
+
+
 def _enrich_entity(entity: dict[str, Any]) -> dict[str, Any]:
     enriched = dict(entity)
     if "found" not in enriched:
@@ -60,6 +78,10 @@ def _enrich_entity(entity: dict[str, Any]) -> dict[str, Any]:
     weeks = _as_number(enriched.get("weeks_on_chart"))
     enriched["plays_per_chart_week"] = (
         round(plays / weeks, 2) if plays is not None and weeks and weeks > 0 else None
+    )
+    window_weeks = _comparison_window_weeks(enriched)
+    enriched["plays_per_window_week"] = (
+        round(plays / window_weeks, 2) if plays is not None and window_weeks is not None else None
     )
     return enriched
 
@@ -82,6 +104,8 @@ def summarize_entity_comparison(
             "SpotifyStats Billboard 是本地个人 Billboard，不是外部官方 Billboard。"
         )
 
+    has_billboard = any(_has_billboard_metrics(entity) for entity in normalized_entities)
+    intensity_metric = "plays_per_chart_week" if has_billboard else "plays_per_window_week"
     return {
         "entity_type": entity_type,
         "entities": normalized_entities,
@@ -93,6 +117,9 @@ def summarize_entity_comparison(
             "power_rank",
             lower_is_better=True,
         ),
-        "winner_by_intensity": _winner(normalized_entities, "plays_per_chart_week"),
+        "winner_by_intensity": _winner(normalized_entities, intensity_metric),
+        "intensity_basis": (
+            "personal_billboard_chart_weeks" if has_billboard else "comparison_window_weeks"
+        ),
         "fairness_notes": fairness_notes,
     }

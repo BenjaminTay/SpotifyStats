@@ -1070,19 +1070,13 @@ def _build_analysis_charts(
     max_merge_gap_minutes: int | None = 5,
     include_compilations: bool = False,
 ) -> dict:
-    _, df, resolved = load_period_plays(
-        conn,
-        min_ms,
-        music_only,
-        merge_enabled,
-        period,
-        start_date,
-        end_date,
-        dynamic_threshold=dynamic_threshold,
-        max_merge_gap_minutes=max_merge_gap_minutes,
-    )
     if entity == "artist":
-        _, df_artist, _ = load_period_plays(
+        # Artist charts need the credited-artist fan-out frame. Loading the
+        # generic play frame first is both unused and especially costly on a
+        # cold cache because it builds a second full logical timeline. Keep a
+        # single load so multi-period Agent calls can share the cached artist
+        # frame and stay inside the tool budget.
+        _, df, resolved = load_period_plays(
             conn,
             min_ms,
             music_only,
@@ -1094,18 +1088,28 @@ def _build_analysis_charts(
             max_merge_gap_minutes=max_merge_gap_minutes,
             _loader=load_plays_for_artists,
         )
-        total, rows = chart_rows(conn, df_artist, entity, metric, limit, offset, merge_level)
     else:
-        total, rows = chart_rows(
+        _, df, resolved = load_period_plays(
             conn,
-            df,
-            entity,
-            metric,
-            limit,
-            offset,
-            merge_level,
-            include_compilations=include_compilations,
+            min_ms,
+            music_only,
+            merge_enabled,
+            period,
+            start_date,
+            end_date,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
         )
+    total, rows = chart_rows(
+        conn,
+        df,
+        entity,
+        metric,
+        limit,
+        offset,
+        merge_level,
+        include_compilations=include_compilations,
+    )
     return {
         "period": resolved,
         "entity": entity if entity in {"track", "album", "artist"} else "track",
