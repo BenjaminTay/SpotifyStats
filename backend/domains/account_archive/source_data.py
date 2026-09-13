@@ -10,6 +10,7 @@ import pandas as pd
 from backend.core.db import merge_consecutive_plays
 from backend.domains.account_archive.overview import load_saved_track_rows
 from backend.domains.playback.counting import filter_effective_plays
+from backend.domains.playback.duration_sql import build_play_duration_sql
 from backend.domains.playback.track_groups import load_track_group_keys
 from backend.models.account_archive import ArchiveFilterContext
 
@@ -95,24 +96,29 @@ def load_effective_archive_plays(
         )
 
     play_columns = {row[1] for row in conn.execute("PRAGMA table_info(plays)")}
+    track_columns = {row[1] for row in conn.execute("PRAGMA table_info(tracks)")}
+    spotify_meta_columns = (
+        {row[1] for row in conn.execute("PRAGMA table_info(spotify_track_meta)")}
+        if "spotify_track_meta" in required_tables
+        else set()
+    )
     source_album_expr = "p.source_album_id" if "source_album_id" in play_columns else "NULL"
     play_spotify_expr = (
         "COALESCE(NULLIF(p.spotify_track_id_at_play, ''), NULLIF(t.spotify_track_id, ''))"
         if "spotify_track_id_at_play" in play_columns
         else "NULLIF(t.spotify_track_id, '')"
     )
-    has_track_meta = "spotify_track_meta" in required_tables
     has_l1 = {
         "track_l1_identities",
         "track_l1_external_ids",
         "track_l1_source_links",
     }.issubset(required_tables)
-    duration_expr = "stm.duration_ms" if has_track_meta else "NULL"
-    meta_join = (
-        f"LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id = {play_spotify_expr}"
-        if has_track_meta
-        else ""
+    duration_sql = build_play_duration_sql(
+        play_columns=play_columns,
+        track_columns=track_columns,
+        spotify_meta_columns=spotify_meta_columns,
     )
+    meta_joins = "\n".join(duration_sql.joins)
     identity_join = (
         "LEFT JOIN track_l1_external_ids external ON external.provider='spotify' AND "
         f"external.external_track_id={play_spotify_expr} "
@@ -128,11 +134,11 @@ def load_effective_archive_plays(
         f"""
         SELECT p.play_id, p.ts, p.ms_played, {identity_expr} AS track_id,
                {source_album_expr} AS source_album_id,
-               {duration_expr} AS duration_ms
+               {duration_sql.expression} AS duration_ms
         FROM plays p
         JOIN tracks t ON t.track_id = p.track_id
         {identity_join}
-        {meta_join}
+        {meta_joins}
         WHERE p.track_id IS NOT NULL
         ORDER BY p.ts, p.play_id
         """,

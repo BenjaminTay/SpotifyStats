@@ -202,9 +202,11 @@ def _cache_track(
     spotify_uri: str | None,
     cache: dict[tuple, int],
 ) -> int:
-    # A known Spotify id always resolves to its existing owner. For a new
-    # provider id, preserve the historical title+artist track matching so one
-    # application track may own several album-edition Spotify ids.
+    # A known Spotify id always resolves to its existing owner. A new provider
+    # id receives its own provisional track projection instead of being
+    # permanently attached by title+artist alone; deterministic L2/L3
+    # governance may relate equivalent versions after provider metadata is
+    # available. Local-only rows retain the historical title+artist fallback.
     spotify_tid = _spotify_track_id_from_uri(spotify_uri)
     key = ("spotify", spotify_tid) if spotify_tid else ("local", artist_id, track_name)
     if key in cache:
@@ -217,7 +219,7 @@ def _cache_track(
             row = (owner,) if owner is not None else None
         else:
             row = None
-        if row is None:
+        if row is None and spotify_tid is None:
             row = conn.execute(
                 """SELECT track_id FROM tracks
                     WHERE track_name = ? AND artist_id = ?

@@ -275,12 +275,23 @@ class TrackGroupConfirmRequest(BaseModel):
     scope: str = "composition"
 
 
+class AlbumProjectRebuildResponse(BaseModel):
+    strategy: str
+    fallback_reason: Optional[str] = None
+    affected_album_count: int = 0
+    affected_release_group_count: int = 0
+    affected_project_count: int = 0
+    affected_track_count: int = 0
+    billboard_snapshot_job_id: Optional[str] = None
+
+
 class TrackGroupConfirmResponse(BaseModel):
     status: str
     group_id: Optional[int] = None
     scope: Optional[str] = None
     member_count: Optional[int] = None
     album_projects_rebuilt: bool = False
+    album_project_rebuild: Optional[AlbumProjectRebuildResponse] = None
     message: Optional[str] = None
     error_code: Optional[str] = None
     original_l1_id: Optional[int] = None
@@ -321,6 +332,7 @@ class AlbumRelationConfirmResponse(BaseModel):
     track_pairs: list[AlbumRelationTrackPairResponse] = Field(default_factory=list)
     exclusive_tracks: list[AlbumRelationExclusiveTrackResponse] = Field(default_factory=list)
     album_projects_rebuilt: bool = False
+    album_project_rebuild: Optional[AlbumProjectRebuildResponse] = None
     message: Optional[str] = None
 
 
@@ -953,7 +965,8 @@ def confirm_track_group(body: TrackGroupConfirmRequest, auth: None = Depends(req
         scope=body.scope,
         references_are_l1=references_are_l1,
     )
-    _refresh_music_search_derived_data("track group confirmed")
+    if result.get("status") == "ok":
+        _refresh_music_search_derived_data("track group confirmed")
     return result
 
 
@@ -1026,7 +1039,8 @@ def confirm_album_relation(
         relation_type=body.relation_type,
         confirm_track_pairs=body.confirm_track_pairs,
     )
-    _refresh_music_search_derived_data("album relation confirmed")
+    if result.get("status") == "ok":
+        _refresh_music_search_derived_data("album relation confirmed")
     return result
 
 

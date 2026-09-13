@@ -10,7 +10,10 @@ from fastapi.testclient import TestClient
 from backend.api.account import router as account_router
 from backend.dependencies import get_conn
 from backend.domains.account_archive.context import build_archive_filter_context
-from backend.domains.account_archive.other_media import build_archive_other_media
+from backend.domains.account_archive.other_media import (
+    _media_source_frame,
+    build_archive_other_media,
+)
 from backend.models.account_archive import ArchiveOtherMediaResponse
 
 pytestmark = pytest.mark.unit
@@ -105,6 +108,111 @@ def _context(conn: sqlite3.Connection):
             "merge_level": 2,
         },
     )
+
+
+def _duration_conn(
+    *,
+    event_spotify_id: str | None = None,
+    event_duration_ms: int | None = None,
+    primary_duration_ms: int | None = None,
+    legacy_duration_ms: int | None = 300000,
+    include_event_column: bool = True,
+    include_provider_table: bool = True,
+) -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    event_column = ", spotify_track_id_at_play TEXT" if include_event_column else ""
+    conn.executescript(
+        f"""
+        CREATE TABLE tracks (
+            track_id INTEGER PRIMARY KEY,
+            spotify_track_id TEXT,
+            duration_ms INTEGER
+        );
+        CREATE TABLE plays (
+            play_id INTEGER PRIMARY KEY,
+            ts TEXT,
+            ms_played INTEGER,
+            track_id INTEGER,
+            source_album_id INTEGER,
+            content_type TEXT
+            {event_column}
+        );
+        INSERT INTO tracks VALUES (1, 'primary-id', {legacy_duration_ms or "NULL"});
+        """
+    )
+    if include_provider_table:
+        conn.execute(
+            "CREATE TABLE spotify_track_meta (spotify_track_id TEXT PRIMARY KEY, duration_ms INTEGER)"
+        )
+        conn.execute(
+            "INSERT INTO spotify_track_meta VALUES ('primary-id', ?)",
+            (primary_duration_ms,),
+        )
+        if event_spotify_id:
+            conn.execute(
+                "INSERT INTO spotify_track_meta VALUES (?, ?)",
+                (event_spotify_id, event_duration_ms),
+            )
+    if include_event_column:
+        conn.execute(
+            "INSERT INTO plays VALUES (1, '2024-01-01T00:03:00Z', 60000, 1, 1, 'audio', ?)",
+            (event_spotify_id,),
+        )
+    else:
+        conn.execute("INSERT INTO plays VALUES (1, '2024-01-01T00:03:00Z', 60000, 1, 1, 'audio')")
+    conn.commit()
+    return conn
+
+
+def _resolved_duration(conn: sqlite3.Connection) -> int:
+    frame = _media_source_frame(conn)
+    conn.close()
+    return int(frame.iloc[0]["duration_ms"])
+
+
+def test_media_duration_prefers_event_provider_version_over_primary_and_legacy() -> None:
+    conn = _duration_conn(
+        event_spotify_id="event-id",
+        event_duration_ms=120000,
+        primary_duration_ms=240000,
+        legacy_duration_ms=300000,
+    )
+
+    assert _resolved_duration(conn) == 120000
+
+
+def test_media_duration_prefers_primary_provider_over_legacy() -> None:
+    conn = _duration_conn(primary_duration_ms=240000, legacy_duration_ms=300000)
+
+    assert _resolved_duration(conn) == 240000
+
+
+def test_media_duration_falls_back_to_primary_when_event_metadata_is_missing() -> None:
+    conn = _duration_conn(
+        event_spotify_id="event-id",
+        event_duration_ms=None,
+        primary_duration_ms=240000,
+        legacy_duration_ms=300000,
+    )
+
+    assert _resolved_duration(conn) == 240000
+
+
+def test_media_duration_falls_back_to_legacy_when_provider_duration_is_missing() -> None:
+    conn = _duration_conn(primary_duration_ms=None, legacy_duration_ms=300000)
+
+    assert _resolved_duration(conn) == 300000
+
+
+def test_media_duration_supports_legacy_schema_without_event_id_or_provider_table() -> None:
+    conn = _duration_conn(
+        legacy_duration_ms=300000,
+        include_event_column=False,
+        include_provider_table=False,
+    )
+
+    assert _resolved_duration(conn) == 300000
 
 
 def test_other_media_uses_shared_audio_video_filters_and_minimal_podcast_facts() -> None:

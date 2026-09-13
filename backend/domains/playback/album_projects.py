@@ -226,6 +226,7 @@ def rebuild_album_projects_for_impact(
     has_deletions: bool = False,
     max_affected_albums: int = 500,
     max_affected_ratio: float = 0.25,
+    commit: bool = True,
 ) -> AlbumProjectRebuildReport:
     """Rebuild the proven Album Project closure or conservatively rebuild all.
 
@@ -238,9 +239,9 @@ def rebuild_album_projects_for_impact(
     ensure_album_project_schema(conn)
     _ensure_album_project_revision_schema(conn)
     if not impact_scope_exact:
-        return _fallback_album_project_rebuild(conn, "impact_scope_inexact")
+        return _fallback_album_project_rebuild(conn, "impact_scope_inexact", commit=commit)
     if has_deletions:
-        return _fallback_album_project_rebuild(conn, "deletion_semantics")
+        return _fallback_album_project_rebuild(conn, "deletion_semantics", commit=commit)
     if max_affected_albums < 0 or not 0 < max_affected_ratio <= 1:
         raise ValueError("invalid Album Project impact threshold")
 
@@ -252,13 +253,13 @@ def rebuild_album_projects_for_impact(
             spotify_track_ids=spotify_track_ids,
         )
     except (sqlite3.DatabaseError, _AlbumProjectClosureError):
-        return _fallback_album_project_rebuild(conn, "closure_unproven")
+        return _fallback_album_project_rebuild(conn, "closure_unproven", commit=commit)
 
     total_albums = int(conn.execute("SELECT COUNT(*) FROM albums").fetchone()[0])
     ratio_limit = max(1, math.ceil(total_albums * max_affected_ratio))
     album_limit = min(max_affected_albums, ratio_limit)
     if len(plan.album_ids | plan.compilation_album_ids) > album_limit:
-        return _fallback_album_project_rebuild(conn, "closure_too_large")
+        return _fallback_album_project_rebuild(conn, "closure_too_large", commit=commit)
 
     conn.execute("SAVEPOINT rebuild_album_projects_for_impact")
     try:
@@ -318,7 +319,8 @@ def rebuild_album_projects_for_impact(
         conn.execute("ROLLBACK TO SAVEPOINT rebuild_album_projects_for_impact")
         conn.execute("RELEASE SAVEPOINT rebuild_album_projects_for_impact")
         raise
-    conn.commit()
+    if commit:
+        conn.commit()
 
     return AlbumProjectRebuildReport(
         strategy="targeted",
@@ -333,8 +335,10 @@ def rebuild_album_projects_for_impact(
 def _fallback_album_project_rebuild(
     conn: sqlite3.Connection,
     reason: str,
+    *,
+    commit: bool,
 ) -> AlbumProjectRebuildReport:
-    rebuild_album_projects(conn)
+    rebuild_album_projects(conn, commit=commit)
     return AlbumProjectRebuildReport(
         strategy="full",
         fallback_reason=reason,

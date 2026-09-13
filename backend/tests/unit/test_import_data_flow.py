@@ -125,7 +125,7 @@ def test_import_data_handles_audio_and_video_records_without_metadata(tmp_path, 
         _clear_db_caches()
 
 
-def test_import_reuses_track_and_registers_multiple_spotify_owners(tmp_path, monkeypatch):
+def test_import_isolates_new_spotify_owner_until_version_governance(tmp_path, monkeypatch):
     from backend.core import db as db_mod
     from backend.core import import_data as import_mod
 
@@ -181,15 +181,15 @@ def test_import_reuses_track_and_registers_multiple_spotify_owners(tmp_path, mon
             tracks = conn.execute(
                 "SELECT track_id, spotify_track_id FROM tracks ORDER BY track_id"
             ).fetchall()
-            assert len(tracks) == 1
+            assert len(tracks) == 2
             assert tracks[0]["spotify_track_id"] == spotify_a
             owners = conn.execute(
                 """SELECT spotify_track_id, track_id
                      FROM spotify_track_owners ORDER BY spotify_track_id"""
             ).fetchall()
             assert [row["spotify_track_id"] for row in owners] == [spotify_a, spotify_b]
-            assert len({row["track_id"] for row in owners}) == 1
-            assert conn.execute("SELECT COUNT(*) FROM track_l1_identities").fetchone()[0] == 1
+            assert len({row["track_id"] for row in owners}) == 2
+            assert conn.execute("SELECT COUNT(*) FROM track_l1_identities").fetchone()[0] == 2
             assert (
                 conn.execute(
                     """SELECT COUNT(DISTINCT track_id)
@@ -198,6 +198,23 @@ def test_import_reuses_track_and_registers_multiple_spotify_owners(tmp_path, mon
                 ).fetchone()[0]
                 == 1
             )
+            spotify_a_owner = owners[0]["track_id"]
+            spotify_b_owner = owners[1]["track_id"]
+            assert spotify_a_owner != spotify_b_owner
+            assert {
+                row[0]
+                for row in conn.execute(
+                    "SELECT DISTINCT track_id FROM plays WHERE spotify_track_id_at_play=?",
+                    (spotify_a,),
+                ).fetchall()
+            } == {spotify_a_owner}
+            assert {
+                row[0]
+                for row in conn.execute(
+                    "SELECT DISTINCT track_id FROM plays WHERE spotify_track_id_at_play=?",
+                    (spotify_b,),
+                ).fetchall()
+            } == {spotify_b_owner}
         finally:
             conn.close()
     finally:

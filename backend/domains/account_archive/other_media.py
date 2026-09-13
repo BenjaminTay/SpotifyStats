@@ -17,6 +17,7 @@ from backend.core.db import merge_consecutive_plays
 from backend.domains.account_archive.overview import _database_path
 from backend.domains.account_archive.source_data import load_track_preview_map
 from backend.domains.playback.counting import filter_effective_plays
+from backend.domains.playback.duration_sql import build_play_duration_sql
 from backend.models.account_archive import ArchiveFilterContext
 
 ARCHIVE_OTHER_MEDIA_CACHE_TTL_SECONDS = 300
@@ -178,33 +179,23 @@ def _media_source_frame(conn: sqlite3.Connection) -> pd.DataFrame:
         return pd.DataFrame()
     source_album = "p.source_album_id" if "source_album_id" in play_columns else "NULL"
     has_track_catalog = "track_id" in track_columns
-    duration_candidates = []
-    if has_track_catalog and "duration_ms" in track_columns:
-        duration_candidates.append("t.duration_ms")
     spotify_meta_columns = _columns(conn, "spotify_track_meta")
-    has_spotify_meta = {"spotify_track_id", "duration_ms"}.issubset(spotify_meta_columns)
-    if has_track_catalog and has_spotify_meta and "spotify_track_id" in track_columns:
-        duration_candidates.append("stm.duration_ms")
-    duration = (
-        f"COALESCE({', '.join(duration_candidates)})"
-        if len(duration_candidates) > 1
-        else (duration_candidates[0] if duration_candidates else "NULL")
+    duration_sql = build_play_duration_sql(
+        play_columns=play_columns,
+        track_columns=track_columns,
+        spotify_meta_columns=spotify_meta_columns,
     )
-    meta_join = (
-        "LEFT JOIN spotify_track_meta stm ON stm.spotify_track_id = t.spotify_track_id"
-        if has_track_catalog and has_spotify_meta and "spotify_track_id" in track_columns
-        else ""
-    )
+    meta_joins = "\n".join(duration_sql.joins)
     track_join = "LEFT JOIN tracks t ON t.track_id = p.track_id" if has_track_catalog else ""
     mapped_track_id = "t.track_id" if has_track_catalog else "NULL"
     return pd.read_sql_query(
         f"""
         SELECT p.play_id, p.ts, p.ms_played, p.track_id,
                {mapped_track_id} AS mapped_track_id, {source_album} AS source_album_id,
-               p.content_type, {duration} AS duration_ms
+               p.content_type, {duration_sql.expression} AS duration_ms
         FROM plays p
         {track_join}
-        {meta_join}
+        {meta_joins}
         WHERE p.content_type IN ('audio', 'video')
         ORDER BY p.ts, p.play_id
         """,

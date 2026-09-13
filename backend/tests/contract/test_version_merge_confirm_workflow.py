@@ -53,6 +53,9 @@ def test_confirm_track_candidate_creates_l3_group_and_rebuilds(isolated_seed_db)
     assert result["status"] == "ok"
     assert result["scope"] == "composition"
     assert result["album_projects_rebuilt"] is True
+    assert result["album_project_rebuild"]["strategy"] in {"targeted", "full"}
+    if result["album_project_rebuild"]["strategy"] == "full":
+        assert result["album_project_rebuild"]["fallback_reason"]
 
     conn = get_db(readonly=True)
     try:
@@ -517,11 +520,13 @@ def test_release_group_create_api_accepts_composition_scope(isolated_seed_db):
         conn.close()
 
 
-def test_album_relation_bundle_confirms_album_and_matching_track_versions(isolated_seed_db):
+def test_album_relation_bundle_confirms_album_and_matching_track_versions(
+    isolated_seed_db, monkeypatch
+):
     """Confirming a composition album relation also creates matching song relations."""
+    from backend.core import version_merge as version_merge_mod
     from backend.core.db import get_db, load_plays
     from backend.core.migrations import run_migrations
-    from backend.core.version_merge import confirm_album_relation_bundle
     from backend.domains.playback.album_projects import (
         compute_album_project_plays,
         rebuild_album_projects,
@@ -529,6 +534,14 @@ def test_album_relation_bundle_confirms_album_and_matching_track_versions(isolat
     from backend.domains.playback.track_groups import load_track_group_keys
 
     run_migrations()
+    refresh_calls = []
+    original_refresh = version_merge_mod._refresh_version_merge_dependents
+
+    def capture_refresh(*args, **kwargs):
+        refresh_calls.append((args, kwargs))
+        return original_refresh(*args, **kwargs)
+
+    monkeypatch.setattr(version_merge_mod, "_refresh_version_merge_dependents", capture_refresh)
     conn = get_db(readonly=False)
     try:
         conn.execute("DELETE FROM release_group_members WHERE group_id = 921")
@@ -540,7 +553,7 @@ def test_album_relation_bundle_confirms_album_and_matching_track_versions(isolat
     finally:
         conn.close()
 
-    result = confirm_album_relation_bundle(
+    result = version_merge_mod.confirm_album_relation_bundle(
         canonical_name="Fixture Future LP",
         primary_album_id=921,
         member_album_ids=[925],
@@ -559,6 +572,10 @@ def test_album_relation_bundle_confirms_album_and_matching_track_versions(isolat
     assert result["track_pairs"][0]["original_track_id"] == 920
     assert result["track_pairs"][0]["candidate_track_id"] == 925
     assert result["exclusive_tracks"][0]["track_id"] == 927
+    assert len(refresh_calls) == 1
+    assert result["album_project_rebuild"]["strategy"] in {"targeted", "full"}
+    if result["album_project_rebuild"]["strategy"] == "full":
+        assert result["album_project_rebuild"]["fallback_reason"]
 
     conn = get_db(readonly=True)
     try:
@@ -579,6 +596,66 @@ def test_album_relation_bundle_confirms_album_and_matching_track_versions(isolat
         l3_future = l3[l3["album_project_name"] == "Fixture Future LP"].iloc[0]
         assert int(l2_future["play_count"]) == 9
         assert int(l3_future["play_count"]) == 11
+    finally:
+        conn.close()
+
+
+def test_album_relation_bundle_rolls_back_all_relations_when_refresh_fails(
+    isolated_seed_db, monkeypatch
+):
+    """Album, track, and derived writes share one fail-closed transaction."""
+    from backend.core import version_merge as version_merge_mod
+    from backend.core.db import get_db
+    from backend.core.migrations import run_migrations
+    from backend.domains.playback.album_projects import rebuild_album_projects
+
+    run_migrations()
+    conn = get_db(readonly=False)
+    try:
+        conn.execute("DELETE FROM release_group_members WHERE group_id = 921")
+        conn.execute("DELETE FROM release_groups WHERE group_id = 921")
+        conn.execute("DELETE FROM track_group_l1_members WHERE group_id = 921")
+        conn.execute("DELETE FROM track_group_members WHERE group_id = 921")
+        conn.execute("DELETE FROM track_groups WHERE group_id = 921")
+        rebuild_album_projects(conn)
+    finally:
+        conn.close()
+
+    def fail_refresh(*args, **kwargs):
+        raise RuntimeError("forced dependent refresh failure")
+
+    monkeypatch.setattr(version_merge_mod, "_refresh_version_merge_dependents", fail_refresh)
+    result = version_merge_mod.confirm_album_relation_bundle(
+        canonical_name="Atomic Fixture Future LP",
+        primary_album_id=921,
+        member_album_ids=[925],
+        scope="composition",
+        relation_type="rerecord",
+        confirm_track_pairs=True,
+    )
+
+    assert result == {"status": "error", "message": "forced dependent refresh failure"}
+    conn = get_db(readonly=True)
+    try:
+        assert (
+            conn.execute(
+                "SELECT 1 FROM release_groups WHERE canonical_name=?",
+                ("Atomic Fixture Future LP",),
+            ).fetchone()
+            is None
+        )
+        assert (
+            conn.execute(
+                """SELECT 1
+                 FROM track_groups groups
+                 JOIN track_group_l1_members left_member
+                   ON left_member.group_id=groups.group_id AND left_member.l1_id=920
+                 JOIN track_group_l1_members right_member
+                   ON right_member.group_id=groups.group_id AND right_member.l1_id=925
+                WHERE groups.scope='composition' AND groups.group_status='active'"""
+            ).fetchone()
+            is None
+        )
     finally:
         conn.close()
 

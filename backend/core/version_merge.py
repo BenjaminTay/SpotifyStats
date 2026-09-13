@@ -326,10 +326,90 @@ def _suffix_is_excluded(suffix: str) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _refresh_version_merge_dependents(conn=None) -> None:
-    """Rebuild album projects and clear cached statistics after relation changes."""
+def _track_album_impact(
+    conn,
+    track_ids=(),
+    *,
+    l1_ids=(),
+) -> tuple[set[int], set[str]]:
+    """Resolve the exact local/provider album-project inputs for changed tracks."""
+
+    normalized_track_ids = {int(value) for value in track_ids if int(value) > 0}
+    normalized_l1 = sorted({int(value) for value in l1_ids if int(value) > 0})
+    if normalized_l1:
+        placeholders = ",".join("?" for _ in normalized_l1)
+        normalized_track_ids.update(
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT representative_track_id FROM track_l1_identities
+                     WHERE l1_id IN ({placeholders})
+                     UNION
+                     SELECT track_id FROM track_l1_source_links
+                     WHERE l1_id IN ({placeholders})""",
+                (*normalized_l1, *normalized_l1),
+            ).fetchall()
+        )
+    normalized = sorted(normalized_track_ids)
+    if not normalized:
+        return set(), set()
+    placeholders = ",".join("?" for _ in normalized)
+    local_album_ids = {
+        int(row[0])
+        for row in conn.execute(
+            f"""SELECT album_id FROM tracks
+                 WHERE track_id IN ({placeholders}) AND album_id IS NOT NULL
+                 UNION
+                 SELECT album_id FROM track_albums
+                 WHERE track_id IN ({placeholders})
+                 UNION
+                 SELECT source_album_id FROM plays
+                 WHERE track_id IN ({placeholders}) AND source_album_id IS NOT NULL""",
+            (*normalized, *normalized, *normalized),
+        ).fetchall()
+    }
+    spotify_track_ids = {
+        str(row[0])
+        for row in conn.execute(
+            f"""SELECT owners.spotify_track_id
+                  FROM spotify_track_owners owners
+                  JOIN spotify_track_meta meta
+                    ON meta.spotify_track_id=owners.spotify_track_id
+                 WHERE owners.track_id IN ({placeholders})""",
+            normalized,
+        ).fetchall()
+    }
+    return local_album_ids, spotify_track_ids
+
+
+def _notify_version_merge_dependents() -> str | None:
+    """Invalidate process caches and enqueue one async snapshot refresh."""
     from backend.core.cache_manager import invalidate
-    from backend.domains.playback.album_projects import rebuild_album_projects
+
+    invalidate("analysis")
+    invalidate("billboard")
+    invalidate("yearly_review")
+    from backend.services.billboard_snapshot_service import (
+        enqueue_billboard_snapshot_rebuild,
+    )
+
+    return enqueue_billboard_snapshot_rebuild("version merge dependents refreshed")
+
+
+def _refresh_version_merge_dependents(
+    conn=None,
+    *,
+    local_album_ids=(),
+    spotify_track_ids=(),
+    impact_scope_exact: bool = False,
+    has_deletions: bool = False,
+    commit: bool = True,
+    notify: bool = True,
+) -> dict:
+    """Rebuild the proven album closure and clear relation-dependent caches."""
+    from backend.domains.playback.album_projects import (
+        rebuild_album_projects,
+        rebuild_album_projects_for_impact,
+    )
     from backend.domains.playback.l3_album_attribution import (
         apply_l3_album_attribution_plan,
         plan_l3_album_attributions,
@@ -339,22 +419,45 @@ def _refresh_version_merge_dependents(conn=None) -> None:
     if owns_conn:
         conn = get_db(readonly=False)
     try:
-        rebuild_album_projects(conn)
+        if impact_scope_exact:
+            rebuild_report = rebuild_album_projects_for_impact(
+                conn,
+                local_album_ids=local_album_ids,
+                spotify_track_ids=spotify_track_ids,
+                impact_scope_exact=True,
+                has_deletions=has_deletions,
+                commit=commit,
+            )
+        else:
+            rebuild_album_projects(conn, commit=commit)
+            rebuild_report = None
         attribution_plan = plan_l3_album_attributions(conn)
         if attribution_plan.issues:
             raise RuntimeError("L3 album attribution has unresolved issues after version mutation")
-        apply_l3_album_attribution_plan(conn, attribution_plan, commit=True)
+        apply_l3_album_attribution_plan(conn, attribution_plan, commit=commit)
     finally:
         if owns_conn:
             conn.close()
-    invalidate("analysis")
-    invalidate("billboard")
-    invalidate("yearly_review")
-    from backend.services.billboard_snapshot_service import (
-        enqueue_billboard_snapshot_rebuild,
-    )
-
-    enqueue_billboard_snapshot_rebuild("version merge dependents refreshed")
+    billboard_snapshot_job_id = _notify_version_merge_dependents() if notify else None
+    if rebuild_report is None:
+        return {
+            "strategy": "full",
+            "fallback_reason": "impact_scope_not_supplied",
+            "affected_album_count": 0,
+            "affected_release_group_count": 0,
+            "affected_project_count": 0,
+            "affected_track_count": 0,
+            "billboard_snapshot_job_id": billboard_snapshot_job_id,
+        }
+    return {
+        "strategy": rebuild_report.strategy,
+        "fallback_reason": rebuild_report.fallback_reason,
+        "affected_album_count": rebuild_report.affected_album_count,
+        "affected_release_group_count": rebuild_report.affected_release_group_count,
+        "affected_project_count": rebuild_report.affected_project_count,
+        "affected_track_count": rebuild_report.affected_track_count,
+        "billboard_snapshot_job_id": billboard_snapshot_job_id,
+    }
 
 
 def get_all_groups() -> pd.DataFrame:
@@ -738,11 +841,16 @@ def create_group(
     primary_album_id: int,
     member_ids: list[int],
     scope: str = "release",
+    *,
+    refresh_dependents: bool = True,
+    connection=None,
+    commit: bool = True,
 ):
     """手动创建 release group。返回 group_id，失败返回 None。"""
     if scope not in {"release", "composition"}:
         return None
-    conn = get_db(readonly=False)
+    owns_conn = connection is None
+    conn = connection if connection is not None else get_db(readonly=False)
     try:
         if artist_id <= 0:
             row = conn.execute(
@@ -759,7 +867,6 @@ def create_group(
                VALUES (?, ?, ?, ?, 1)""",
             (canonical_name, artist_id, primary_album_id, scope),
         )
-        conn.commit()
         group_id = cur.lastrowid
 
         if group_id == 0:
@@ -777,14 +884,24 @@ def create_group(
                     "INSERT OR IGNORE INTO release_group_members(group_id, album_id) VALUES (?, ?)",
                     (group_id, aid),
                 )
-            conn.commit()
-            _refresh_version_merge_dependents(conn)
+            if refresh_dependents:
+                _refresh_version_merge_dependents(
+                    conn,
+                    local_album_ids=member_ids,
+                    impact_scope_exact=True,
+                    commit=commit,
+                )
+            elif commit:
+                conn.commit()
 
         return group_id
     except Exception:
+        if owns_conn:
+            conn.rollback()
         return None
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 def _resolve_track_reference_to_l1(conn, value: int, *, reference_is_l1: bool) -> int | None:
@@ -893,6 +1010,9 @@ def _confirm_l1_track_group(
     candidate_reference: int,
     scope: str,
     references_are_l1: bool,
+    refresh_dependents: bool,
+    commit: bool,
+    bump_revision: bool,
 ) -> dict:
     original_l1_id = _resolve_track_reference_to_l1(
         conn, original_reference, reference_is_l1=references_are_l1
@@ -1012,11 +1132,24 @@ def _confirm_l1_track_group(
             )""",
         (scope, original_l1_id, candidate_l1_id, candidate_l1_id, original_l1_id),
     )
-    from backend.domains.metadata.track_identity import bump_track_identity_revision
+    if bump_revision:
+        from backend.domains.metadata.track_identity import bump_track_identity_revision
 
-    bump_track_identity_revision(conn)
-    conn.commit()
-    _refresh_version_merge_dependents(conn)
+        bump_track_identity_revision(conn)
+    if commit:
+        conn.commit()
+    refresh_report = None
+    if refresh_dependents:
+        local_album_ids, spotify_track_ids = _track_album_impact(
+            conn, l1_ids=(original_l1_id, candidate_l1_id)
+        )
+        refresh_report = _refresh_version_merge_dependents(
+            conn,
+            local_album_ids=local_album_ids,
+            spotify_track_ids=spotify_track_ids,
+            impact_scope_exact=True,
+            commit=commit,
+        )
     member_count = conn.execute(
         "SELECT COUNT(*) FROM track_group_l1_members WHERE group_id=?",
         (group_id,),
@@ -1026,7 +1159,8 @@ def _confirm_l1_track_group(
         "group_id": group_id,
         "scope": scope,
         "member_count": int(member_count),
-        "album_projects_rebuilt": True,
+        "album_projects_rebuilt": refresh_dependents,
+        "album_project_rebuild": refresh_report,
         "original_l1_id": original_l1_id,
         "candidate_l1_id": candidate_l1_id,
     }
@@ -1038,6 +1172,10 @@ def confirm_track_group_candidate(
     scope: str = "composition",
     *,
     references_are_l1: bool = False,
+    refresh_dependents: bool = True,
+    connection=None,
+    commit: bool = True,
+    bump_revision: bool = True,
 ) -> dict:
     """Confirm a track candidate by writing it into a track group.
 
@@ -1046,7 +1184,8 @@ def confirm_track_group_candidate(
     """
     if scope not in {"recording", "composition"}:
         return {"status": "error", "message": "Invalid scope"}
-    conn = get_db(readonly=False)
+    owns_conn = connection is None
+    conn = connection if connection is not None else get_db(readonly=False)
     try:
         has_l1 = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
@@ -1058,6 +1197,9 @@ def confirm_track_group_candidate(
                 candidate_reference=candidate_track_id,
                 scope=scope,
                 references_are_l1=references_are_l1,
+                refresh_dependents=refresh_dependents,
+                commit=commit,
+                bump_revision=bump_revision,
             )
         if original_track_id == candidate_track_id:
             return {"status": "error", "message": "Tracks must differ"}
@@ -1140,8 +1282,20 @@ def confirm_track_group_candidate(
                 "INSERT OR IGNORE INTO track_group_members(group_id, track_id) VALUES (?, ?)",
                 (group_id, track_id),
             )
-        conn.commit()
-        _refresh_version_merge_dependents(conn)
+        if commit:
+            conn.commit()
+        refresh_report = None
+        if refresh_dependents:
+            local_album_ids, spotify_track_ids = _track_album_impact(
+                conn, (original_track_id, candidate_track_id)
+            )
+            refresh_report = _refresh_version_merge_dependents(
+                conn,
+                local_album_ids=local_album_ids,
+                spotify_track_ids=spotify_track_ids,
+                impact_scope_exact=True,
+                commit=commit,
+            )
 
         member_count = conn.execute(
             "SELECT COUNT(*) FROM track_group_members WHERE group_id = ?",
@@ -1152,12 +1306,16 @@ def confirm_track_group_candidate(
             "group_id": group_id,
             "scope": scope,
             "member_count": int(member_count),
-            "album_projects_rebuilt": True,
+            "album_projects_rebuilt": refresh_dependents,
+            "album_project_rebuild": refresh_report,
         }
     except Exception as exc:
+        if owns_conn:
+            conn.rollback()
         return {"status": "error", "message": str(exc)}
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 _RELATION_TRACK_VERSION_PATTERNS = (
@@ -1203,9 +1361,12 @@ def _tracks_for_relation_album(conn, album_id: int) -> list[dict]:
 def derive_album_relation_track_pairs(
     primary_album_id: int,
     member_album_ids: list[int],
+    *,
+    connection=None,
 ) -> dict:
     """Derive same-composition track pairs from an album-level relation."""
-    conn = get_db()
+    owns_conn = connection is None
+    conn = connection if connection is not None else get_db()
     try:
         primary_tracks = _tracks_for_relation_album(conn, primary_album_id)
         primary_by_key = {}
@@ -1258,11 +1419,13 @@ def derive_album_relation_track_pairs(
 
         return {"track_pairs": deduped_pairs, "exclusive_tracks": deduped_exclusive}
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
-def _expand_album_relation_member_ids(album_ids: list[int]) -> list[int]:
-    conn = get_db()
+def _expand_album_relation_member_ids(album_ids: list[int], *, connection=None) -> list[int]:
+    owns_conn = connection is None
+    conn = connection if connection is not None else get_db()
     try:
         expanded = list(dict.fromkeys(int(album_id) for album_id in album_ids))
         if not expanded:
@@ -1286,16 +1449,21 @@ def _expand_album_relation_member_ids(album_ids: list[int]) -> list[int]:
                 expanded.append(album_id)
         return expanded
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 def _attach_release_groups_to_composition_parent(
     composition_group_id: int,
     album_ids: list[int],
+    *,
+    connection=None,
+    commit: bool = True,
 ) -> None:
     if not album_ids:
         return
-    conn = get_db(readonly=False)
+    owns_conn = connection is None
+    conn = connection if connection is not None else get_db(readonly=False)
     try:
         placeholders = ",".join("?" for _ in album_ids)
         conn.execute(
@@ -1309,9 +1477,11 @@ def _attach_release_groups_to_composition_parent(
                    )""",
             (composition_group_id, *album_ids),
         )
-        conn.commit()
+        if commit:
+            conn.commit()
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 def confirm_album_relation_bundle(
@@ -1333,49 +1503,90 @@ def confirm_album_relation_bundle(
             seed_member_ids.append(album_id)
     if len(seed_member_ids) < 2:
         return {"status": "error", "message": "At least two albums are required"}
-    member_ids = _expand_album_relation_member_ids(seed_member_ids)
-
-    conn = get_db()
+    conn = get_db(readonly=False)
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        member_ids = _expand_album_relation_member_ids(seed_member_ids, connection=conn)
         primary = conn.execute(
             "SELECT album_id, album_name, artist_id FROM albums WHERE album_id = ?",
             (primary_album_id,),
         ).fetchone()
         if primary is None:
-            return {"status": "error", "message": "Primary album not found"}
+            raise RuntimeError("Primary album not found")
         artist_id = int(primary["artist_id"])
+        derived = derive_album_relation_track_pairs(
+            primary_album_id=primary_album_id,
+            member_album_ids=[
+                album_id for album_id in seed_member_ids if album_id != primary_album_id
+            ],
+            connection=conn,
+        )
+        group_id = create_group(
+            canonical_name=canonical_name or primary["album_name"],
+            artist_id=artist_id,
+            primary_album_id=primary_album_id,
+            member_ids=member_ids,
+            scope=scope,
+            refresh_dependents=False,
+            connection=conn,
+            commit=False,
+        )
+        if group_id is None:
+            raise RuntimeError("Failed to create album relation")
+        if scope == "composition":
+            _attach_release_groups_to_composition_parent(
+                group_id,
+                member_ids,
+                connection=conn,
+                commit=False,
+            )
+
+        track_scope = "composition" if scope == "composition" else "recording"
+        confirmed_count = 0
+        if confirm_track_pairs:
+            for pair in derived["track_pairs"]:
+                result = confirm_track_group_candidate(
+                    original_track_id=pair["original_track_id"],
+                    candidate_track_id=pair["candidate_track_id"],
+                    scope=track_scope,
+                    refresh_dependents=False,
+                    connection=conn,
+                    commit=False,
+                    bump_revision=False,
+                )
+                if result.get("status") != "ok":
+                    raise RuntimeError(
+                        "Failed to confirm track relation: "
+                        f"{result.get('message', 'unknown error')}"
+                    )
+                confirmed_count += 1
+        if confirmed_count:
+            from backend.domains.metadata.track_identity import (
+                bump_track_identity_revision,
+            )
+
+            bump_track_identity_revision(conn)
+
+        impacted_track_ids = {int(pair["original_track_id"]) for pair in derived["track_pairs"]} | {
+            int(pair["candidate_track_id"]) for pair in derived["track_pairs"]
+        }
+        track_album_ids, spotify_track_ids = _track_album_impact(conn, impacted_track_ids)
+        refresh_report = _refresh_version_merge_dependents(
+            conn,
+            local_album_ids=set(member_ids) | track_album_ids,
+            spotify_track_ids=spotify_track_ids,
+            impact_scope_exact=True,
+            commit=False,
+            notify=False,
+        )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        return {"status": "error", "message": str(exc)}
     finally:
         conn.close()
 
-    group_id = create_group(
-        canonical_name=canonical_name or primary["album_name"],
-        artist_id=artist_id,
-        primary_album_id=primary_album_id,
-        member_ids=member_ids,
-        scope=scope,
-    )
-    if group_id is None:
-        return {"status": "error", "message": "Failed to create album relation"}
-    if scope == "composition":
-        _attach_release_groups_to_composition_parent(group_id, member_ids)
-
-    derived = derive_album_relation_track_pairs(
-        primary_album_id=primary_album_id,
-        member_album_ids=[album_id for album_id in seed_member_ids if album_id != primary_album_id],
-    )
-    track_scope = "composition" if scope == "composition" else "recording"
-    confirmed_count = 0
-    if confirm_track_pairs:
-        for pair in derived["track_pairs"]:
-            result = confirm_track_group_candidate(
-                original_track_id=pair["original_track_id"],
-                candidate_track_id=pair["candidate_track_id"],
-                scope=track_scope,
-            )
-            if result.get("status") == "ok":
-                confirmed_count += 1
-
-    _refresh_version_merge_dependents()
+    refresh_report["billboard_snapshot_job_id"] = _notify_version_merge_dependents()
     return {
         "status": "ok",
         "release_group_id": group_id,
@@ -1387,6 +1598,7 @@ def confirm_album_relation_bundle(
         "track_pairs": derived["track_pairs"],
         "exclusive_tracks": derived["exclusive_tracks"],
         "album_projects_rebuilt": True,
+        "album_project_rebuild": refresh_report,
     }
 
 
@@ -1394,6 +1606,15 @@ def update_group_members(group_id: int, add_ids=None, remove_ids=None) -> bool:
     """增删 group 成员。"""
     conn = get_db(readonly=False)
     try:
+        impacted_album_ids = {
+            int(row[0])
+            for row in conn.execute(
+                "SELECT album_id FROM release_group_members WHERE group_id=?",
+                (group_id,),
+            ).fetchall()
+        }
+        impacted_album_ids.update(int(value) for value in add_ids or [])
+        impacted_album_ids.update(int(value) for value in remove_ids or [])
         if add_ids:
             for aid in add_ids:
                 conn.execute(
@@ -1407,7 +1628,12 @@ def update_group_members(group_id: int, add_ids=None, remove_ids=None) -> bool:
                     (group_id, aid),
                 )
         conn.commit()
-        _refresh_version_merge_dependents(conn)
+        _refresh_version_merge_dependents(
+            conn,
+            local_album_ids=impacted_album_ids,
+            impact_scope_exact=True,
+            has_deletions=bool(remove_ids),
+        )
         return True
     except Exception:
         return False
@@ -1419,12 +1645,24 @@ def set_primary(group_id: int, album_id: int) -> bool:
     """更改 group 的主版本。"""
     conn = get_db(readonly=False)
     try:
+        impacted_album_ids = {
+            int(row[0])
+            for row in conn.execute(
+                "SELECT album_id FROM release_group_members WHERE group_id=?",
+                (group_id,),
+            ).fetchall()
+        }
+        impacted_album_ids.add(int(album_id))
         conn.execute(
             "UPDATE release_groups SET primary_album_id = ? WHERE group_id = ?",
             (album_id, group_id),
         )
         conn.commit()
-        _refresh_version_merge_dependents(conn)
+        _refresh_version_merge_dependents(
+            conn,
+            local_album_ids=impacted_album_ids,
+            impact_scope_exact=True,
+        )
         return True
     except Exception:
         return False
@@ -1566,13 +1804,34 @@ def update_track_group_members(
 
             bump_track_identity_revision(conn)
             conn.commit()
-            _refresh_version_merge_dependents(conn)
+            impacted_track_ids = set(original_member_ids)
+            impacted_track_ids.update(normalized_add_ids)
+            impacted_track_ids.update(normalized_remove_ids)
+            local_album_ids, spotify_track_ids = _track_album_impact(
+                conn, l1_ids=impacted_track_ids
+            )
+            _refresh_version_merge_dependents(
+                conn,
+                local_album_ids=local_album_ids,
+                spotify_track_ids=spotify_track_ids,
+                impact_scope_exact=True,
+                has_deletions=bool(normalized_remove_ids),
+            )
             return True
         if (
             conn.execute("SELECT 1 FROM track_groups WHERE group_id=?", (group_id,)).fetchone()
             is None
         ):
             return False
+        impacted_track_ids = {
+            int(row[0])
+            for row in conn.execute(
+                "SELECT track_id FROM track_group_members WHERE group_id=?",
+                (group_id,),
+            ).fetchall()
+        }
+        impacted_track_ids.update(int(value) for value in add_ids or [])
+        impacted_track_ids.update(int(value) for value in remove_ids or [])
         for track_id in add_ids or []:
             if (
                 conn.execute("SELECT 1 FROM tracks WHERE track_id = ?", (track_id,)).fetchone()
@@ -1596,7 +1855,14 @@ def update_track_group_members(
             )
         conn.execute("UPDATE track_groups SET is_manual = 1 WHERE group_id = ?", (group_id,))
         conn.commit()
-        _refresh_version_merge_dependents(conn)
+        local_album_ids, spotify_track_ids = _track_album_impact(conn, impacted_track_ids)
+        _refresh_version_merge_dependents(
+            conn,
+            local_album_ids=local_album_ids,
+            spotify_track_ids=spotify_track_ids,
+            impact_scope_exact=True,
+            has_deletions=bool(remove_ids),
+        )
         return True
     except Exception:
         return False
@@ -1643,7 +1909,22 @@ def set_primary_track(group_id: int, track_id: int) -> bool:
 
             bump_track_identity_revision(conn)
             conn.commit()
-            _refresh_version_merge_dependents(conn)
+            impacted_track_ids = {
+                int(row[0])
+                for row in conn.execute(
+                    "SELECT l1_id FROM track_group_l1_members WHERE group_id=?",
+                    (group_id,),
+                ).fetchall()
+            }
+            local_album_ids, spotify_track_ids = _track_album_impact(
+                conn, l1_ids=impacted_track_ids
+            )
+            _refresh_version_merge_dependents(
+                conn,
+                local_album_ids=local_album_ids,
+                spotify_track_ids=spotify_track_ids,
+                impact_scope_exact=True,
+            )
             return True
         member = conn.execute(
             "SELECT 1 FROM track_group_members WHERE group_id = ? AND track_id = ?",
@@ -1659,7 +1940,20 @@ def set_primary_track(group_id: int, track_id: int) -> bool:
             (track_id, track[0], group_id),
         )
         conn.commit()
-        _refresh_version_merge_dependents(conn)
+        impacted_track_ids = {
+            int(row[0])
+            for row in conn.execute(
+                "SELECT track_id FROM track_group_members WHERE group_id=?",
+                (group_id,),
+            ).fetchall()
+        }
+        local_album_ids, spotify_track_ids = _track_album_impact(conn, impacted_track_ids)
+        _refresh_version_merge_dependents(
+            conn,
+            local_album_ids=local_album_ids,
+            spotify_track_ids=spotify_track_ids,
+            impact_scope_exact=True,
+        )
         return True
     except Exception:
         return False
