@@ -7,13 +7,15 @@
 - 崩溃恢复与 SSE：`PASS`
 - 响应式浏览器：`PASS`
 - 默认完整全栈：`PARTIAL`
-- 仓库：原验收分支 `codex/ai-agent-performance-v5`；实现提交 `e39c754a`、`919231fe`、`d75a562f`；2026-09-12 已随本报告本地集成到 `main`
-- 远端：`UNPUSHED`
-部署：`NOT_DEPLOYED`
+- 仓库：原验收分支 `codex/ai-agent-performance-v5`；实现提交 `e39c754a`、`919231fe`、`d75a562f`；2026-09-12 本地集成，2026-09-13 随 `b0d674bd` 推进到 `origin/main`
+- 远端：`PUSHED（origin/main，b0d674bd8a211c559aba023bbb92f18a98c80ba6）`
+- 部署：`DEPLOYED（dual，b0d674bd8a211c559aba023bbb92f18a98c80ba6）`
 
-## 2026-09-12 本地集成补记
+## 2026-09-12 本地集成与 2026-09-13 发布补记
 
-V5 已与当前本地主线完成隔离合并和回归，不再是待合并功能分支。集成保留主线的 L2/L3、全部收听时长、Billboard v4 与搜索发布门禁，并通过 migration 72/73 的幂等 repair 兼容主线与 Agent 分支曾经各自占用 schema 69 的两种历史。合并后的本地验证为：后端 unit 1672 passed / 2 skipped、contract 419 passed，前端 78 files / 622 tests 和 production build 通过。集成候选随后发布到远端 `codex/agent-v5-main-integration` 运行 No Deploy 门禁；`origin/main` 仍未更新，未生产部署，也没有改动 live SQLite。
+V5 已与当前本地主线完成隔离合并和回归，不再是待合并功能分支。集成保留主线的 L2/L3、全部收听时长、Billboard v4 与搜索发布门禁，并通过 migration 72/73 的幂等 repair 兼容主线与 Agent 分支曾经各自占用 schema 69 的两种历史。合并后的本地验证为：后端 unit 1672 passed / 2 skipped、contract 419 passed，前端 78 files / 622 tests 和 production build 通过。2026-09-12，集成候选先发布到远端 `codex/agent-v5-main-integration` 运行 No Deploy 门禁；2026-09-13，完整集成线随 `b0d674bd` 推进到 `origin/main` 并完成 dual 模式生产发布。
+
+本次发布确认三个生产容器健康、私有与公开入口可用、数据库 `integrity_check=ok` 且 92,908 条播放事实保持不变；音乐搜索 migration 73、四变体快照和语义查询运行门禁通过。V5 的问答、年度报告、恢复和 SSE 结论仍以本报告记录的独立真实验收为准，生产发布只更新代码交付状态。
 
 ## 目标与结论
 

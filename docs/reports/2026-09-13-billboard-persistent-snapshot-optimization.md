@@ -1,6 +1,6 @@
 # Billboard 持久化快照优化升级验收报告
 
-状态：`IMPLEMENTED`；验证：`PASS（本地与生产）`；远端：`PUSHED（codex/agent-v5-main-integration）`；生产：`DEPLOYED（5a5e37779a58f3c49bcaf1b5896af9d9877eba29）`。
+状态：`IMPLEMENTED`；验证：`PASS（本地与生产）`；首次生产发布：`5a5e37779a58f3c49bcaf1b5896af9d9877eba29`；当前 `origin/main` 与生产：`b0d674bd8a211c559aba023bbb92f18a98c80ba6`。
 
 日期：2026-09-13
 

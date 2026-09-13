@@ -2,6 +2,13 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-09-13 — Agent V5 主线发布与生产搜索门禁修复
+
+- Agent V5 集成线及 Billboard 持久化快照已推进到 `origin/main`；当前主线与生产版本均为 `b0d674bd8a211c559aba023bbb92f18a98c80ba6`。
+- 修复生产音乐搜索运行门禁从标准输入执行时的项目根目录解析，并显式传播数据库完整性检查和运行门禁失败，避免失败被 shell 条件上下文吞掉。
+- main 的后端/前端质量检查、三种部署模式契约、镜像构建与正式生产发布全部通过；dual 模式三个容器健康，私有与公开 loopback 入口均返回 200。
+- 生产数据库保持 92,908 条播放记录且 `integrity_check=ok`；音乐搜索 migration 73、四变体快照及精确、模糊、CJK、短 CJK 查询门禁通过。
+
 ## 2026-09-12 — Agent V5 主线集成与发布前修复
 
 - 将已经完成独立验收的 Agent Runtime V2、质量 V3/V4 和性能 V5 作为一条连续集成线合入本地 `main`；旧 V2/V3/V4 分支均已包含在 V5 中，不需要重复合并。
@@ -10,7 +17,7 @@
 - 重新生成 CI seed、OpenAPI 和前端 API 类型；本地后端 unit 1672 passed / 2 skipped、contract 419 passed，前端 78 files / 622 tests 及 production build 通过。
 - public-readonly 明确放行前端正在使用的 canonical track detail；公开详情不再被后端访问面策略伪装为 404。
 - 搜索启动恢复统一核对 active generation、当前 source revision、candidate index version 与 maintenance target；任一不一致时安排 candidate documents shadow rebuild，全部一致时保持轻量统计检查。
-- 当前集成候选只发布到 `codex/agent-v5-main-integration`；未 push `origin/main`、未生产部署，也没有改动服务器或本地主数据库。
+- 截至 2026-09-12，本次集成候选只发布到 `codex/agent-v5-main-integration`，当时尚未 push `origin/main` 或生产部署；后续主线发布状态见 2026-09-13 条目。
 
 ## 2026-09-01 — 播放次数与全部收听时长双轨统一
 
