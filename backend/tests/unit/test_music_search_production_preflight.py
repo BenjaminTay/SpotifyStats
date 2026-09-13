@@ -506,6 +506,33 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert "semantic_smoke_ms" in runtime_gate
 
 
+def test_runtime_gate_bootstrap_supports_production_stdin_execution() -> None:
+    runtime_gate = (PRODUCTION / "verify-music-search-runtime.py").read_text(encoding="utf-8")
+    bootstrap = runtime_gate.split("from backend.core.db", 1)[0]
+
+    completed = subprocess.run(
+        [sys.executable, "-"],
+        cwd=ROOT,
+        input=f"{bootstrap}\nprint(PROJECT_ROOT)\n",
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert Path(completed.stdout.strip()) == ROOT
+
+
+def test_release_safety_explicitly_propagates_runtime_gate_failures() -> None:
+    deploy = (PRODUCTION / "deploy.sh").read_text(encoding="utf-8")
+    release_safety = deploy.split("release_is_safe() {", 1)[1].split(
+        "restore_previous_release() {", 1
+    )[0]
+
+    assert "exec -T backend python - <<'PY' || return 1" in release_safety
+    assert '< "$DEPLOY_DIR/verify-music-search-runtime.py" || return 1' in release_safety
+
+
 def test_production_compose_and_workflow_ship_search_release_gates() -> None:
     compose = yaml.safe_load((PRODUCTION / "compose.yml").read_text(encoding="utf-8"))
     environment = compose["services"]["backend"]["environment"]

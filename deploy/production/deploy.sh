@@ -443,7 +443,7 @@ release_is_safe() {
   local mode="$1"
   local require_search_gate="${2:-1}"
 
-  compose_mode "$mode" exec -T backend python - <<'PY'
+  compose_mode "$mode" exec -T backend python - <<'PY' || return 1
 import sqlite3
 
 conn = sqlite3.connect("/app/data/spotify_stats.db")
@@ -457,7 +457,7 @@ PY
 
   if [[ "$require_search_gate" == "1" ]]; then
     compose_mode "$mode" exec -T backend python - \
-      < "$DEPLOY_DIR/verify-music-search-runtime.py"
+      < "$DEPLOY_DIR/verify-music-search-runtime.py" || return 1
   fi
 
   case "$mode" in
