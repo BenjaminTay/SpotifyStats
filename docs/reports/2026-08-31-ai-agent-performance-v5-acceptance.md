@@ -8,7 +8,7 @@
 - 响应式浏览器：`PASS`
 - 默认完整全栈：`PARTIAL`
 - 仓库：原验收分支 `codex/ai-agent-performance-v5`；实现提交 `e39c754a`、`919231fe`、`d75a562f`；2026-09-12 本地集成，2026-09-13 随 `b0d674bd` 推进到 `origin/main`
-- 远端：`PUSHED（origin/main，b0d674bd8a211c559aba023bbb92f18a98c80ba6）`
+- 远端：`PUSHED（origin/main，代码发布基线 b0d674bd8a211c559aba023bbb92f18a98c80ba6）`
 - 部署：`DEPLOYED（dual，b0d674bd8a211c559aba023bbb92f18a98c80ba6）`
 
 ## 2026-09-12 本地集成与 2026-09-13 发布补记
