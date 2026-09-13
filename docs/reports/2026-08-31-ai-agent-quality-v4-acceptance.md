@@ -7,8 +7,7 @@
 年度报告质量：`PASS（确定性写作回退）`
 年度报告性能：`FAIL`
 仓库：代码 `6437bdea`、`bc75a1ce`；文档提交另计
-远端：`UNPUSHED`
-部署：`NOT_DEPLOYED`
+当前交付：`SUPERSEDED_BY_V5`；V4 实现已由 V5 完成性能收口，并随 `b0d674bd` 进入 `origin/main` 与 dual 生产环境
 
 ## 安全数据边界
 

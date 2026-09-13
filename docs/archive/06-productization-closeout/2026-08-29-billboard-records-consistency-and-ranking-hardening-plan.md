@@ -1,13 +1,13 @@
 # Billboard Records 一致性与排行稳定性修复规划
 
 > 创建日期：2026-08-29
-> 状态：IMPLEMENTED；B1–B4、R1 及 6 个 Records 子页面（8 个后端记录模块、51 个列表）已完成范围验收 PASS；默认完整全栈门禁未运行，由既有门禁耗时开放项继续跟踪
+> 状态：COMPLETE / ARCHIVED；B1–B4、R1 及 6 个 Records 子页面（8 个后端记录模块、51 个列表）已完成范围验收 PASS；当时未重跑的默认完整全栈门禁由独立门禁耗时开放项继续跟踪
 > 适用范围：Billboard 预聚合有效性、Records 完整/分段接口一致性、Records 过滤参数传播、Billboard 记录与详情稳定排序、播放排行同次数排序
-> 本地提交：既有一致性修复为 `0b23c4425c1635d4f3dc36f5ccd29e0758d1749f`；本次全板块排序补充已提交为 `46fc7afa93210a74d29eec05a37d1c8f39c01269`，尚未 push
-> 部署状态：未生产部署；本次提交 `46fc7afa` 的默认完整全栈门禁未运行
-> 关联台账：[`../issues/2026-08-27-issue-register.md`](../issues/2026-08-27-issue-register.md)
-> 当前规则：[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
-> 交付证据：[`../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)
+> 交付状态：实现提交 `0b23c4425c1635d4f3dc36f5ccd29e0758d1749f` 与 `46fc7afa93210a74d29eec05a37d1c8f39c01269` 已进入 `origin/main`；当前主线 `d37e8aaf`，生产代码版本 `b0d674bd`包含两项修复
+> 历史验收边界：本计划原验收未在 `46fc7afa` 单独重跑默认完整全栈门禁；该跨项目验收尾项不再作为本计划的业务实现待办
+> 关联台账：[`../issues/2026-08-27-issue-register.md`](../../issues/2026-08-27-issue-register.md)
+> 当前规则：[`../reference/playback-stats-rules.md`](../../reference/playback-stats-rules.md)
+> 交付证据：[`../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](../../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)
 
 ## 0. 决策摘要
 
@@ -38,10 +38,10 @@
 | ID | 当前事实 | 风险 | 优先级 |
 |---|---|---|---|
 | B1 | role-only 曲目署名发布生成的 `agg_config.param_hash` 未包含当前 `track_identity_revision`，也未同步完整聚合依赖 proof；当前 hash 与读取路径期望不一致，预聚合安全回退到 raw 计算 | 结果当前正确，但冷请求约 48–54 秒，并产生 CPU、超时和 readiness 误判风险 | P0 |
-| B2 | [`chart_staged_cache.py`](../../backend/domains/billboard/chart_staged_cache.py) 在 featured artist 展示名 enrichment 之前计算 track Power Score；完整 [`chart_compute.py`](../../backend/domains/billboard/chart_compute.py) 顺序相反 | `/billboard/data.records` 与 `/billboard/records.records` 的一条合作曲目 `artist_name` 不一致；指标未受影响 | P1 |
-| B3 | [`RecordsPage.tsx`](../../frontend/src/pages/RecordsPage.tsx) 只向 `useBillboard()` 传 `merge_level`，其他参数依赖服务端设置和 API 默认值；艺人详情使用完整 `buildBillboardContextParams()` | 当前 Taylor 在 dynamic/fixed 下均为 34，但其他实体或非默认参数可能再次跨页漂移 | P0 |
+| B2 | [`chart_staged_cache.py`](../../../backend/domains/billboard/chart_staged_cache.py) 在 featured artist 展示名 enrichment 之前计算 track Power Score；完整 [`chart_compute.py`](../../../backend/domains/billboard/chart_compute.py) 顺序相反 | `/billboard/data.records` 与 `/billboard/records.records` 的一条合作曲目 `artist_name` 不一致；指标未受影响 | P1 |
+| B3 | [`RecordsPage.tsx`](../../../frontend/src/pages/RecordsPage.tsx) 只向 `useBillboard()` 传 `merge_level`，其他参数依赖服务端设置和 API 默认值；艺人详情使用完整 `buildBillboardContextParams()` | 当前 Taylor 在 dynamic/fixed 下均为 34，但其他实体或非默认参数可能再次跨页漂移 | P0 |
 | B4 | 6 个 Records 子页面、8 个后端记录模块的 51 个可见列表中，部分列表只声明主要指标排序，没有统一的业务二级指标和最终稳定实体键 | 同值条目可能在重建、输入乱序或 Top N 截止边界上交换位置；计数事实不变但用户顺序不稳定 | P1 |
-| R1 | [`chart_rows()`](../../backend/services/analysis_stats_service.py) 对 `metric=plays` 使用 `plays DESC, plays DESC` | 用户看到的同次数顺序没有时长或稳定键保证；与 Billboard 周榜规则不同 | P1，独立工作流 |
+| R1 | [`chart_rows()`](../../../backend/services/analysis_stats_service.py) 对 `metric=plays` 使用 `plays DESC, plays DESC` | 用户看到的同次数顺序没有时长或稳定键保证；与 Billboard 周榜规则不同 | P1，独立工作流 |
 
 Taylor Swift 当前四变体基线必须保留：L2/L3 × dynamic/fixed 下，Records、`artist_track_counts.top1`、艺人详情 `info.top1`、详情冠军曲与周榜有效署名均为 34；稳定 `track_id` 集合差集为空，301 首上榜歌曲逐行指标差异为 0。
 
@@ -85,7 +85,7 @@ credit membership、identity、track credit、track identity、album project
 等依赖 proof 全部与当前事实一致。
 ```
 
-role-only 变化只允许推进“证明”和候选展示 revision，不得重算或改写 `agg_weekly_*` 事实行。实现时应在 [`backend/core/db.py`](../../backend/core/db.py) 提取一个事务内可复用的聚合 proof 刷新函数，由全量、增量、artist identity 和 track-credit role-only 发布共同调用；禁止继续在 service 中手写不完整的 `_agg_param_hash(...)` 参数列表。
+role-only 变化只允许推进“证明”和候选展示 revision，不得重算或改写 `agg_weekly_*` 事实行。实现时应在 [`backend/core/db.py`](../../../backend/core/db.py) 提取一个事务内可复用的聚合 proof 刷新函数，由全量、增量、artist identity 和 track-credit role-only 发布共同调用；禁止继续在 service 中手写不完整的 `_agg_param_hash(...)` 参数列表。
 
 ### 3.2 Records 接口一致性
 
@@ -158,9 +158,9 @@ bb_week_start_hour
 
 涉及文件：
 
-- [`backend/core/db.py`](../../backend/core/db.py)
-- [`backend/services/track_credit_rebuild_service.py`](../../backend/services/track_credit_rebuild_service.py)
-- [`backend/tests/unit/test_track_credit_rebuild.py`](../../backend/tests/unit/test_track_credit_rebuild.py)
+- [`backend/core/db.py`](../../../backend/core/db.py)
+- [`backend/services/track_credit_rebuild_service.py`](../../../backend/services/track_credit_rebuild_service.py)
+- [`backend/tests/unit/test_track_credit_rebuild.py`](../../../backend/tests/unit/test_track_credit_rebuild.py)
 - 聚合命中/一致性 contract tests
 
 实施内容：
@@ -177,9 +177,9 @@ bb_week_start_hour
 
 涉及文件：
 
-- [`backend/domains/billboard/chart_compute.py`](../../backend/domains/billboard/chart_compute.py)
-- [`backend/domains/billboard/chart_staged_cache.py`](../../backend/domains/billboard/chart_staged_cache.py)
-- [`backend/domains/billboard/records*.py`](../../backend/domains/billboard/)
+- [`backend/domains/billboard/chart_compute.py`](../../../backend/domains/billboard/chart_compute.py)
+- [`backend/domains/billboard/chart_staged_cache.py`](../../../backend/domains/billboard/chart_staged_cache.py)
+- [`backend/domains/billboard/records*.py`](../../../backend/domains/billboard/)
 - Billboard unit/contract tests
 
 实施内容：
@@ -196,9 +196,9 @@ bb_week_start_hour
 
 涉及文件：
 
-- [`frontend/src/pages/RecordsPage.tsx`](../../frontend/src/pages/RecordsPage.tsx)
-- [`frontend/src/hooks/useBillboard.ts`](../../frontend/src/hooks/useBillboard.ts)
-- [`frontend/src/features/billboard/billboardContext.ts`](../../frontend/src/features/billboard/billboardContext.ts)
+- [`frontend/src/pages/RecordsPage.tsx`](../../../frontend/src/pages/RecordsPage.tsx)
+- [`frontend/src/hooks/useBillboard.ts`](../../../frontend/src/hooks/useBillboard.ts)
+- [`frontend/src/features/billboard/billboardContext.ts`](../../../frontend/src/features/billboard/billboardContext.ts)
 - `queryKeys.billboard` 与前端测试
 
 实施内容：
@@ -215,10 +215,10 @@ bb_week_start_hour
 
 涉及文件：
 
-- [`backend/domains/billboard/records_championship.py`](../../backend/domains/billboard/records_championship.py)
-- [`backend/domains/billboard/records_longevity.py`](../../backend/domains/billboard/records_longevity.py)、[`records_endurance.py`](../../backend/domains/billboard/records_endurance.py)、[`records_movement.py`](../../backend/domains/billboard/records_movement.py)、[`records_hall_of_fame.py`](../../backend/domains/billboard/records_hall_of_fame.py)、[`records_quirky.py`](../../backend/domains/billboard/records_quirky.py)、[`records_market.py`](../../backend/domains/billboard/records_market.py)、[`records_self_replacement_blocker.py`](../../backend/domains/billboard/records_self_replacement_blocker.py)
-- [`backend/domains/billboard/record_sorting.py`](../../backend/domains/billboard/record_sorting.py)
-- [`backend/services/analysis_stats_service.py`](../../backend/services/analysis_stats_service.py) 与对应前端 Records 组件
+- [`backend/domains/billboard/records_championship.py`](../../../backend/domains/billboard/records_championship.py)
+- [`backend/domains/billboard/records_longevity.py`](../../../backend/domains/billboard/records_longevity.py)、[`records_endurance.py`](../../../backend/domains/billboard/records_endurance.py)、[`records_movement.py`](../../../backend/domains/billboard/records_movement.py)、[`records_hall_of_fame.py`](../../../backend/domains/billboard/records_hall_of_fame.py)、[`records_quirky.py`](../../../backend/domains/billboard/records_quirky.py)、[`records_market.py`](../../../backend/domains/billboard/records_market.py)、[`records_self_replacement_blocker.py`](../../../backend/domains/billboard/records_self_replacement_blocker.py)
+- [`backend/domains/billboard/record_sorting.py`](../../../backend/domains/billboard/record_sorting.py)
+- [`backend/services/analysis_stats_service.py`](../../../backend/services/analysis_stats_service.py) 与对应前端 Records 组件
 - 对应 unit/integration tests
 
 实施内容：

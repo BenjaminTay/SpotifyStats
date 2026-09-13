@@ -1,10 +1,11 @@
 # 播放记录全板块统计正确性与稳定排序修复规划
 
 > 创建日期：2026-08-30
-> 状态：IMPLEMENTED；真实 API/浏览器内容验收因冷计算阻塞，待低干扰窗口复验
+> 状态：COMPLETE / ARCHIVED；业务实现、自动化测试和真实数据只读探针已完成
 > 适用范围：`/analysis/records` 的 5 个页面板块、20 个可见模块，以及其 API-only 播放记录模块
-> 当前实现：后端统计/排序、前端精确值、自动化测试、真实数据库只读探针和文档已完成；真实 API/浏览器内容验收未闭环
-> 当前规则：[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
+> 交付状态：实现提交 `918816b3` 与页面收口提交 `8d61b3c2` 已进入 `origin/main`；当前主线 `d37e8aaf`，生产代码版本 `b0d674bd` 包含该实现及后续 `ffb7c101` 冷路径修复
+> 历史验收边界：2026-08-30 专项报告当时的真实 API/页面内容验收因冷计算阻塞；后续门禁性能与重页面验收统一由开放的全栈门禁计划跟踪，不再作为本业务实现计划的待办
+> 当前规则：[`../reference/playback-stats-rules.md`](../../reference/playback-stats-rules.md)
 
 ## 1. 目标与问题边界
 

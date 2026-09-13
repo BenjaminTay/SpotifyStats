@@ -1,6 +1,7 @@
 # L2 自动归并治理执行与验收报告
 
 > 状态：Pass。规则收口、代码实现、克隆演练、真实数据库治理、派生重建、真实 API、双视口浏览器和默认完整全栈门禁均已完成。证据日期：2026-08-30 至 2026-08-31；当前终态以第 8 节 v3 追补为准。
+> 当前交付：实现已进入 `origin/main`，并包含在 dual 生产代码版本 `b0d674bd`；本报告的数据库数字仍是当时验收快照。
 > 当前规则：[`../reference/music-metadata-management.md`](../reference/music-metadata-management.md)、[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
 
 ## 1. 最终口径
@@ -118,7 +119,7 @@ L2 的“同艺人 + 同歌名”仍是主规则。标题规范化会合并简�
 - 回滚优先恢复本报告记录的 Online Backup；搜索 snapshot 和 Year-End 投影是可重建派生数据。
 - 核心收紧提交：`7a0ec623 fix: 收紧 L2 自动归并与治理发布门禁`。
 - 代表详情解析提交：`7e91e8e5 fix: 修复 L2 代表曲目详情解析`。
-- 本轮只在本地提交，未 push、未部署；真实数据库和 backup 不进入 Git。
+- 原始验收轮当时只在本地提交；2026-09-13 后续交付已将对应代码推进到 `origin/main` 并随 `b0d674bd` 部署。真实数据库和 backup 始终不进入 Git。
 
 ## 8. v3 同名强归并追补与最终终验（2026-08-31）
 

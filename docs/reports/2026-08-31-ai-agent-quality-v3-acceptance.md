@@ -4,8 +4,7 @@
 实现状态：`IMPLEMENTED`
 验证状态：`PASS（AI 功能范围）`
 仓库状态：代码 `COMMITTED 1b75ae3d`；文档提交另计
-远端状态：`UNPUSHED`
-部署状态：`NOT_DEPLOYED`
+当前交付状态：`SUPERSEDED_BY_V5`；V3 实现已经 V4/V5 继承，并随 `b0d674bd` 进入 `origin/main` 与 dual 生产环境
 
 ## 验收范围
 
@@ -17,7 +16,7 @@
 - 副本 `PRAGMA quick_check=ok`，119 张表、92,908 条 `plays`，文件大小 444,588,032 bytes。
 - 所有真实 Agent 工具均为已注册只读工具；未执行任意 SQL、任意 URL、设置、导入、缓存或歌单写入。
 - Provider 配置只核对启用状态、Provider、模型和 Key 存在性/长度；未输出 Key 值。
-- 本轮没有 push、部署或修改生产库。
+- 本报告对应的 V3 验收轮当时没有 push、部署或修改生产库；当前交付状态以上述 V5 集成结论为准。
 
 ## 真实模型门禁
 

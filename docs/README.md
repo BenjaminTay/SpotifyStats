@@ -52,10 +52,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
-- [`plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：B1–B4、R1 及 6 个 Records 子页面（8 个后端记录模块、51 个列表）已完成范围验收；默认完整全栈门禁由既有耗时项继续跟踪
-- [`plans/2026-08-30-playback-records-correctness-and-ranking-plan.md`](plans/2026-08-30-playback-records-correctness-and-ranking-plan.md)：播放记录 5 个板块、20 个可见模块及 API-only 模块的统计正确性、完整候选集和稳定二级排序修复
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
-- [`plans/2026-09-12-billboard-persistent-snapshot-optimization-plan.md`](plans/2026-09-12-billboard-persistent-snapshot-optimization-plan.md)：Billboard 周榜、年榜、总榜持久化快照与事件驱动后台重建，当前实现中
 
 ## 已确认但仍有实现参考价值的设计
 
@@ -106,6 +103,10 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 - [`archive/06-productization-closeout/2026-08-16-music-search-direction-realignment.md`](archive/06-productization-closeout/2026-08-16-music-search-direction-realignment.md)：由后续零停机方案和当前 reference 接管的搜索方向文档
 - [`archive/06-productization-closeout/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md`](archive/06-productization-closeout/2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md)：Settings 重建与数据治理已完成计划
 - [`archive/06-productization-closeout/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md`](archive/06-productization-closeout/2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md)：搜索 LKG、任务竞态与署名增量已完成计划
+- [`archive/06-productization-closeout/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](archive/06-productization-closeout/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：已完成的 Billboard Records 一致性、全板块稳定排序与播放排行同值裁决计划
+- [`archive/06-productization-closeout/2026-08-30-playback-records-correctness-and-ranking-plan.md`](archive/06-productization-closeout/2026-08-30-playback-records-correctness-and-ranking-plan.md)：已完成的播放记录全板块统计正确性和稳定排序计划；后续冷路径与门禁优化由全栈门禁计划接管
+- [`archive/06-productization-closeout/2026-09-12-billboard-persistent-snapshot-optimization-plan.md`](archive/06-productization-closeout/2026-09-12-billboard-persistent-snapshot-optimization-plan.md)：已上线的 Billboard 周榜、年榜、总榜持久快照、后台重建与回滚兼容性门禁计划
+- [`archive/06-productization-closeout/2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md`](archive/06-productization-closeout/2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md)：已完成的等价发行、stable work、归属 coverage 与 L1 风险分类实施计划
 - [`archive/01-streamlit-mvp/`](archive/01-streamlit-mvp/) 至 [`archive/05-yearly-report-genre/`](archive/05-yearly-report-genre/)：早期开发阶段
 
 ## 文档维护规则
@@ -115,4 +116,3 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 - 已完成计划不得继续留在 `plans/`；被替代的设计必须标记替代入口。
 - 根目录 `AGENTS.md` 与 `CLAUDE.md` 保持一致，详细领域规则通过链接引用。
 - 新增或移动文档后运行 `python3 scripts/docs_audit.py`。
-- [`archive/06-productization-closeout/2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md`](archive/06-productization-closeout/2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md)：已完成的等价发行、stable work、归属 coverage 与 L1 风险分类实施计划

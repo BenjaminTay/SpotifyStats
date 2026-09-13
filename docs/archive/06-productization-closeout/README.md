@@ -1,6 +1,6 @@
 # 近期产品化收口归档
 
-本目录保存 2026-08 产品化收口阶段已经完成、但仍有回溯价值的计划、设计和专项治理方案。
+本目录保存 2026-08 至 2026-09 产品化收口阶段已经完成、但仍有回溯价值的计划、设计和专项治理方案。
 
 ## 当前替代入口
 
@@ -20,5 +20,9 @@
 - [`2026-08-16-music-search-direction-realignment.md`](2026-08-16-music-search-direction-realignment.md)：候选/统计解耦与生产复用的历史方向，由 2026-08-28 方案和当前 reference 接管。
 - [`2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md`](2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md)：设置重建状态与数据治理已完成方案；真实清理仍保留独立授权边界。
 - [`2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md`](2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md)：搜索 LKG、影子 generation、revision 竞态与曲目署名增量维护已完成方案。
+- [`2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：Billboard Records 一致性、51 个列表的稳定排序和播放排行同值裁决已完成；历史默认门禁未重跑边界由全栈门禁开放项继续跟踪。
+- [`2026-08-30-playback-records-correctness-and-ranking-plan.md`](2026-08-30-playback-records-correctness-and-ranking-plan.md)：播放记录 5 个板块、20 个可见模块及 API-only 模块的统计与排序修复已完成；历史冷路径验收尾项已移交统一门禁计划。
+- [`2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md`](2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md)：等价发行、stable work、归属 coverage 与 L1 风险分类已完成的实施计划。
+- [`2026-09-12-billboard-persistent-snapshot-optimization-plan.md`](2026-09-12-billboard-persistent-snapshot-optimization-plan.md)：Billboard 周榜、年榜、总榜持久快照与事件驱动后台重建已完成并在生产上线。
 
 归档文件保留设计过程、决策和实施边界，不再作为新的开发计划直接执行。若归档内容与当前代码或 `reference/` 冲突，以当前实现和当前参考规则为准。

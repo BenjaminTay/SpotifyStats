@@ -1,10 +1,10 @@
 # 播放记录全板块统计正确性与稳定排序修复交付
 
 > 日期：2026-08-30
-> 状态：PARTIAL（代码、自动化测试和真实数据库只读探针已完成；真实 API/页面内容验收受冷计算阻塞）
-> 关联规划：[`../plans/2026-08-30-playback-records-correctness-and-ranking-plan.md`](../plans/2026-08-30-playback-records-correctness-and-ranking-plan.md)
+> 状态：IMPLEMENTED；2026-08-30 历史专项验收为 PARTIAL（真实 API/页面内容验收受冷计算阻塞），后续冷路径与门禁优化由全栈门禁计划统一跟踪
+> 关联规划：[`../archive/06-productization-closeout/2026-08-30-playback-records-correctness-and-ranking-plan.md`](../archive/06-productization-closeout/2026-08-30-playback-records-correctness-and-ranking-plan.md)
 > 当前规则：[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
-> 部署状态：未部署；未 push
+> 交付状态：实现提交 `918816b3`、`8d61b3c2` 及后续冷路径修复 `ffb7c101` 已进入 `origin/main`，并包含在 dual 生产代码版本 `b0d674bd`
 
 ## 1. 交付结论
 
@@ -66,7 +66,7 @@ behavior_playback_milestones.total_plays：66,419
 
 ## 6. 提交与回滚
 
-提交前只允许 stage 播放记录源码、测试和文档路径；年度总结、生成 API 文件及其他 dirty 文件必须保持原样。未执行生产部署和 push。回滚不需要恢复原始播放数据，只需回退播放记录代码/规则提交并清理对应进程 LRU 缓存。
+原始专项验收的提交前范围只允许 stage 播放记录源码、测试和文档路径；年度总结、生成 API 文件及其他 dirty 文件必须保持原样。该轮当时未执行生产部署和 push，当前交付状态以报告顶部的 2026-09-13 追记为准。回滚不需要恢复原始播放数据，只需回退播放记录代码/规则提交并清理对应进程 LRU 缓存。
 
 ## 7. 2026-08-30 页面文案收口（后续补充）
 

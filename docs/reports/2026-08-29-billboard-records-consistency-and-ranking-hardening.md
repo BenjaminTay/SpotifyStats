@@ -4,9 +4,9 @@
 > 状态：PASS（本修复范围）；默认完整全栈门禁未运行，由既有耗时开放项继续跟踪
 > 实施基线：detached HEAD `c21ad22841dcc98b3ce7fa20c9306d4830a1da15`
 > 本地提交：`0b23c4425c1635d4f3dc36f5ccd29e0758d1749f`
-> 仓库状态：原一致性修复已在本地 `main` 提交为 `0b23c442`；2026-08-30 全板块排序补充已提交为 `46fc7afa93210a74d29eec05a37d1c8f39c01269`，尚未 push
-> 部署状态：未将 `0b23c442` 或 `46fc7afa` 部署到生产；验收期间未用修复代码替换主 checkout 正在运行的服务
-> 关联规划：[`../plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](../plans/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)
+> 仓库状态：`0b23c442` 与 `46fc7afa93210a74d29eec05a37d1c8f39c01269` 已进入 `origin/main`；当前主线 `d37e8aaf`
+> 部署状态：对应实现已包含在 dual 生产代码版本 `b0d674bd`；本报告中的服务隔离描述仍是 2026-08-29 历史验收证据
+> 关联规划：[`../archive/06-productization-closeout/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](../archive/06-productization-closeout/2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)
 
 ## 1. 最终结论
 
@@ -133,7 +133,7 @@ contract 完整轮退出码为 0；pytest 临时数据库清理后出现一次�
 
 - 收尾时主 checkout 服务仍在线：后端 `/docs` 与 `/api/settings` 为 HTTP 200，前端 `http://localhost:5173/` 为 HTTP 200；localhost 探针需绕过当前 shell 的外网代理。
 - 未运行默认完整 `fullstack_verification_check.sh`。该门禁已有独立 `SS-2026-08-24-004` 耗时开放项；本轮已完成后端全量 unit/contract、前端全量测试/build、真实数据库副本、主库 proof 和真实浏览器验收，因此本修复范围判定 PASS，整站默认门禁状态不据此改变。
-- 修复已在本地 `main` 提交为 `0b23c442`，尚未 push，也未部署到生产。验收期间未用修复代码替换主 checkout 正在运行的服务；主库派生事实已刷新，后续部署代码时仍需按常规流程重启后端以清空旧进程内缓存。
+- 原始专项验收期间未用修复代码替换主 checkout 正在运行的服务；后续已将 `0b23c442` 与 `46fc7afa` 推进到 `origin/main`，并随 `b0d674bd` 完成生产发布。本报告中的验收数字仍是当时证据快照。
 - 如需数据回滚，可在停止写入后使用上述 Online Backup 恢复；排序与参数传播只需回退对应代码，不需要恢复原始事实表。
 
 ## 6. 2026-08-30 Records 全板块排序补充

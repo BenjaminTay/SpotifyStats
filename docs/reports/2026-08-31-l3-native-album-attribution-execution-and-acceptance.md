@@ -10,9 +10,9 @@
 >
 > 默认完整全栈门禁：PASS（7 个必需阶段全部通过）
 >
-> 远端状态：UNPUSHED
+> 远端状态：PUSHED（`origin/main`；当前主线 `d37e8aaf`）
 >
-> 部署状态：NOT_DEPLOYED
+> 部署状态：DEPLOYED（dual；生产代码版本 `b0d674bd`）
 
 ## 1. 结论
 
@@ -153,4 +153,4 @@ Chromium、Firefox、WebKit 全部通过。
 - `fec889c0 feat: 实现 L3 歌曲原生专辑归属`
 - `321cb9b5 fix: 补齐 L3 嵌套版本自动归并`
 - 最终验收与详情快路径已在同一个阶段级提交中收口；提交 hash 以当前 Git 历史为准。
-- 未 push，未部署；本轮没有获得这两项授权。
+- 原始验收轮当时未获得 push 和部署授权；2026-09-13 后续交付已将对应代码推进到 `origin/main` 并随 `b0d674bd` 部署。
