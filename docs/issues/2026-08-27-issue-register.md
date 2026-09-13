@@ -3,13 +3,13 @@
 > 状态：持续维护
 > 首次建立：2026-08-27
 > 最后核验：2026-09-13
-> 最近核验基线（2026-09-13）：本地 `main` 与 `origin/main` 同为 `d37e8aaf`；生产代码版本为 `b0d674bd`，其已包含播放次数/全部收听时长、L2/L3、Agent V5、Billboard 持久快照与搜索运行门禁修复。`b0d674bd..d37e8aaf` 仅为交付状态文档，不是待部署业务代码。
+> 最近核验基线（2026-09-13，发布前）：本地 `main=5bcfc5de`，相对 `origin/main=d37e8aaf` ahead 5；生产代码版本为 `b0d674bd`。本地新增 L1 导入防复发、provider-first 时长、人工关系单事务刷新和全栈门禁编排加固；默认完整门禁与真实 Agent smoke 已通过，push/部署状态见后续发布报告。
 
 ## 当前开放与未闭环事项
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 |
 |---|---|---|---|---|
-| `SS-2026-08-24-004` | 全栈总门禁时间过长，且并发性能竞争、冷建等待和失败后整轮重跑放大交付成本 | `PARTIAL` · P1-A/P1-B 已完成 | 廉价 preflight、跨工作区 `fcntl` 锁和 run-id 独立 summary 已由本地提交 `8326169f` 实现；真实 `--only preflight` PASS，定向测试 23 passed。历史完整运行仍约 27–34 分钟，冷建 readiness、`pytest --durations=100` 剖析、安全并行和严格 evidence manifest 续跑尚未完成。见 [`fullstack-gate-duration-optimization-plan.md`](../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)。 | 先用新门禁跑当前提交的默认完整验收并记录 durations；再按实测瓶颈完成 P1-C/P1-D，不降低覆盖、三浏览器和 500ms 阈值。 |
+| `SS-2026-08-24-004` | 全栈总门禁时间过长，且并发性能竞争、冷建等待和失败后整轮重跑放大交付成本 | `PARTIAL` · P1-A/P1-B 已完成 | 廉价 preflight、跨工作区 `fcntl` 锁和 run-id 独立 summary 已由提交 `8326169f` 实现。当前 `5bcfc5de` 默认完整门禁全部必需阶段 PASS，但实测总耗时 2,832,355ms（约 47 分钟），其中 backend 约 18.8 分钟、API 约 10.5 分钟、browser routes 约 9.2 分钟；说明正确性已闭环但 25 分钟耗时目标仍未达到。见 [`收口与发布报告`](../reports/2026-09-13-development-closeout-and-release.md)。 | 基于本次 run-id evidence 做 `pytest --durations=100` 与 API/浏览器阶段剖析，再评估不降低覆盖、三浏览器和 500ms 阈值的安全并行；严格 evidence manifest 单独续做。 |
 | `SS-2026-08-06-005` | PWA/移动网页完成后，iPhone Safari 与 Android Chrome 真机安装、返回、安全区和 OAuth 验收仍未完成；Capacitor 尚未决策 | `PARTIAL` · 路线尾项 | 当前规划明确写为等待真机验收，不能把本地浏览器验收当作真机完成。见 [`appification-pwa-capacitor-plan.md`](../plans/2026-08-06-appification-pwa-capacitor-plan.md)。 | 有真实设备和 HTTPS/认证条件后再做真机验收；在此之前不宣称已完成 App 化。 |
 
 ## 排序规则：当前实现

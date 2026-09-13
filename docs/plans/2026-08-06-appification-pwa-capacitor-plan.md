@@ -1,6 +1,6 @@
 # SpotifyStats App 化路线：PWA → 安全部署 → Capacitor
 
-> 状态：`PARTIAL / EXTERNAL`；PWA Phase A、私网 HTTPS 服务器基线与双运行面工程已有带日期交付证据，当前外部可用性、双平台真机、OAuth、异机备份和分发决策尚未闭环，Capacitor 未实施<br>
+> 状态：`PARTIAL / EXTERNAL`；PWA Phase A、私网 HTTPS 服务器基线与双运行面工程已有带日期交付证据，当前外部可用性、双平台真机、OAuth 和异机备份尚未闭环；2026-09-13 决定在没有原生分发需求和真机前置证据时不实施 Capacitor<br>
 > 日期：2026-08-06<br>
 > 前置阶段：[`2026-08-05-mobile-web-design-and-implementation-plan.md`](../archive/06-productization-closeout/2026-08-05-mobile-web-design-and-implementation-plan.md)
 
@@ -98,5 +98,12 @@ PWA 安装并不会自动让手机访问 Mac 上的 SQLite。必须先在以下�
 - [ ] iPhone Safari 与 Android Chrome PWA 真机安装、standalone、安全区、软键盘和返回链路验收通过。
 - [ ] Spotify OAuth 从真实 PWA/HTTPS 入口发起并成功回跳。
 - [ ] 明确是否需要 App Store / Android 安装包分发及相应签名、隐私和删除说明。
+
+### 7.4 2026-09-13 当前决策
+
+本轮遗留开发收口不新增 Capacitor 工程。原因不是 PWA 壳层缺失，而是当前没有明确的 App Store /
+Android 安装包分发需求，且双平台 PWA 真机、真实 OAuth 回跳和异机备份仍未形成新证据。继续使用
+现有 PWA 与私有 HTTPS 运行面；未来只有在上述前置条件通过并确认原生分发价值后，才把 Phase D
+重新转为实施任务。
 
 在上述条件完成前，状态保持 `PARTIAL / EXTERNAL`，不得描述为“App 化完成”或“Capacitor 已交付”。

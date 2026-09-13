@@ -2,6 +2,14 @@
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
+## 2026-09-13 — 遗留开发收口与发布候选
+
+- 增加未知 Spotify Track ID 的 L1 导入防复发和统一 provider-first 时长解析；人工专辑关系、歌曲关系、Album Project 与 L3 派生刷新纳入同一事务，并公开 targeted/full 刷新证据。
+- 全栈门禁增加廉价 preflight、跨工作区 `fcntl` 锁和 run-id 独立 summary；当前候选的默认完整门禁 2,767 项后端测试、148/148 API smoke、113/113 boundary、三浏览器和 1,914 个控件库存全部通过。
+- 当前 DeepSeek 配置下 Agent V5 的 10 个真实问答、2 个年度报告、SSE 中点续传和持久恢复轨迹通过；年度报告冷/热耗时分别为 45.6 秒和 32.7 秒，12 个段落均由模型接受且无 fallback。
+- L1 真实库与 Online Backup 复审保持 92,908 条播放；600 个 review 缺少安全唯一目标，自动操作为 0，因此不对主库强行写入。
+- Capacitor 保持未实施：没有明确原生分发需求且双平台 PWA 真机、OAuth 与异机备份前置证据尚未闭环。
+
 ## 2026-09-13 — Agent V5 主线发布与生产搜索门禁修复
 
 - Agent V5 集成线及 Billboard 持久化快照已推进到 `origin/main`；当前生产代码版本为 `b0d674bd8a211c559aba023bbb92f18a98c80ba6`，主线在其后仅增加交付状态文档。
