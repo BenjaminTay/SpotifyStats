@@ -368,3 +368,23 @@ L2/L3 身份与专辑归属修复的最终验收进一步证明，当前问题�
 - 晚阶段失败后的安全复验：局部反馈不高于 5 分钟；未来 composed evidence 的汇总时间不高于 1 分钟。
 - 连续三次低干扰默认运行不得出现共享状态、固定 summary 路径、并发 benchmark 或冷建 marker 造成的
   偶发失败。
+
+## 12. 2026-09-13 P1-A / P1-B 实施结果
+
+P1-A 与 P1-B 的基础编排已经实现：默认完整门禁新增首个必需阶段 `preflight`，在完整后端测试之前执行
+`git diff --check`、migration 注册表连续性与最新版本断言、Python/Shell/Node 脚本语法检查、包含 archive
+的文档审计，以及 OpenAPI operation/parameter 静态覆盖审计。OpenAPI 静态审计已从 `api` 阶段前移，
+避免同一轮重复执行；局部 `--only` / `--from` 仍保留显式跳过 preflight 的排障能力，并继续标记为
+`PARTIAL`。
+
+每次运行现在生成唯一 run ID，规范证据写入
+`/tmp/spotify-fullstack-verification/<run-id>/summary.json`，并以原子 symlink 更新 `latest`。旧调用方仍可
+使用 `--summary-json` / `SUMMARY_JSON` 获得兼容副本，但不同 worktree 不再共享一个规范 summary 文件。
+
+`api`、全部浏览器阶段和 `optional` 共享/性能探针已由 Python `fcntl` 主机级锁串行化；显式设置真实
+数据库副本时，`backend` 也进入排他区。锁竞争会记录持有者 PID、worktree、Git SHA、开始时间与当前
+stage，并返回 `BLOCKED`，不再把并发争用误判为性能 `FAIL`。锁状态同时进入本轮 run-scoped summary。
+
+P1-A / P1-B 不包含 CPU/内存压力采样、服务启动时间、cache revision 与 cold/warm 分类；这些仍属于
+P1-C/P1-D 的后续可观测性和冷建解耦范围。本规划继续保留在 `plans/`，直至默认完整门禁的稳定性、
+冷建分层和量化耗时目标完成验收。

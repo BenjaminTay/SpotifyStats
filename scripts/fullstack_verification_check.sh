@@ -10,11 +10,11 @@ PREVIEW_URL=${PREVIEW_URL:-}
 PREVIEW_API_URL=${PREVIEW_API_URL:-$BACKEND_URL}
 BENCHMARK_RUNS=${BENCHMARK_RUNS:-22}
 SLOW_MS=${SLOW_MS:-500}
-BENCHMARK_JSON=${BENCHMARK_JSON:-/tmp/spotify_api_benchmark.json}
-OPENAPI_OPERATION_AUDIT_JSON=${OPENAPI_OPERATION_AUDIT_JSON:-/tmp/spotify_openapi_operation_audit.json}
-OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON=${OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON:-/tmp/spotify_openapi_parameter_boundary_audit.json}
+BENCHMARK_JSON=${BENCHMARK_JSON:-}
+OPENAPI_OPERATION_AUDIT_JSON=${OPENAPI_OPERATION_AUDIT_JSON:-}
+OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON=${OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON:-}
 RUN_QUICKSTART_PREFLIGHT=${RUN_QUICKSTART_PREFLIGHT:-0}
-QUICKSTART_JSON=${QUICKSTART_JSON:-/tmp/spotify_quickstart_timing.json}
+QUICKSTART_JSON=${QUICKSTART_JSON:-}
 RUN_CROSS_BROWSER=${RUN_CROSS_BROWSER:-1}
 RUN_WEB_VITALS=${RUN_WEB_VITALS:-0}
 RUN_RESOURCE_SNAPSHOT=${RUN_RESOURCE_SNAPSHOT:-0}
@@ -26,11 +26,14 @@ WEB_VITALS_MAX_TBT_MS=${WEB_VITALS_MAX_TBT_MS:-}
 WEB_VITALS_MAX_RESOURCE_COUNT=${WEB_VITALS_MAX_RESOURCE_COUNT:-}
 WEB_VITALS_MAX_ENCODED_RESOURCE_KB=${WEB_VITALS_MAX_ENCODED_RESOURCE_KB:-}
 WEB_VITALS_MAX_SCROLL_OVERFLOW_PX=${WEB_VITALS_MAX_SCROLL_OVERFLOW_PX:-}
-RESOURCE_SNAPSHOT_JSON=${RESOURCE_SNAPSHOT_JSON:-/tmp/spotify_runtime_resources.json}
-SUMMARY_JSON=${SUMMARY_JSON:-/tmp/spotify_fullstack_verification.json}
+RESOURCE_SNAPSHOT_JSON=${RESOURCE_SNAPSHOT_JSON:-}
+SUMMARY_JSON=${SUMMARY_JSON:-}
+FULLSTACK_RUN_ROOT=${FULLSTACK_RUN_ROOT:-${TMPDIR:-/tmp}/spotify-fullstack-verification}
+FULLSTACK_LOCK_FILE=${FULLSTACK_LOCK_FILE:-${TMPDIR:-/tmp}/spotify-fullstack-verification.lock}
+FULLSTACK_LOCK_METADATA_FILE=${FULLSTACK_LOCK_METADATA_FILE:-${FULLSTACK_LOCK_FILE}.owner.json}
 
-ALL_STAGES="quality backend api browser-routes browser-interactions browser-inventory browser-compat optional"
-REQUIRED_STAGES="quality backend api browser-routes browser-interactions browser-inventory browser-compat"
+ALL_STAGES="preflight quality backend api browser-routes browser-interactions browser-inventory browser-compat optional"
+REQUIRED_STAGES="preflight quality backend api browser-routes browser-interactions browser-inventory browser-compat"
 SELECTION_MODE=full
 ONLY_STAGES=
 FROM_STAGE=
@@ -45,6 +48,12 @@ STARTED_AT=
 START_EPOCH_MS=
 REPORT_PYTHON=
 PYTHON_PLAYWRIGHT_RESOLVED=
+RUN_ID=
+RUN_DIR=
+RUN_SUMMARY_JSON=
+LATEST_POINTER=
+LOCK_PID=
+LOCK_STATUS_FILE=
 
 usage() {
   cat <<'EOF'
@@ -61,7 +70,7 @@ Stage selection:
   --only <a,b>              Run only the comma-separated stages; result is PARTIAL
   --from <stage>            Run the required stage suffix; result is PARTIAL
   --dry-run                 Resolve stages and write a NOT_RUN summary without checks
-  --summary-json <path>     Stage summary, default /tmp/spotify_fullstack_verification.json
+  --summary-json <path>     Compatibility copy of the run-scoped stage summary
 
 Options:
   --backend-url <url>       Backend URL for API benchmark, default http://127.0.0.1:8000
@@ -70,7 +79,7 @@ Options:
   --preview-api-url <url>   Backend URL used by preview smoke request rewriting
   --benchmark-runs <n>      Number of benchmark requests per endpoint, default 22
   --slow-ms <ms>            API hot P95 slow threshold, default 500
-  --benchmark-json <path>   JSON benchmark output path, default /tmp/spotify_api_benchmark.json
+  --benchmark-json <path>   JSON benchmark output path, default inside the run directory
   --openapi-operation-audit-json <path>
                            OpenAPI operation audit JSON output path
   --openapi-parameter-boundary-audit-json <path>
@@ -105,7 +114,9 @@ Options:
   -h, --help               Show this help
 
 Environment variables with the same uppercase names can also configure the
-existing runtime options. SUMMARY_JSON configures the stage report path.
+existing runtime options. Every run writes its canonical report below
+/tmp/spotify-fullstack-verification/<run-id>/summary.json; SUMMARY_JSON or
+--summary-json additionally writes a compatibility copy at the requested path.
 When cross-browser smoke is selected, PYTHON_PLAYWRIGHT may point to a Python
 that can import playwright.sync_api; otherwise the script auto-detects one.
 EOF
@@ -344,13 +355,31 @@ REPORT_PYTHON=$(command -v python3 || command -v python || true)
   exit 1
 }
 
+RUN_ID=${FULLSTACK_RUN_ID:-$("$REPORT_PYTHON" - <<'PY'
+from datetime import datetime, timezone
+from uuid import uuid4
+
+stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+print(f"{stamp}-{uuid4().hex[:12]}")
+PY
+)}
+RUN_DIR=$FULLSTACK_RUN_ROOT/$RUN_ID
+RUN_SUMMARY_JSON=$RUN_DIR/summary.json
+LATEST_POINTER=$FULLSTACK_RUN_ROOT/latest
+mkdir -p "$RUN_DIR"
+BENCHMARK_JSON=${BENCHMARK_JSON:-$RUN_DIR/api-benchmark.json}
+OPENAPI_OPERATION_AUDIT_JSON=${OPENAPI_OPERATION_AUDIT_JSON:-$RUN_DIR/openapi-operation-audit.json}
+OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON=${OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON:-$RUN_DIR/openapi-parameter-boundary-audit.json}
+QUICKSTART_JSON=${QUICKSTART_JSON:-$RUN_DIR/quickstart-timing.json}
+RESOURCE_SNAPSHOT_JSON=${RESOURCE_SNAPSHOT_JSON:-$RUN_DIR/runtime-resources.json}
+
 epoch_ms() {
   "$REPORT_PYTHON" -c 'import time; print(int(time.time() * 1000))'
 }
 
 STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 START_EPOCH_MS=$(epoch_ms)
-RESULTS_FILE=$(mktemp "${TMPDIR:-/tmp}/spotify-fullstack-stages.XXXXXX")
+RESULTS_FILE=$(mktemp "$RUN_DIR/stages.XXXXXX")
 for stage in $ALL_STAGES; do
   printf '%s\t%s\t%s\n' "$stage" "NOT_RUN" "0" >>"$RESULTS_FILE"
 done
@@ -372,6 +401,11 @@ write_summary() {
   fi
 
   FULLSTACK_RESULTS_FILE=$RESULTS_FILE \
+  FULLSTACK_RUN_ID=$RUN_ID \
+  FULLSTACK_RUN_DIR=$RUN_DIR \
+  FULLSTACK_RUN_SUMMARY_JSON=$RUN_SUMMARY_JSON \
+  FULLSTACK_LATEST_POINTER=$LATEST_POINTER \
+  FULLSTACK_LOCK_FILE=$FULLSTACK_LOCK_FILE \
   FULLSTACK_SUMMARY_JSON=$SUMMARY_JSON \
   FULLSTACK_ALL_STAGES=$ALL_STAGES \
   FULLSTACK_REQUIRED_STAGES=$REQUIRED_STAGES \
@@ -389,6 +423,7 @@ write_summary() {
   "$REPORT_PYTHON" - <<'PY'
 import json
 import os
+import tempfile
 from pathlib import Path
 
 
@@ -417,6 +452,8 @@ else:
 
 payload = {
     "schema_version": 1,
+    "run_id": os.environ["FULLSTACK_RUN_ID"],
+    "run_directory": os.environ["FULLSTACK_RUN_DIR"],
     "overall_status": overall_status,
     "selection": {"mode": mode, "stages": selected_stages},
     "dry_run": dry_run,
@@ -429,19 +466,114 @@ payload = {
         "frontend_url": os.environ["FULLSTACK_FRONTEND_URL"],
         "preview_url": os.environ["FULLSTACK_PREVIEW_URL"] or None,
     },
+    "shared_stage_lock": {
+        "path": os.environ["FULLSTACK_LOCK_FILE"],
+        "events": [
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in sorted(Path(os.environ["FULLSTACK_RUN_DIR"]).glob("lock-*.json"))
+        ],
+    },
     "stages": [latest[name] for name in all_stages],
 }
-output = Path(os.environ["FULLSTACK_SUMMARY_JSON"])
-output.parent.mkdir(parents=True, exist_ok=True)
-output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-print(f"Stage summary written to {output}")
+
+
+def atomic_json(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+canonical = Path(os.environ["FULLSTACK_RUN_SUMMARY_JSON"])
+atomic_json(canonical)
+compatibility = os.environ["FULLSTACK_SUMMARY_JSON"]
+if compatibility and Path(compatibility) != canonical:
+    atomic_json(Path(compatibility))
+
+latest = Path(os.environ["FULLSTACK_LATEST_POINTER"])
+latest.parent.mkdir(parents=True, exist_ok=True)
+temporary_link = latest.parent / f".{latest.name}.{os.getpid()}"
+try:
+    temporary_link.unlink(missing_ok=True)
+    temporary_link.symlink_to(canonical.parent.name, target_is_directory=True)
+    os.replace(temporary_link, latest)
+finally:
+    temporary_link.unlink(missing_ok=True)
+
+print(f"Stage summary written to {canonical}")
+if compatibility and Path(compatibility) != canonical:
+    print(f"Compatibility summary written to {compatibility}")
 PY
+}
+
+release_stage_lock() {
+  if [ -n "$LOCK_PID" ]; then
+    kill "$LOCK_PID" 2>/dev/null || true
+    wait "$LOCK_PID" 2>/dev/null || true
+    LOCK_PID=
+  fi
+}
+
+stage_needs_lock() {
+  case "$1" in
+    api|browser-routes|browser-interactions|browser-inventory|browser-compat|optional) return 0 ;;
+    backend) [ -n "${SPOTIFY_STATS_TEST_SOURCE_DB:-}" ] ;;
+    *) return 1 ;;
+  esac
+}
+
+acquire_stage_lock() {
+  lock_stage=$1
+  LOCK_STATUS_FILE=$RUN_DIR/lock-$(printf '%s' "$lock_stage" | tr '-' '_').json
+  rm -f "$LOCK_STATUS_FILE"
+  git_head=$(git rev-parse HEAD 2>/dev/null || true)
+  "$REPORT_PYTHON" scripts/fullstack_verification_lock.py \
+    --lock-file "$FULLSTACK_LOCK_FILE" \
+    --metadata-file "$FULLSTACK_LOCK_METADATA_FILE" \
+    --status-file "$LOCK_STATUS_FILE" \
+    --run-id "$RUN_ID" \
+    --worktree "$ROOT_DIR" \
+    --git-sha "$git_head" \
+    --stage "$lock_stage" \
+    --parent-pid "$$" &
+  LOCK_PID=$!
+
+  attempts=0
+  while [ ! -f "$LOCK_STATUS_FILE" ] && kill -0 "$LOCK_PID" 2>/dev/null; do
+    attempts=$((attempts + 1))
+    if [ "$attempts" -ge 200 ]; then
+      echo "Shared-stage lock acquisition timed out: $FULLSTACK_LOCK_FILE" >&2
+      release_stage_lock
+      return 3
+    fi
+    sleep 0.05
+  done
+
+  lock_status=$("$REPORT_PYTHON" -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["status"])' "$LOCK_STATUS_FILE" 2>/dev/null || true)
+  if [ "$lock_status" != "acquired" ]; then
+    echo "Shared-stage lock is held by another SpotifyStats verification run:" >&2
+    cat "$LOCK_STATUS_FILE" >&2 2>/dev/null || true
+    wait "$LOCK_PID" 2>/dev/null || true
+    LOCK_PID=
+    return 3
+  fi
 }
 
 finalize_report() {
   script_exit_code=$?
+  release_stage_lock
   if [ "$REPORT_INITIALIZED" = "1" ]; then
-    write_summary "$script_exit_code" || echo "Failed to write stage summary: $SUMMARY_JSON" >&2
+    write_summary "$script_exit_code" || echo "Failed to write stage summary: $RUN_SUMMARY_JSON" >&2
     rm -f "$RESULTS_FILE"
   fi
 }
@@ -569,6 +701,14 @@ run_quickstart_preflight() {
   run python scripts/quickstart_smoke.py --backend-url "$BACKEND_URL" --frontend-url "$FRONTEND_URL" --require-running --json-output "$QUICKSTART_JSON"
 }
 
+stage_preflight() {
+  run git diff --check || return $?
+  run python scripts/fullstack_preflight.py || return $?
+  run python scripts/docs_audit.py --include-archive || return $?
+  run python scripts/openapi_operation_audit.py --json-output "$OPENAPI_OPERATION_AUDIT_JSON" || return $?
+  run python scripts/openapi_parameter_boundary_audit.py --json-output "$OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON" || return $?
+}
+
 stage_quality() {
   run pre-commit run --all-files || return $?
   run sh scripts/phase5_check.sh --skip-backend-tests || return $?
@@ -580,8 +720,6 @@ stage_backend() {
 
 stage_api() {
   check_backend_health || return $?
-  run python scripts/openapi_operation_audit.py --json-output "$OPENAPI_OPERATION_AUDIT_JSON" || return $?
-  run python scripts/openapi_parameter_boundary_audit.py --json-output "$OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON" || return $?
   if [ -n "${SPOTIFY_STATS_TEST_SOURCE_DB:-}" ]; then
     run python scripts/api_smoke_probe.py --db-path "$SPOTIFY_STATS_TEST_SOURCE_DB" || return $?
     run python scripts/api_boundary_probe.py --db-path "$SPOTIFY_STATS_TEST_SOURCE_DB" || return $?
@@ -672,6 +810,7 @@ stage_optional() {
 
 stage_function() {
   case "$1" in
+    preflight) echo stage_preflight ;;
     quality) echo stage_quality ;;
     backend) echo stage_backend ;;
     api) echo stage_api ;;
@@ -688,10 +827,23 @@ run_selected_stage() {
   stage_runner=$(stage_function "$stage_name")
   stage_started_ms=$(epoch_ms)
   printf '\n=== Stage: %s ===\n' "$stage_name"
-  if "$stage_runner"; then
-    stage_exit_code=0
+  if stage_needs_lock "$stage_name"; then
+    if acquire_stage_lock "$stage_name"; then
+      if "$stage_runner"; then
+        stage_exit_code=0
+      else
+        stage_exit_code=$?
+      fi
+      release_stage_lock
+    else
+      stage_exit_code=$?
+    fi
   else
-    stage_exit_code=$?
+    if "$stage_runner"; then
+      stage_exit_code=0
+    else
+      stage_exit_code=$?
+    fi
   fi
   stage_finished_ms=$(epoch_ms)
   stage_duration_ms=$((stage_finished_ms - stage_started_ms))

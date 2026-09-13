@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -48,6 +51,7 @@ def test_fullstack_verification_check_script_exposes_reusable_cli():
     assert "--from" in result.stdout
     assert "--dry-run" in result.stdout
     assert "--summary-json" in result.stdout
+    assert "/tmp/spotify-fullstack-verification/<run-id>/summary.json" in result.stdout
     assert "default http://localhost:5173" in result.stdout
 
 
@@ -64,6 +68,7 @@ def test_fullstack_verification_lists_stable_stage_keys():
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == [
+        "preflight",
         "quality",
         "backend",
         "api",
@@ -138,6 +143,9 @@ def test_fullstack_verification_dry_run_writes_partial_stage_summary(tmp_path: P
     assert result.returncode == 0, result.stderr
     payload = json.loads(summary.read_text(encoding="utf-8"))
     assert payload["overall_status"] == "PARTIAL"
+    assert payload["schema_version"] == 1
+    assert payload["run_id"]
+    assert Path(payload["run_directory"]).name == payload["run_id"]
     assert payload["selection"] == {
         "mode": "only",
         "stages": ["api", "browser-inventory"],
@@ -213,6 +221,12 @@ def test_fullstack_verification_check_script_covers_delivery_matrix():
     source = (ROOT / "scripts" / "fullstack_verification_check.sh").read_text(encoding="utf-8")
 
     assert "FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}" in source
+    assert 'ALL_STAGES="preflight quality backend api' in source
+    assert "scripts/fullstack_preflight.py" in source
+    assert "scripts/docs_audit.py --include-archive" in source
+    assert "git diff --check" in source
+    assert "scripts/fullstack_verification_lock.py" in source
+    assert "FULLSTACK_LOCK_FILE" in source
     assert "BENCHMARK_RUNS=${BENCHMARK_RUNS:-22}" in source
     assert "pytest backend/tests/ -q" in source
     assert "pre-commit run --all-files" in source
@@ -244,6 +258,7 @@ def test_fullstack_verification_check_runs_openapi_operation_audit_with_json_out
     assert (
         'scripts/openapi_operation_audit.py --json-output "$OPENAPI_OPERATION_AUDIT_JSON"' in source
     )
+    assert source.index("stage_preflight()") < source.index("stage_backend()")
 
 
 def test_fullstack_verification_check_runs_openapi_parameter_boundary_audit_with_json_output():
@@ -255,6 +270,115 @@ def test_fullstack_verification_check_runs_openapi_parameter_boundary_audit_with
         "scripts/openapi_parameter_boundary_audit.py "
         '--json-output "$OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON"' in source
     )
+
+
+def test_fullstack_verification_uses_run_scoped_summary_and_atomic_latest_pointer(tmp_path: Path):
+    script = ROOT / "scripts" / "fullstack_verification_check.sh"
+    run_root = tmp_path / "runs"
+    compatibility = tmp_path / "compatibility.json"
+    env = os.environ.copy()
+    env.update({"FULLSTACK_RUN_ROOT": str(run_root), "FULLSTACK_RUN_ID": "test-run"})
+
+    result = subprocess.run(
+        [
+            "sh",
+            str(script),
+            "--only",
+            "preflight",
+            "--dry-run",
+            "--summary-json",
+            str(compatibility),
+        ],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    canonical = run_root / "test-run" / "summary.json"
+    assert canonical.exists()
+    assert json.loads(canonical.read_text(encoding="utf-8")) == json.loads(
+        compatibility.read_text(encoding="utf-8")
+    )
+    assert (run_root / "latest").is_symlink()
+    assert (run_root / "latest").resolve() == canonical.parent.resolve()
+
+
+def test_fullstack_verification_reports_shared_stage_lock_owner(tmp_path: Path):
+    script = ROOT / "scripts" / "fullstack_verification_check.sh"
+    helper = ROOT / "scripts" / "fullstack_verification_lock.py"
+    lock_file = tmp_path / "gate.lock"
+    metadata_file = tmp_path / "gate.owner.json"
+    holder_status = tmp_path / "holder.json"
+    contender_root = tmp_path / "contender-runs"
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            str(helper),
+            "--lock-file",
+            str(lock_file),
+            "--metadata-file",
+            str(metadata_file),
+            "--status-file",
+            str(holder_status),
+            "--run-id",
+            "holder-run",
+            "--worktree",
+            str(ROOT),
+            "--git-sha",
+            "test-sha",
+            "--stage",
+            "held-by-test",
+            "--parent-pid",
+            str(os.getpid()),
+        ],
+        cwd=ROOT,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while not holder_status.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert json.loads(holder_status.read_text(encoding="utf-8"))["status"] == "acquired"
+
+        env = os.environ.copy()
+        env.update(
+            {
+                "FULLSTACK_LOCK_FILE": str(lock_file),
+                "FULLSTACK_LOCK_METADATA_FILE": str(metadata_file),
+                "FULLSTACK_RUN_ROOT": str(contender_root),
+                "FULLSTACK_RUN_ID": "contender-run",
+            }
+        )
+        result = subprocess.run(
+            ["sh", str(script), "--only", "api"],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+            env=env,
+        )
+
+        assert result.returncode == 1
+        payload = json.loads(
+            (contender_root / "contender-run" / "summary.json").read_text(encoding="utf-8")
+        )
+        assert payload["overall_status"] == "BLOCKED"
+        assert (
+            next(stage for stage in payload["stages"] if stage["name"] == "api")["status"]
+            == "BLOCKED"
+        )
+        event = payload["shared_stage_lock"]["events"][0]
+        assert event["status"] == "blocked"
+        assert event["owner"]["pid"] == os.getpid()
+        assert event["owner"]["worktree"] == str(ROOT)
+        assert event["owner"]["git_sha"] == "test-sha"
+        assert event["owner"]["stage"] == "held-by-test"
+        assert "Shared-stage lock is held" in result.stderr
+    finally:
+        holder.terminate()
+        holder.wait(timeout=5)
 
 
 def test_fullstack_verification_check_can_run_quickstart_preflight_without_starting_services():
