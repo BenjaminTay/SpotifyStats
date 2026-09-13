@@ -6,7 +6,11 @@
 >
 > 本地验证：PASS
 >
-> 远端 / 生产：本报告首次提交时待发布，后续证据追加在第 7 节
+> 代码发布基线：PUSHED `d50f924c`；最终证据以 docs-only 后续提交进入 `origin/main`
+>
+> 生产代码：DEPLOYED `d50f924c` / dual
+>
+> 外部入口：PARTIAL / EXTERNAL
 
 ## 1. 本轮收口结论
 
@@ -120,4 +124,58 @@ sh scripts/fullstack_verification_check.sh \
 
 ## 7. 远端与生产发布证据
 
-待本轮 push、自动发布和生产独立验收完成后追加；本节不会反向覆盖第 6 节的发布前事实。
+本节是第 6 节之后的时间线追加，不反向覆盖发布前事实。
+
+### 7.1 Git 与 GitHub Actions
+
+- push 前 `main...origin/main = 6/0`，确认远端没有本地未包含的提交；随后将
+  `d37e8aaf..d50f924c` 推送到 `origin/main`。
+- 常规 CI run
+  [`34751006416`](https://github.com/BenjaminTay/SpotifyStats/actions/runs/34751006416) success。
+- 正式发布 run
+  [`34751006279`](https://github.com/BenjaminTay/SpotifyStats/actions/runs/34751006279) success：共享质量与生产
+  契约 6m24s，三种 profile 全部通过，镜像/CAS 1m30s，服务器部署 4m12s。
+- Actions 的 Node.js 20 被 runner 强制升级到 24 仍有弃用注解，但没有失败步骤。
+
+### 7.2 发布与回滚证据
+
+- 发布前 Online Backup：
+  `spotify-stats-pre-release-d50f924c854f-20260913T101713Z.db`，444,588,032 bytes。
+- 搜索预检精确复用已有统计，`reused=true`，预检报告：
+  `music-search-preflight-d50f924c854f-20260913T101713Z.json`。
+- 目标镜像中的预检通过：migration 69，4/4 统计变体，search builder v10、Billboard v4、
+  orphan=0；上线后的 runtime gate 为 migration 73，exact/fuzzy/CJK/short CJK 全部通过，语义 smoke
+  约 242ms。
+- CAS retention 已将 `d50f924c` 设为 current，`b0d674bd` 作为 previous，可按既有流程联合回滚。
+
+### 7.3 服务器独立验收
+
+部署完成后通过既有 SSH 主机连接重新执行服务器 `./verify.sh`，结果 PASS：
+
+- 模式为 `dual`，简化版访问为 `public`；Backend、private web、public web 三个容器均 healthy。
+- 三个容器的镜像 revision 均为完整
+  `d50f924c854fa5ca2b88a89ea36ebce73fb57e17`。
+- Backend 没有宿主端口；private/public 分别只绑定 `127.0.0.1:3001/3002`。
+- private 为 `private-admin/full`，public 为 `public-readonly/showcase`；两边 release SHA 相同，公共面
+  AI、设置、导入、编辑和 OAuth 等能力均关闭。
+- SQLite `integrity_check=ok`，schema 73，92,908 条播放，时间范围为
+  `2022-06-30T17:28:51Z..2026-08-21T15:39:05Z`。
+- 服务器每日 Online Backup timer 为 enabled + active。
+- `manifest.webmanifest`、`sw.js`、`offline.html` 均返回 200，manifest MIME 正确。
+
+### 7.4 Agent、HTTPS、OAuth 与真机边界
+
+- 生产私有面设置保留 `llm_enabled=true` 和 DeepSeek provider/model，但服务器没有 LLM 凭据；真实
+  Agent smoke 任务 `4f0fa6a95aa8` 立即安全失败为“LLM 未配置”，未调用工具或生成答案。生产基线
+  原本就刻意移除了 LLM Key，本轮没有把本机密钥擅自复制到服务器。若要在线使用 Agent，需要用户
+  单独授权并通过生产设置或服务器 secret 配置凭据。
+- 服务器 Tailscale 当前为 `Stopped`，Serve 未配置；因此历史私网 HTTPS 域名当前不在线。发布脚本
+  按设计没有启动或修改外层入口。
+- Spotify 当前未连接；OAuth login 能生成授权 URL，callback 仍精确指向
+  `https://spotify-stats.tail8916b1.ts.net/api/spotify/auth/callback`，但外层 HTTPS 关闭且没有人工 consent，
+  所以不能声称真实 OAuth 回跳通过。
+- iPhone Safari、Android Chrome 安装、standalone、安全区、软键盘与返回链路仍需物理设备。当前不
+  实施 Capacitor 的决策不改变这一 `PARTIAL / EXTERNAL` 状态。
+
+最终证据文档提交只修改 Markdown，不触发生产发布；因此远端 `main` 可以领先生产代码
+`d50f924c` 一个 docs-only 提交，这不表示生产缺少业务代码。

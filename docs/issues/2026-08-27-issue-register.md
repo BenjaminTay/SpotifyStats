@@ -3,14 +3,14 @@
 > 状态：持续维护
 > 首次建立：2026-08-27
 > 最后核验：2026-09-13
-> 最近核验基线（2026-09-13，发布前）：本地 `main=5bcfc5de`，相对 `origin/main=d37e8aaf` ahead 5；生产代码版本为 `b0d674bd`。本地新增 L1 导入防复发、provider-first 时长、人工关系单事务刷新和全栈门禁编排加固；默认完整门禁与真实 Agent smoke 已通过，push/部署状态见后续发布报告。
+> 最近核验基线（2026-09-13）：业务代码发布基线与生产均为 `d50f924c`；最终证据通过一个不触发部署的 docs-only 后续提交进入本地与 `origin/main`。L1 导入防复发、provider-first 时长、人工关系单事务刷新和全栈门禁编排加固已 push 并部署；默认完整门禁、本地真实 Agent smoke、Actions 与服务器独立验收通过。外部 HTTPS、生产 LLM 凭据、Spotify 连接和真机验收仍按各自边界记录。
 
 ## 当前开放与未闭环事项
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 |
 |---|---|---|---|---|
 | `SS-2026-08-24-004` | 全栈总门禁时间过长，且并发性能竞争、冷建等待和失败后整轮重跑放大交付成本 | `PARTIAL` · P1-A/P1-B 已完成 | 廉价 preflight、跨工作区 `fcntl` 锁和 run-id 独立 summary 已由提交 `8326169f` 实现。当前 `5bcfc5de` 默认完整门禁全部必需阶段 PASS，但实测总耗时 2,832,355ms（约 47 分钟），其中 backend 约 18.8 分钟、API 约 10.5 分钟、browser routes 约 9.2 分钟；说明正确性已闭环但 25 分钟耗时目标仍未达到。见 [`收口与发布报告`](../reports/2026-09-13-development-closeout-and-release.md)。 | 基于本次 run-id evidence 做 `pytest --durations=100` 与 API/浏览器阶段剖析，再评估不降低覆盖、三浏览器和 500ms 阈值的安全并行；严格 evidence manifest 单独续做。 |
-| `SS-2026-08-06-005` | PWA/移动网页完成后，iPhone Safari 与 Android Chrome 真机安装、返回、安全区和 OAuth 验收仍未完成；Capacitor 尚未决策 | `PARTIAL` · 路线尾项 | 当前规划明确写为等待真机验收，不能把本地浏览器验收当作真机完成。见 [`appification-pwa-capacitor-plan.md`](../plans/2026-08-06-appification-pwa-capacitor-plan.md)。 | 有真实设备和 HTTPS/认证条件后再做真机验收；在此之前不宣称已完成 App 化。 |
+| `SS-2026-08-06-005` | PWA/移动网页完成后，iPhone Safari 与 Android Chrome 真机安装、返回、安全区和 OAuth 验收仍未完成 | `PARTIAL / EXTERNAL` · 本轮决定不实施 Capacitor | `d50f924c` 的 dual 三容器、PWA 文件和 loopback 边界均通过服务器独立验收，但 Tailscale/Serve 当前为 Stopped，Spotify 未连接；只有 OAuth URL 的 callback 配置正确。没有明确原生分发需求且真机前置条件未满足，因此不新增 Capacitor 工程。见 [`appification-pwa-capacitor-plan.md`](../plans/2026-08-06-appification-pwa-capacitor-plan.md)。 | 需要远程使用时先显式恢复受控 HTTPS；再由真实 iPhone/Android 完成安装、键盘、返回、安全区和 Spotify consent 回跳。只有确认 App Store/安装包需求后才重启 Capacitor Phase D。 |
 
 ## 排序规则：当前实现
 
@@ -65,6 +65,7 @@ billboard_week ASC → play_count DESC → total_ms DESC → 稳定 ID ASC → �
 
 | 日期 | 变化 |
 |---|---|
+| 2026-09-13 | `d50f924c` 已 push 并以 dual 模式部署；Actions 与服务器 `verify.sh` 通过，三容器 healthy、schema 73、92,908 条播放、搜索四变体 ready。Tailscale/Serve 当前停止，生产未配置 LLM 凭据，Spotify 未连接；这些外部/secret 边界未被部署脚本擅自改变。 |
 | 2026-09-13 | 完成 L1 导入防复发、provider-first 时长解析和人工关系单事务/一次刷新；真实库与 Online Backup 复审仍为 600 review、0 个安全操作，因此不修改真实数据。 |
 | 2026-09-13 | 同步 `origin/main=d37e8aaf` 与生产代码 `b0d674bd`；将 Agent V5、L2/L3、Billboard Records、双轨时长与持久快照的仓库/部署状态收口，新增 L1 防复发和人工归并性能开放项。 |
 | 2026-08-29 | 完成播放记录规划与当前 5 栏/20 模块实现的差异核对并归档，将 `SS-2026-06-23-006` 更新为已解决。 |
