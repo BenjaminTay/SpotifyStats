@@ -93,8 +93,4 @@
 
 ## 回滚与备份
 
-修复前 SQLite 一致性备份保留在本地：
-
-`data/spotify_stats.db.pre-logical-event-fix-20260813`
-
-该备份及其 SQLite WAL sidecar 已加入 `.gitignore`，不纳入 Git 提交或远程推送。回滚时应先停止写入，再使用该备份恢复数据库并清理 Billboard 运行时缓存。
+修复前的 SQLite 一致性快照曾保留在本地，现已按本地数据清理操作移除；该快照及其 SQLite WAL sidecar 从未纳入 Git 提交或远程推送。若需回滚，应先停止写入并使用重新创建的在线备份恢复数据库，再清理 Billboard 运行时缓存。

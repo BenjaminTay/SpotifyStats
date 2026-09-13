@@ -43,13 +43,7 @@ Phone 已从旧账号 Hero 和桌面内容折叠壳切换为独立“口袋音�
 - 播客与视频卡在 390px 分别约 354px、372px 高，均以总时长头部加 Top 3 组织；视频封面正常显示，播客只在本地有封面时渲染。
 - 请求只命中新 `/api/account/archive-overview`、journey、cohorts、returns、discovery、library、other-media 链路，没有精确命中旧 `/api/account` 或 `/api/profile`。
 
-关键截图位于：
-
-- `output/playwright/account-archive-phone-360.png`
-- `output/playwright/account-archive-phone-390.png`
-- `output/playwright/account-archive-phone-430.png`
-- `output/playwright/account-archive-phone-dark-390.png`
-- `output/playwright/account-archive-phone-library-430.png`
+历史截图产物已按本地输出清理策略移除；本报告保留文本验收结论和检查范围，不再维护已失效的本地截图路径。
 
 ## 5. 后续状态
 
