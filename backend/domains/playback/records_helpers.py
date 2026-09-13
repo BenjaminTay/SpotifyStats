@@ -61,6 +61,13 @@ def attach_scoped_records_duration(
         start_date=start_date,
         end_date=end_date,
     )
+    # Yearly Review attaches already-scoped slices as a bare DataFrame for its
+    # report builders.  Pandas deep-copies DataFrame attrs while materialising
+    # groupby rows and derived Series, which turns Records' per-entity loops
+    # into repeated copies of the full annual duration table.  Records has now
+    # resolved the same duration scope into its attrs-safe identity reference,
+    # so the report-only payload must not travel further into record frames.
+    event_frame.attrs.pop("listening_duration_slices", None)
     return attach_listening_duration_frame(event_frame, duration)
 
 

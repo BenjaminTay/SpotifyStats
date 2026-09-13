@@ -78,6 +78,63 @@ def test_album_milestone_excludes_missing_or_partial_release_date():
     assert _fastest_milestone(frame, "entity_id", "name", "artist", "album").empty
 
 
+def test_album_milestone_excludes_conflicting_release_dates():
+    frame = _milestone_frame(100)
+    frame["album_release_date"] = "2026-01-01"
+    frame.loc[50:, "album_release_date"] = "2026-01-02"
+
+    assert _fastest_milestone(frame, "entity_id", "name", "artist", "album").empty
+
+
+def test_album_milestone_excludes_invalid_full_precision_release_date():
+    frame = _milestone_frame(100)
+    frame["album_release_date"] = "2026-99-99"
+
+    assert _fastest_milestone(frame, "entity_id", "name", "artist", "album").empty
+
+
+def test_fastest_milestone_preserves_first_source_metadata():
+    frame = _milestone_frame(50)
+    frame.loc[0, ["name", "artist", "ts_date"]] = [
+        "Original Name",
+        "Original Artist",
+        "2026-02-20",
+    ]
+
+    result = _fastest_milestone(frame, "entity_id", "name", "artist", "track").iloc[0]
+
+    assert result["name"] == "Original Name"
+    assert result["artist_name"] == "Original Artist"
+
+
+def test_artist_milestone_supports_identity_column_for_all_fields():
+    frame = _milestone_frame(250).rename(columns={"artist": "artist_name"})
+
+    result = _fastest_milestone(
+        frame,
+        "artist_name",
+        "artist_name",
+        "artist_name",
+        "artist",
+    ).iloc[0]
+
+    assert result["entity_id"] == "Fixture Artist"
+    assert result["name"] == "Fixture Artist"
+    assert result["artist_name"] == "Fixture Artist"
+
+
+def test_fastest_milestone_resolves_numeric_entity_metadata_by_entity_id():
+    first = _milestone_frame(50).assign(entity_id=160.0, name="First")
+    second = _milestone_frame(50).assign(entity_id=193.0, name="Second")
+    frame = pd.concat([first, second], ignore_index=True)
+    frame.index = range(1000, 1100)
+
+    result = _fastest_milestone(frame, "entity_id", "name", "artist", "track")
+
+    assert set(result["entity_id"]) == {"160.0", "193.0"}
+    assert set(result["name"]) == {"First", "Second"}
+
+
 def test_track_milestone_ignores_album_release_date_column():
     frame = _milestone_frame(50)
     frame["album_release_date"] = "2030-01-01"

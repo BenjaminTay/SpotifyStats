@@ -6,16 +6,21 @@ Computation results are cached with lru_cache.
 
 from __future__ import annotations
 
+import os
 import sqlite3
+from functools import lru_cache
 
 import pandas as pd
 
+from backend.core.cache import singleflight
 from backend.core.db import (
+    get_db,
     get_track_all_artists_map,
     get_track_artist_names_map,
     load_plays,
     load_plays_for_artists,
 )
+from backend.domains.metadata.track_identity import get_track_identity_revision
 
 
 def _hour(x):
@@ -143,6 +148,7 @@ def get_dashboard_summary(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
     df: pd.DataFrame | None = None,
+    duration_frame: pd.DataFrame | None = None,
 ) -> dict:
     """Compute dashboard KPIs from plays data."""
     if df is None:
@@ -151,7 +157,9 @@ def get_dashboard_summary(
         )
     from backend.services.analysis_stats_service import _duration_frame
 
-    duration_frame = _duration_frame(df, granularity="day")
+    duration_frame = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="day")
+    )
     if df.empty and duration_frame.empty:
         return {
             "total_plays": 0,
@@ -210,6 +218,7 @@ def get_monthly_trend(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
     df: pd.DataFrame | None = None,
+    duration_frame: pd.DataFrame | None = None,
 ) -> list[dict]:
     """Get monthly plays/hours trend."""
     if df is None:
@@ -218,7 +227,9 @@ def get_monthly_trend(
         )
     from backend.services.analysis_stats_service import _duration_frame
 
-    duration_frame = _duration_frame(df, granularity="day")
+    duration_frame = (
+        duration_frame if duration_frame is not None else _duration_frame(df, granularity="day")
+    )
     if df.empty and duration_frame.empty:
         return []
     counts = (
@@ -377,6 +388,161 @@ def get_random_track(
         "album_name": row["album_name"],
         "last_played": row["last_played"],
         "total_plays": int(row["total_plays"]),
+    }
+
+
+def _build_dashboard_static(
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: int | None,
+    *,
+    df: pd.DataFrame | None = None,
+) -> dict:
+    """Build the deterministic dashboard sections from one playback frame."""
+    if df is None:
+        df = load_plays(
+            conn,
+            min_ms=min_ms,
+            music_only=music_only,
+            merge_enabled=merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+        )
+    from backend.services.analysis_stats_service import _duration_frame
+
+    # Duration reconstruction is materially more expensive than the dashboard
+    # aggregations. Compute it once and share it between the two consumers.
+    duration_frame = _duration_frame(df, granularity="day")
+    common = (
+        conn,
+        min_ms,
+        music_only,
+        merge_enabled,
+        dynamic_threshold,
+        max_merge_gap_minutes,
+    )
+    return {
+        "summary": get_dashboard_summary(
+            *common,
+            df=df,
+            duration_frame=duration_frame,
+        ),
+        "monthly_trend": get_monthly_trend(
+            *common,
+            df=df,
+            duration_frame=duration_frame,
+        ),
+        "top_tracks": get_top_tracks(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            dynamic_threshold=dynamic_threshold,
+            max_merge_gap_minutes=max_merge_gap_minutes,
+            df=df,
+        ),
+        "platform_dist": get_platform_dist(*common, df=df),
+        "dow_dist": get_dow_dist(*common, df=df),
+        "hourly_dist": get_hourly_dist(*common, df=df),
+    }
+
+
+def _connection_database_path(conn: sqlite3.Connection) -> str:
+    row = conn.execute("PRAGMA database_list").fetchone()
+    return os.path.realpath(str(row[2] or "")) if row is not None else ""
+
+
+def _is_primary_connection(conn: sqlite3.Connection) -> bool:
+    from backend.core import db as db_module
+
+    path = _connection_database_path(conn)
+    return bool(path) and path == os.path.realpath(db_module.DB_PATH)
+
+
+@singleflight
+@lru_cache(maxsize=8)
+def _get_dashboard_static_cached(
+    database_path: str,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool,
+    max_merge_gap_minutes: int | None,
+    track_identity_revision: int,
+) -> dict:
+    """Cache the small deterministic payload, not its large source frames."""
+    del database_path, track_identity_revision  # cache-key-only revision inputs
+    conn = get_db(readonly=True)
+    try:
+        return _build_dashboard_static(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+        )
+    finally:
+        conn.close()
+
+
+def get_dashboard_full(
+    conn: sqlite3.Connection,
+    min_ms: int,
+    music_only: bool,
+    merge_enabled: bool,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = 5,
+) -> dict:
+    """Return the combined dashboard with cached deterministic sections.
+
+    The random recommendation stays request-scoped; the stable aggregations
+    are invalidated with the shared analysis cache after imports or metadata
+    governance changes.
+    """
+    df = load_plays(
+        conn,
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+    )
+    if _is_primary_connection(conn):
+        stable = _get_dashboard_static_cached(
+            _connection_database_path(conn),
+            min_ms,
+            music_only,
+            merge_enabled,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+            get_track_identity_revision(conn),
+        )
+    else:
+        stable = _build_dashboard_static(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+            df=df,
+        )
+    return {
+        **stable,
+        "account_kpis": get_account_kpis(conn),
+        "random_track": get_random_track(
+            conn,
+            min_ms,
+            music_only,
+            merge_enabled,
+            dynamic_threshold,
+            max_merge_gap_minutes,
+            df=df,
+        ),
     }
 
 
@@ -1052,6 +1218,11 @@ def get_behavior_data(
             for r in shuffle_monthly.itertuples(index=False)
         ],
     }
+
+
+from backend.core.cache_manager import register_lru  # noqa: E402
+
+register_lru("analysis", "dashboard_static", _get_dashboard_static_cached)
 
 
 # ── Listening Hours ─────────────────────────────────────────────────────────

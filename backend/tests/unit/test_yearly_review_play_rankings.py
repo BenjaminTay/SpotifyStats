@@ -106,7 +106,8 @@ def test_builds_two_rankings_and_enriches_activity(monkeypatch) -> None:
     album = result["charts"]["album"]
     artist = result["charts"]["artist"]
     assert result["limits"] == {"track": 50, "album": 30, "artist": 30}
-    assert track["available_count"] == 7
+    assert track["available_count"] == 1
+    assert album["available_count"] == 7
     assert track["by_plays"][0]["sort_metric"] == "plays"
     assert track["by_hours"][0]["sort_metric"] == "hours"
     assert track["by_plays"][0]["active_days"] == 2

@@ -600,6 +600,7 @@ def run_route_markers(browser):
                         wait_for_condition(
                             lambda: page_state(page) if page_state(page)["hasPhoneYearlyV2"] else None,
                             "Phone Yearly Review V2 did not become ready",
+                            timeout_ms=YEARLY_REVIEW_WAIT_MS,
                         )
                     else:
                         deadline = time.monotonic() + YEARLY_REVIEW_WAIT_MS / 1000

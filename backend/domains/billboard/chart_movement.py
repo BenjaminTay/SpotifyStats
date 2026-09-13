@@ -58,11 +58,16 @@ def _week_key(value: Any) -> str | None:
     return parsed.date().isoformat()
 
 
-def _rows_for_week(frame: pd.DataFrame, week: str) -> pd.DataFrame:
+def _rows_by_week(frame: pd.DataFrame) -> dict[str, pd.DataFrame]:
     if frame.empty or "billboard_week" not in frame.columns:
-        return frame.iloc[0:0]
-    mask = frame["billboard_week"].map(_week_key) == week
-    return frame.loc[mask]
+        return {}
+    parsed = pd.to_datetime(frame["billboard_week"], errors="coerce")
+    keys = parsed.dt.strftime("%Y-%m-%d")
+    positions: dict[str, list[int]] = {}
+    for position, key in enumerate(keys):
+        if pd.notna(key):
+            positions.setdefault(str(key), []).append(position)
+    return {week: frame.iloc[indexes] for week, indexes in positions.items()}
 
 
 def _rank(row: pd.Series) -> int | None:
@@ -95,7 +100,9 @@ def _movement_for(
     entity_type: str,
     top_n: int,
 ) -> dict[str, Any] | None:
-    current_rows = _rows_for_week(frame, latest_week)
+    rows_by_week = _rows_by_week(frame)
+    empty = frame.iloc[0:0]
+    current_rows = rows_by_week.get(latest_week, empty)
     current = None
     for _, row in current_rows.iterrows():
         if _rank(row) == 1:
@@ -106,7 +113,7 @@ def _movement_for(
 
     identity = _identity(current, entity_type)
     previous = (
-        _find_entity_row_for_type(_rows_for_week(frame, previous_week), identity, entity_type)
+        _find_entity_row_for_type(rows_by_week.get(previous_week, empty), identity, entity_type)
         if previous_week
         else None
     )
@@ -126,7 +133,7 @@ def _movement_for(
         }
 
     for week in historical_weeks:
-        historical = _find_entity_row_for_type(_rows_for_week(frame, week), identity, entity_type)
+        historical = _find_entity_row_for_type(rows_by_week.get(week, empty), identity, entity_type)
         historical_rank = _rank(historical) if historical is not None else None
         if historical_rank is not None and historical_rank <= top_n:
             return {

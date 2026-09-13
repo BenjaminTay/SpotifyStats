@@ -47,6 +47,13 @@ class BillboardWeightedFrameRef:
     def __eq__(self, other: object) -> bool:
         return self is other
 
+    def __deepcopy__(self, memo: dict[int, object]) -> BillboardWeightedFrameRef:
+        # DataFrame derived-object finalisation deep-copies attrs.  This wrapper
+        # is deliberately an immutable identity reference, so copying the
+        # multi-megabyte weighted frame is both unnecessary and prohibitively
+        # expensive inside per-entity record calculations.
+        return self
+
 
 @dataclass(eq=False)
 class ListeningDurationFrameRef:
@@ -56,6 +63,9 @@ class ListeningDurationFrameRef:
 
     def __eq__(self, other: object) -> bool:
         return self is other
+
+    def __deepcopy__(self, memo: dict[int, object]) -> ListeningDurationFrameRef:
+        return self
 
 
 def attach_listening_duration_frame(

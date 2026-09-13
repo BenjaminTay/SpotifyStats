@@ -11,6 +11,7 @@ special-character searches. The probe must never mutate local app state.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -548,11 +549,18 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _configure_database_path(value: str | None) -> None:
+    os.environ["SPOTIFY_STATS_WARMUP"] = "0"
+    os.environ["SPOTIFY_STATS_SEARCH_STARTUP_REBUILD"] = "0"
+    os.environ["SPOTIFY_STATS_L3_STARTUP_RECONCILE"] = "0"
     if not value:
         return
     resolved = Path(value).expanduser().resolve()
     if not resolved.is_file():
         raise FileNotFoundError(f"API boundary database does not exist: {resolved}")
+    os.environ.setdefault(
+        "SPOTIFY_STATS_YEARLY_CACHE_PATH",
+        str(resolved.with_name("yearly_review_cache.db")),
+    )
     from backend.core import db as db_mod
 
     db_mod.DB_PATH = str(resolved)

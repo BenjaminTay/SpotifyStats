@@ -174,59 +174,85 @@ def _fastest_milestone(frame, group_col, name_col, artist_col, entity_type="trac
 
     threshold = MILESTONE_THRESHOLDS.get(entity_type, 50)
 
-    results = []
-    for entity_id, grp in frame.groupby(group_col):
-        sequence_columns = ["ts_date"]
-        if "ts" in grp.columns:
-            sequence_columns.append("ts")
-        if "play_id" in grp.columns:
-            sequence_columns.append("play_id")
-        grp_sorted = grp.sort_values(sequence_columns, kind="stable").copy()
-        if entity_type == "album":
-            if "album_release_date" not in grp_sorted.columns:
-                continue
-            release_values = (
-                grp_sorted["album_release_date"].dropna().astype(str).drop_duplicates().tolist()
-            )
-            if (
-                len(release_values) != 1
-                or not pd.Series(release_values).str.fullmatch(r"\d{4}-\d{2}-\d{2}").all()
-            ):
-                continue
-            release_date = pd.to_datetime(release_values[0], errors="coerce")
-            if pd.isna(release_date):
-                continue
-            event_dates = pd.to_datetime(grp_sorted["ts_date"], errors="coerce")
-            grp_sorted = grp_sorted[event_dates >= release_date]
-            if grp_sorted.empty:
-                continue
-            first_date = pd.to_datetime(grp_sorted["ts_date"].iloc[0])
-        else:
-            first_date = pd.to_datetime(grp_sorted["ts_date"].iloc[0])
+    # Sorting every entity group separately copies the full-width play frame
+    # thousands of times on a real library.  Order the event stream once, then
+    # select the first and Nth event with a vectorized per-entity ordinal.
+    sequence_columns = ["ts_date"]
+    if "ts" in frame.columns:
+        sequence_columns.append("ts")
+    if "play_id" in frame.columns:
+        sequence_columns.append("play_id")
+    ordered = frame.sort_values(sequence_columns, kind="stable").copy()
+    ordered["_milestone_event_date"] = pd.to_datetime(ordered["ts_date"], errors="coerce")
+    ordered = ordered[ordered["_milestone_event_date"].notna()]
 
-        if len(grp_sorted) < threshold:
-            continue
-        milestone_date = pd.to_datetime(grp_sorted["ts_date"].iloc[threshold - 1])
+    if entity_type == "album":
+        if "album_release_date" not in ordered.columns:
+            return pd.DataFrame()
+        release_text = ordered["album_release_date"].astype("string")
+        release_values = (
+            ordered.loc[release_text.notna(), [group_col, "album_release_date"]]
+            .assign(album_release_date=lambda data: data["album_release_date"].astype(str))
+            .drop_duplicates()
+        )
+        release_counts = release_values.groupby(group_col, sort=False).size()
+        single_release_values = release_values[
+            release_values[group_col].isin(release_counts[release_counts == 1].index)
+        ]
+        single_release_values = single_release_values[
+            single_release_values["album_release_date"].str.fullmatch(r"\d{4}-\d{2}-\d{2}")
+        ]
+        if single_release_values.empty:
+            return pd.DataFrame()
+        release_lookup = pd.to_datetime(
+            single_release_values.set_index(group_col)["album_release_date"],
+            errors="coerce",
+        )
+        ordered["_milestone_release_date"] = ordered[group_col].map(release_lookup)
+        ordered = ordered[
+            ordered["_milestone_release_date"].notna()
+            & (ordered["_milestone_event_date"] >= ordered["_milestone_release_date"])
+        ]
 
-        if milestone_date is not None:
-            days = (milestone_date - first_date).days
-            name = str(grp[name_col].iloc[0]) if name_col in grp.columns else str(entity_id)
-            artist = str(grp[artist_col].iloc[0]) if artist_col in grp.columns else ""
-            results.append(
-                {
-                    "entity_id": str(entity_id),
-                    "name": name,
-                    "artist_name": artist,
-                    "days_to_milestone": days,
-                    "milestone_target": threshold,
-                    "first_date": str(first_date.date()),
-                    "milestone_date": str(milestone_date.date()),
-                }
-            )
-
-    if not results:
+    if ordered.empty:
         return pd.DataFrame()
-    df = pd.DataFrame(results)
+
+    ordered["_milestone_ordinal"] = ordered.groupby(group_col, sort=False).cumcount()
+    first_rows = ordered[ordered["_milestone_ordinal"] == 0].set_index(group_col)
+    milestone_rows = ordered[ordered["_milestone_ordinal"] == threshold - 1].set_index(group_col)
+    if milestone_rows.empty:
+        return pd.DataFrame()
+
+    entity_ids = milestone_rows.index
+    first_dates = first_rows.loc[entity_ids, "_milestone_event_date"]
+    milestone_dates = milestone_rows["_milestone_event_date"]
+
+    def metadata_values(column: str, fallback: str | None = None) -> pd.Series:
+        if column == group_col:
+            return pd.Series(entity_ids.astype(str), index=entity_ids)
+        if column in frame.columns:
+            return (
+                frame[[group_col, column]]
+                .drop_duplicates(subset=group_col, keep="first")
+                .set_index(group_col)[column]
+                .loc[entity_ids]
+                .astype(str)
+            )
+        return pd.Series(entity_ids.astype(str) if fallback is None else fallback, index=entity_ids)
+
+    names = metadata_values(name_col)
+    artists = metadata_values(artist_col, "")
+    df = pd.DataFrame(
+        {
+            "entity_id": entity_ids.astype(str),
+            "name": names.to_numpy(),
+            "artist_name": artists.to_numpy(),
+            "days_to_milestone": (milestone_dates - first_dates).dt.days.to_numpy(),
+            "milestone_target": threshold,
+            "first_date": first_dates.dt.date.astype(str).to_numpy(),
+            "milestone_date": milestone_dates.dt.date.astype(str).to_numpy(),
+        }
+    )
     df = sort_and_limit(
         df,
         ["days_to_milestone", "milestone_date", "first_date", "entity_id"],

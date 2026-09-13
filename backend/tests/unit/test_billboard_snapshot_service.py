@@ -122,7 +122,12 @@ def test_startup_snapshot_rebuild_skips_when_all_default_rows_are_current(
 
 
 def test_rebuild_default_snapshots_builds_latest_and_each_year(monkeypatch):
-    filters = {"merge_level": 2, "include_compilations": False}
+    filters = {
+        "merge_level": 2,
+        "include_compilations": False,
+        "year_start": None,
+        "year_end": None,
+    }
     calls: list[tuple[str, dict]] = []
 
     monkeypatch.setattr(snapshot_service, "configured_billboard_filters", lambda: filters)
@@ -156,3 +161,6 @@ def test_rebuild_default_snapshots_builds_latest_and_each_year(monkeypatch):
         "year_end",
     ]
     assert all(kwargs["force_rebuild"] is True for _name, kwargs in calls)
+    year_end_calls = [kwargs for name, kwargs in calls if name == "year_end"]
+    assert all("year_start" not in kwargs for kwargs in year_end_calls)
+    assert all("year_end" not in kwargs for kwargs in year_end_calls)

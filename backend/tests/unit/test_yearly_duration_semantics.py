@@ -1,11 +1,31 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pandas as pd
 
 from backend.domains.ai_reports.yearly_contract import (
     build_same_period_comparison_from_frame,
 )
 from backend.domains.playback.logical_timeline import attach_listening_duration_frame
+from backend.domains.yearly_review.duration import (
+    ListeningDurationSlicesRef,
+    listening_duration_slices,
+    with_listening_duration_slices,
+)
+
+
+def test_scoped_duration_slices_survive_frame_copy_without_copying_payload() -> None:
+    events = pd.DataFrame([{"play_id": 1, "ts_date": "2026-01-01"}])
+    duration = pd.DataFrame([{"play_id": 1, "ts_date": "2026-01-01", "ms_played": 20_000}])
+
+    scoped = with_listening_duration_slices(events, duration)
+    copied = deepcopy(scoped)
+
+    reference = scoped.attrs["listening_duration_slices"]
+    assert isinstance(reference, ListeningDurationSlicesRef)
+    assert copied.attrs["listening_duration_slices"] is reference
+    assert listening_duration_slices(copied)["ms_played"].sum() == 20_000
 
 
 def test_same_period_comparison_uses_attached_duration_and_event_counts() -> None:

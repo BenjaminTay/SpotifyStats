@@ -9,9 +9,11 @@ seed database or a local development database.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sqlite3
 import sys
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from re import Pattern
@@ -476,9 +478,15 @@ def _materialize_dynamic_cases(cases: tuple[SmokeCase, ...]) -> tuple[SmokeCase,
     )
 
 
-def run_cases(client, cases: tuple[SmokeCase, ...] = DEFAULT_SAFE_GET_CASES) -> list[SmokeResult]:
+def run_cases(
+    client,
+    cases: tuple[SmokeCase, ...] = DEFAULT_SAFE_GET_CASES,
+    *,
+    progress: bool = False,
+) -> list[SmokeResult]:
     results = []
     for case in _materialize_dynamic_cases(cases):
+        started_at = time.perf_counter()
         response = client.get(case.path, params=case.params or {})
         request_id = response.headers.get("X-Request-ID")
         status_ok = response.status_code in case.expected_statuses
@@ -509,6 +517,12 @@ def run_cases(client, cases: tuple[SmokeCase, ...] = DEFAULT_SAFE_GET_CASES) -> 
                 detail=detail,
             )
         )
+        if progress:
+            print(
+                f"PROBE {case.name} status={response.status_code} "
+                f"duration_ms={(time.perf_counter() - started_at) * 1000:.1f}",
+                flush=True,
+            )
     return results
 
 
@@ -580,11 +594,22 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _configure_database_path(value: str | None) -> None:
+    # The standalone probe owns an in-process app only to exercise safe GETs.
+    # Do not let its lifespan start unrelated background rebuilds which can
+    # race the foreground smoke cases and obscure the route that is actually
+    # slow or failing.
+    os.environ["SPOTIFY_STATS_WARMUP"] = "0"
+    os.environ["SPOTIFY_STATS_SEARCH_STARTUP_REBUILD"] = "0"
+    os.environ["SPOTIFY_STATS_L3_STARTUP_RECONCILE"] = "0"
     if not value:
         return
     resolved = Path(value).expanduser().resolve()
     if not resolved.is_file():
         raise FileNotFoundError(f"API smoke database does not exist: {resolved}")
+    os.environ.setdefault(
+        "SPOTIFY_STATS_YEARLY_CACHE_PATH",
+        str(resolved.with_name("yearly_review_cache.db")),
+    )
     from backend.core import db as db_mod
 
     db_mod.DB_PATH = str(resolved)
@@ -598,7 +623,7 @@ def main() -> int:
     from backend.main import app
 
     with TestClient(app) as client:
-        results = run_cases(client)
+        results = run_cases(client, progress=True)
     coverage = get_openapi_get_coverage(app)
     passed = sum(1 for result in results if result.ok)
     failed = len(results) - passed

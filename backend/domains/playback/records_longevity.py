@@ -20,6 +20,14 @@ def _duration_totals(frame: pd.DataFrame, group_col: str) -> dict[object, float]
     return dict(zip(grouped[group_col], grouped["total_ms"].astype(float)))
 
 
+def _event_totals(frame: pd.DataFrame, group_col: str) -> pd.DataFrame:
+    """Precompute per-entity counts and raw durations without repeated full-frame scans."""
+    return frame.groupby(group_col, sort=False).agg(
+        total_plays=("play_id", "count"),
+        event_total_ms=("ms_played", "sum"),
+    )
+
+
 def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="track"):
     """最長連續播放天數。"""
     if frame.empty:
@@ -31,6 +39,7 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
     presence = presence.sort_values(sort_cols)
     presence["ts_date"] = pd.to_datetime(presence["ts_date"])
     duration_totals = _duration_totals(frame, group_col)
+    event_totals = _event_totals(frame, group_col)
 
     results = []
     for entity_id, grp in presence.groupby(group_col):
@@ -46,9 +55,11 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
         if not dates:
             continue
 
-        entity_frame = frame[frame[group_col] == entity_id]
-        total_plays = len(entity_frame)
-        total_ms = duration_totals.get(entity_id, float(entity_frame["ms_played"].sum()))
+        totals = event_totals.loc[entity_id]
+        total_plays = int(totals["total_plays"])
+        total_ms = duration_totals.get(entity_id)
+        if total_ms is None:
+            total_ms = float(totals["event_total_ms"])
         total_hours = round(total_ms / 3_600_000, 1)
 
         if len(dates) < 2:
@@ -165,6 +176,7 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
     presence = presence.sort_values(sort_cols)
     presence["ts_date"] = pd.to_datetime(presence["ts_date"])
     duration_totals = _duration_totals(frame, group_col)
+    event_totals = _event_totals(frame, group_col)
 
     results = []
     for entity_id, grp in presence.groupby(group_col):
@@ -190,9 +202,11 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
         if max_gap >= 7:
             name = str(grp[name_col].iloc[0]) if name_col in grp.columns else str(entity_id)
             artist = str(grp[artist_col].iloc[0]) if artist_col in grp.columns else ""
-            total_plays = len(frame[frame[group_col] == entity_id])
-            event_total_ms = float(frame[frame[group_col] == entity_id]["ms_played"].sum())
-            total_ms = duration_totals.get(entity_id, event_total_ms)
+            totals = event_totals.loc[entity_id]
+            total_plays = int(totals["total_plays"])
+            total_ms = duration_totals.get(entity_id)
+            if total_ms is None:
+                total_ms = float(totals["event_total_ms"])
             total_hours = round(total_ms / 3_600_000, 1)
             results.append(
                 {

@@ -61,6 +61,10 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "hasPhoneYearlyV2" in source
     assert "hasLegacyYearly" in source
     assert "Phone Yearly Review V2 did not become ready" in source
+    assert (
+        '"Phone Yearly Review V2 did not become ready",\n                            timeout_ms=YEARLY_REVIEW_WAIT_MS,'
+        in source
+    )
     assert "Phone legacy yearly summary did not become ready" not in source
     assert "年度总结章节" in source
     assert "Yearly records chapter did not become visible" in source

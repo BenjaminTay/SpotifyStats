@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import sqlite3
+from copy import deepcopy
 
 import pandas as pd
 
 from backend.domains.playback.logical_timeline import (
     LISTENING_INTERVALS_COLUMN,
     attach_listening_duration_frame,
+    get_listening_duration_frame,
 )
 from backend.domains.playback.records_helpers import (
     attach_scoped_records_duration,
@@ -67,6 +69,16 @@ def _events() -> pd.DataFrame:
     )
 
 
+def test_attached_duration_reference_survives_frame_copy_without_copying_payload() -> None:
+    events = _events()
+    duration = events.copy()
+    attach_listening_duration_frame(events, duration)
+
+    copied = deepcopy(events)
+
+    assert get_listening_duration_frame(copied) is duration
+
+
 def test_records_duration_scope_does_not_leak_global_attached_rows() -> None:
     events = _events().iloc[:1].copy()
     duration = pd.DataFrame(
@@ -88,6 +100,34 @@ def test_records_duration_scope_does_not_leak_global_attached_rows() -> None:
     )
 
     scoped = records_duration_frame(events)
+    assert scoped["ts_date"].tolist() == ["2026-01-01"]
+    assert scoped["ms_played"].sum() == 20_000
+
+
+def test_records_duration_scope_replaces_yearly_bare_slices_with_safe_reference() -> None:
+    events = _events().iloc[:1].copy()
+    global_duration = pd.DataFrame(
+        [
+            {**events.iloc[0].to_dict(), "ms_played": 20_000},
+            {
+                **events.iloc[0].to_dict(),
+                "ts_date": "2026-02-01",
+                "ms_played": 25_000,
+            },
+        ]
+    )
+    attach_listening_duration_frame(events, global_duration)
+    events.attrs["listening_duration_slices"] = global_duration.iloc[:1].copy()
+
+    attach_scoped_records_duration(
+        events,
+        start_date="2026-01-01",
+        end_date="2026-01-31",
+    )
+
+    assert "listening_duration_slices" not in events.attrs
+    scoped = get_listening_duration_frame(events)
+    assert scoped is not None
     assert scoped["ts_date"].tolist() == ["2026-01-01"]
     assert scoped["ms_played"].sum() == 20_000
 

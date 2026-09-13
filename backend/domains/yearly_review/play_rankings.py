@@ -251,8 +251,19 @@ def build_play_rankings(
                 annual_events=annual_events,
                 annual_duration=annual_duration,
             )
+        available_count = max(plays_total, hours_total)
+        if entity == "track":
+            # Track ranking rows retain artist presentation columns and can
+            # therefore contain more than one row for the same canonical
+            # recording.  The passport's "unique tracks" fact is an identity
+            # count over qualified annual events, not a count of presentation
+            # variants or duration-only rows.
+            identity_column = (
+                "canonical_track_id" if "canonical_track_id" in track_frame.columns else "track_id"
+            )
+            available_count = int(track_frame[identity_column].dropna().nunique())
         charts[entity] = {
-            "available_count": max(plays_total, hours_total),
+            "available_count": available_count,
             "by_plays": _enrich_rows(entity, "plays", plays_rows, activity_maps[entity]),
             "by_hours": _enrich_rows(entity, "hours", hours_rows, activity_maps[entity]),
         }
