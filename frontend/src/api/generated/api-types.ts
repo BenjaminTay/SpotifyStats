@@ -177,10 +177,7 @@ export interface paths {
         };
         /**
          * Dashboard Full
-         * @description Complete dashboard data — all KPIs, charts, and random track in one request.
-         *
-         *     Loads plays once and reuses the DataFrame across all sub-functions to avoid
-         *     redundant SQL queries (was 6 calls, now 1).
+         * @description Complete dashboard data — all KPIs, charts, and random track.
          */
         get: operations["dashboard_full_api_dashboard_full_get"];
         put?: never;
@@ -4233,6 +4230,35 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** AlbumProjectRebuildResponse */
+        AlbumProjectRebuildResponse: {
+            /** Strategy */
+            strategy: string;
+            /** Fallback Reason */
+            fallback_reason?: string | null;
+            /**
+             * Affected Album Count
+             * @default 0
+             */
+            affected_album_count: number;
+            /**
+             * Affected Release Group Count
+             * @default 0
+             */
+            affected_release_group_count: number;
+            /**
+             * Affected Project Count
+             * @default 0
+             */
+            affected_project_count: number;
+            /**
+             * Affected Track Count
+             * @default 0
+             */
+            affected_track_count: number;
+            /** Billboard Snapshot Job Id */
+            billboard_snapshot_job_id?: string | null;
+        };
         /** AlbumRelationConfirmRequest */
         AlbumRelationConfirmRequest: {
             /** Canonical Name */
@@ -4291,6 +4317,7 @@ export interface components {
              * @default false
              */
             album_projects_rebuilt: boolean;
+            album_project_rebuild?: components["schemas"]["AlbumProjectRebuildResponse"] | null;
             /** Message */
             message?: string | null;
         };
@@ -11050,6 +11077,7 @@ export interface components {
              * @default false
              */
             album_projects_rebuilt: boolean;
+            album_project_rebuild?: components["schemas"]["AlbumProjectRebuildResponse"] | null;
             /** Message */
             message?: string | null;
             /** Error Code */
