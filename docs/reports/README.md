@@ -52,6 +52,7 @@
 
 ### 元数据、AI 与质量门禁
 
+- [`2026-09-13-l1-import-duration-and-manual-merge-closeout.md`](2026-09-13-l1-import-duration-and-manual-merge-closeout.md)
 - [`2026-08-31-l2-l3-identity-and-album-attribution-remediation.md`](2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)
 - [`2026-08-31-ai-agent-performance-v5-acceptance.md`](2026-08-31-ai-agent-performance-v5-acceptance.md)
 - [`2026-08-31-ai-agent-quality-v4-acceptance.md`](2026-08-31-ai-agent-quality-v4-acceptance.md)

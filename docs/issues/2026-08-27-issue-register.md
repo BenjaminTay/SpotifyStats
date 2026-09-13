@@ -9,10 +9,8 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 |
 |---|---|---|---|---|
-| `SS-2026-08-24-004` | 全栈总门禁时间过长，且并发性能竞争、冷建等待和失败后整轮重跑放大交付成本 | `PARTIAL` · 工程验收尾项 | 早期完整运行约 27:48、29:07，后续受负载影响的通过轮为 34:08。2026-09-01 的 L2/L3 交付验收中，后端 2,542 项约 21–29 分钟，API 阶段约 14–16 分钟；并发任务曾造成接口超时和 871ms 热 P95，无竞争时恢复到 240ms 内。两个 Desktop 页面首次冷建又因内容 marker 等待超时触发整轮重跑；固定 summary 路径还会被其他工作区覆盖。见 [`fullstack-gate-duration-optimization-plan.md`](../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)。 | 依次实施廉价 preflight、跨工作区 benchmark lock、run-id summary、冷建/readiness 分层、`pytest --durations=100` 剖析与安全并行；再设计严格 evidence manifest 的失败阶段续跑。保持覆盖、三浏览器和 500ms 阈值不变。 |
+| `SS-2026-08-24-004` | 全栈总门禁时间过长，且并发性能竞争、冷建等待和失败后整轮重跑放大交付成本 | `PARTIAL` · P1-A/P1-B 已完成 | 廉价 preflight、跨工作区 `fcntl` 锁和 run-id 独立 summary 已由本地提交 `8326169f` 实现；真实 `--only preflight` PASS，定向测试 23 passed。历史完整运行仍约 27–34 分钟，冷建 readiness、`pytest --durations=100` 剖析、安全并行和严格 evidence manifest 续跑尚未完成。见 [`fullstack-gate-duration-optimization-plan.md`](../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)。 | 先用新门禁跑当前提交的默认完整验收并记录 durations；再按实测瓶颈完成 P1-C/P1-D，不降低覆盖、三浏览器和 500ms 阈值。 |
 | `SS-2026-08-06-005` | PWA/移动网页完成后，iPhone Safari 与 Android Chrome 真机安装、返回、安全区和 OAuth 验收仍未完成；Capacitor 尚未决策 | `PARTIAL` · 路线尾项 | 当前规划明确写为等待真机验收，不能把本地浏览器验收当作真机完成。见 [`appification-pwa-capacitor-plan.md`](../plans/2026-08-06-appification-pwa-capacitor-plan.md)。 | 有真实设备和 HTTPS/认证条件后再做真机验收；在此之前不宣称已完成 App 化。 |
-| `SS-2026-08-31-002` | L1 多 Spotify Track ID owner 仍有 600 个 review；未知 provider ID 的导入和时长取值还需防复发收口 | `OPEN` · 数据治理与导入正确性 | L2/L3 hard issue、未覆盖、multi-owner 和守恒差值已为 0；600 个 review 是证据不足的审计队列，不是 600 个确认错误。当前导入中未知 Spotify ID 仍可按艺人+曲名命中旧 owner，且仍有旧 `tracks.duration_ms` 兼容路径。见 [`L2/L3 交付报告`](../reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)。 | 先实现 provisional owner 与 provider-first duration resolver，再在 Online Backup 副本重新分类存量 review；只执行有唯一目标和可审计证据的 keep/relink/split，不强行清零。 |
-| `SS-2026-08-31-003` | 人工歌曲/专辑关系变更仍可重复触发全量 Album Project、L3 归属和多套快照重建 | `OPEN` · 治理性能 | 当前实现已有定向 Album Project rebuild 能力，但人工归并主路径还需把影响范围、批次去重、定向刷新和安全全量 fallback 接到同一套契约。 | mutation 先收集受影响 track/album/work，整个事务结束后只刷新一次；响应记录 targeted/full 策略、影响数量、fallback reason 和后台 job ID。 |
 
 ## 排序规则：当前实现
 
@@ -49,6 +47,8 @@ billboard_week ASC → play_count DESC → total_ms DESC → 稳定 ID ASC → �
 
 以下事项有后续交付证据，因此不应从旧提问清单中再次当作“未解决”提出：
 
+- `SS-2026-08-31-002`：未知 Spotify Track ID 的导入防复发和 provider-first duration resolver 已在本地提交 `e251148a` 完成；Online Backup 与真实数据库只读模拟仍为 217 keep / 600 review / 0 个安全操作。存量 review 因缺少唯一目标而不做写入，等待新证据，不再作为未完成代码。见 [`收口报告`](../reports/2026-09-13-l1-import-duration-and-manual-merge-closeout.md)。
+- `SS-2026-08-31-003`：人工专辑关系现在在同一事务内完成专辑/歌曲 mutation 和派生刷新，批次只刷新一次，失败整体回滚；响应公开 targeted/full、影响范围、fallback reason 与后台 job ID。实现位于本地提交 `e251148a`，完整发布状态待本轮后续门禁和部署回填。见 [`收口报告`](../reports/2026-09-13-l1-import-duration-and-manual-merge-closeout.md)。
 - Agent V5：原生工具循环、只读工具注册、证据契约、崩溃恢复、SSE 续传和年度报告共享上下文已完成；集成线已进入 `origin/main` 并随 `b0d674bd` 部署。仓库级门禁尾项由 `SS-2026-08-24-004` 跟踪，不是 Agent V5 核心链路未完成。见 [`Agent V5 验收报告`](../reports/2026-08-31-ai-agent-performance-v5-acceptance.md)。
 - L2/L3 身份与专辑归属：L2 活动组成员重叠、无效代表、L3 未覆盖/多 owner 和逻辑事件守恒问题已收口，对应代码已进入 `origin/main` 并随 `b0d674bd` 部署。600 个 L1 review 是另一个开放治理队列，不反向把 L2/L3 标记为未完成。见 [`L2/L3 交付报告`](../reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)。
 - Billboard 持久快照：周榜、年榜和总榜 cache-first 持久快照、事件驱动后台重建、LKG 与回滚兼容性门禁已完成生产交付；实施计划已归档。见 [`归档计划`](../archive/06-productization-closeout/2026-09-12-billboard-persistent-snapshot-optimization-plan.md) 与 [`交付报告`](../reports/2026-09-13-billboard-persistent-snapshot-optimization.md)。
@@ -65,6 +65,7 @@ billboard_week ASC → play_count DESC → total_ms DESC → 稳定 ID ASC → �
 
 | 日期 | 变化 |
 |---|---|
+| 2026-09-13 | 完成 L1 导入防复发、provider-first 时长解析和人工关系单事务/一次刷新；真实库与 Online Backup 复审仍为 600 review、0 个安全操作，因此不修改真实数据。 |
 | 2026-09-13 | 同步 `origin/main=d37e8aaf` 与生产代码 `b0d674bd`；将 Agent V5、L2/L3、Billboard Records、双轨时长与持久快照的仓库/部署状态收口，新增 L1 防复发和人工归并性能开放项。 |
 | 2026-08-29 | 完成播放记录规划与当前 5 栏/20 模块实现的差异核对并归档，将 `SS-2026-06-23-006` 更新为已解决。 |
 | 2026-08-29 | 同步仓库与验证状态：Billboard 修复已本地提交为 `0b23c442`，Settings 修复已提交为 `62f48299`，均未 push；Settings 移入已解决，播放记录文档核对随后完成并归档。 |
