@@ -145,9 +145,20 @@ def test_rebuild_default_snapshots_builds_latest_and_each_year(monkeypatch):
     )
     monkeypatch.setattr(
         "backend.services.billboard_service.compute_year_end_staged",
-        lambda **kwargs: calls.append(("year_end", kwargs))
-        or {"meta": {"available_years": [2025, 2026]}},
+        lambda **kwargs: (
+            calls.append(("year_end", kwargs)) or {"meta": {"available_years": [2025, 2026]}}
+        ),
     )
+
+    for family, method in [
+        ("records", "compute_records_staged"),
+        ("power_scores", "compute_power_scores_staged"),
+        ("summaries", "compute_summaries_staged"),
+    ]:
+        monkeypatch.setattr(
+            f"backend.services.billboard_service.{method}",
+            lambda family=family, **kwargs: calls.append((family, kwargs)) or {},
+        )
 
     result = snapshot_service.rebuild_default_billboard_snapshots()
 
@@ -156,6 +167,9 @@ def test_rebuild_default_snapshots_builds_latest_and_each_year(monkeypatch):
         "weekly",
         "all_time",
         "full_data",
+        "records",
+        "power_scores",
+        "summaries",
         "year_end",
         "year_end",
         "year_end",

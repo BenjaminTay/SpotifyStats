@@ -4343,6 +4343,19 @@ export interface components {
             /** Candidate Album Id */
             candidate_album_id: number;
         };
+        /** AllTimeProjectionResponse */
+        AllTimeProjectionResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
+            /**
+             * Entity
+             * @enum {string}
+             */
+            entity: "tracks" | "albums" | "artists";
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+        };
         /** AnalysisChartRow */
         AnalysisChartRow: {
             /** Rank */
@@ -6585,6 +6598,7 @@ export interface components {
         };
         /** BillboardAllTimeResponse */
         BillboardAllTimeResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
             meta: components["schemas"]["BillboardMeta"];
             /** Weekly */
             weekly: {
@@ -6625,6 +6639,7 @@ export interface components {
         };
         /** BillboardDataResponse */
         BillboardDataResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
             meta: components["schemas"]["BillboardMeta"];
             /** Weekly */
             weekly: {
@@ -6698,6 +6713,7 @@ export interface components {
         };
         /** BillboardPowerScoresResponse */
         BillboardPowerScoresResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
             /** Power Scores */
             power_scores: components["schemas"]["TrackPowerScoreRow"][];
             /** Album Power Scores */
@@ -6707,6 +6723,7 @@ export interface components {
         };
         /** BillboardRecordsResponse */
         BillboardRecordsResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
             /** Records */
             records: {
                 [key: string]: unknown;
@@ -6714,6 +6731,7 @@ export interface components {
         };
         /** BillboardSummariesResponse */
         BillboardSummariesResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
             /** Track Summary */
             track_summary: {
                 [key: string]: unknown;
@@ -6735,6 +6753,7 @@ export interface components {
         };
         /** BillboardWeeklyResponse */
         BillboardWeeklyResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
             meta: components["schemas"]["BillboardMeta"];
             /** Weekly */
             weekly: {
@@ -6906,6 +6925,7 @@ export interface components {
         };
         /** BillboardYearEndResponse */
         BillboardYearEndResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
             meta: components["schemas"]["BillboardYearEndMeta"];
             /** Tracks */
             tracks: components["schemas"]["BillboardYearEndTrackRow"][];
@@ -7740,6 +7760,7 @@ export interface components {
         };
         /** HomeOverviewResponse */
         HomeOverviewResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
             /**
              * Schema Version
              * @default home_overview_v2
@@ -9170,6 +9191,34 @@ export interface components {
             /** Cover Url */
             cover_url: string;
         };
+        /** NumberOnesProjectionResponse */
+        NumberOnesProjectionResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
+            /** Weekly */
+            weekly: {
+                [key: string]: unknown;
+            }[];
+            /** Weekly Album */
+            weekly_album: {
+                [key: string]: unknown;
+            }[];
+            /** Weekly Artist */
+            weekly_artist: {
+                [key: string]: unknown;
+            }[];
+            /** Power Scores */
+            power_scores: {
+                [key: string]: unknown;
+            }[];
+            /** Album Power Scores */
+            album_power_scores: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Power Scores */
+            artist_power_scores: {
+                [key: string]: unknown;
+            }[];
+        };
         /** OverlapDetailResponse */
         OverlapDetailResponse: {
             /** Album Name */
@@ -10028,6 +10077,26 @@ export interface components {
                 [key: string]: string;
             }[];
         };
+        /** RecordsProjectionResponse */
+        RecordsProjectionResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
+            /** Records */
+            records: {
+                [key: string]: unknown;
+            };
+            /** Covers */
+            covers: {
+                [key: string]: unknown;
+            };
+            /** Curiosity Tracks */
+            curiosity_tracks: {
+                [key: string]: unknown;
+            }[];
+            /** Artist Track Counts */
+            artist_track_counts: {
+                [key: string]: unknown;
+            }[];
+        };
         /** RegionDist */
         RegionDist: {
             /** Region */
@@ -10561,6 +10630,51 @@ export interface components {
             platform: string;
             /** Rate */
             rate: number;
+        };
+        /** SnapshotReadState */
+        SnapshotReadState: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "warming";
+            /**
+             * Freshness
+             * @enum {string}
+             */
+            freshness: "current" | "last_known_good";
+            /** Source Revision */
+            source_revision?: string | null;
+            /** Target Revision */
+            target_revision: string;
+        };
+        /** SnapshotUnavailableDetail */
+        SnapshotUnavailableDetail: {
+            /**
+             * Error
+             * @default snapshot_unavailable
+             * @constant
+             */
+            error: "snapshot_unavailable";
+            /**
+             * Status
+             * @default unavailable
+             * @constant
+             */
+            status: "unavailable";
+            /** Family */
+            family: string;
+            /** Target Revision */
+            target_revision?: string | null;
+            /**
+             * Message
+             * @default 当前筛选的数据尚未发布，请稍后重试。
+             */
+            message: string;
+        };
+        /** SnapshotUnavailableResponse */
+        SnapshotUnavailableResponse: {
+            detail: components["schemas"]["SnapshotUnavailableDetail"];
         };
         /** SoundCapsuleDaily */
         SoundCapsuleDaily: {
@@ -11533,6 +11647,30 @@ export interface components {
             weekday?: number[];
             /** Comparison */
             comparison?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** WeeklyProjectionResponse */
+        WeeklyProjectionResponse: {
+            snapshot?: components["schemas"]["SnapshotReadState"] | null;
+            meta: components["schemas"]["BillboardMeta"];
+            /** Selected Week */
+            selected_week: string;
+            /**
+             * Entity
+             * @enum {string}
+             */
+            entity: "tracks" | "albums" | "artists";
+            /** Current */
+            current: {
+                [key: string]: unknown;
+            }[];
+            /** Previous */
+            previous: {
+                [key: string]: unknown;
+            }[];
+            /** Historical */
+            historical: {
                 [key: string]: unknown;
             }[];
         };
@@ -12936,6 +13074,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -14936,11 +15083,23 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     get_billboard_weekly_api_billboard_weekly_get: {
         parameters: {
             query?: {
+                projection?: "page" | null;
+                week?: string | null;
+                entity?: "tracks" | "albums" | "artists";
                 /** @description Include compilation albums in album chart (R14) */
                 include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
@@ -14982,7 +15141,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BillboardWeeklyResponse"];
+                    "application/json": components["schemas"]["BillboardWeeklyResponse"] | components["schemas"]["WeeklyProjectionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -14992,6 +15151,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -14999,6 +15167,7 @@ export interface operations {
     get_billboard_records_api_billboard_records_get: {
         parameters: {
             query?: {
+                projection?: "page" | null;
                 /** @description Include compilation albums in album chart (R14) */
                 include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
@@ -15040,7 +15209,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BillboardRecordsResponse"];
+                    "application/json": components["schemas"]["BillboardRecordsResponse"] | components["schemas"]["RecordsProjectionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -15050,6 +15219,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -15110,6 +15288,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     get_billboard_summaries_api_billboard_summaries_get: {
@@ -15168,11 +15355,22 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     get_billboard_all_time_api_billboard_all_time_get: {
         parameters: {
             query?: {
+                projection?: ("entity" | "number-ones") | null;
+                entity?: "tracks" | "albums" | "artists";
                 /** @description Include compilation albums in album chart (R14) */
                 include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
@@ -15214,7 +15412,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BillboardAllTimeResponse"];
+                    "application/json": components["schemas"]["BillboardAllTimeResponse"] | components["schemas"]["AllTimeProjectionResponse"] | components["schemas"]["NumberOnesProjectionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -15224,6 +15422,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -15286,11 +15493,21 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     get_artist_list_api_billboard_release_cycle_artist_list_get: {
         parameters: {
             query?: {
+                include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
                 /** @description 仅音乐 */
@@ -15315,6 +15532,8 @@ export interface operations {
                 dynamic_threshold?: boolean;
                 /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
                 max_merge_gap_minutes?: number | null;
+                /** @description 版本归并级别（L2/L3） */
+                merge_level?: number;
             };
             header?: never;
             path?: never;
@@ -15340,12 +15559,20 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     get_album_detail_api_billboard_release_cycle_artist__artist_name__album__album_name__get: {
         parameters: {
             query?: {
-                /** @description 专辑榜是否包含精选集 */
                 include_compilations?: boolean;
                 weeks_before?: number;
                 weeks_after?: number;
@@ -15403,12 +15630,20 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     get_artist_overview_api_billboard_release_cycle_artist__artist_name__get: {
         parameters: {
             query?: {
-                /** @description 专辑榜是否包含精选集 */
                 include_compilations?: boolean;
                 weeks_before?: number;
                 weeks_after?: number;
@@ -15465,12 +15700,20 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     compare_releases_api_billboard_release_cycle_compare_post: {
         parameters: {
             query?: {
-                /** @description 专辑榜是否包含精选集 */
                 include_compilations?: boolean;
                 /** @description 最短播放时长 (毫秒) */
                 min_ms?: number | null;
@@ -15525,6 +15768,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -15592,6 +15844,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -15668,6 +15929,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     artist_chart_detail_api_billboard_artist__artist_name__get: {
@@ -15735,6 +16005,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -15807,6 +16086,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     album_project_chart_detail_api_billboard_album_project__project_id__get: {
@@ -15875,6 +16163,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     entity_lists_api_billboard_entity_lists_get: {
@@ -15932,6 +16229,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -15995,6 +16301,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     versus_track_multi_api_billboard_versus_track_post: {
@@ -16054,6 +16369,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -16121,6 +16445,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     versus_album_multi_api_billboard_versus_album_post: {
@@ -16180,6 +16513,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -16243,6 +16585,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     versus_artist_multi_api_billboard_versus_artist_post: {
@@ -16304,6 +16655,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     get_album_enrichment_api_billboard_enrichment_album__album_name__get: {
@@ -16340,6 +16700,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     get_artist_enrichment_api_billboard_enrichment_artist__artist_name__get: {
@@ -16372,6 +16741,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -16408,6 +16786,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };

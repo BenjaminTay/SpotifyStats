@@ -28,6 +28,7 @@ def compute_year_end_staged(
     year_end_artist_top_n=YEAR_END_ARTIST_TOP_N,
     *,
     force_rebuild=False,
+    _build_context=None,
 ):
     """Compute Billboard Year-End charts for tracks, albums, and artists."""
     params = {
@@ -51,23 +52,27 @@ def compute_year_end_staged(
     return get_or_build_billboard_snapshot(
         "year_end",
         params,
-        lambda: _compute_year_end_cached(
-            min_ms,
-            music_only,
-            bb_top_n,
-            bb_album_top_n,
-            bb_artist_top_n,
-            bb_week_start_dow,
-            bb_week_start_hour,
-            year,
-            merge_level,
-            dynamic_threshold=dynamic_threshold,
-            max_merge_gap_minutes=max_merge_gap_minutes,
-            include_compilations=include_compilations,
-            merge_enabled=merge_enabled,
-            year_end_top_n=year_end_top_n,
-            year_end_album_top_n=year_end_album_top_n,
-            year_end_artist_top_n=year_end_artist_top_n,
+        lambda: (
+            _build_context.compute("year_end", params, _compute_year_end_cached)
+            if _build_context is not None
+            else _compute_year_end_cached(
+                min_ms,
+                music_only,
+                bb_top_n,
+                bb_album_top_n,
+                bb_artist_top_n,
+                bb_week_start_dow,
+                bb_week_start_hour,
+                year,
+                merge_level,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+                include_compilations=include_compilations,
+                merge_enabled=merge_enabled,
+                year_end_top_n=year_end_top_n,
+                year_end_album_top_n=year_end_album_top_n,
+                year_end_artist_top_n=year_end_artist_top_n,
+            )
         ),
         force_rebuild=force_rebuild,
     )

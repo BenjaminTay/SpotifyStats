@@ -86,7 +86,7 @@ def billboard_default_snapshots_ready() -> bool:
     )
 
     filters = configured_billboard_filters()
-    for family in ("weekly", "all_time", "full_data"):
+    for family in ("weekly", "all_time", "full_data", "records", "power_scores", "summaries"):
         context = build_cache_context(family, filters)
         if load_persisted_snapshot(context, allow_lkg=False) is None:
             return False
@@ -153,26 +153,58 @@ def enqueue_billboard_snapshot_rebuild(
 
 def rebuild_default_billboard_snapshots() -> dict[str, object]:
     """Force-build the default response families for the current source state."""
+    from backend.domains.billboard.build_context import BillboardBuildContext
+    from backend.domains.billboard.persistent_cache import _lock_for, build_cache_context
     from backend.services.billboard_service import (
         compute_all_time_staged,
         compute_billboard_data,
+        compute_power_scores_staged,
+        compute_records_staged,
+        compute_summaries_staged,
         compute_weekly_data,
         compute_year_end_staged,
     )
 
     filters = configured_billboard_filters()
-    compute_weekly_data(**filters, force_rebuild=True)
-    compute_all_time_staged(**filters, force_rebuild=True)
-    compute_billboard_data(**filters, force_rebuild=True)
-    year_end_filters = _year_end_snapshot_params(filters, year=None)
-    year_end_filters.pop("year")
-    latest = compute_year_end_staged(**year_end_filters, year=None, force_rebuild=True)
-    years = latest.get("meta", {}).get("available_years", [])
-    rebuilt_years: list[int] = []
-    for year in years:
-        compute_year_end_staged(**year_end_filters, year=int(year), force_rebuild=True)
-        rebuilt_years.append(int(year))
-    return {"families": ["weekly", "all_time", "full_data", "year_end"], "years": rebuilt_years}
+    generation = build_cache_context("full_data", filters)
+    # Keep concurrent maintenance callers from dividing family ownership and
+    # rebuilding the same invocation-local facts in separate contexts.
+    with _lock_for("generation:" + generation["cache_key"]):
+        with BillboardBuildContext(filters) as facts:
+            compute_weekly_data(**filters, force_rebuild=True, _build_context=facts)
+            compute_all_time_staged(**filters, force_rebuild=True, _build_context=facts)
+            compute_billboard_data(**filters, force_rebuild=True, _build_context=facts)
+            compute_records_staged(**filters, force_rebuild=True, _build_context=facts)
+            # An existing exact all_time row can short-circuit its staged builder.
+            # Ensure the independently readable families also exist in that case.
+            compute_power_scores_staged(**filters, force_rebuild=True, _build_context=facts)
+            compute_summaries_staged(**filters, force_rebuild=True, _build_context=facts)
+            year_end_filters = _year_end_snapshot_params(filters, year=None)
+            year_end_filters.pop("year")
+            latest = compute_year_end_staged(
+                **year_end_filters, year=None, force_rebuild=True, _build_context=facts
+            )
+            years = latest.get("meta", {}).get("available_years", [])
+            rebuilt_years: list[int] = []
+            for year in years:
+                compute_year_end_staged(
+                    **year_end_filters, year=int(year), force_rebuild=True, _build_context=facts
+                )
+                rebuilt_years.append(int(year))
+            # all_time publishes power_scores and summaries through its existing
+            # staged builder; records needs its own publication in addition to full_data.
+            return {
+                "families": [
+                    "weekly",
+                    "all_time",
+                    "full_data",
+                    "records",
+                    "power_scores",
+                    "summaries",
+                    "year_end",
+                ],
+                "years": rebuilt_years,
+            }
 
 
 def handle_billboard_snapshot_rebuild(job: Job) -> None:

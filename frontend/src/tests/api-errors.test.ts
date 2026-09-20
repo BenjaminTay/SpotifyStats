@@ -6,13 +6,33 @@ import {
   CancelError,
   NetworkError,
   TimeoutError,
+  SnapshotUnavailableError,
 } from '@/api/errors'
+import { queryClient } from '@/api/query-client'
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
 describe('apiClient error responses', () => {
+  it('preserves unavailable publication state and does not automatically retry it', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      detail: { error: 'snapshot_unavailable', status: 'unavailable', family: 'records',
+        target_revision: 'target', message: '当前筛选的数据尚未发布，请稍后重试。' },
+    }), { status: 503, headers: { 'Content-Type': 'application/json' } })))
+    let error: unknown
+    try { await apiClient.get('/billboard/records') } catch (caught) { error = caught }
+    expect(error).toBeInstanceOf(SnapshotUnavailableError)
+    expect(error).toMatchObject({ message: '当前筛选的数据尚未发布，请稍后重试。',
+      snapshot: { status: 'unavailable', target_revision: 'target' } })
+    const retry = queryClient.getDefaultOptions().queries?.retry
+    expect(typeof retry).toBe('function')
+    if (typeof retry === 'function') {
+      expect(retry(0, error as Error)).toBe(false)
+      expect(retry(0, new ApiError(500, 'error'))).toBe(true)
+      expect(retry(2, new ApiError(500, 'error'))).toBe(false)
+    }
+  })
   it('serializes array parameters as repeated query keys', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', {
       status: 200,

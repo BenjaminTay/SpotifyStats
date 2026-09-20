@@ -94,8 +94,9 @@ def test_revision_miss_serves_last_good_while_exact_snapshot_rebuilds(monkeypatc
     home_service._get_home_overview_cached.cache_clear()
     stale = home_service._get_home_overview_cached("{}", "rev-2", "facts", 1, "yearly")
 
-    assert first == {"generation": 1, "cache_state": "fresh"}
-    assert stale == {"generation": 1, "cache_state": "warming"}
+    assert first["generation"] == 1 and first["cache_state"] == "fresh"
+    assert first["snapshot"]["freshness"] == "current"
+    assert stale["generation"] == 1 and stale["cache_state"] == "warming"
     assert rebuild_started.wait(timeout=1)
     release_rebuild.set()
     deadline = time.time() + 2

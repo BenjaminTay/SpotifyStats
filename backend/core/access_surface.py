@@ -21,7 +21,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Literal
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 
 SurfaceName = Literal["private-admin", "public-readonly"]
 DeploymentProfile = Literal["full", "showcase"]
@@ -231,6 +231,7 @@ PUBLIC_SAFE_GET_TEMPLATES = frozenset(
         "/api/billboard/track/canonical/{track_id}",
         "/api/billboard/artist/{artist_name:path}",
         "/api/billboard/album/{album_name:path}",
+        "/api/billboard/album-project/{project_id}",
         "/api/billboard/entity-lists",
         "/api/billboard/versus/track",
         "/api/billboard/versus/album",
@@ -246,6 +247,10 @@ PUBLIC_SAFE_GET_TEMPLATES = frozenset(
         "/api/music/tracks/legacy/{track_id}/identity",
         "/api/music/tracks/l1/{track_id}/stats",
         "/api/music/albums/{album_name}/stats",
+        "/api/music/album-projects/{project_id}/stats",
+        "/api/music/album-projects/{project_id}/rankings",
+        "/api/music/album-projects/{project_id}/plays",
+        "/api/music/album-projects/{project_id}/play-dates",
         "/api/music/artists/{artist_name}/stats",
         "/api/music/albums/{album_name}/rankings",
         "/api/music/artists/{artist_name}/rankings",
@@ -278,7 +283,7 @@ PUBLIC_SAFE_POST_PATHS = frozenset(
 )
 
 _TEMPLATE_PARAM_RE = re.compile(r"\{([^{}]+)\}")
-_INTEGER_PUBLIC_ROUTE_PARAMETERS = frozenset({"year", "entity_id", "track_id"})
+_INTEGER_PUBLIC_ROUTE_PARAMETERS = frozenset({"year", "entity_id", "track_id", "project_id"})
 
 
 def _compile_route_template(template: str) -> re.Pattern[str]:
@@ -367,6 +372,19 @@ def reset_public_readonly_db_guard(token: Token[bool]) -> None:
 
 def public_readonly_db_guard_active() -> bool:
     return _public_readonly_db_guard.get()
+
+
+def snapshot_unavailable(family: str, target_revision: str | None = None) -> HTTPException:
+    """A missing publication is not an empty result or permission to build."""
+    from backend.models.snapshot import SnapshotUnavailableDetail
+
+    return HTTPException(
+        status_code=503,
+        detail=SnapshotUnavailableDetail(
+            family=family,
+            target_revision=target_revision,
+        ).model_dump(),
+    )
 
 
 def public_policy_decision(method: str, path: str) -> PolicyDecision:

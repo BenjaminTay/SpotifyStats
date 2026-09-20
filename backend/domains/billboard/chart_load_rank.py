@@ -194,6 +194,9 @@ def _load_and_rank_uncached(
     max_merge_gap_minutes=5,
     include_compilations=False,
     merge_enabled=True,
+    *,
+    _ranking_only=False,
+    _facts=None,
 ):
     open_week = current_open_billboard_week(
         week_start_dow=bb_week_start_dow,
@@ -215,7 +218,12 @@ def _load_and_rank_uncached(
         _agg_artists = _filter_billboard_years(_agg_artists, year_start, year_end)
         df_filtered = _agg_tracks.copy()
     else:
-        df_raw = load_billboard_raw(
+        raw_loader = (
+            load_billboard_raw
+            if _facts is None
+            else (lambda *a, **kw: _facts.load_raw(load_billboard_raw, *a, **kw))
+        )
+        df_raw = raw_loader(
             min_ms,
             music_only,
             bb_week_start_dow,
@@ -224,7 +232,8 @@ def _load_and_rank_uncached(
             max_merge_gap_minutes=max_merge_gap_minutes,
             merge_enabled=merge_enabled,
         )
-        df_filtered = _filter_billboard_years(df_raw.copy(), year_start, year_end)
+        df_filtered = _filter_billboard_years(df_raw, year_start, year_end)
+        del df_raw
 
     # The newest observed week is only a partial coverage window.  Keep the
     # full filtered frame for all-time playback totals and coverage metadata,
@@ -288,12 +297,27 @@ def _load_and_rank_uncached(
         include_compilations=include_compilations,
     )
 
+    owned_raw = _facts is not None and _agg_tracks is None
+    if owned_raw:
+        album_total_map = _album_total_map(df_filtered, merge_level, include_compilations)
+        _facts.release_raw_inputs(weekly, weekly_album, df_filtered)
+        del chart_frame, coverage_source
+        # Summaries consume event counts; Year-End consumes dates/coverage.
+        # Release identity/display columns after their final ranking consumer.
+        columns = ("track_id", "ms_played", "play_count", "billboard_week", "ts", "ts_date")
+        df_filtered = df_filtered.loc[:, [c for c in columns if c in df_filtered]].copy()
+
     if chart_agg_artists is not None:
         weekly_artist = compute_artist_weekly_rankings(
             chart_frame, bb_artist_top_n, pre_agg=chart_agg_artists
         )
     else:
-        df_artists = load_billboard_raw_for_artists(
+        artist_loader = (
+            load_billboard_raw_for_artists
+            if _facts is None
+            else (lambda *a, **kw: _facts.load_raw(load_billboard_raw_for_artists, *a, **kw))
+        )
+        df_artists = artist_loader(
             min_ms,
             music_only,
             bb_week_start_dow,
@@ -305,7 +329,62 @@ def _load_and_rank_uncached(
         df_artists = _filter_billboard_years(df_artists, year_start, year_end)
         df_artists = keep_complete_billboard_weeks(df_artists, open_week=open_week)
         weekly_artist = compute_artist_weekly_rankings(df_artists, bb_artist_top_n)
+        if owned_raw:
+            _facts.release_raw_inputs(weekly_artist)
+        del df_artists
 
+    if not owned_raw:
+        album_total_map = _album_total_map(df_filtered, merge_level, include_compilations)
+
+    ranked = (
+        weekly,
+        weekly_album,
+        weekly_artist,
+        all_weeks_asc,
+        all_weeks_desc,
+        df_filtered,
+        album_total_map,
+    )
+    if _ranking_only:
+        return ranked
+    return _finish_ranked_facts(ranked, bb_top_n, bb_album_top_n, bb_artist_top_n, merge_level)
+
+
+def _album_total_map(df_filtered, merge_level, include_compilations):
+    from backend.core.db import get_db
+    from backend.domains.playback.album_projects import compute_album_project_plays
+
+    conn = get_db()
+    try:
+        album_total_plays = compute_album_project_plays(
+            df_filtered,
+            conn,
+            merge_level=merge_level,
+            include_compilations=include_compilations,
+            billboard_mode=False,
+        )
+        album_total_map = {}
+        if not album_total_plays.empty:
+            for _, row in album_total_plays.iterrows():
+                key = (row["album_project_name"], row["artist_name"])
+                album_total_map[key] = int(row["play_count"])
+    finally:
+        conn.close()
+
+    return album_total_map
+
+
+def _finish_ranked_facts(ranked, bb_top_n, bb_album_top_n, bb_artist_top_n, merge_level):
+    """Top-N-dependent counts and prefixes; never truncate a different prefix."""
+    (
+        weekly,
+        weekly_album,
+        weekly_artist,
+        all_weeks_asc,
+        all_weeks_desc,
+        df_filtered,
+        album_total_map,
+    ) = ranked
     # The rankers already retain every week's published Top N.  Use that
     # bounded history for RE detection without turning the cold chart path
     # into an all-candidates ranking pass.
@@ -337,27 +416,6 @@ def _load_and_rank_uncached(
     weekly = _add_running_metrics(weekly, ["track_id"])
     weekly_album = _add_running_metrics(weekly_album, ["artist_name", "album_name"])
     weekly_artist = _add_running_metrics(weekly_artist, ["artist_name"])
-
-    # Compute unfiltered total_plays for all album projects (no release-date filter)
-    from backend.core.db import get_db
-    from backend.domains.playback.album_projects import compute_album_project_plays
-
-    conn = get_db()
-    try:
-        album_total_plays = compute_album_project_plays(
-            df_filtered,
-            conn,
-            merge_level=merge_level,
-            include_compilations=include_compilations,
-            billboard_mode=False,
-        )
-        album_total_map = {}
-        if not album_total_plays.empty:
-            for _, row in album_total_plays.iterrows():
-                key = (row["album_project_name"], row["artist_name"])
-                album_total_map[key] = int(row["play_count"])
-    finally:
-        conn.close()
 
     return (
         weekly,

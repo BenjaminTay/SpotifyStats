@@ -6,6 +6,7 @@ from functools import lru_cache
 
 from backend.core.db import enrich_track_artist_names
 from backend.core.json_helpers import df_to_json as _df_to_json
+from backend.domains.billboard.build_context import shared_fact
 from backend.domains.billboard.chart_load_rank import (
     _copy_load_and_rank_result,
     _filtered_record_count,
@@ -46,7 +47,15 @@ def _load_and_rank(
     max_merge_gap_minutes=5,
     include_compilations=False,
     merge_enabled=True,
+    *,
+    _facts=None,
+    _year_end_ranked=False,
 ):
+    if _facts is not None:
+        params = dict(locals())
+        params.pop("_facts")
+        params.pop("_year_end_ranked")
+        return _facts.load_rank(params, year_end=_year_end_ranked)
     return _copy_load_and_rank_result(
         _load_and_rank_cached(
             min_ms,
@@ -84,6 +93,8 @@ def _compute_weekly_data_cached(
     include_compilations=False,
     merge_enabled=True,
     _revision_state=(0, 0, 0, 0, "ready:ready"),
+    *,
+    _facts=None,
 ):
     weekly, weekly_album, weekly_artist, all_weeks_asc, all_weeks_desc, df_filtered, _abtm = (
         _load_and_rank(
@@ -101,6 +112,7 @@ def _compute_weekly_data_cached(
             max_merge_gap_minutes=max_merge_gap_minutes,
             include_compilations=include_compilations,
             merge_enabled=merge_enabled,
+            _facts=_facts,
         )
     )
 
@@ -146,6 +158,8 @@ def _compute_power_scores_cached(
     max_merge_gap_minutes=5,
     include_compilations=False,
     merge_enabled=True,
+    *,
+    _facts=None,
 ):
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, album_total_map = _load_and_rank(
         min_ms,
@@ -162,18 +176,27 @@ def _compute_power_scores_cached(
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
         merge_enabled=merge_enabled,
+        _facts=_facts,
     )
 
-    track_summary = compute_track_summary(weekly, df_filtered)
-    artist_summary = compute_artist_summary(weekly)
-    _album_counts, track_per_album = compute_album_track_counts(
-        track_summary, load_track_album_map(), weekly_album
+    track_summary = shared_fact(
+        _facts, "track_summary", lambda: compute_track_summary(weekly, df_filtered)
+    )
+    artist_summary = shared_fact(_facts, "artist_summary", lambda: compute_artist_summary(weekly))
+    _album_counts, track_per_album = shared_fact(
+        _facts,
+        "album_counts",
+        lambda: compute_album_track_counts(track_summary, load_track_album_map(), weekly_album),
     )
 
     weekly = enrich_track_artist_names(weekly)
     power_scores = compute_power_scores(weekly, bb_top_n)
-    album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
-    artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)
+    album_power_scores = shared_fact(
+        _facts, "album_power", lambda: compute_album_power_scores(weekly_album, bb_album_top_n)
+    )
+    artist_power_scores = shared_fact(
+        _facts, "artist_power", lambda: compute_artist_power_scores(weekly_artist, bb_artist_top_n)
+    )
     album_power_scores, artist_power_scores = attach_cross_level_power_metrics(
         album_power_scores,
         artist_power_scores,
@@ -212,6 +235,8 @@ def _compute_summaries_cached(
     max_merge_gap_minutes=5,
     include_compilations=False,
     merge_enabled=True,
+    *,
+    _facts=None,
 ):
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, _album_tm = _load_and_rank(
         min_ms,
@@ -228,18 +253,27 @@ def _compute_summaries_cached(
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
         merge_enabled=merge_enabled,
+        _facts=_facts,
     )
 
     album_map = load_track_album_map()
     date_cols_week = ["billboard_week", "first_week", "last_week", "first_peak_week"]
 
-    track_summary = compute_track_summary(weekly, df_filtered)
-    artist_summary = compute_artist_summary(weekly)
-    artist_track_counts = compute_artist_track_counts(
-        artist_summary, track_summary, weekly_album, weekly_artist
+    track_summary = shared_fact(
+        _facts, "track_summary", lambda: compute_track_summary(weekly, df_filtered)
     )
-    album_track_counts, _track_per_album = compute_album_track_counts(
-        track_summary, album_map, weekly_album
+    artist_summary = shared_fact(_facts, "artist_summary", lambda: compute_artist_summary(weekly))
+    artist_track_counts = shared_fact(
+        _facts,
+        "artist_counts",
+        lambda: compute_artist_track_counts(
+            artist_summary, track_summary, weekly_album, weekly_artist
+        ),
+    )
+    album_track_counts, _track_per_album = shared_fact(
+        _facts,
+        "album_counts",
+        lambda: compute_album_track_counts(track_summary, album_map, weekly_album),
     )
 
     track_summary = enrich_track_artist_names(track_summary)
@@ -268,6 +302,8 @@ def _compute_records_cached(
     max_merge_gap_minutes=5,
     include_compilations=False,
     merge_enabled=True,
+    *,
+    _facts=None,
 ):
     weekly, weekly_album, weekly_artist, *_all_weeks, df_filtered, _album_tm = _load_and_rank(
         min_ms,
@@ -284,28 +320,41 @@ def _compute_records_cached(
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
         merge_enabled=merge_enabled,
+        _facts=_facts,
     )
 
-    track_summary = compute_track_summary(weekly, df_filtered)
+    track_summary = shared_fact(
+        _facts, "track_summary", lambda: compute_track_summary(weekly, df_filtered)
+    )
     from backend.domains.billboard.chart_record_inputs import prepare_track_record_inputs
 
-    weekly, track_summary, power_scores = prepare_track_record_inputs(
-        weekly, track_summary, bb_top_n
+    weekly, track_summary, power_scores = shared_fact(
+        _facts,
+        "record_inputs",
+        lambda: prepare_track_record_inputs(weekly, track_summary, bb_top_n),
     )
-    album_power_scores = compute_album_power_scores(weekly_album, bb_album_top_n)
-    artist_power_scores = compute_artist_power_scores(weekly_artist, bb_artist_top_n)
+    album_power_scores = shared_fact(
+        _facts, "album_power", lambda: compute_album_power_scores(weekly_album, bb_album_top_n)
+    )
+    artist_power_scores = shared_fact(
+        _facts, "artist_power", lambda: compute_artist_power_scores(weekly_artist, bb_artist_top_n)
+    )
 
     from backend.domains.billboard.records import _serialize_records, compute_records  # noqa: E402
 
-    records = compute_records(
-        weekly,
-        track_summary,
-        bb_top_n,
-        weekly_album=weekly_album,
-        weekly_artist=weekly_artist,
-        track_power_scores=power_scores,
-        album_power_scores=album_power_scores,
-        artist_power_scores=artist_power_scores,
+    records = shared_fact(
+        _facts,
+        "records",
+        lambda: compute_records(
+            weekly,
+            track_summary,
+            bb_top_n,
+            weekly_album=weekly_album,
+            weekly_artist=weekly_artist,
+            track_power_scores=power_scores,
+            album_power_scores=album_power_scores,
+            artist_power_scores=artist_power_scores,
+        ),
     )
 
     return {"records": _serialize_records(records)}

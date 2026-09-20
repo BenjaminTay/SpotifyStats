@@ -13,6 +13,7 @@ from backend.domains.billboard.year_end import (
     YEAR_END_ARTIST_TOP_N,
     YEAR_END_TRACK_TOP_N,
 )
+from backend.models.snapshot import SnapshotReadState
 from backend.services.billboard_service import compute_year_end_staged
 
 router = APIRouter()
@@ -108,6 +109,7 @@ class BillboardYearEndHonors(BaseModel):
 
 
 class BillboardYearEndResponse(BaseModel):
+    snapshot: SnapshotReadState | None = None
     meta: BillboardYearEndMeta
     tracks: list[BillboardYearEndTrackRow]
     albums: list[BillboardYearEndAlbumRow]

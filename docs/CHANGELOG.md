@@ -1,11 +1,45 @@
 # 变更日志
 
+## 2026-09-20：阶段 4B Billboard 配置失配重建收口
+
+- 沿用 4A 单次完整排名共享，raw fallback 绕过旧 LRU、复制消费者必要列并及时释放宽帧；补充最终发布后的 source fence。
+- 默认 L2 / 周五 13:00 三次重建中位数 19.422s，最大采样 RSS 681.64MiB；四并发只构建一次，12 个 key 各发布一次。
+- 48 完整 payload 与 2,660 页面响应/投影逐字段相等；默认聚合无 >10% wall 回退。指定场景无需 4C，停止于本轮，详见[交付报告](reports/2026-09-20-billboard-config-mismatch-closeout.md)。
+
+## 2026-09-20：阶段 4A Billboard 单次重建共享事实
+
+- 受控维护 invocation 内共享完整 ranking、summary/power/Records 和年榜展示事实，省去年榜不消费的全历史前缀；保留公开只读、原始 source/key、逐行原子发布、LKG 和既有增量维护。
+- 六配置 72 完整快照及 3,954 投影逐字段等价；Desktop/Phone 五页的 exact/LKG/missing 共 30 次只读验收通过。
+- 性能样本、资源/并发、数据不变性及剩余边界见[交付报告](reports/2026-09-20-billboard-generation-facts.md)。不进入阶段 4B 或 Search。
+
+## 2026-09-19：阶段 2A Billboard 页面响应投影
+
+- Records、Weekly、All-Time 和 Number Ones 改读已发布快照的纯投影；保留兼容完整接口、所有榜单事实和 public exact/LKG/unavailable 边界。
+- Records 保留六类记录与最小封面/奇趣事实，Weekly 按周/实体读取，All-Time 首屏只取当前实体，Number Ones 只取冠军历史。
+- 完整 unit 1754、定向后端36、受影响前端/真实事实对账154通过；双端 production build 验收与本轮副本 before/after 见[阶段2A报告](reports/2026-09-19-billboard-page-projections.md)。正式数据库及派生状态内容/mtime不变。
+
+本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
+
+## 2026-09-19：阶段 0.5 Billboard sidecar 事故安全收口
+
+- 按当前正式主库与默认参数在临时目标重新生成 12 条 Billboard 派生快照，经 exact/checksum/公开只读验证后原子替换；保留受损 Online Backup、原主文件及 WAL/SHM。
+- Backend pytest 在导入应用前隔离主库、Billboard/yearly/Home、封面与 JobQueue；正式路径写入/SQLite 连接/ATTACH fail closed，退出不恢复正式路径。
+- [恢复与验收报告](reports/2026-09-19-billboard-sidecar-safety-closeout.md)、[测试隔离约定](reference/backend-test-isolation.md)。正式主库保持 schema 73，migration 74 未应用到正式库。
+
 ## 2026-09-19：阶段 0 统一性能测量合同
 
 - 六个性能/全栈工具统一版本、数据/进程/快照状态、原始样本与失败统计；不再以首请求推断 cold，不用本地 gzip 冒充传输大小。
 - 浏览器采用 route-specific core-ready，保留全部重试；资源按完整操作窗口采样并分阶段记录。
 - 保留原预算；少于 20 个有效同状态 warm 样本不报告 P95，独立进程 cold 至少 3 次。产品逻辑与阶段 1 未改变。
 - [测量合同](reference/fullstack-verification.md)、[局部校准与交付报告](reports/2026-09-19-performance-measurement-contract.md)。
+
+## 2026-09-19 — 性能阶段 1：公开详情与快照边界
+
+- 补齐当前专辑详情实际消费的五条 album-project 只读 GET；不扩大管理/写能力。
+- public Billboard 在快照完全缺失、参数不兼容或 key 异常时快速返回明确 unavailable，禁止同步冷建；exact/LKG 继续读取并提供 freshness/target。
+- public Home 只读已发布 JSON，不创建/替换文件、不启动后台线程；保留 private 发布与语义 LKG。
+- 默认 Billboard 维护补齐 records，并确保独立 power_scores/summaries 发布；Records 页面请求与计算算法不变。
+- seed、真实 Online Backup 和 Desktop/Phone 定向验证见 [交付报告](reports/2026-09-19-public-snapshot-boundary.md)。局部结果为 Partial，未提交、未推送、未部署；索引迁移与后续性能阶段未实施。
 
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 

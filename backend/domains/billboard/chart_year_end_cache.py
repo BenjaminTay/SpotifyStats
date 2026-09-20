@@ -4,6 +4,7 @@ from functools import lru_cache
 
 from backend.core.cache_manager import register_lru
 from backend.core.db import enrich_track_artist_names
+from backend.domains.billboard.build_context import shared_fact
 from backend.domains.billboard.chart_staged_cache import _load_and_rank
 from backend.domains.billboard.year_end import (
     YEAR_END_ALBUM_TOP_N,
@@ -33,6 +34,8 @@ def _compute_year_end_cached(
     year_end_top_n=YEAR_END_TRACK_TOP_N,
     year_end_album_top_n=YEAR_END_ALBUM_TOP_N,
     year_end_artist_top_n=YEAR_END_ARTIST_TOP_N,
+    *,
+    _facts=None,
 ):
     (
         all_weekly,
@@ -57,6 +60,8 @@ def _compute_year_end_cached(
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
         merge_enabled=merge_enabled,
+        _facts=_facts,
+        _year_end_ranked=True,
     )
     weekly = all_weekly[all_weekly["rank"] <= bb_top_n].copy()
     weekly_album = all_weekly_album[all_weekly_album["rank"] <= bb_album_top_n].copy()
@@ -64,8 +69,10 @@ def _compute_year_end_cached(
 
     from backend.domains.billboard.records import _add_cover_urls
 
-    weekly, weekly_album, weekly_artist = _add_cover_urls(weekly, weekly_album, weekly_artist)
-    weekly = enrich_track_artist_names(weekly)
+    weekly, weekly_album, weekly_artist = shared_fact(
+        _facts, "year_end_display", lambda: _add_cover_urls(weekly, weekly_album, weekly_artist)
+    )
+    weekly = shared_fact(_facts, "year_end_names", lambda: enrich_track_artist_names(weekly))
 
     return build_year_end_response(
         weekly=weekly,

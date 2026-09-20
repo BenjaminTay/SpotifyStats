@@ -14,7 +14,6 @@ import {
   EMPTY_ALL_TIME_ROWS,
   PEAK_FILTER_OPTIONS,
   TABS,
-  buildAllTimeRows,
   getMaxBarValue,
   getColumnsForTab,
   getRowsForTab,
@@ -28,7 +27,7 @@ import {
   type EntityTab,
   type PeakFilter,
 } from '@/features/billboard/all-time/allTimeData'
-import { useBillboardAllTime } from '@/hooks/useBillboard'
+import { useAllTimeProjection } from '@/hooks/useBillboard'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { cn } from '@/lib/utils'
@@ -84,7 +83,6 @@ export function AllTimeChartsPage() {
   const searchQuery = searchParams.get('q') ?? ''
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
-  const { data, loading, error, refetch } = useBillboardAllTime(mergeLevel, filters.include_compilations, billboardParams, !filtersLoading)
   const [activeTab, setActiveTab] = useState<EntityTab>(cachedEntityTab)
   const [peakFilter, setPeakFilter] = useState<PeakFilter>(cachedPeakFilter)
   const [page, setPage] = useState(cachedPage)
@@ -115,7 +113,11 @@ export function AllTimeChartsPage() {
   useEffect(() => { cachedSortKeyArtist = sortKeyArtist }, [sortKeyArtist])
   useEffect(() => { cachedSortDirArtist = sortDirArtist }, [sortDirArtist])
 
-  const allTimeRows = useMemo(() => data ? buildAllTimeRows(data) : EMPTY_ALL_TIME_ROWS, [data])
+  const { data, loading, error, refetch } = useAllTimeProjection(billboardParams, {
+    entity: activeTab, page, page_size: isPhone ? 20 : ALL_TIME_PAGE_SIZE,
+    sort: sortKey, direction: sortDir, peak_filter: peakFilter, search: searchQuery,
+  }, !filtersLoading)
+  const allTimeRows = useMemo(() => data ? { ...EMPTY_ALL_TIME_ROWS, [data.entity]: data.rows } : EMPTY_ALL_TIME_ROWS, [data])
   const displayRows = useMemo(
     () => selectAllTimeRows(allTimeRows, activeTab, peakFilter, sortKey, sortDir, searchQuery),
     [activeTab, allTimeRows, chineseTextVersion, peakFilter, searchQuery, sortDir, sortKey],

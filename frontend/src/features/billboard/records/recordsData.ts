@@ -16,3 +16,11 @@ export function buildCoverMaps(data: BillboardDataResponse): CoverMaps {
   for (const e of data.weekly_album) { if (!album.has(e.album_name) && e.cover_url) album.set(e.album_name, e.cover_url) }
   return { track, artist, album }
 }
+
+export function projectedCoverMaps(covers: import('@/types/billboard').BillboardRecordsProjection['covers']): CoverMaps {
+  return {
+    track: new Map(covers.track.map(([id, index]) => [id, covers.urls[index]])),
+    artist: new Map(covers.artist.map(([name, index]) => [name, covers.urls[index]])),
+    album: new Map(covers.album.map(([name, index]) => [name, covers.urls[index]])),
+  }
+}

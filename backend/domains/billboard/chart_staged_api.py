@@ -39,33 +39,65 @@ def _resolve(args: tuple, kwargs: dict) -> tuple[tuple, dict]:
     return resolved, dict(zip(_CACHE_PARAM_NAMES, resolved))
 
 
-def _run(family, builder, args=(), kwargs=None, force_rebuild=False, *, revision=False):
+def _run(family, builder, args=(), kwargs=None, force_rebuild=False, *, _build_context=None):
     values, params = _resolve(args, kwargs or {})
 
     def build():
-        return call_with_billboard_revision_cache(builder, values) if revision else builder(*values)
+        if _build_context is not None:
+            return _build_context.compute(family, params, builder)
+        if family == "weekly":
+            return call_with_billboard_revision_cache(builder, values)
+        return builder(*values)
 
     return get_or_build_billboard_snapshot(family, params, build, force_rebuild=force_rebuild)
 
 
-def compute_weekly_data(*args, force_rebuild=False, **kwargs):
-    return _run("weekly", _compute_weekly_data_cached, args, kwargs, force_rebuild, revision=True)
+def compute_weekly_data(*args, force_rebuild=False, _build_context=None, **kwargs):
+    return _run(
+        "weekly",
+        _compute_weekly_data_cached,
+        args,
+        kwargs,
+        force_rebuild,
+        _build_context=_build_context,
+    )
 
 
-def compute_power_scores_staged(*args, force_rebuild=False, **kwargs):
-    return _run("power_scores", _compute_power_scores_cached, args, kwargs, force_rebuild)
+def compute_power_scores_staged(*args, force_rebuild=False, _build_context=None, **kwargs):
+    return _run(
+        "power_scores",
+        _compute_power_scores_cached,
+        args,
+        kwargs,
+        force_rebuild,
+        _build_context=_build_context,
+    )
 
 
-def compute_summaries_staged(*args, force_rebuild=False, **kwargs):
-    return _run("summaries", _compute_summaries_cached, args, kwargs, force_rebuild)
+def compute_summaries_staged(*args, force_rebuild=False, _build_context=None, **kwargs):
+    return _run(
+        "summaries",
+        _compute_summaries_cached,
+        args,
+        kwargs,
+        force_rebuild,
+        _build_context=_build_context,
+    )
 
 
-def compute_records_staged(*args, force_rebuild=False, **kwargs):
+def compute_records_staged(*args, force_rebuild=False, _build_context=None, **kwargs):
     """Return the records slice while preserving the cached facade contract."""
-    return _run("records", _compute_records_cached, args, kwargs, force_rebuild)
+    return _run(
+        "records",
+        _compute_records_cached,
+        args,
+        kwargs,
+        force_rebuild,
+        _build_context=_build_context,
+    )
 
 
-def compute_all_time_staged(*args, force_rebuild=False, **kwargs):
+def compute_all_time_staged(*args, force_rebuild=False, _build_context=None, **kwargs):
     """Return the all-time composition through one durable response snapshot."""
     values, params = _resolve(args, kwargs)
 
@@ -75,13 +107,21 @@ def compute_all_time_staged(*args, force_rebuild=False, **kwargs):
             _compute_weekly_data_cached,
             values,
             force_rebuild=force_rebuild,
-            revision=True,
+            _build_context=_build_context,
         )
         power = _run(
-            "power_scores", _compute_power_scores_cached, values, force_rebuild=force_rebuild
+            "power_scores",
+            _compute_power_scores_cached,
+            values,
+            force_rebuild=force_rebuild,
+            _build_context=_build_context,
         )
         summaries = _run(
-            "summaries", _compute_summaries_cached, values, force_rebuild=force_rebuild
+            "summaries",
+            _compute_summaries_cached,
+            values,
+            force_rebuild=force_rebuild,
+            _build_context=_build_context,
         )
         return {**weekly, **power, **summaries}
 

@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from backend.models.snapshot import SnapshotReadState
+
 
 class HomeEntityRef(BaseModel):
     entity_type: Literal["track", "album", "artist"]
@@ -121,6 +123,7 @@ class HomeRediscovery(BaseModel):
 
 
 class HomeOverviewResponse(BaseModel):
+    snapshot: SnapshotReadState | None = None
     schema_version: Literal["home_overview_v2"] = "home_overview_v2"
     generated_at: str
     cache_state: Literal["fresh", "warming", "stale"] = "fresh"

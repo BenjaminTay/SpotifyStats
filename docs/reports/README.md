@@ -1,10 +1,16 @@
 # 交付与验证报告索引
 
+- [2026-09-20 阶段 4B：Billboard 配置失配重建收口](2026-09-20-billboard-config-mismatch-closeout.md)
+
+- [2026-09-20 阶段 4A：Billboard 单次重建共享事实](2026-09-20-billboard-generation-facts.md)
+
 这里保存一次性实施、验收、审计、真实性能和生产发布证据。报告不是当前规则的唯一来源；当前统计和数据契约以 [`../reference/`](../reference/) 为准，当前部署操作以 [`../../deploy/production/README.md`](../../deploy/production/README.md) 为准。
 
 ## 最近交付
 
 ### 播放统计与详情
+
+- [`2026-09-19-public-snapshot-boundary.md`](2026-09-19-public-snapshot-boundary.md)
 
 - [`2026-09-13-billboard-persistent-snapshot-optimization.md`](2026-09-13-billboard-persistent-snapshot-optimization.md)
 - [`2026-08-29-l2-track-album-presentation.md`](2026-08-29-l2-track-album-presentation.md)

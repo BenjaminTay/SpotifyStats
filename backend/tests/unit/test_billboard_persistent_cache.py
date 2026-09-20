@@ -3,7 +3,9 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
+from fastapi import HTTPException
 
+from backend.core.access_surface import reset_public_readonly_db_guard, set_public_readonly_db_guard
 from backend.domains.billboard import persistent_cache
 
 pytestmark = pytest.mark.unit
@@ -130,3 +132,103 @@ def test_context_key_separates_request_parameters(monkeypatch):
 
     assert first["request_key"] != second["request_key"]
     assert first["cache_key"] != second["cache_key"]
+
+
+@pytest.mark.parametrize(
+    "state", ["exact", "lkg", "missing", "incompatible", "key_error", "corrupt"]
+)
+@pytest.mark.parametrize("force", [False, True])
+def test_public_snapshot_reads_never_build_or_write(tmp_path, monkeypatch, state, force):
+    path = tmp_path / "billboard.db"
+    monkeypatch.setattr(persistent_cache, "BILLBOARD_CACHE_PATH", str(path))
+    old = _context("old")
+    target = old if state == "exact" else _context("new")
+    if state == "incompatible":
+        target = _context("new", "different-filter")
+    if state != "missing":
+        persistent_cache.store_persisted_snapshot(old, {"records": {"real_count": 17}})
+    if state == "corrupt":
+        with sqlite3.connect(path) as conn:
+            conn.execute("UPDATE billboard_snapshots SET payload=?", (b"broken",))
+
+    def key(*_args):
+        if state == "key_error":
+            raise ValueError("revision unavailable")
+        return target
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("public request entered a builder, writer or build lock")
+
+    monkeypatch.setattr(persistent_cache, "build_cache_context", key)
+    monkeypatch.setattr(persistent_cache, "store_persisted_snapshot", forbidden)
+    monkeypatch.setattr(persistent_cache, "_lock_for", forbidden)
+    # WAL shared-memory read marks are lock coordination, not published data.
+    # Keep byte-for-byte checks for the database and WAL; do not open immutable
+    # readers, which would silently ignore a writer's committed WAL frames.
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if not p.name.endswith("-shm")}
+    token = set_public_readonly_db_guard(True)
+    try:
+        if state in {"exact", "lkg"}:
+            value = persistent_cache.get_or_build_billboard_snapshot(
+                "records", {}, forbidden, force_rebuild=force
+            )
+            assert value["records"]["real_count"] == 17
+            assert value["snapshot"] == {
+                "status": "ready" if state == "exact" else "warming",
+                "freshness": "current" if state == "exact" else "last_known_good",
+                "source_revision": "old",
+                "target_revision": target["source_revision"],
+            }
+        else:
+            with pytest.raises(HTTPException) as error:
+                persistent_cache.get_or_build_billboard_snapshot(
+                    "records", {}, forbidden, force_rebuild=force
+                )
+            assert error.value.status_code == 503
+            assert error.value.detail["status"] == "unavailable"
+    finally:
+        reset_public_readonly_db_guard(token)
+    assert {
+        p.name: p.read_bytes() for p in tmp_path.iterdir() if not p.name.endswith("-shm")
+    } == before
+
+
+def test_failed_private_rebuild_retains_old_publication(tmp_path, monkeypatch):
+    monkeypatch.setattr(persistent_cache, "BILLBOARD_CACHE_PATH", str(tmp_path / "billboard.db"))
+    persistent_cache.store_persisted_snapshot(_context("old"), {"records": {"count": 7}})
+    monkeypatch.setattr(persistent_cache, "build_cache_context", lambda *_args: _context("new"))
+
+    def fail():
+        raise RuntimeError("build interrupted")
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        persistent_cache.get_or_build_billboard_snapshot("records", {}, fail, force_rebuild=True)
+    assert persistent_cache.load_persisted_snapshot(_context("new")) == {"records": {"count": 7}}
+
+
+def test_public_reader_sees_committed_wal_without_publishing_or_checkpointing(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "billboard.db"
+    monkeypatch.setattr(persistent_cache, "BILLBOARD_CACHE_PATH", str(path))
+    writer = persistent_cache._connect()
+    writer.execute("PRAGMA wal_autocheckpoint=0")
+    context = _context("wal-revision")
+    persistent_cache.store_persisted_snapshot(context, {"records": {"count": 23}})
+    monkeypatch.setattr(persistent_cache, "build_cache_context", lambda *_args: context)
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if not p.name.endswith("-shm")}
+    assert (tmp_path / "billboard.db-wal").stat().st_size > 0
+    token = set_public_readonly_db_guard(True)
+    try:
+        result = persistent_cache.get_or_build_billboard_snapshot(
+            "records",
+            {},
+            lambda: pytest.fail("cold build"),
+        )
+        assert result["records"] == {"count": 23}
+    finally:
+        reset_public_readonly_db_guard(token)
+    assert {
+        p.name: p.read_bytes() for p in tmp_path.iterdir() if not p.name.endswith("-shm")
+    } == before
+    writer.close()

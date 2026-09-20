@@ -393,3 +393,35 @@ export function useReleaseCycleCompare(
     refetch: () => void query.refetch(),
   }
 }
+
+/** An old tab/week/filter must never masquerade as the selected context. */
+function useBillboardProjection<T>(path: string, params: Record<string, string | number | boolean>, enabled = true, retainEntityRows = false) {
+  const query = useQuery<T>({
+    queryKey: queryKeys.billboard.projection(path, params),
+    // Entity projections contain every row. Local view changes can keep those
+    // identical facts while the new query resolves, without unmounting inputs.
+    // A different entity or Billboard filter must show its own loading state.
+    placeholderData: retainEntityRows ? (previous, previousQuery) => {
+      const old = previousQuery?.queryKey[3] as Record<string, unknown> | undefined
+      const local = new Set(['page', 'page_size', 'sort', 'direction', 'peak_filter', 'search'])
+      const keys = new Set([...Object.keys(params), ...Object.keys(old ?? {})])
+      return old && [...keys].every(key => local.has(key) || old[key] === params[key]) ? previous : undefined
+    } : undefined,
+    queryFn: ({ signal }) => api.get<T>(`/billboard/${path}`, params, undefined, signal),
+    enabled,
+  })
+  return { data: query.data ?? null, loading: query.isLoading, error: errorMessage(query.error), refetch: () => void query.refetch() }
+}
+
+export function useRecordsProjection(params: BillboardContextParams, enabled = true) {
+  return useBillboardProjection<import('@/types/billboard').BillboardRecordsProjection>('records', { ...params, projection: 'page' }, enabled)
+}
+export function useWeeklyProjection(params: BillboardContextParams, week: string | null, entity: string, enabled = true) {
+  return useBillboardProjection<import('@/types/billboard').BillboardWeeklyProjection>('weekly', { ...params, projection: 'page', ...(week ? { week } : {}), entity }, enabled)
+}
+export function useAllTimeProjection(params: BillboardContextParams, view: Record<string, string | number | boolean>, enabled = true) {
+  return useBillboardProjection<import('@/types/billboard').BillboardAllTimeProjection>('all-time', { ...params, ...view, projection: 'entity' }, enabled, true)
+}
+export function useNumberOnesProjection(params: BillboardContextParams, enabled = true) {
+  return useBillboardProjection<import('@/types/billboard').BillboardNumberOnesProjection>('all-time', { ...params, projection: 'number-ones' }, enabled)
+}

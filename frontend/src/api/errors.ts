@@ -1,3 +1,5 @@
+import type { components } from '@/api/generated/api-types'
+
 export class ApiError extends Error {
   readonly status: number
   readonly detail: string
@@ -29,6 +31,17 @@ export class NetworkError extends ApiError {
   constructor(cause?: unknown) {
     super(0, 'Network request failed', cause)
     this.name = 'NetworkError'
+  }
+}
+
+export class SnapshotUnavailableError extends ApiError {
+  readonly snapshot: components['schemas']['SnapshotUnavailableDetail']
+
+  constructor(snapshot: components['schemas']['SnapshotUnavailableDetail']) {
+    super(503, snapshot.message ?? '当前筛选的数据尚未发布，请稍后重试。')
+    this.name = 'SnapshotUnavailableError'
+    this.message = this.detail
+    this.snapshot = snapshot
   }
 }
 

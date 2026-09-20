@@ -12,19 +12,14 @@ import {
   type BillboardWeeklyTab,
 } from '@/features/billboard/weekly/weeklyPresentation'
 import { MobileBillboardWeekly } from '@/features/mobile/billboard/MobileBillboardWeekly'
-import { useBillboardWeekly } from '@/hooks/useBillboard'
-import { useSettings } from '@/hooks/useSettings'
+import { useWeeklyProjection } from '@/hooks/useBillboard'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
+import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import type { BillboardWeeklyResponse } from '@/types/billboard'
 
 const PAGE_SIZE = 50
-
-function entriesForTab(data: BillboardWeeklyResponse, tab: BillboardWeeklyTab): BillboardWeeklyEntry[] {
-  if (tab === 'tracks') return data.weekly
-  if (tab === 'albums') return data.weekly_album
-  return data.weekly_artist
-}
 
 function BillboardSkeleton() {
   return (
@@ -54,32 +49,16 @@ export function BillboardPage() {
   const tabParam = searchParams.get('tab')
   const activeTab: BillboardWeeklyTab = isBillboardWeeklyTab(tabParam) ? tabParam : 'tracks'
   const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
-  const { settings, loading: settingsLoading } = useSettings()
-  const includeCompilations = settings?.include_compilations ?? false
-
-  const {
-    data,
-    loading,
-    error,
-    refetch,
-    selectedWeek,
-    currentWeekData,
-    currentIndex,
-    totalWeeks,
-    goToWeek,
-  } = useBillboardWeekly(initialWeek, mergeLevel, includeCompilations, !settingsLoading)
-
-  const entries = currentWeekData[activeTab] as BillboardWeeklyEntry[]
-  const previousWeek = data?.meta.all_weeks_desc[currentIndex + 1]
-  const previousEntries = useMemo(() => {
-    if (!data || !previousWeek) return []
-    return entriesForTab(data, activeTab).filter((entry) => entry.billboard_week === previousWeek)
-  }, [activeTab, data, previousWeek])
-  const historicalEntries = useMemo(() => {
-    if (!data) return []
-    const historicalWeeks = new Set(data.meta.all_weeks_desc.slice(currentIndex + 1))
-    return entriesForTab(data, activeTab).filter((entry) => historicalWeeks.has(entry.billboard_week))
-  }, [activeTab, currentIndex, data])
+  const { filters, loading: settingsLoading } = useAnalysisFilters()
+  const params = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
+  const { data: projection, loading, error, refetch } = useWeeklyProjection(params, initialWeek, activeTab, !settingsLoading)
+  const data = useMemo(() => projection ? { ...projection, weekly: [], weekly_album: [], weekly_artist: [] } as BillboardWeeklyResponse : null, [projection])
+  const selectedWeek = projection?.selected_week ?? ''
+  const currentIndex = data?.meta.all_weeks_desc.indexOf(selectedWeek) ?? 0
+  const totalWeeks = data?.meta.all_weeks_desc.length ?? 0
+  const entries = (projection?.current ?? []) as BillboardWeeklyEntry[]
+  const previousEntries = (projection?.previous ?? []) as BillboardWeeklyEntry[]
+  const historicalEntries = (projection?.historical ?? []) as BillboardWeeklyEntry[]
   const summary = useMemo(
     () => buildWeeklySummary(entries, previousEntries, historicalEntries, activeTab),
     [activeTab, entries, historicalEntries, previousEntries],
@@ -99,7 +78,6 @@ export function BillboardPage() {
   const selectTab = (tab: BillboardWeeklyTab) => updateQuery('tab', tab)
   const selectWeek = (week: string | undefined) => {
     if (!week) return
-    goToWeek(week)
     updateQuery('week', week)
   }
   const selectPage = (nextPage: number) => setPagination({ key: paginationKey, page: nextPage })

@@ -5,12 +5,12 @@ import { useSearchParams } from 'react-router-dom'
 import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useBillboard } from '@/hooks/useBillboard'
+import { useRecordsProjection } from '@/hooks/useBillboard'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { cn } from '@/lib/utils'
 import type { BillboardRecords } from '@/types/billboard'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
-import { buildCoverMaps } from '@/features/billboard/records/recordsData'
+import { projectedCoverMaps } from '@/features/billboard/records/recordsData'
 import { ChampionshipSection } from '@/features/billboard/records/ChampionshipSection'
 import { useViewportMode } from '@/hooks/useViewportMode'
 
@@ -113,9 +113,8 @@ export function RecordsPage() {
     () => buildBillboardContextParams({ ...filters, merge_level: mergeLevel }),
     [filters, mergeLevel],
   )
-  const { data, loading, error } = useBillboard(
+  const { data, loading, error } = useRecordsProjection(
     billboardParams,
-    undefined,
     !filtersLoading,
   )
   const requestedFamily = searchParams.get('family')
@@ -134,7 +133,7 @@ export function RecordsPage() {
 
   const covers = useMemo(() => {
     if (!data) return { track: new Map(), artist: new Map(), album: new Map() }
-    return buildCoverMaps(data)
+    return projectedCoverMaps(data.covers)
   }, [data])
 
   if (filtersLoading || loading) return <LoadingSkeleton />
@@ -192,7 +191,7 @@ export function RecordsPage() {
           <CuriositiesSection
             rec={rec}
             covers={covers}
-            trackSummary={data.track_summary}
+            trackSummary={data.curiosity_tracks}
             artistTrackCounts={data.artist_track_counts}
           />
         )}

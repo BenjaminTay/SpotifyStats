@@ -14,6 +14,8 @@ export const queryKeys = {
 
   billboard: {
     all: ["billboard"] as const,
+    projection: (kind: string, params: Record<string, unknown>) =>
+      ["billboard", "projection", kind, params] as const,
     data: (params: Record<string, unknown> = {}) =>
       ["billboard", "data", params] as const,
     weekly: (params: Record<string, unknown> = {}) =>

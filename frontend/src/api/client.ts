@@ -1,4 +1,4 @@
-import { ApiError, AuthRequiredError, CancelError, NetworkError, TimeoutError } from './errors'
+import { ApiError, AuthRequiredError, CancelError, NetworkError, SnapshotUnavailableError, TimeoutError } from './errors'
 
 const BASE_URL = '/api'
 const DEFAULT_TIMEOUT = 30_000
@@ -39,9 +39,13 @@ function buildUrl(path: string, params?: Record<string, ApiQueryParam>): URL {
 async function parseErrorBody(res: Response): Promise<string> {
   try {
     const body = await res.json()
+    if (res.status === 503 && body?.detail?.error === 'snapshot_unavailable') {
+      throw new SnapshotUnavailableError(body.detail)
+    }
     if (typeof body?.detail === 'string') return body.detail
     return body?.detail == null ? '' : JSON.stringify(body.detail)
-  } catch {
+  } catch (error) {
+    if (error instanceof SnapshotUnavailableError) throw error
     return ''
   }
 }

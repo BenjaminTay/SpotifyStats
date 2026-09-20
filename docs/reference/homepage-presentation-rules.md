@@ -1,6 +1,6 @@
 # 首页展示与长期记忆规则
 
-> 最近修订：2026-08-30
+> 最近修订：2026-09-19
 > 状态：当前规则
 > 适用范围：`/` 个人音乐头版、`/api/home/overview` 以及首页 Desktop / Phone presentation
 
@@ -59,3 +59,7 @@ Desktop 的单曲、专辑、艺人冠军卡片共用一行艺人/归属信息�
 - Billboard 状态的历史事实由后端 movement 生成；前端只负责文案映射和布局展示。
 
 当前实现状态：`IMPLEMENTED`。候选池、刷新换曲、重渲染稳定性、首页契约和缓存版本均有针对性测试；本地 frontend build、相关 frontend tests、后端 unit / contract 测试已验证。当前提交不代表已 push 或已部署，运行中的旧服务需要重启后才会消费新的首页响应字段。
+
+## 5. public-readonly 发布读取
+
+公开首页只读已发布 exact / 同语义 LKG，不补写 JSON，不启动重建 thread。缺失时返回明确的 503 unavailable，不构造虚假空档案。LKG 保留旧事实并标明 freshness 与目标版本；具体 API、private 维护及 SQLite 读取验证口径见 [公开快照合同](public-snapshot-read-contract.md)。

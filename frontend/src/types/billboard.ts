@@ -1705,3 +1705,28 @@ export interface ReleaseCycleCompareResponse {
   error?: string | null
   comparisons: ReleaseCycleCompareItem[]
 }
+
+/** Page projections of existing published families (no additional snapshots). */
+export interface BillboardWeeklyProjection {
+  snapshot?: import('@/api/generated/api-types').components['schemas']['SnapshotReadState'] | null
+  meta: BillboardMeta
+  selected_week: string
+  entity: 'tracks' | 'albums' | 'artists'
+  current: (WeeklyTrackEntry | WeeklyAlbumEntry | WeeklyArtistEntry)[]
+  previous: (WeeklyTrackEntry | WeeklyAlbumEntry | WeeklyArtistEntry)[]
+  historical: (WeeklyTrackEntry | WeeklyAlbumEntry | WeeklyArtistEntry)[]
+}
+export interface BillboardRecordsProjection {
+  snapshot?: BillboardWeeklyProjection['snapshot']
+  records: BillboardRecords
+  covers: { urls: string[]; track: [number, number][]; artist: [string, number][]; album: [string, number][] }
+  curiosity_tracks: TrackSummary[]
+  artist_track_counts: ArtistTrackCounts[]
+}
+export type BillboardNumberOnesProjection = Pick<BillboardAllTimeResponse,
+  'weekly' | 'weekly_album' | 'weekly_artist' | 'power_scores' | 'album_power_scores' | 'artist_power_scores'>
+export interface BillboardAllTimeProjection {
+  snapshot?: BillboardWeeklyProjection['snapshot']
+  entity: 'tracks' | 'albums' | 'artists'
+  rows: import('@/features/billboard/all-time/allTimeData').AllTimeRow[]
+}

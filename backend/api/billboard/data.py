@@ -10,10 +10,20 @@ GET /api/billboard/all-time    — power-scores + summaries + weekly (~2MB)
 
 from __future__ import annotations
 
+from typing import Literal, Union
+
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
+from backend.api.billboard.projections import (
+    all_time_projection,
+    number_ones_projection,
+    published,
+    records_projection,
+    weekly_projection,
+)
 from backend.dependencies import BillboardFilters, MergeConfig
+from backend.models.snapshot import SnapshotReadState
 from backend.services.billboard_service import (
     compute_all_time_staged,
     compute_billboard_data,
@@ -76,7 +86,11 @@ class ArtistPowerScoreRow(BaseModel):
     album_power_rank: int | None = None
 
 
-class BillboardDataResponse(BaseModel):
+class BillboardSnapshotResponse(BaseModel):
+    snapshot: SnapshotReadState | None = None
+
+
+class BillboardDataResponse(BillboardSnapshotResponse):
     model_config = {"extra": "allow"}
     meta: BillboardMeta
     weekly: list[dict]
@@ -93,7 +107,7 @@ class BillboardDataResponse(BaseModel):
     artist_power_scores: list[ArtistPowerScoreRow]
 
 
-class BillboardWeeklyResponse(BaseModel):
+class BillboardWeeklyResponse(BillboardSnapshotResponse):
     model_config = {"extra": "allow"}
     meta: BillboardMeta
     weekly: list[dict]
@@ -101,17 +115,17 @@ class BillboardWeeklyResponse(BaseModel):
     weekly_artist: list[dict]
 
 
-class BillboardRecordsResponse(BaseModel):
+class BillboardRecordsResponse(BillboardSnapshotResponse):
     records: dict
 
 
-class BillboardPowerScoresResponse(BaseModel):
+class BillboardPowerScoresResponse(BillboardSnapshotResponse):
     power_scores: list[TrackPowerScoreRow]
     album_power_scores: list[AlbumPowerScoreRow]
     artist_power_scores: list[ArtistPowerScoreRow]
 
 
-class BillboardSummariesResponse(BaseModel):
+class BillboardSummariesResponse(BillboardSnapshotResponse):
     model_config = {"extra": "allow"}
     track_summary: list[dict]
     artist_summary: list[dict]
@@ -119,7 +133,7 @@ class BillboardSummariesResponse(BaseModel):
     artist_track_counts: list[dict]
 
 
-class BillboardAllTimeResponse(BaseModel):
+class BillboardAllTimeResponse(BillboardSnapshotResponse):
     model_config = {"extra": "allow"}
     meta: BillboardMeta
     weekly: list[dict]
@@ -132,6 +146,36 @@ class BillboardAllTimeResponse(BaseModel):
     artist_summary: list[dict]
     album_track_counts: list[dict]
     artist_track_counts: list[dict]
+
+
+class WeeklyProjectionResponse(BillboardSnapshotResponse):
+    meta: BillboardMeta
+    selected_week: str
+    entity: Literal["tracks", "albums", "artists"]
+    current: list[dict]
+    previous: list[dict]
+    historical: list[dict]
+
+
+class RecordsProjectionResponse(BillboardSnapshotResponse):
+    records: dict
+    covers: dict
+    curiosity_tracks: list[dict]
+    artist_track_counts: list[dict]
+
+
+class AllTimeProjectionResponse(BillboardSnapshotResponse):
+    entity: Literal["tracks", "albums", "artists"]
+    rows: list[dict]
+
+
+class NumberOnesProjectionResponse(BillboardSnapshotResponse):
+    weekly: list[dict]
+    weekly_album: list[dict]
+    weekly_artist: list[dict]
+    power_scores: list[dict]
+    album_power_scores: list[dict]
+    artist_power_scores: list[dict]
 
 
 def _billboard_params(filters: BillboardFilters):
@@ -172,8 +216,11 @@ def get_billboard_data(
     )
 
 
-@router.get("/weekly", response_model=BillboardWeeklyResponse)
+@router.get("/weekly", response_model=Union[BillboardWeeklyResponse, WeeklyProjectionResponse])
 def get_billboard_weekly(
+    projection: Literal["page"] | None = None,
+    week: str | None = None,
+    entity: Literal["tracks", "albums", "artists"] = "tracks",
     filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
     include_compilations: bool = Query(
@@ -184,6 +231,13 @@ def get_billboard_weekly(
 
     Returns meta, weekly (tracks), weekly_album, weekly_artist.
     """
+    if projection:
+        params = {
+            **_billboard_params(filters),
+            "merge_level": merge_cfg.merge_level,
+            "include_compilations": include_compilations,
+        }
+        return weekly_projection(published(("weekly",), params)[0], week, entity)
     return compute_weekly_data(
         **_billboard_params(filters),
         merge_level=merge_cfg.merge_level,
@@ -191,8 +245,9 @@ def get_billboard_weekly(
     )
 
 
-@router.get("/records", response_model=BillboardRecordsResponse)
+@router.get("/records", response_model=Union[BillboardRecordsResponse, RecordsProjectionResponse])
 def get_billboard_records(
+    projection: Literal["page"] | None = None,
     filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
     include_compilations: bool = Query(
@@ -203,6 +258,13 @@ def get_billboard_records(
 
     Returns all 37 records across 6 sections.
     """
+    if projection:
+        params = {
+            **_billboard_params(filters),
+            "merge_level": merge_cfg.merge_level,
+            "include_compilations": include_compilations,
+        }
+        return records_projection(*published(("records", "summaries", "weekly"), params))
     return compute_records_staged(
         **_billboard_params(filters),
         merge_level=merge_cfg.merge_level,
@@ -250,8 +312,15 @@ def get_billboard_summaries(
     )
 
 
-@router.get("/all-time", response_model=BillboardAllTimeResponse)
+@router.get(
+    "/all-time",
+    response_model=Union[
+        BillboardAllTimeResponse, AllTimeProjectionResponse, NumberOnesProjectionResponse
+    ],
+)
 def get_billboard_all_time(
+    projection: Literal["entity", "number-ones"] | None = None,
+    entity: Literal["tracks", "albums", "artists"] = "tracks",
     filters: BillboardFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
     include_compilations: bool = Query(
@@ -263,6 +332,18 @@ def get_billboard_all_time(
     Returns power-scores + summaries + weekly data.
     Used by NumberOnesPage and AllTimeChartsPage.
     """
+    if projection:
+        params = {
+            **_billboard_params(filters),
+            "merge_level": merge_cfg.merge_level,
+            "include_compilations": include_compilations,
+        }
+        data = published(("all_time",), params)[0]
+        return (
+            number_ones_projection(data)
+            if projection == "number-ones"
+            else all_time_projection(data, entity)
+        )
     return compute_all_time_staged(
         **_billboard_params(filters),
         merge_level=merge_cfg.merge_level,

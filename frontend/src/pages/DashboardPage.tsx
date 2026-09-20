@@ -4,6 +4,7 @@ import { HomePhoneExperience } from '@/features/home/HomePhoneExperience'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { useHomeOverview, useHomeRediscovery } from '@/hooks/useHome'
 import { useViewportMode } from '@/hooks/useViewportMode'
+import { SnapshotUnavailableError } from '@/api/errors'
 
 import '@/features/home/home.css'
 
@@ -14,7 +15,7 @@ export function DashboardPage() {
   const selectedRediscovery = useHomeRediscovery(query.data)
 
   if (filtersLoading || query.isLoading) return <HomeLoading phone={isPhone} />
-  if (query.error || !query.data) return <HomeError phone={isPhone} onRetry={() => void query.refetch()} />
+  if (query.error || !query.data) return <HomeError phone={isPhone} unavailable={query.error instanceof SnapshotUnavailableError} onRetry={() => void query.refetch()} />
   if (query.data.state === 'empty') return <HomeEmpty phone={isPhone} />
 
   const presentationData = { ...query.data, rediscovery: selectedRediscovery }

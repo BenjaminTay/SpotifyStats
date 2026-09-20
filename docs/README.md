@@ -20,11 +20,26 @@
 
 长期问题入口：[`issues/README.md`](issues/README.md)；当前开放、部分完成、已解决和已确认不是问题的事项见 [`issues/2026-08-27-issue-register.md`](issues/2026-08-27-issue-register.md)。
 
+## 阶段 4B 交付
+
+- [Billboard 配置失配重建收口、资源与完整字段证据](reports/2026-09-20-billboard-config-mismatch-closeout.md)
+
+## 阶段 4A 交付
+
+- [Billboard 单次重建共享事实、性能与等价证据](reports/2026-09-20-billboard-generation-facts.md)
+
+## 阶段 2A 交付
+
+- [Billboard 页面投影合同](reference/billboard-page-projections.md)
+- [阶段 2A 实测与语义对账](reports/2026-09-19-billboard-page-projections.md)
+
 ## 当前有效参考规则
 
 `reference/` 是当前统计和数据契约的权威入口。代码、测试或部署运行手册若与这里冲突，应先核对实际实现和证据，再更新规则文档。
 
 - [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md)：逻辑播放事件、收听时长、版本合并、专辑项目和 Billboard 统计
+- [`reference/backend-test-isolation.md`](reference/backend-test-isolation.md)：Backend pytest 导入前隔离、临时数据库/派生缓存与 fail-closed 规则
+- [`reference/public-snapshot-read-contract.md`](reference/public-snapshot-read-contract.md)：Home / Billboard 公开快照、缺失状态、只读边界及专辑 project GET
 - [`reference/homepage-presentation-rules.md`](reference/homepage-presentation-rules.md)：首页 Billboard 状态、长期记忆候选池与刷新随机选择
 - [`reference/account-archive-statistics.md`](reference/account-archive-statistics.md)：音乐档案、收藏旅程、回归、发现和其他媒体统计
 - [`reference/music-metadata-management.md`](reference/music-metadata-management.md)：版本归并、曲目署名、艺人身份和人工治理
@@ -67,7 +82,11 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 ## 交付与验证报告
 
+- [`reports/2026-09-19-billboard-sidecar-safety-closeout.md`](reports/2026-09-19-billboard-sidecar-safety-closeout.md)：阶段 0.5 事故安全收口，重新生成正式 Billboard 快照与测试隔离
+
 - [`reports/2026-09-19-performance-measurement-contract.md`](reports/2026-09-19-performance-measurement-contract.md)：阶段 0 统一测量合同、六探针、seed/Online Backup 校准，Partial
+
+- [`reports/2026-09-19-public-snapshot-boundary.md`](reports/2026-09-19-public-snapshot-boundary.md)：性能阶段 1，可达专辑详情与公开快照边界，局部验证 Partial
 
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 

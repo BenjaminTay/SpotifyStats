@@ -1,0 +1,64 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, renderHook, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { queryKeys } from '@/api/query-keys'
+import { api } from '@/lib/api'
+import { useWeeklyProjection, useRecordsProjection, useNumberOnesProjection, useAllTimeProjection } from '@/hooks/useBillboard'
+
+function setup() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  return { client, wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> }
+}
+afterEach(() => vi.restoreAllMocks())
+describe('published Billboard page queries', () => {
+  it('isolates every response parameter in the query key', () => {
+    const base = { entity: 'tracks', week: '2026-01-02', page: 1, page_size: 50, sort: 'power_score', direction: 'desc', peak_filter: 'all', search: '', merge_level: 2, min_ms: 30000, bb_top_n: 30 }
+    const key = JSON.stringify(queryKeys.billboard.projection('weekly', base))
+    for (const field of Object.keys(base)) expect(JSON.stringify(queryKeys.billboard.projection('weekly', { ...base, [field]: 'different' }))).not.toBe(key)
+  })
+  it('keeps a late previous week from overwriting the selected tab and cancels its transport', async () => {
+    const { wrapper } = setup()
+    let resolveOld: (value: unknown) => void = () => {}
+    const get = vi.spyOn(api, 'get').mockImplementation((_url, params) => params?.week === 'old'
+      ? new Promise(resolve => { resolveOld = resolve }) : Promise.resolve({ selected_week: 'new', entity: 'albums' }))
+    const { result, rerender } = renderHook(({ week, tab }) => useWeeklyProjection({ merge_level: 2 }, week, tab), { wrapper, initialProps: { week: 'old', tab: 'tracks' } })
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    const signal = get.mock.calls[0][3]
+    rerender({ week: 'new', tab: 'albums' })
+    await waitFor(() => expect(result.current.data?.selected_week).toBe('new'))
+    expect(signal?.aborted).toBe(true)
+    await act(async () => resolveOld({ selected_week: 'old', entity: 'tracks' }))
+    expect(result.current.data?.entity).toBe('albums')
+  })
+  it('retains identical entity rows for local controls, but clears them on context changes', async () => {
+    const { wrapper } = setup()
+    vi.spyOn(api, 'get').mockImplementation((_url, params) => params?.search === ''
+      ? Promise.resolve({ entity: 'tracks', rows: [{ track_id: 1 }] }) : new Promise(() => {}))
+    const { result, rerender } = renderHook(({ search, merge_level }) => useAllTimeProjection({ merge_level }, { entity: 'tracks', search }), { wrapper, initialProps: { search: '', merge_level: 2 } })
+    await waitFor(() => expect(result.current.data?.rows).toHaveLength(1))
+    rerender({ search: 'query', merge_level: 2 })
+    expect(result.current.loading).toBe(false)
+    expect(result.current.data?.rows).toHaveLength(1)
+    rerender({ search: 'query', merge_level: 3 })
+    expect(result.current.loading).toBe(true)
+    expect(result.current.data).toBeNull()
+  })
+  it('uses only projections and reuses cached entity on return', async () => {
+    const { wrapper } = setup()
+    const get = vi.spyOn(api, 'get').mockImplementation((_url, params) => Promise.resolve({ entity: params?.entity, rows: [], records: {} }))
+    const { result, rerender } = renderHook(({ entity }) => {
+      useRecordsProjection({ merge_level: 2 })
+      useNumberOnesProjection({ merge_level: 2 })
+      return useAllTimeProjection({ merge_level: 2 }, { entity, page: 1, search: '', sort: 'power_score' })
+    }, { wrapper, initialProps: { entity: 'tracks' } })
+    await waitFor(() => expect(result.current.data?.entity).toBe('tracks'))
+    rerender({ entity: 'artists' })
+    await waitFor(() => expect(result.current.data?.entity).toBe('artists'))
+    rerender({ entity: 'tracks' })
+    await waitFor(() => expect(result.current.data?.entity).toBe('tracks'))
+    expect(get).toHaveBeenCalledTimes(4)
+    expect(get.mock.calls.every(([path, params]) => path !== '/billboard/data' && params?.projection)).toBe(true)
+    expect(get.mock.calls.filter(([path]) => path === '/billboard/all-time').map(([,params])=>params?.projection)).toEqual(['number-ones', 'entity', 'entity'])
+  })
+})

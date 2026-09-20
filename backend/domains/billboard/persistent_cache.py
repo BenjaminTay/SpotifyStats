@@ -18,7 +18,7 @@ import zlib
 from pathlib import Path
 from typing import Any, Callable
 
-from backend.core.access_surface import public_readonly_db_guard_active
+from backend.core.access_surface import public_readonly_db_guard_active, snapshot_unavailable
 from backend.core.config import SPOTIFY_STATS_BILLBOARD_CACHE_PATH
 from backend.core.db import enforce_sqlite_foreign_keys
 
@@ -128,6 +128,26 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def published_content_revision(context: dict[str, str]) -> str:
+    """Stable publication token for Home; metadata-only and always read-only."""
+    path = Path(BILLBOARD_CACHE_PATH)
+    content = "unpublished"
+    if path.is_file():
+        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            row = conn.execute(
+                "SELECT payload_sha256 FROM billboard_snapshots WHERE cache_key=?",
+                (context["cache_key"],),
+            ).fetchone()
+            if row is not None:
+                content = str(row[0])
+        except sqlite3.Error:
+            pass
+        finally:
+            conn.close()
+    return f"{context['cache_key']}:{content}"
+
+
 def _dependency_state(family: str, params: dict[str, Any]) -> dict[str, Any]:
     """Build a stable source revision without using SQLite file timestamps."""
     from datetime import datetime, timezone
@@ -206,6 +226,7 @@ def load_persisted_snapshot(
     *,
     allow_lkg: bool = True,
     cache_path: str | Path | None = None,
+    include_read_state: bool = False,
 ) -> dict[str, Any] | None:
     """Read an exact snapshot, then optionally the newest same-request LKG."""
     try:
@@ -215,7 +236,7 @@ def load_persisted_snapshot(
     try:
         rows = [
             conn.execute(
-                """SELECT cache_key, payload, uncompressed_bytes, payload_sha256
+                """SELECT cache_key, source_revision, payload, uncompressed_bytes, payload_sha256
                    FROM billboard_snapshots
                    WHERE cache_key=? AND builder_version=?""",
                 (context["cache_key"], context["builder_version"]),
@@ -224,7 +245,7 @@ def load_persisted_snapshot(
         if allow_lkg:
             rows.append(
                 conn.execute(
-                    """SELECT cache_key, payload, uncompressed_bytes, payload_sha256
+                    """SELECT cache_key, source_revision, payload, uncompressed_bytes, payload_sha256
                        FROM billboard_snapshots
                        WHERE request_key=? AND builder_version=?
                        ORDER BY updated_at DESC, rowid DESC LIMIT 1""",
@@ -235,7 +256,16 @@ def load_persisted_snapshot(
             if row is None:
                 continue
             try:
-                return _decode_payload(row)
+                payload = _decode_payload(row)
+                if include_read_state:
+                    exact = row["cache_key"] == context["cache_key"]
+                    payload["snapshot"] = {
+                        "status": "ready" if exact else "warming",
+                        "freshness": "current" if exact else "last_known_good",
+                        "source_revision": row["source_revision"],
+                        "target_revision": context["source_revision"],
+                    }
+                return payload
             except (ValueError, TypeError, json.JSONDecodeError, zlib.error):
                 _delete_row(conn, str(row["cache_key"]))
         return None
@@ -320,7 +350,18 @@ def get_or_build_billboard_snapshot(
         context = build_cache_context(family, params)
     except Exception:
         logger.exception("Billboard persistent cache key construction failed")
+        if public_readonly_db_guard_active():
+            raise snapshot_unavailable(family) from None
         return builder()
+
+    # This check precedes both the lock and the force-rebuild path. Public
+    # callers can only consume a publication, even when an internal caller
+    # mistakenly requests a rebuild.
+    if public_readonly_db_guard_active():
+        cached = load_persisted_snapshot(context, allow_lkg=True, include_read_state=True)
+        if cached is None:
+            raise snapshot_unavailable(family, context["source_revision"])
+        return cached
 
     if not force_rebuild:
         cached = load_persisted_snapshot(context, allow_lkg=True)

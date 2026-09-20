@@ -1,2 +1,2 @@
-# Empty conftest — blocks loading parent conftest.py DB fixtures.
-# Unit tests must not connect to any database.
+# Parent conftest installs process-lifetime data/cache isolation before collection.
+# Unit tests may monkeypatch their own temporary paths as usual.

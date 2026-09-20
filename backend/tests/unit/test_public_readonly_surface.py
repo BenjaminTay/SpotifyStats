@@ -55,6 +55,24 @@ def test_public_policy_keeps_only_explicit_analytical_posts() -> None:
     assert public_policy_decision("OPTIONS", "/api/future-feature") == "disabled"
 
 
+def test_public_album_project_only_exposes_current_read_views():
+    paths = ["/api/billboard/album-project/42"] + [
+        f"/api/music/album-projects/42/{view}"
+        for view in ("stats", "rankings", "plays", "play-dates")
+    ]
+    for path in paths:
+        assert public_policy_decision("GET", path) == "allow"
+        assert public_policy_decision("POST", path) == "readonly"
+        assert public_policy_decision("DELETE", path) == "readonly"
+    for path in (
+        "/api/music/album-projects/rebuild/stats",
+        "/api/music/album-projects/42/sources",
+        "/api/billboard/album-project/rebuild",
+        "/api/version-merge/l3-album-attributions",
+    ):
+        assert public_policy_decision("GET", path) == "disabled"
+
+
 def test_runtime_capabilities_are_surface_specific(monkeypatch) -> None:
     monkeypatch.setenv(RELEASE_SHA_ENV, "test-release-sha")
     with TestClient(app) as client:

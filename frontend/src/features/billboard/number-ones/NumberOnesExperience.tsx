@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 
 import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
-import { useBillboardAllTime } from '@/hooks/useBillboard'
+import { useNumberOnesProjection } from '@/hooks/useBillboard'
+import { useAnalysisFilters } from '@/hooks/useAnalysis'
+import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { cn } from '@/lib/utils'
 import { AlbumsNumberOnesSection } from './AlbumsNumberOnesSection'
 import { ArtistsNumberOnesSection } from './ArtistsNumberOnesSection'
@@ -19,7 +21,9 @@ import { MobileNumberOnes } from '@/features/mobile/billboard/MobileNumberOnes'
 
 export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }) {
   const isPhone = useViewportMode() === 'phone'
-  const { data, loading, error } = useBillboardAllTime(mergeLevel)
+  const { filters, loading: filtersLoading } = useAnalysisFilters()
+  const { data, loading: dataLoading, error } = useNumberOnesProjection(buildBillboardContextParams({ ...filters, merge_level: mergeLevel }), !filtersLoading)
+  const loading = filtersLoading || dataLoading
   const [activeTab, setActiveTab] = useState<SubTabKey>('tracks')
   const [selectedYear, setSelectedYear] = useState(0)
 

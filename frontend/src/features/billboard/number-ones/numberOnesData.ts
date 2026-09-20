@@ -1,5 +1,5 @@
 import type {
-  BillboardAllTimeResponse,
+  BillboardNumberOnesProjection,
   WeeklyAlbumEntry,
   WeeklyArtistEntry,
   WeeklyTrackEntry,
@@ -123,7 +123,7 @@ function longestStreak(weeks: string[]): number {
   return max
 }
 
-export function buildNumberOnes(data: BillboardAllTimeResponse | null | undefined): NumberOnesComputed {
+export function buildNumberOnes(data: BillboardNumberOnesProjection | null | undefined): NumberOnesComputed {
   if (!data) return EMPTY_NUMBER_ONES
 
   const { weekly, weekly_album, weekly_artist, power_scores, album_power_scores, artist_power_scores } = data

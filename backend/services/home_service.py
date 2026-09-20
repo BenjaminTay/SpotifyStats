@@ -14,11 +14,14 @@ from functools import lru_cache
 from pathlib import Path
 from sqlite3 import Connection
 
+from pydantic import ValidationError
+
+from backend.core.access_surface import public_readonly_db_guard_active, snapshot_unavailable
 from backend.core.cache import singleflight
 from backend.core.db import DB_PATH, get_db
-from backend.domains.billboard.latest_snapshot_cache import (
-    latest_snapshot_revision,
-    snapshot_key,
+from backend.domains.billboard.persistent_cache import (
+    build_cache_context,
+    published_content_revision,
 )
 from backend.domains.home.overview import build_home_overview
 from backend.models.home import HomeOverviewResponse
@@ -71,6 +74,8 @@ def _read_snapshot(path: Path) -> dict | None:
 
 
 def _write_snapshot(path: Path, payload: dict) -> None:
+    if public_readonly_db_guard_active():
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(
         f".{path.name}.{os.getpid()}.{threading.get_ident()}.{uuid.uuid4().hex}.tmp"
@@ -91,6 +96,8 @@ def _start_snapshot_rebuild(
     lkg_path: Path,
     context: YearlyReviewFilterContext,
 ) -> None:
+    if public_readonly_db_guard_active():
+        return
     with _rebuild_guard:
         if exact_path in _rebuild_paths:
             return
@@ -101,6 +108,7 @@ def _start_snapshot_rebuild(
         try:
             payload = build_home_overview(conn, context)
             payload["cache_state"] = "fresh"
+            payload["snapshot"] = _publication_state(exact_path)
             _write_snapshot(exact_path, payload)
             _write_snapshot(lkg_path, payload)
         except Exception:
@@ -132,7 +140,7 @@ def _get_home_overview_cached(
     context_json: str,
     source_revision: str,
     day_key: str,
-    billboard_revision: int,
+    billboard_revision: str,
     yearly_cache_state: str,
 ) -> dict:
     """Cache exact home facts in memory and across backend restarts."""
@@ -154,6 +162,7 @@ def _get_home_overview_cached(
             restored = _read_snapshot(path)
             if restored is not None:
                 restored["cache_state"] = "fresh"
+                restored["snapshot"] = _publication_state(path)
                 if not lkg_path.exists():
                     try:
                         _write_snapshot(lkg_path, restored)
@@ -168,10 +177,17 @@ def _get_home_overview_cached(
                     context=context,
                 )
                 last_good["cache_state"] = "warming"
+                last_good["snapshot"] = {
+                    "status": "warming",
+                    "freshness": "last_known_good",
+                    "source_revision": (last_good.get("snapshot") or {}).get("source_revision"),
+                    "target_revision": path.stem,
+                }
                 return last_good
         payload = build_home_overview(conn, context)
         if persistent:
             payload["cache_state"] = "fresh"
+            payload["snapshot"] = _publication_state(path)
             try:
                 _write_snapshot(path, payload)
                 _write_snapshot(_lkg_snapshot_path(context), payload)
@@ -195,31 +211,81 @@ def _present_home_payload(payload: dict) -> dict:
     return result
 
 
+def _publication_state(path: Path) -> dict:
+    return {
+        "status": "ready",
+        "freshness": "current",
+        "source_revision": path.stem,
+        "target_revision": path.stem,
+    }
+
+
+def _cache_parts(context: YearlyReviewFilterContext) -> tuple[str, str, str, str, str]:
+    params = {
+        name: getattr(context, name)
+        for name in (
+            "min_ms",
+            "music_only",
+            "merge_enabled",
+            "bb_top_n",
+            "bb_album_top_n",
+            "bb_artist_top_n",
+            "bb_week_start_dow",
+            "bb_week_start_hour",
+            "dynamic_threshold",
+            "max_merge_gap_minutes",
+            "merge_level",
+            "include_compilations",
+        )
+    }
+    params.update(year_start=None, year_end=None)
+    billboard_key = build_cache_context("full_data", params)
+    return (
+        context.model_dump_json(),
+        database_revision(),
+        _HOME_FACTS_VERSION,
+        published_content_revision(billboard_key),
+        yearly_review_cache_state(context),
+    )
+
+
+def _read_public_home(context: YearlyReviewFilterContext) -> dict:
+    # Do not share the private LRU: it can contain an unpublished calculation
+    # and can hide a newly published exact snapshot behind an old LKG.
+    try:
+        parts = _cache_parts(context)
+        path = _snapshot_path(tuple(str(part) for part in parts))
+        lkg_path = _lkg_snapshot_path(context)
+    except Exception:
+        logger.exception("Home snapshot key construction failed")
+        raise snapshot_unavailable("home") from None
+    for candidate, exact in ((path, True), (lkg_path, False)):
+        payload = _read_snapshot(candidate)
+        if payload is None:
+            continue
+        try:
+            HomeOverviewResponse.model_validate(payload)
+        except ValidationError:
+            continue
+        source_revision = (payload.get("snapshot") or {}).get("source_revision")
+        payload["cache_state"] = "fresh" if exact else "warming"
+        payload["snapshot"] = {
+            "status": "ready" if exact else "warming",
+            "freshness": "current" if exact else "last_known_good",
+            # Legacy LKG files did not record the source revision. Do not
+            # mislabel those old facts with the requested revision.
+            "source_revision": path.stem if exact else source_revision,
+            "target_revision": path.stem,
+        }
+        return payload
+    raise snapshot_unavailable("home", path.stem)
+
+
 def get_home_overview(conn: Connection, context: YearlyReviewFilterContext) -> HomeOverviewResponse:
-    if _is_primary_connection(conn):
-        billboard_key = snapshot_key(
-            context.min_ms,
-            context.music_only,
-            context.bb_top_n,
-            context.bb_album_top_n,
-            context.bb_artist_top_n,
-            context.bb_week_start_dow,
-            context.bb_week_start_hour,
-            None,
-            None,
-            context.merge_level,
-            context.dynamic_threshold,
-            context.max_merge_gap_minutes,
-            context.include_compilations,
-            context.merge_enabled,
-        )
-        payload = _get_home_overview_cached(
-            context.model_dump_json(),
-            database_revision(),
-            _HOME_FACTS_VERSION,
-            latest_snapshot_revision(billboard_key),
-            yearly_review_cache_state(context),
-        )
+    if public_readonly_db_guard_active():
+        payload = _read_public_home(context)
+    elif _is_primary_connection(conn):
+        payload = _get_home_overview_cached(*_cache_parts(context))
     else:
         payload = build_home_overview(conn, context)
     return HomeOverviewResponse.model_validate(_present_home_payload(payload))

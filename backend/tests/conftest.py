@@ -1,24 +1,28 @@
 """Shared fixtures for backend tests.
 
-When the local production-shaped database exists, integration tests preserve
-its data distribution without connecting writable services or the persistent
-JobQueue to the user's real file.  Clean CI checkouts fall back to the tracked
-portable seed.  Either source is copied into a session-scoped SQLite database;
-contract tests may temporarily replace it with their own function-scoped copy.
+Database and derived paths are isolated before application import. By default
+tests use the portable seed; production-shaped tests may explicitly supply an
+Online Backup outside repository data/. Contract tests can still replace the
+session database with function-scoped copies.
 """
 
 from __future__ import annotations
 
-import os
-import sqlite3
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import app
+from backend.tests.path_safety import VIOLATIONS, install_test_paths
+
+# Must run before backend.main and before test-module collection.
+TEST_STATE_ROOT = install_test_paths()
+
+from backend import main as main_module  # noqa: E402
+
+main_module._COVERS_DIR = str(TEST_STATE_ROOT / "covers")
+app = main_module.app
 
 pytestmark = pytest.mark.integration
 
@@ -37,38 +41,9 @@ def _resolve_test_database_source(configured_path: str) -> Path:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def isolated_test_database(tmp_path_factory: pytest.TempPathFactory):
-    """Route the whole backend test session through a recoverable DB copy.
-
-    This is deliberately an Online Backup instead of ``shutil.copy`` so a
-    concurrently running WAL-backed development server cannot leave the test
-    fixture with a torn main-file snapshot.
-    """
-
-    from backend.core import db as db_mod
-
-    original_path = str(Path(db_mod.DB_PATH).resolve())
-    configured_source = os.environ.get("SPOTIFY_STATS_TEST_SOURCE_DB", original_path)
-    source_path = _resolve_test_database_source(configured_source)
-    isolated_path = tmp_path_factory.mktemp("backend-session-db") / "spotify_stats-test.db"
-    seed_path = (Path(__file__).resolve().parent / "fixtures" / "seed.db").resolve()
-    immutable = "&immutable=1" if source_path == seed_path else ""
-    source_uri = f"file:{quote(str(source_path), safe='/')}?mode=ro{immutable}"
-    source = sqlite3.connect(source_uri, uri=True)
-    target = sqlite3.connect(isolated_path)
-    try:
-        source.backup(target)
-        if target.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-            pytest.fail("isolated backend test database failed integrity_check")
-    finally:
-        target.close()
-        source.close()
-
-    db_mod.DB_PATH = str(isolated_path)
-    try:
-        yield str(isolated_path)
-    finally:
-        db_mod.DB_PATH = original_path
+def isolated_test_database():
+    """The import-time bootstrap already copied the source into test ownership."""
+    yield str(TEST_STATE_ROOT / "spotify_stats-test.db")
 
 
 @pytest.fixture(scope="session")
@@ -156,3 +131,14 @@ def billboard_data(warm_default_caches):
         year_start=None,
         year_end=None,
     )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    # Even a product catch-all must not turn a blocked formal write into a pass.
+    if VIOLATIONS:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if reporter:
+            reporter.write_sep("!", "Blocked backend test access to formal data")
+            for violation in sorted(set(VIOLATIONS)):
+                reporter.write_line(violation)

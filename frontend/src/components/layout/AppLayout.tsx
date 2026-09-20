@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom'
+import { SnapshotStatusNotice } from '@/components/shared/SnapshotStatusNotice'
 import { Masthead } from './Masthead'
 import { MobileTopBar } from './MobileTopBar'
 import { MobileBottomNav } from './MobileBottomNav'
@@ -39,6 +40,7 @@ export function AppLayout() {
         )}
         data-viewport-mode={viewportMode}
       >
+        <SnapshotStatusNotice />
         <Outlet />
       </main>
 
