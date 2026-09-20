@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
-import { spawn } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { spawn, execFileSync } from 'node:child_process'
+import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import net from 'node:net'
+import { fileURLToPath } from 'node:url'
+import { SCHEMA_VERSION, DEFAULT_ROUTES, routeContract, coreReady, fingerprint, summarizeAttempts, snapshotState, apiTerminalState } from './lib/performance_browser_contract.mjs'
 import { findChrome } from './lib/chrome_executable.mjs'
 
-const DEFAULT_ROUTES = ['/', '/analysis/stats', '/analysis/charts', '/analysis/records', '/billboard/number-ones', '/account', '/settings']
 const DEFAULT_BASE_URL = 'http://localhost:5173'
 const DEFAULT_WAIT_MS = 5000
 const BUDGET_RETRY_LIMIT = 1
@@ -42,7 +43,7 @@ const VIEWPORTS = {
 
 const VITALS_OBSERVER = `
 (() => {
-  window.__codexVitals = { cls: 0, lcp: 0, fid: null, firstInput: null, longTasks: [] };
+  window.__codexVitals = { cls: 0, lcp: 0, longTasks: [] };
   try {
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
@@ -56,20 +57,6 @@ const VITALS_OBSERVER = `
         if (!entry.hadRecentInput) window.__codexVitals.cls += entry.value || 0;
       }
     }).observe({ type: 'layout-shift', buffered: true });
-  } catch {}
-  try {
-    new PerformanceObserver((list) => {
-      const entry = list.getEntries()[0];
-      if (entry && window.__codexVitals.fid == null) {
-        window.__codexVitals.fid = Math.max(0, entry.processingStart - entry.startTime);
-        window.__codexVitals.firstInput = {
-          name: entry.name,
-          startTime: entry.startTime,
-          processingStart: entry.processingStart,
-          duration: entry.duration,
-        };
-      }
-    }).observe({ type: 'first-input', buffered: true });
   } catch {}
   try {
     new PerformanceObserver((list) => {
@@ -97,7 +84,7 @@ const METRICS_EXPRESSION = `
   const documentScrollWidth = document.documentElement ? document.documentElement.scrollWidth : null;
   const widestScrollWidth = Math.max(bodyScrollWidth || 0, documentScrollWidth || 0);
   const tbt = (vitals.longTasks || [])
-    .filter((entry) => entry.startTime >= fcp && entry.startTime <= 5000)
+    .filter((entry) => entry.startTime >= fcp && entry.startTime <= performance.now())
     .reduce((sum, entry) => sum + Math.max(0, entry.duration - 50), 0);
 
   return {
@@ -105,8 +92,9 @@ const METRICS_EXPRESSION = `
     title: document.title,
     lcp: (lcpEntry && (lcpEntry.renderTime || lcpEntry.loadTime || lcpEntry.startTime)) || vitals.lcp || null,
     cls: vitals.cls || 0,
-    fid: vitals.fid,
-    firstInput: vitals.firstInput,
+    inp: null,
+    inpEvidence: "not_measured; no synthetic interaction",
+    observationEnd: performance.now(),
     tbtApprox: tbt,
     fcp,
     domContentLoaded: nav ? nav.domContentLoadedEventEnd : null,
@@ -132,6 +120,12 @@ function parseArgs(argv) {
     viewports: ['desktop', 'mobile'],
     output: null,
     chrome: null,
+    contextFile: null,
+    dbPath: null,
+    dataset: "unknown",
+    routeParams: {},
+    browserPidFile: null,
+    surface: "public-readonly",
     maxLcpMs: null,
     maxCls: null,
     maxTbtMs: null,
@@ -145,10 +139,16 @@ function parseArgs(argv) {
     if (arg === '--base-url') args.baseUrl = argv[++i]
     else if (arg === '--api-base-url') args.apiBaseUrl = argv[++i]
     else if (arg === '--routes') args.routes = argv[++i].split(',').map((route) => route.trim()).filter(Boolean)
+    else if (arg === '--context-file') args.contextFile = argv[++i]
+    else if (arg === '--db-path') args.dbPath = argv[++i]
+    else if (arg === '--dataset') args.dataset = argv[++i]
+    else if (arg === '--route-params') args.routeParams = JSON.parse(argv[++i])
+    else if (arg === '--browser-pid-file') args.browserPidFile = argv[++i]
+    else if (arg === '--surface') args.surface = argv[++i]
     else if (arg === '--wait-ms') args.waitMs = Number(argv[++i])
     else if (arg === '--viewport') {
       const value = argv[++i]
-      args.viewports = value === 'both' ? ['desktop', 'mobile'] : [value]
+      args.viewports = value === 'both' ? ['desktop', 'mobile'] : [value === 'phone' ? 'mobile' : value]
     } else if (arg === '--output') args.output = argv[++i]
     else if (arg === '--chrome') args.chrome = argv[++i]
     else if (arg === '--max-lcp-ms') args.maxLcpMs = parseBudgetNumber(argv[++i], '--max-lcp-ms')
@@ -173,6 +173,10 @@ function parseArgs(argv) {
     throw new Error('--wait-ms must be at least 1000')
   }
 
+  for (const url of [args.baseUrl, args.apiBaseUrl].filter(Boolean)) {
+    if (!['localhost','127.0.0.1','[::1]'].includes(new URL(url).hostname)) throw new Error('Only loopback URLs allowed')
+  }
+  args.routes = args.routes.map(route => route.replace(/\{(\w+)\}/g, (_, key) => encodeURIComponent(args.routeParams[key] ?? `{${key}}`)))
   return args
 }
 
@@ -189,6 +193,12 @@ function printHelp() {
   node scripts/frontend_web_vitals_probe.mjs [options]
 
 Options:
+  --context-file <path> Shared performance context JSON
+  --db-path <path>       Read-only DB identity
+  --dataset <label>      seed / online_backup / unknown
+  --route-params <json>  track_id, project_id, artist for default detail routes
+  --browser-pid-file <path> For resource sampling
+  --surface <name>       public-readonly by default
   --base-url <url>       Frontend URL, default ${DEFAULT_BASE_URL}
   --api-base-url <url>   Rewrite same-origin /api and /covers requests to this API URL
   --routes <a,b,c>       Comma-separated route paths, default ${DEFAULT_ROUTES.join(',')}
@@ -268,9 +278,12 @@ function rewriteRequestUrl(requestUrl, frontendBaseUrl, apiBaseUrl) {
 }
 
 async function setupApiRequestRewrite(client, frontendBaseUrl, apiBaseUrl) {
-  if (!apiBaseUrl) return
-
   client.on('Fetch.requestPaused', (params) => {
+    const parsed = new URL(params.request.url)
+    if ((['http:','https:'].includes(parsed.protocol) && !['localhost','127.0.0.1','[::1]'].includes(parsed.hostname)) || !['GET','HEAD'].includes(params.request.method)) {
+      void client.send('Fetch.failRequest', {requestId:params.requestId,errorReason:'BlockedByClient'}).catch(()=>{})
+      return
+    }
     const rewrittenUrl = rewriteRequestUrl(params.request.url, frontendBaseUrl, apiBaseUrl)
     const request = rewrittenUrl
       ? { requestId: params.requestId, url: rewrittenUrl }
@@ -304,7 +317,8 @@ class CdpClient {
   handleMessage(event) {
     const message = JSON.parse(event.data)
     if (message.id && this.pending.has(message.id)) {
-      const { resolve, reject } = this.pending.get(message.id)
+      const { resolve, reject, timer } = this.pending.get(message.id)
+      clearTimeout(timer)
       this.pending.delete(message.id)
       if (message.error) reject(new Error(message.error.message))
       else resolve(message.result)
@@ -320,13 +334,13 @@ class CdpClient {
     this.nextId += 1
     this.ws.send(JSON.stringify({ id, method, params }))
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id)
           reject(new Error(`CDP call timed out: ${method}`))
         }
       }, 15000)
+      this.pending.set(id, { resolve, reject, timer })
     })
   }
 
@@ -352,73 +366,117 @@ class CdpClient {
   }
 
   close() {
+    for (const {reject,timer} of this.pending.values()) { clearTimeout(timer);reject(new Error("CDP closed")) }
+    this.pending.clear()
     this.ws.close()
   }
 }
 
-async function measureRoute({ port, baseUrl, apiBaseUrl, route, viewportName, waitMs }) {
+async function measureRoute({ port, baseUrl, apiBaseUrl, route, viewportName, waitMs, context, surface, attempt }) {
   const viewport = VIEWPORTS[viewportName]
-  const target = await createTarget(port)
-  const client = await new CdpClient(target.webSocketDebuggerUrl).connect()
-
+  const started = Date.now()
+  const sample = { ...context, schema_version:SCHEMA_VERSION, sample_id:crypto.randomUUID(), kind:'page', target:route,
+    params:[...new URL(route,baseUrl).searchParams], filter_fingerprint:fingerprint([...new URL(route,baseUrl).searchParams]),
+    filter_fingerprint_scope:'URL params; actual API params recorded in waterfall',
+    presentation:viewportName==='mobile'?'Phone':'Desktop', viewport:{width:viewport.width,height:viewport.height},
+    process:{state:'unknown',id:null,evidence:'new browser target; backend process state not observed'},
+    snapshot:{state:'unknown',source_revision:null,target_revision:null,builder_version:null,request_key:null,cache_key:null,evidence:'per API response in waterfall'},
+    http:{status:null,error_type:null,raw_bytes:null,compressed_bytes:null,content_encoding:null,size_evidence:'document Network response'},
+    timing:{total_ms:null,phases_ms:{}}, started_at:started/1000, ended_at:null, attempt, sequence:attempt-1, concurrency_group:null,
+    instrumentation:{builder_calls:null,singleflight_calls:null,evidence:'not_exposed'},success:false, route, viewportName }
+  const requests=[]
+  let client, target
   try {
-    await client.send('Page.enable')
-    await client.send('Runtime.enable')
-    await client.send('Network.enable')
+    const spec=routeContract(route)
+    if (route.includes('%7B')) throw new Error('Missing route-params for dynamic route')
+    target = await createTarget(port)
+    client = await new CdpClient(target.webSocketDebuggerUrl).connect()
+    await client.send('Page.enable');await client.send('Runtime.enable');await client.send('Network.enable')
+    await client.send('Network.setExtraHTTPHeaders',{headers:{'X-SpotifyStats-Surface':surface}})
+    const pendingBodies=new Set()
+    client.on('Network.requestWillBeSent', p=>{
+      requests.push({request_id:p.requestId,url:p.request.url,method:p.request.method,type:p.type,
+        start:p.timestamp,start_wall:p.wallTime,initiator:p.initiator,finished:false,attempt:requests.filter(r=>r.url===p.request.url).length+1})
+    })
+    const lookup=id=>requests.findLast(r=>r.request_id===id)
+    client.on('Network.responseReceived',p=>{
+      const r=lookup(p.requestId);if(!r)return
+      Object.assign(r,{status:p.response.status,response_start:p.timestamp,headers:p.response.headers,
+        content_encoding:p.response.headers['content-encoding']||p.response.headers['Content-Encoding']||'identity'})
+      if(p.type==='Document')Object.assign(sample.http,{status:p.response.status,content_encoding:r.content_encoding,compressed_bytes:Number(p.response.headers['Content-Length']??p.response.headers['content-length'])||null})
+    })
+    client.on('Network.loadingFailed',p=>{
+      const r=lookup(p.requestId);if(r)Object.assign(r,{error_type:p.canceled?'Cancelled':p.errorText,end:p.timestamp,finished:true})
+    })
+    client.on('Network.loadingFinished',p=>{
+      const r=lookup(p.requestId);if(!r)return
+      Object.assign(r,{end:p.timestamp,finished:true,transfer_bytes:p.encodedDataLength})
+      const length=r.headers?.["Content-Length"]??r.headers?.["content-length"];if(length!=null){r.compressed_bytes=Number(length);r.size_evidence="HTTP Content-Length body bytes"}
+      if(new URL(r.url).pathname.startsWith('/api/')) {
+        const promise=client.send('Network.getResponseBody',{requestId:p.requestId}).then(body=>{
+          const raw=Buffer.from(body.body,body.base64Encoded?'base64':'utf8');r.raw_bytes=raw.length
+          try {const payload=JSON.parse(raw.toString());r.valid_json=payload!=null && typeof payload==='object' && Object.keys(payload).length>0;r.snapshot=snapshotState(payload,r.headers)
+            r.application_error=Boolean(payload.error || ['error','unavailable'].includes(payload.status) || ['unavailable','missing','error'].includes(payload.snapshot_status));
+          } catch {r.valid_json=false;r.error_type='InvalidJSONResponse'}
+        }).catch(()=>{r.valid_json=false;r.error_type='ResponseBodyUnavailable'}).finally(()=>pendingBodies.delete(promise))
+        pendingBodies.add(promise)
+      }
+    })
     await setupApiRequestRewrite(client, baseUrl, apiBaseUrl)
-    await client.send('Emulation.setDeviceMetricsOverride', {
-      width: viewport.width,
-      height: viewport.height,
-      deviceScaleFactor: viewport.deviceScaleFactor,
-      mobile: viewport.mobile,
-    })
-    await client.send('Emulation.setUserAgentOverride', { userAgent: viewport.userAgent })
-    await client.send('Page.addScriptToEvaluateOnNewDocument', { source: VITALS_OBSERVER })
-
-    const url = new URL(route, baseUrl).toString()
-    const loadEvent = client.once('Page.loadEventFired', 30000)
-    await client.send('Page.navigate', { url })
-    await loadEvent
-    await sleep(waitMs)
-
-    await client.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      x: Math.floor(viewport.width / 2),
-      y: Math.floor(viewport.height / 2),
-      button: 'left',
-      clickCount: 1,
-    })
-    await client.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      x: Math.floor(viewport.width / 2),
-      y: Math.floor(viewport.height / 2),
-      button: 'left',
-      clickCount: 1,
-    })
-    await sleep(500)
-
-    const result = await client.send('Runtime.evaluate', {
-      expression: METRICS_EXPRESSION,
-      returnByValue: true,
-      awaitPromise: true,
-    })
-
-    return {
-      route,
-      viewport: viewportName,
-      ...roundMetrics(result.result.value),
+    await client.send('Emulation.setDeviceMetricsOverride',{width:viewport.width,height:viewport.height,deviceScaleFactor:viewport.deviceScaleFactor,mobile:viewport.mobile})
+    await client.send('Emulation.setUserAgentOverride',{userAgent:viewport.userAgent})
+    await client.send('Page.addScriptToEvaluateOnNewDocument',{source:VITALS_OBSERVER})
+    const navigationStart=Date.now()
+    await client.send('Page.navigate',{url:new URL(route,baseUrl).toString()})
+    const deadline=navigationStart+waitMs
+    let ready, dom
+    do {
+      const state=await client.send('Runtime.evaluate',{returnByValue:true,expression:`(() => {
+        const root=document.querySelector('main')||document.body;
+        const text=root?.innerText||'';
+        const errors=[...(root?.querySelectorAll('[role="alert"]') || [])].filter(e=>e.getBoundingClientRect().height>0).map(e=>e.innerText);
+        if(/加载失败|请求失败|页面不存在|找不到页面|当前筛选的数据尚未发布|404 Not Found|Something went wrong/i.test(text))errors.push('error text');
+        return {url:location.href,text,errors,core_selector_present:Boolean(root?.querySelector(${JSON.stringify(spec.selector||'main')})),error_skeleton:Boolean(root?.querySelector('[data-state="error"],.error-skeleton'))};
+      })()`})
+      dom=state.result.value || {url:"about:blank",text:"",errors:[],error_skeleton:false};ready=coreReady(spec,dom,requests)
+      if(ready.ready||ready.failure)break
+      await sleep(Math.min(50,Math.max(1,deadline-Date.now())))
+    } while(Date.now()<deadline)
+    sample.core_ready=ready;sample.core_ready_ms=Date.now()-navigationStart
+    if(ready.ready) {
+      while(Date.now()<deadline && !apiTerminalState(requests).complete) {
+        if(apiTerminalState(requests).failed.length)break
+        await sleep(Math.min(50,Math.max(1,deadline-Date.now())))
+      }
     }
-  } finally {
-    client.close()
-    await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`).catch(() => {})
+    sample.api_terminal=apiTerminalState(requests)
+    const result=await client.send('Runtime.evaluate',{expression:METRICS_EXPRESSION,returnByValue:true})
+    Object.assign(sample,roundMetrics(result.result.value))
+    const resources=await client.send('Runtime.evaluate',{returnByValue:true,expression:`performance.getEntriesByType('resource').map(r=>({url:r.name,start:r.startTime,end:r.responseEnd,raw_bytes:r.decodedBodySize,compressed_bytes:r.encodedBodySize,transfer_bytes:r.transferSize}))`})
+    for(const r of requests) {
+      const size=resources.result.value.find(x=>x.url===r.url)
+      if(size)Object.assign(r,{compressed_bytes:r.compressed_bytes??(size.compressed_bytes||null),resource_raw_bytes:size.raw_bytes,size_evidence:'ResourceTiming; zero may indicate cache or unavailable cross-origin timing'})
+    }
+    sample.success=Boolean(ready.ready) && sample.api_terminal.success && !requests.some(r=>r.error_type || (r.status != null && r.status>=400))
+    sample.http.error_type=sample.success?null:ready.failure||(!sample.api_terminal.complete?'IncompleteAPIRequests':sample.api_terminal.failed.length?'APIError':'CoreReadyTimeout')
+    sample.timing.phases_ms={core_ready:sample.core_ready_ms}
+    const nav=await client.send('Runtime.evaluate',{returnByValue:true,expression:"(()=>{const n=performance.getEntriesByType('navigation')[0];return n?{raw:n.decodedBodySize,encoded:n.encodedBodySize}:null})()"})
+    if(nav.result.value){sample.http.raw_bytes=nav.result.value.raw;sample.http.compressed_bytes=nav.result.value.encoded}
+    sample.pending_requests=requests.filter(r=>!r.finished).map(r=>r.request_id)
+  } catch(error) {sample.http.error_type=error.name+': '+error.message}
+  finally {
+    sample.ended_at=Date.now()/1000;sample.timing.total_ms=Date.now()-started
+    sample.waterfall=requests
+    if(client)client.close()
+    if(target)await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`).catch(()=>{})
   }
+  return sample
 }
 
 function roundMetrics(result) {
   const numeric = [
     'lcp',
     'cls',
-    'fid',
     'tbtApprox',
     'fcp',
     'domContentLoaded',
@@ -427,7 +485,8 @@ function roundMetrics(result) {
   ]
   for (const key of numeric) {
     if (typeof result[key] === 'number') {
-      result[key] = Math.round(result[key] * 10) / 10
+      const scale=key==='cls'?10000:10
+      result[key] = Math.round(result[key] * scale) / scale
     }
   }
   return result
@@ -439,24 +498,24 @@ function renderMarkdown(results) {
     '',
     `> Generated: ${new Date().toISOString()}`,
     '',
-    '| Route | Viewport | LCP | CLS | FID | TBT approx | FCP | DCL | Load | Resources | Encoded resources | Scroll width |',
+    '| Route | Viewport | LCP | CLS | INP (not measured) | TBT approx | FCP | DCL | Load | Resources | Encoded resources | Scroll width |',
     '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
   ]
 
   for (const row of results) {
-    const fid = row.fid == null ? 'n/a' : `${row.fid}ms`
+    const fid = row.inp == null ? 'n/a' : `${row.inp}ms`
     const scrollWidth = `${row.documentScrollWidth ?? 'n/a'} / ${row.viewportWidth ?? 'n/a'}`
     lines.push(
-      `| \`${row.route}\` | ${row.viewport} | ${formatMs(row.lcp)} | ${row.cls} | ${fid} | ${formatMs(row.tbtApprox)} | ${formatMs(row.fcp)} | ${formatMs(row.domContentLoaded)} | ${formatMs(row.load)} | ${row.resourceCount} | ${row.encodedResourceKB}KB | ${scrollWidth} |`,
+      `| \`${row.route}\` | ${row.presentation ?? row.viewport} | ${formatMs(row.lcp)} | ${row.cls} | ${fid} | ${formatMs(row.tbtApprox)} | ${formatMs(row.fcp)} | ${formatMs(row.domContentLoaded)} | ${formatMs(row.load)} | ${row.resourceCount} | ${row.encodedResourceKB}KB | ${scrollWidth} |`,
     )
   }
 
   lines.push('')
   lines.push('Notes:')
   lines.push('- LCP/CLS are collected with PerformanceObserver in headless Chrome.')
-  lines.push('- FID is only present if Chrome exposes a first-input entry for the synthetic click; use TBT approx as the lab proxy when FID is n/a.')
-  lines.push('- TBT approx sums long tasks over 50ms from FCP through the first 5 seconds after navigation.')
-  lines.push('- Route/viewport samples that exceed a configured budget are measured one additional time to reduce single-run lab noise.')
+  lines.push('- INP is not measured; no random clicks or FID substitution.')
+  lines.push('- TBT approx sums long tasks over 50ms from FCP through the API terminal-state observation or the original deadline; core-ready time is reported separately.')
+  lines.push('- Route/viewport samples that exceed a configured budget are retried once; every attempt is retained and a later success does not erase an earlier failure.')
   return lines.join('\n')
 }
 
@@ -481,27 +540,6 @@ function evaluateBudgets(results, budgets) {
   return failures
 }
 
-function budgetPenalty(row, budgets) {
-  return BUDGET_CHECKS.reduce((sum, check) => {
-    const budget = budgets[check.budgetKey]
-    if (budget == null) return sum
-
-    const value = row[check.key]
-    if (typeof value !== 'number' || !Number.isFinite(value)) return sum + 1_000_000
-    if (value <= budget) return sum
-
-    return sum + ((value - budget) / Math.max(budget, 1))
-  }, 0)
-}
-
-function chooseBudgetResult(first, second, budgets) {
-  const firstFailures = evaluateBudgets([first], budgets)
-  const secondFailures = evaluateBudgets([second], budgets)
-  if (secondFailures.length < firstFailures.length) return second
-  if (firstFailures.length < secondFailures.length) return first
-  return budgetPenalty(second, budgets) <= budgetPenalty(first, budgets) ? second : first
-}
-
 function formatBudget(value, unit) {
   return unit ? `${value}${unit}` : String(value)
 }
@@ -517,6 +555,9 @@ function sleep(ms) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2))
+  const context = args.contextFile ? JSON.parse(await readFile(args.contextFile,'utf8')) : JSON.parse(execFileSync(
+    process.env.PERFORMANCE_PYTHON || fileURLToPath(new URL('../.venv/bin/python',import.meta.url)),
+    [fileURLToPath(new URL('./performance_contract.py',import.meta.url)), '--dataset',args.dataset,...(args.dbPath?['--db-path',args.dbPath]:[])],{encoding:'utf8'}))
   const chromePath = findChrome(args.chrome)
   const port = await getFreePort()
   const profileDir = await mkdtemp(join(tmpdir(), 'spotify-stats-chrome-'))
@@ -536,11 +577,16 @@ async function main() {
     'about:blank',
   ], { stdio: 'ignore' })
 
+  if(args.browserPidFile)await writeFile(args.browserPidFile,String(chrome.pid))
   const cleanup = async () => {
     chrome.kill('SIGTERM')
+    if(chrome.exitCode==null && chrome.signalCode==null)await new Promise(resolve=>chrome.once('exit',resolve))
     await rm(profileDir, { recursive: true, force: true }).catch(() => {})
+    if(args.browserPidFile)await rm(args.browserPidFile,{force:true}).catch(()=>{})
   }
 
+  const onSignal=()=>{void cleanup().finally(()=>process.exit(130))}
+  process.once('SIGINT',onSignal);process.once('SIGTERM',onSignal)
   try {
     await waitForJson(`http://127.0.0.1:${port}/json/version`)
 
@@ -548,36 +594,16 @@ async function main() {
     for (const route of args.routes) {
       for (const viewport of args.viewports) {
         process.stderr.write(`Measuring ${route} (${viewport}) ... `)
-        let result = await measureRoute({
-          port,
-          baseUrl: args.baseUrl,
-          apiBaseUrl: args.apiBaseUrl,
-          route,
-          viewportName: viewport,
-          waitMs: args.waitMs,
-        })
-        result.attempts = 1
-
-        let budgetFailures = evaluateBudgets([result], args)
-        for (let retry = 0; budgetFailures.length > 0 && retry < BUDGET_RETRY_LIMIT; retry += 1) {
-          process.stderr.write(`budget retry (${budgetFailures.join('; ')}) ... `)
-          const retryResult = await measureRoute({
-            port,
-            baseUrl: args.baseUrl,
-            apiBaseUrl: args.apiBaseUrl,
-            route,
-            viewportName: viewport,
-            waitMs: args.waitMs,
-          })
-          retryResult.attempts = result.attempts + 1
-          result = chooseBudgetResult(result, retryResult, args)
-          budgetFailures = evaluateBudgets([result], args)
+        for (let attempt=1;attempt<=BUDGET_RETRY_LIMIT+1;attempt++) {
+          const result=await measureRoute({port,baseUrl:args.baseUrl,apiBaseUrl:args.apiBaseUrl,route,viewportName:viewport,waitMs:args.waitMs,context,surface:args.surface,attempt})
+          result.browser_instance={pid:chrome.pid,profile:'temporary',target:'fresh target per attempt',cache_policy:'normal shared browser cache; backend state unobserved'}
+          result.budget_failures=evaluateBudgets([result],args)
+          if(result.budget_failures.length)result.success=false
+          results.push(result)
+          if(result.success)break
+          process.stderr.write(`attempt ${attempt} failed: ${result.http.error_type || result.budget_failures.join('; ')}; retained. `)
         }
 
-        results.push(result)
-        process.stderr.write(
-          `LCP=${formatMs(result.lcp)} CLS=${result.cls} TBT=${formatMs(result.tbtApprox)} Resources=${result.resourceCount}/${result.encodedResourceKB}KB\n`,
-        )
       }
     }
 
@@ -585,12 +611,12 @@ async function main() {
     console.log(markdown)
 
     if (args.output) {
-      await writeFile(args.output, `${JSON.stringify({ generatedAt: new Date().toISOString(), results }, null, 2)}\n`)
+      await writeFile(args.output, `${JSON.stringify({ schema_version:SCHEMA_VERSION,tool:'frontend_web_vitals',context,generatedAt:new Date().toISOString(),results,samples:results,statistics:args.routes.flatMap(route=>args.viewports.map(viewport=>({route,viewport,...summarizeAttempts(results.filter(r=>r.route===route && r.viewportName===viewport))}))) }, null, 2)}\n`)
       console.error(`JSON written to ${args.output}`)
     }
 
     const budgetFailures = evaluateBudgets(results, args)
-    if (budgetFailures.length > 0) {
+    if (budgetFailures.length > 0 || results.some(r=>!r.success)) {
       console.error('Web Vitals budget failures:')
       for (const failure of budgetFailures) {
         console.error(`- ${failure}`)
@@ -598,6 +624,7 @@ async function main() {
       process.exitCode = 1
     }
   } finally {
+    process.removeListener('SIGINT',onSignal);process.removeListener('SIGTERM',onSignal)
     await cleanup()
   }
 }

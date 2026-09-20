@@ -44,8 +44,8 @@ def test_benchmark_api_exposes_reusable_performance_cli():
     assert "--slow-ms" in result.stdout
     assert "--fail-on-slow" in result.stdout
     assert "--json-output" in result.stdout
-    assert "default 22: 1 cold + 21" in result.stdout
-    assert "hot)" in result.stdout
+    assert "default 22: first observed + 21" in result.stdout
+    assert "--independent-processes" in result.stdout
 
 
 def test_benchmark_api_default_has_enough_hot_samples_for_p95():

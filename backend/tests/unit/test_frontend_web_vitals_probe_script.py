@@ -55,7 +55,10 @@ def test_frontend_web_vitals_probe_default_routes_cover_analysis_charts():
         encoding="utf-8",
     )
 
-    assert "'/analysis/charts'" in source
+    assert "DEFAULT_ROUTES" in source
+    assert (
+        "'/analysis/charts'" in (ROOT / "scripts/lib/performance_browser_contract.mjs").read_text()
+    )
 
 
 def test_frontend_web_vitals_probe_can_fail_on_metric_budgets():
@@ -65,8 +68,9 @@ def test_frontend_web_vitals_probe_can_fail_on_metric_budgets():
 
     assert "evaluateBudgets" in source
     assert "BUDGET_RETRY_LIMIT" in source
-    assert "chooseBudgetResult" in source
-    assert "budget retry" in source
+    assert "chooseBudgetResult" not in source
+    assert "results.push(result)" in source
+    assert "attempt ${attempt} failed" in source
     assert "maxLcpMs" in source
     assert "maxCls" in source
     assert "maxTbtMs" in source

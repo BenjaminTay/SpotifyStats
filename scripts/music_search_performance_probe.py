@@ -18,6 +18,7 @@ import statistics
 import subprocess
 import sys
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -26,8 +27,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.core.db import DB_PATH  # noqa: E402
+from scripts import performance_contract as contract  # noqa: E402
 
-PROBE_VERSION = "music_search_performance_probe_v2"
+PROBE_VERSION = "music_search_performance_probe_v3"
 DEFAULT_QUERY_CASES: tuple[dict[str, Any], ...] = (
     {"query": "love", "query_class": "exact", "kind": None, "page": 1},
     {"query": "tay", "query_class": "prefix", "kind": None, "page": 1},
@@ -86,7 +88,7 @@ def _run_http_query(
     page: int,
 ) -> dict[str, Any]:
     client = _http_client()
-    params: dict[str, Any] = {
+    params = {
         "q": query,
         "response_mode": "candidates",
         "eligibility": "current",
@@ -97,63 +99,60 @@ def _run_http_query(
     }
     if kind:
         params["kind"] = kind
-    if mode == "http-context":
-        candidate_response = client.get("/api/music/search", params=params)
-        if candidate_response.status_code != 200:
-            return {"status": "error", "error_type": "CandidateHTTPError"}
-        candidate_payload = candidate_response.json()
-        if candidate_payload.get("snapshot_status") != "ready":
-            return {
-                "status": "unavailable",
-                "unavailable_reason": CONTEXT_UNAVAILABLE_REASON,
-            }
-        entity_keys = [
+    records = []
+    candidate, payload = contract.request(
+        client,
+        "/api/music/search",
+        params,
+        context=_HTTP_CONTEXT,
+        headers={"X-SpotifyStats-Surface": "public-readonly"},
+    )
+    candidate["params"]["q"] = {"sha256": contract.fingerprint(query), "length": len(query)}
+    candidate["http"]["size_evidence"] = "in_process_http_transport_body"
+    records.append(candidate)
+    current = candidate
+    if candidate["success"] and mode == "http-context":
+        keys = [
             item["entity_key"]
             for group in ("tracks", "albums", "artists")
-            for item in candidate_payload.get(group, [])
+            for item in payload.get(group, [])
         ][:30]
-        context_params: list[tuple[str, Any]] = [
+        context_params = [
             ("dynamic_threshold", True),
             ("merge_level", 2),
-            *(("entity_key", value) for value in entity_keys),
+            *(("entity_key", k) for k in keys),
         ]
-        started_at = time.perf_counter()
-        response = client.get("/api/music/search/context", params=context_params)
-        elapsed_ms = (time.perf_counter() - started_at) * 1000.0
-        if response.status_code != 200:
-            return {"status": "error", "error_type": "ContextHTTPError"}
-        payload = response.json()
-        return {
-            "status": "ok",
-            "elapsed_ms": round(elapsed_ms, 3),
-            "phase_ms": _server_timing_values(response.headers.get("server-timing", "")),
-            "result_count": len(payload.get("items", {})),
-            "result_counts": {"context_items": len(payload.get("items", {}))},
-            "response_bytes": len(response.content),
-        }
-
-    started_at = time.perf_counter()
-    response = client.get("/api/music/search", params=params)
-    elapsed_ms = (time.perf_counter() - started_at) * 1000.0
-    if response.status_code != 200:
-        return {"status": "error", "error_type": "CandidateHTTPError"}
-    payload = response.json()
-    if payload.get("snapshot_status") != "ready":
-        return {
-            "status": "unavailable",
-            "unavailable_reason": CONTEXT_UNAVAILABLE_REASON,
-        }
+        current, payload = contract.request(
+            client,
+            "/api/music/search/context",
+            context_params,
+            context=_HTTP_CONTEXT,
+            sequence=1,
+            headers={"X-SpotifyStats-Surface": "public-readonly"},
+        )
+        current["http"]["size_evidence"] = "in_process_http_transport_body"
+        records.append(current)
+    unavailable = isinstance(payload, dict) and payload.get("snapshot_status") not in (
+        None,
+        "ready",
+    )
     return {
-        "status": "ok",
-        "elapsed_ms": round(elapsed_ms, 3),
-        "phase_ms": _server_timing_values(response.headers.get("server-timing", "")),
-        "result_count": int(payload["total"]),
-        "result_counts": {
-            "tracks": len(payload["tracks"]),
-            "albums": len(payload["albums"]),
-            "artists": len(payload["artists"]),
-        },
-        "response_bytes": len(response.content),
+        "status": "error"
+        if any(not r["success"] for r in records)
+        else "unavailable"
+        if unavailable
+        else "ok",
+        "error_type": current["http"]["error_type"],
+        "elapsed_ms": sum(r["timing"]["total_ms"] for r in records),
+        "phase_ms": current["timing"]["phases_ms"],
+        "response_bytes": current["http"]["raw_bytes"] or 0,
+        "result_count": len(payload.get("items", {}))
+        if mode == "http-context" and isinstance(payload, dict)
+        else payload.get("total", 0)
+        if isinstance(payload, dict)
+        else 0,
+        "result_counts": {},
+        "http_samples": records,
     }
 
 
@@ -272,7 +271,7 @@ def _load_search_settings(conn: sqlite3.Connection) -> dict[str, Any]:
     return SettingsRepository(conn).load_all()
 
 
-def run_query_on_connection(
+def _run_query_impl(
     conn: sqlite3.Connection,
     *,
     db_path: Path,
@@ -458,6 +457,78 @@ def run_query_on_connection(
         core_db.DB_PATH = previous_db_path
 
 
+_HTTP_CONTEXT = None
+
+
+@lru_cache(maxsize=4)
+def _probe_context(db_path):
+    return contract.metadata(db_path)
+
+
+def run_query_on_connection(
+    conn, *, db_path, query, mode, limit_per_type, include_chart, kind=None, page=1
+):
+    global _HTTP_CONTEXT
+    from backend.core.access_surface import (
+        reset_public_readonly_db_guard,
+        set_public_readonly_db_guard,
+    )
+
+    context = _probe_context(str(db_path))
+    _HTTP_CONTEXT = context
+    record = contract.sample(
+        context,
+        "music_search:" + mode,
+        {
+            "query_hash": contract.fingerprint(query),
+            "kind": kind,
+            "page": page,
+            "limit_per_type": limit_per_type,
+        },
+        kind="service",
+    )
+    record["process"] = {
+        "state": "unknown",
+        "id": f"{os.getpid()}:{_PROCESS_START}",
+        "evidence": "in_process_service",
+    }
+    start = time.perf_counter()
+    token = set_public_readonly_db_guard(True)
+    try:
+        result = _run_query_impl(
+            conn,
+            db_path=db_path,
+            query=query,
+            mode=mode,
+            limit_per_type=limit_per_type,
+            include_chart=include_chart,
+            kind=kind,
+            page=page,
+        )
+    except Exception as exc:
+        result = _error_result(exc)
+    finally:
+        reset_public_readonly_db_guard(token)
+    record["ended_at"] = time.time()
+    record["timing"] = {
+        "total_ms": round((time.perf_counter() - start) * 1000, 3),
+        "phases_ms": result.get("phase_ms", {}),
+    }
+    record["success"] = result["status"] == "ok"
+    record["http"]["error_type"] = result.get("error_type") or (
+        result["status"] if not record["success"] else None
+    )
+    record["http"]["raw_bytes"] = result.get("response_bytes")
+    record["http"]["size_evidence"] = "serialized_service_response; HTTP compression not_applicable"
+    result.setdefault("elapsed_ms", record["timing"]["total_ms"])
+    result.setdefault("response_bytes", 0)
+    result["measurement"] = record
+    return result
+
+
+_PROCESS_START = time.time_ns()
+
+
 def _error_result(exc: BaseException) -> dict[str, Any]:
     return {
         "status": "error",
@@ -487,6 +558,8 @@ def worker_main() -> int:
             conn.close()
     except BaseException as exc:  # pragma: no cover - parent tests error envelope
         result = _error_result(exc)
+    if result.get("measurement"):
+        result["measurement"]["process"]["state"] = "cold"
     print(json.dumps(result, ensure_ascii=True, separators=(",", ":")))
     return 0 if result["status"] in {"ok", "unavailable"} else 1
 
@@ -538,53 +611,33 @@ def _percentile_nearest_rank(values: list[float], percentile: float) -> float | 
 
 
 def summarize_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
-    ok_samples = [sample for sample in samples if sample.get("status") == "ok"]
-    durations = [float(sample["elapsed_ms"]) for sample in ok_samples]
-    response_sizes = [int(sample["response_bytes"]) for sample in ok_samples]
-    errors = [sample for sample in samples if sample.get("status") == "error"]
-    if not durations:
-        return {
-            "sample_count": len(samples),
-            "ok_count": 0,
-            "error_count": len(errors),
-            "min_ms": None,
-            "mean_ms": None,
-            "p50_ms": None,
-            "p95_ms": None,
-            "max_ms": None,
-            "max_response_bytes": None,
-            "phase_p95_ms": {},
-        }
-    phase_names = sorted(
-        {phase for sample in ok_samples for phase in (sample.get("phase_ms") or {})}
+    selected = [s for s in samples if s.get("role") != "warmup"]
+    records = []
+    for s in selected:
+        r = s.get("measurement") or contract.sample({}, "legacy_observation")
+        if "measurement" not in s:
+            r["success"] = s.get("status") == "ok"
+            r["timing"]["total_ms"] = s.get("elapsed_ms")
+        records.append(r)
+    result = contract.summarize(records)
+    # Different queries are not exchangeable samples of one latency distribution.
+    if len({s.get("query_id") for s in selected}) > 1:
+        result["p95_ms"] = None
+    good = [s for s in selected if s.get("status") == "ok"]
+    result.update(
+        ok_count=result["success_count"],
+        error_count=result["failure_count"],
+        p50_ms=result["median_ms"],
+        mean_ms=statistics.fmean(result["observed_values_ms"]) if good else None,
+        max_response_bytes=max((s.get("response_bytes", 0) for s in good), default=None),
+        phase_p95_ms={},
     )
-    phase_p95_ms = {
-        phase: round(
-            _percentile_nearest_rank(
-                [
-                    float(sample["phase_ms"][phase])
-                    for sample in ok_samples
-                    if phase in (sample.get("phase_ms") or {})
-                ],
-                0.95,
-            )
-            or 0.0,
-            3,
-        )
-        for phase in phase_names
-    }
-    return {
-        "sample_count": len(samples),
-        "ok_count": len(ok_samples),
-        "error_count": len(errors),
-        "min_ms": round(min(durations), 3),
-        "mean_ms": round(statistics.fmean(durations), 3),
-        "p50_ms": round(statistics.median(durations), 3),
-        "p95_ms": round(_percentile_nearest_rank(durations, 0.95) or 0.0, 3),
-        "max_ms": round(max(durations), 3),
-        "max_response_bytes": max(response_sizes),
-        "phase_p95_ms": phase_p95_ms,
-    }
+    if result["p95_ms"] is not None:
+        for phase in {p for s in good for p in s.get("phase_ms", {})}:
+            values = [s["phase_ms"][phase] for s in good if phase in s.get("phase_ms", {})]
+            if len(values) >= 20:
+                result["phase_p95_ms"][phase] = _percentile_nearest_rank(values, 0.95)
+    return result
 
 
 def collect_warm_profile(
@@ -614,16 +667,9 @@ def collect_warm_profile(
                     page=int(case["page"]),
                 )
             )
-        if any(sample["status"] == "unavailable" for sample in warmups):
-            return {
-                "condition": "warm",
-                "strategy": "same_process_same_connection",
-                "status": "unavailable",
-                "repeat": repeat,
-                "unavailable_reason": CONTEXT_UNAVAILABLE_REASON,
-                "samples": [],
-                "summary": summarize_samples([]),
-            }
+        for index, value in enumerate(warmups, 1):
+            value.update(query_id=f"q{index}", iteration=0, role="warmup")
+            samples.append(value)
         for iteration in range(1, repeat + 1):
             for index, case in enumerate(cases, start=1):
                 sample = run_query_on_connection(
@@ -637,13 +683,18 @@ def collect_warm_profile(
                     page=int(case["page"]),
                 )
                 sample.update({"query_id": f"q{index}", "iteration": iteration})
+                sample["measurement"]["process"]["state"] = "warm"
                 samples.append(sample)
     finally:
         conn.close()
     return {
         "condition": "warm",
         "strategy": "same_process_same_connection",
-        "status": "ok" if all(sample["status"] == "ok" for sample in samples) else "error",
+        "status": "unavailable"
+        if all(sample["status"] == "unavailable" for sample in samples)
+        else "ok"
+        if all(sample["status"] == "ok" for sample in samples)
+        else "error",
         "repeat": repeat,
         "warmup_calls_per_query": 1,
         "samples": samples,
@@ -674,20 +725,14 @@ def collect_cold_profile(
             )
             sample.update({"query_id": f"q{index}", "iteration": iteration})
             samples.append(sample)
-    if samples and all(sample["status"] == "unavailable" for sample in samples):
-        return {
-            "condition": "cold",
-            "strategy": "fresh_python_process_per_sample",
-            "status": "unavailable",
-            "repeat": repeat,
-            "unavailable_reason": CONTEXT_UNAVAILABLE_REASON,
-            "samples": [],
-            "summary": summarize_samples([]),
-        }
     return {
         "condition": "cold",
         "strategy": "fresh_python_process_per_sample",
-        "status": "ok" if all(sample["status"] == "ok" for sample in samples) else "error",
+        "status": "unavailable"
+        if all(sample["status"] == "unavailable" for sample in samples)
+        else "ok"
+        if all(sample["status"] == "ok" for sample in samples)
+        else "error",
         "repeat": repeat,
         "os_page_cache_cleared": False,
         "samples": samples,
@@ -718,6 +763,13 @@ def evaluate_budgets(
         phase_p95 = summary.get("phase_p95_ms") or {}
         if max_p50_ms is not None and p50_ms is not None and p50_ms > max_p50_ms:
             failures.append(f"{condition} p50 {p50_ms:.3f}ms exceeds budget {max_p50_ms:.3f}ms")
+        if p95_ms is None and (
+            max_p95_ms is not None
+            or (max_warm_p95_ms if condition == "warm" else max_cold_p95_ms) is not None
+        ):
+            failures.append(
+                f"{condition} p95 has insufficient valid same-state samples for condition budget"
+            )
         if max_p95_ms is not None and p95_ms is not None and p95_ms > max_p95_ms:
             failures.append(f"{condition} p95 {p95_ms:.3f}ms exceeds budget {max_p95_ms:.3f}ms")
         condition_p95_budget = max_warm_p95_ms if condition == "warm" else max_cold_p95_ms
@@ -744,6 +796,8 @@ def evaluate_budgets(
             ("candidate_query", max_candidate_sql_p95_ms),
         ):
             phase_value = phase_p95.get(phase)
+            if budget is not None and phase_value is None:
+                failures.append(f"{condition} {phase} p95 unavailable for budget")
             if budget is not None and phase_value is not None and phase_value > budget:
                 failures.append(
                     f"{condition} {phase} p95 {phase_value:.3f}ms exceeds budget {budget:.3f}ms"
@@ -883,7 +937,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--cold",
         action="store_true",
-        help="Run one cold sample per query in a fresh Python process",
+        help="Run three independent process-cold samples per query",
     )
     parser.add_argument(
         "--cold-repeat",
@@ -908,6 +962,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--require-available",
         action="store_true",
         help="Exit non-zero when the requested mode is unavailable",
+    )
+    parser.add_argument(
+        "--dataset", choices=["seed", "online_backup", "unknown"], default="unknown"
     )
     parser.add_argument("--_worker", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
@@ -957,7 +1014,9 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     if not db_path.is_file():
         raise FileNotFoundError(f"database not found: {db_path}")
     query_cases, query_source = _validated_query_cases(args)
-    cold_repeat = max(args.cold_repeat, 1 if args.cold else 0)
+    cold_repeat = max(args.cold_repeat, 3 if args.cold else 0)
+    if 0 < cold_repeat < 3:
+        raise ValueError("independent cold requires at least 3 processes per query")
     warm_repeat = args.warm_repeat
     if warm_repeat is None:
         warm_repeat = 0 if cold_repeat else (60 if args.mode != "end-to-end" else 3)
@@ -994,8 +1053,13 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         status = "unavailable"
     elif any(profile["status"] == "error" for profile in profiles):
         status = "error"
+    budget_profiles = []
+    for profile in profiles:
+        for query_id in {s.get("query_id") for s in profile["samples"]}:
+            selected = [s for s in profile["samples"] if s.get("query_id") == query_id]
+            budget_profiles.append({**profile, "summary": summarize_samples(selected)})
     budget_failures = evaluate_budgets(
-        profiles,
+        budget_profiles,
         max_p50_ms=args.max_p50_ms,
         max_p95_ms=args.max_p95_ms,
         max_warm_p95_ms=args.max_warm_p95_ms,
@@ -1004,7 +1068,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         max_fingerprint_p95_ms=args.max_fingerprint_p95_ms,
         max_candidate_sql_p95_ms=args.max_candidate_sql_p95_ms,
     )
-    return {
+    result = {
         "probe_version": PROBE_VERSION,
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "mode": args.mode,
@@ -1044,6 +1108,22 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         },
     }
 
+    context = contract.metadata(db_path, args.dataset)
+    measurements = []
+    for profile in profiles:
+        for value in profile["samples"]:
+            r = value.get("measurement")
+            if r:
+                r.update(context)
+                measurements.append(r)
+            for http in value.get("http_samples", []):
+                http.update(context)
+                http["process"] = r["process"] if r else http["process"]
+                measurements.append(http)
+    result.update(contract.report("music_search_performance", context, measurements))
+    # Per-query/state statistics are normative. Legacy profile summary is descriptive.
+    return result
+
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
@@ -1065,7 +1145,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if report["budget_failures"]:
         return 1
-    if report["status"] == "error":
+    if report["status"] in {"error", "unavailable"}:
         return 1
     if args.require_available and report["status"] == "unavailable":
         return 1

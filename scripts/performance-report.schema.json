@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:spotifystats:performance:1",
+  "title": "SpotifyStats performance report v1",
+  "type": "object",
+  "required": ["schema_version", "tool", "context", "samples", "statistics"],
+  "properties": {
+    "schema_version": {"const": "spotify-performance/1"},
+    "tool": {"type": "string"},
+    "context": {"type": "object", "required": ["git", "database"]},
+    "statistics": {"type": "array"},
+    "samples": {"type": "array", "items": {"$ref": "#/$defs/sample"}}
+  },
+  "$defs": {
+    "sample": {
+      "type": "object",
+      "required": ["schema_version", "sample_id", "kind", "git", "database", "target", "params", "filter_fingerprint", "presentation", "viewport", "process", "snapshot", "http", "timing", "success", "started_at", "ended_at", "attempt", "sequence", "concurrency_group", "instrumentation"],
+      "properties": {
+        "schema_version": {"const": "spotify-performance/1"},
+        "kind": {"enum": ["api", "page", "service", "resource", "gate"]},
+        "git": {"type": "object", "required": ["head", "dirty"], "properties": {"head": {"type": "string"}, "dirty": {"type": "boolean"}}},
+        "database": {"type": "object", "required": ["identity", "dataset", "plays", "revision", "fingerprint", "evidence"]},
+        "process": {"type": "object", "required": ["state", "id", "evidence"], "properties": {"state": {"enum": ["cold", "warm", "unknown", "not_applicable"]}}},
+        "snapshot": {"type": "object", "required": ["state", "source_revision", "target_revision", "builder_version", "request_key", "cache_key", "evidence"], "properties": {"state": {"enum": ["exact", "LKG", "missing", "rebuilding", "unknown", "not_applicable"]}}},
+        "http": {"type": "object", "required": ["status", "error_type", "raw_bytes", "compressed_bytes", "content_encoding", "size_evidence"]},
+        "timing": {"type": "object", "required": ["total_ms", "phases_ms"]},
+        "instrumentation": {"type": "object", "required": ["builder_calls", "singleflight_calls", "evidence"]},
+        "success": {"type": "boolean"},
+        "attempt": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

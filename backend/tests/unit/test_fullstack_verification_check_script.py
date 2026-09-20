@@ -143,7 +143,8 @@ def test_fullstack_verification_dry_run_writes_partial_stage_summary(tmp_path: P
     assert result.returncode == 0, result.stderr
     payload = json.loads(summary.read_text(encoding="utf-8"))
     assert payload["overall_status"] == "PARTIAL"
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
+    assert payload["performance_schema_version"] == "spotify-performance/1"
     assert payload["run_id"]
     assert Path(payload["run_directory"]).name == payload["run_id"]
     assert payload["selection"] == {

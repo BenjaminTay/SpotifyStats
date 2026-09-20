@@ -28,6 +28,13 @@ WEB_VITALS_MAX_ENCODED_RESOURCE_KB=${WEB_VITALS_MAX_ENCODED_RESOURCE_KB:-}
 WEB_VITALS_MAX_SCROLL_OVERFLOW_PX=${WEB_VITALS_MAX_SCROLL_OVERFLOW_PX:-}
 RESOURCE_SNAPSHOT_JSON=${RESOURCE_SNAPSHOT_JSON:-}
 SUMMARY_JSON=${SUMMARY_JSON:-}
+PERFORMANCE_DB_PATH=${PERFORMANCE_DB_PATH:-${SPOTIFY_STATS_TEST_SOURCE_DB:-}}
+PERFORMANCE_DATASET=${PERFORMANCE_DATASET:-unknown}
+PERFORMANCE_ROUTE_PARAMS=${PERFORMANCE_ROUTE_PARAMS:-\{\}}
+RESOURCE_WATCH_PATH=${RESOURCE_WATCH_PATH:-}
+SAMPLER_PID=
+SAMPLER_STOP=
+SAMPLER_OUTPUT=
 FULLSTACK_RUN_ROOT=${FULLSTACK_RUN_ROOT:-${TMPDIR:-/tmp}/spotify-fullstack-verification}
 FULLSTACK_LOCK_FILE=${FULLSTACK_LOCK_FILE:-${TMPDIR:-/tmp}/spotify-fullstack-verification.lock}
 FULLSTACK_LOCK_METADATA_FILE=${FULLSTACK_LOCK_METADATA_FILE:-${FULLSTACK_LOCK_FILE}.owner.json}
@@ -90,7 +97,7 @@ Options:
                            Quickstart timing JSON output path
   --skip-cross-browser     Skip Playwright Chromium/Firefox/WebKit smoke; full result is PARTIAL
   --web-vitals             Run Web Vitals lab probes for dev and preview URLs
-  --resource-snapshot      Capture backend/frontend process CPU/RSS snapshot
+  --resource-snapshot      Sample full shared-stage resource windows, with phase labels
   --resource-snapshot-json <path>
                            Runtime resource snapshot JSON output path
   --resource-max-total-rss-mb <mb>
@@ -372,6 +379,13 @@ OPENAPI_OPERATION_AUDIT_JSON=${OPENAPI_OPERATION_AUDIT_JSON:-$RUN_DIR/openapi-op
 OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON=${OPENAPI_PARAMETER_BOUNDARY_AUDIT_JSON:-$RUN_DIR/openapi-parameter-boundary-audit.json}
 QUICKSTART_JSON=${QUICKSTART_JSON:-$RUN_DIR/quickstart-timing.json}
 RESOURCE_SNAPSHOT_JSON=${RESOURCE_SNAPSHOT_JSON:-$RUN_DIR/runtime-resources.json}
+PERFORMANCE_CONTEXT=$RUN_DIR/performance-context.json
+export PERFORMANCE_CONTEXT
+if [ -n "$PERFORMANCE_DB_PATH" ]; then
+  "$REPORT_PYTHON" scripts/performance_contract.py --db-path "$PERFORMANCE_DB_PATH" --dataset "$PERFORMANCE_DATASET" --output "$PERFORMANCE_CONTEXT"
+else
+  "$REPORT_PYTHON" scripts/performance_contract.py --output "$PERFORMANCE_CONTEXT"
+fi
 
 epoch_ms() {
   "$REPORT_PYTHON" -c 'import time; print(int(time.time() * 1000))'
@@ -451,7 +465,10 @@ else:
     overall_status = "PARTIAL"
 
 payload = {
-    "schema_version": 1,
+    "schema_version": 2,
+    "performance_schema_version": "spotify-performance/1",
+    "performance_context": json.loads(Path(os.environ["PERFORMANCE_CONTEXT"]).read_text()),
+    "performance_artifacts": [str(p) for p in Path(os.environ["FULLSTACK_RUN_DIR"]).glob("*.json") if p.name != "summary.json"],
     "run_id": os.environ["FULLSTACK_RUN_ID"],
     "run_directory": os.environ["FULLSTACK_RUN_DIR"],
     "overall_status": overall_status,
@@ -571,6 +588,11 @@ acquire_stage_lock() {
 
 finalize_report() {
   script_exit_code=$?
+  if [ -n "$SAMPLER_PID" ]; then
+    touch "$SAMPLER_STOP"
+    wait "$SAMPLER_PID" || true
+    SAMPLER_PID=
+  fi
   release_stage_lock
   if [ "$REPORT_INITIALIZED" = "1" ]; then
     write_summary "$script_exit_code" || echo "Failed to write stage summary: $RUN_SUMMARY_JSON" >&2
@@ -578,6 +600,7 @@ finalize_report() {
   fi
 }
 trap finalize_report 0
+trap 'exit 130' INT TERM
 
 if [ "$DRY_RUN" = "1" ]; then
   echo "Selection mode: $SELECTION_MODE"
@@ -655,11 +678,11 @@ run_web_vitals_probe() {
   api_base_url=${2:-}
   include_resource_budgets=${3:-0}
 
-  set -- node scripts/frontend_web_vitals_probe.mjs --base-url "$base_url"
+  set -- node scripts/frontend_web_vitals_probe.mjs --base-url "$base_url" --context-file "$PERFORMANCE_CONTEXT" --output "$RUN_DIR/web-vitals-$include_resource_budgets.json" --browser-pid-file "$RUN_DIR/browser.pid" --route-params "$PERFORMANCE_ROUTE_PARAMS"
   if [ -n "$api_base_url" ]; then
     set -- "$@" --api-base-url "$api_base_url"
   fi
-  set -- "$@" --routes /,/analysis/stats,/analysis/charts,/billboard/number-ones,/account,/settings --viewport both --wait-ms 5000
+  set -- "$@" --viewport both --wait-ms 5000
   if [ -n "$WEB_VITALS_MAX_LCP_MS" ]; then
     set -- "$@" --max-lcp-ms "$WEB_VITALS_MAX_LCP_MS"
   fi
@@ -683,7 +706,7 @@ run_web_vitals_probe() {
 }
 
 run_resource_snapshot() {
-  set -- python scripts/runtime_resource_probe.py --backend-url "$BACKEND_URL" --frontend-url "$FRONTEND_URL" --json-output "$RESOURCE_SNAPSHOT_JSON" --fail-on-missing
+  set -- python scripts/runtime_resource_probe.py --context-file "$PERFORMANCE_CONTEXT" --phase-file "$RUN_DIR/phase.txt" --browser-pid-file "$RUN_DIR/browser.pid" --stop-file "$SAMPLER_STOP" --ready-file "$RUN_DIR/resource-ready-$stage_name" --backend-url "$BACKEND_URL" --frontend-url "$FRONTEND_URL" --json-output "$SAMPLER_OUTPUT" --fail-on-missing
   if [ -n "$PREVIEW_URL" ]; then
     set -- "$@" --preview-url "$PREVIEW_URL"
   fi
@@ -694,7 +717,17 @@ run_resource_snapshot() {
     set -- "$@" --max-total-cpu-percent "$RESOURCE_MAX_TOTAL_CPU_PERCENT"
   fi
 
-  run "$@"
+  if [ -n "$RESOURCE_WATCH_PATH" ]; then set -- "$@" --watch-file "$RESOURCE_WATCH_PATH"; fi
+  "$@" >"$RUN_DIR/resource-$stage_name.log" 2>&1 &
+  SAMPLER_PID=$!
+  # Readiness polling is outside the measured stage, never a completion delay.
+  sampler_polls=0
+  while [ ! -f "$RUN_DIR/resource-ready-$stage_name" ]; do
+    if ! kill -0 "$SAMPLER_PID" 2>/dev/null; then wait "$SAMPLER_PID" || return 1; return 1; fi
+    sampler_polls=$((sampler_polls + 1))
+    [ "$sampler_polls" -lt 300 ] || return 1
+    sleep 0.05
+  done
 }
 
 run_quickstart_preflight() {
@@ -727,7 +760,7 @@ stage_api() {
     run python scripts/api_smoke_probe.py || return $?
     run python scripts/api_boundary_probe.py || return $?
   fi
-  run_without_proxy python scripts/benchmark_api.py --base-url "$BACKEND_URL" --runs "$BENCHMARK_RUNS" --slow-ms "$SLOW_MS" --fail-on-slow --json-output "$BENCHMARK_JSON" || return $?
+  run_without_proxy python scripts/benchmark_api.py --context-file "$PERFORMANCE_CONTEXT" --base-url "$BACKEND_URL" --runs "$BENCHMARK_RUNS" --slow-ms "$SLOW_MS" --fail-on-slow --json-output "$BENCHMARK_JSON" || return $?
 }
 
 stage_browser_routes() {
@@ -775,7 +808,7 @@ stage_optional() {
 
   if [ "$RUN_RESOURCE_SNAPSHOT" = "1" ]; then
     optional_ran=1
-    run_resource_snapshot || return $?
+    echo "Resource sampling covers each selected shared stage."
   fi
 
   if [ "$RUN_WEB_VITALS" = "1" ]; then
@@ -829,10 +862,22 @@ run_selected_stage() {
   printf '\n=== Stage: %s ===\n' "$stage_name"
   if stage_needs_lock "$stage_name"; then
     if acquire_stage_lock "$stage_name"; then
+      if [ "$RUN_RESOURCE_SNAPSHOT" = "1" ]; then
+        SAMPLER_STOP=$RUN_DIR/stop-$stage_name
+        SAMPLER_OUTPUT=$RUN_DIR/resources-$stage_name.json
+        printf '%s\n' "$stage_name" >"$RUN_DIR/phase.txt"
+        run_resource_snapshot || return 1
+      fi
       if "$stage_runner"; then
         stage_exit_code=0
       else
         stage_exit_code=$?
+      fi
+      if [ -n "$SAMPLER_PID" ]; then
+        touch "$SAMPLER_STOP"
+        if wait "$SAMPLER_PID"; then :; else stage_exit_code=1; fi
+        SAMPLER_PID=
+        cp "$SAMPLER_OUTPUT" "$RESOURCE_SNAPSHOT_JSON"
       fi
       release_stage_lock
     else

@@ -67,6 +67,8 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 ## 交付与验证报告
 
+- [`reports/2026-09-19-performance-measurement-contract.md`](reports/2026-09-19-performance-measurement-contract.md)：阶段 0 统一测量合同、六探针、seed/Online Backup 校准，Partial
+
 报告按主题和日期保存，完整入口见 [`reports/README.md`](reports/README.md)。报告中的性能、测试数量、数据库数量和生产 SHA 都是带日期的证据快照，不应直接当成当前基线。
 
 - [`reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md`](reports/2026-08-31-l2-l3-identity-and-album-attribution-remediation.md)：等价发行 Album Project、stable work、归属 coverage、L1 风险队列、双副本与孙燕姿同名专辑定向治理证据

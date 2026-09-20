@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Measure homepage/detail loading gates against a running local backend.
 
-For a true cold sample, restart the backend immediately before running this
-probe.  The report keeps first-request and repeated-request samples separate,
+First-request is an observation, not proof of a cold process.
+The report keeps first-request and repeated-request samples separate,
 captures ``Server-Timing``, and checks concurrent same/different detail keys.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -18,6 +19,13 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
+
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import performance_contract as contract
+
+_CONTEXT = None
+_RECORDS = []
 
 DEFAULT_PARAMS = {
     "min_ms": 30_000,
@@ -36,15 +44,36 @@ DEFAULT_PARAMS = {
 
 
 def _request(client: httpx.Client, path: str, params: dict[str, Any]) -> dict[str, Any]:
-    started = time.perf_counter()
-    response = client.get(path, params=params)
-    elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    response.raise_for_status()
+    process_id = contract.process_identity(client.base_url)
+    record, _ = contract.request(
+        client,
+        path,
+        params,
+        context=_CONTEXT,
+        process={
+            "state": "warm"
+            if any(
+                r["target"] == path
+                and r["params"] == params
+                and process_id
+                and r["process"]["id"] == process_id
+                for r in _RECORDS
+            )
+            else "unknown",
+            "id": process_id,
+            "evidence": "same_service_sequence",
+        },
+        sequence=len(_RECORDS),
+        headers={"X-SpotifyStats-Surface": "public-readonly"},
+    )
+    _RECORDS.append(record)
     return {
-        "elapsed_ms": elapsed_ms,
-        "status": response.status_code,
-        "bytes": len(response.content),
-        "server_timing": response.headers.get("server-timing"),
+        "elapsed_ms": record["timing"]["total_ms"],
+        "status": record["http"]["status"],
+        "bytes": record["http"]["raw_bytes"],
+        "server_timing": record["http"].get("server_timing"),
+        "success": record["success"],
+        "sample": record,
     }
 
 
@@ -55,7 +84,7 @@ def _samples(
     runs: int,
 ) -> dict[str, Any]:
     values = [_request(client, path, params) for _ in range(runs)]
-    repeated = [sample["elapsed_ms"] for sample in values[1:]]
+    repeated = [sample["elapsed_ms"] for sample in values[1:] if sample["success"]]
     return {
         "path": path,
         "first": values[0],
@@ -74,18 +103,24 @@ def _concurrency_probe(
         with httpx.Client(base_url=base_url, timeout=120, trust_env=False) as client:
             return _request(
                 client,
-                f"/api/billboard/track/{track}",
+                f"/api/billboard/track/canonical/{track}",
                 {**DEFAULT_PARAMS, "view": "summary"},
             )["elapsed_ms"]
 
+    offset = len(_RECORDS)
     started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=2) as executor:
         same = list(executor.map(fetch, (track_id, track_id)))
+    for record in _RECORDS[offset:]:
+        record["concurrency_group"] = "same_key"
+    offset = len(_RECORDS)
     same_wall = round((time.perf_counter() - started) * 1000, 2)
 
     started = time.perf_counter()
     with ThreadPoolExecutor(max_workers=2) as executor:
         different = list(executor.map(fetch, (track_id, other_track_id)))
+    for record in _RECORDS[offset:]:
+        record["concurrency_group"] = "different_keys"
     different_wall = round((time.perf_counter() - started) * 1000, 2)
     return {
         "same_key_elapsed_ms": same,
@@ -96,6 +131,10 @@ def _concurrency_probe(
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    global _CONTEXT
+    _CONTEXT = contract.context_from_args(args)
+    _RECORDS.clear()
+    contract.local_url(args.base_url)
     detail = {**DEFAULT_PARAMS, "view": "summary"}
     stats = {
         "min_ms": DEFAULT_PARAMS["min_ms"],
@@ -106,14 +145,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "period": "lifetime",
         "include_rank_context": "false",
     }
-    album_path = f"/api/billboard/album/{quote(args.album_name, safe='')}"
+    album_path = (
+        f"/api/billboard/album-project/{args.album_project_id}"
+        if args.album_project_id
+        else f"/api/billboard/album/{quote(args.album_name, safe='')}"
+    )
     artist_path = f"/api/billboard/artist/{quote(args.artist_name, safe='')}"
     with httpx.Client(base_url=args.base_url, timeout=120, trust_env=False) as client:
         results = {
             "home": _samples(client, "/api/home/overview", DEFAULT_PARAMS, args.runs),
             "track_summary": _samples(
                 client,
-                f"/api/billboard/track/{args.track_id}",
+                f"/api/billboard/track/canonical/{args.track_id}",
                 detail,
                 args.runs,
             ),
@@ -125,11 +168,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
             "artist_summary": _samples(client, artist_path, detail, args.runs),
             "track_stats": _samples(
-                client, f"/api/music/tracks/{args.track_id}/stats", stats, args.runs
+                client, f"/api/music/tracks/l1/{args.track_id}/stats", stats, args.runs
             ),
             "album_stats": _samples(
                 client,
-                f"/api/music/albums/{quote(args.album_name, safe='')}/stats",
+                f"/api/music/album-projects/{args.album_project_id}/stats"
+                if args.album_project_id
+                else f"/api/music/albums/{quote(args.album_name, safe='')}/stats",
                 {**stats, "artist": args.album_artist, "merge_level": 2},
                 args.runs,
             ),
@@ -176,10 +221,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "concurrency": _concurrency_probe(args.base_url, args.track_id, args.other_track_id),
         "gates": gates,
         "notes": [
-            "first samples are true cold only when the backend was restarted immediately before the probe",
+            "first samples have unknown process state; use benchmark --independent-processes for owned cold samples",
             "CPU-heavy background jobs are serialized by the JobQueue unit gate",
         ],
     }
+    report.update(contract.report("loading_performance", _CONTEXT, _RECORDS))
+    if any(not r["success"] for r in _RECORDS):
+        report["status"] = "fail"
     return report
 
 
@@ -189,6 +237,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--track-id", type=int, required=True)
     parser.add_argument("--other-track-id", type=int, required=True)
     parser.add_argument("--album-name", required=True)
+    parser.add_argument(
+        "--album-project-id",
+        type=int,
+        help="Current project route; omitted uses compatible name route",
+    )
     parser.add_argument("--album-artist", required=True)
     parser.add_argument("--artist-name", required=True)
     parser.add_argument("--runs", type=int, default=3)
@@ -198,6 +251,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stats-first-ms", type=float, default=1500.0)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--fail-on-slow", action="store_true")
+    contract.add_context_args(parser)
     return parser.parse_args()
 
 
@@ -208,7 +262,10 @@ def main() -> int:
     if args.output:
         args.output.write_text(rendered + "\n", encoding="utf-8")
     print(rendered)
-    return 1 if args.fail_on_slow and report["status"] != "pass" else 0
+    return int(
+        any(not r["success"] for r in report["samples"])
+        or (args.fail_on_slow and report["status"] != "pass")
+    )
 
 
 if __name__ == "__main__":

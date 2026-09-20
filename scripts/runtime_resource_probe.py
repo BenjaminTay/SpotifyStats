@@ -6,12 +6,19 @@ from __future__ import annotations
 # ruff: noqa: UP045
 import argparse
 import json
+import os
+import signal
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
+
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import performance_contract as contract
 
 DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
 DEFAULT_FRONTEND_URL = "http://localhost:5173"
@@ -275,6 +282,33 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         metavar="LABEL=PERCENT",
         help="Exit 1 when one service CPU percent exceeds its budget; repeatable",
     )
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=0,
+        help="Sampling window seconds; 0 is one observation unless --command/--stop-file",
+    )
+    parser.add_argument("--interval", type=float, default=0.25)
+    parser.add_argument(
+        "--command",
+        nargs=argparse.REMAINDER,
+        help="Own only this operation, sample its full lifetime",
+    )
+    parser.add_argument("--phase-file", type=Path, help="Caller writes the current phase label")
+    parser.add_argument("--stop-file", type=Path, help="Finish when caller creates this sentinel")
+    parser.add_argument("--browser-pid-file", type=Path)
+    parser.add_argument(
+        "--ready-file",
+        type=Path,
+        help="Created after the first observation, before the operation starts",
+    )
+    parser.add_argument(
+        "--watch-file",
+        action="append",
+        default=[],
+        help="DB/WAL/sidecar/file or snapshot directory",
+    )
+    contract.add_context_args(parser)
     return parser.parse_args(argv)
 
 
@@ -291,10 +325,240 @@ def collect_snapshots(args: argparse.Namespace) -> list[dict]:
     ]
 
 
+def file_sizes(paths):
+    result = {}
+    for value in paths:
+        path = Path(value)
+        if path.is_dir():
+            result[str(path)] = {
+                "bytes": sum(p.stat().st_size for p in path.rglob("*") if p.is_file()),
+                "kind": "directory",
+            }
+        else:
+            result[str(path)] = {
+                "bytes": path.stat().st_size if path.exists() else 0,
+                "kind": "file",
+                "exists": path.exists(),
+            }
+    return result
+
+
+def series_peaks(series):
+    labels = sorted({s["label"] for point in series for s in point["services"]})
+    peaks = {}
+    for label in labels:
+        values = [s for point in series for s in point["services"] if s["label"] == label]
+        peaks[label] = {
+            "peak_rss_mb": max(s["rss_mb"] for s in values),
+            "peak_cpu_percent": max(s["cpu_percent"] for s in values),
+            "read_bytes": sum(s.get("read_delta") or 0 for s in values)
+            if any(s.get("read_delta") is not None for s in values)
+            else None,
+            "write_bytes": sum(s.get("write_delta") or 0 for s in values)
+            if any(s.get("write_delta") is not None for s in values)
+            else None,
+        }
+    return peaks
+
+
+def collect_series(args):
+    # Sampling runs in this process. No background sampler children to orphan.
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+    previous = {}
+    series = []
+    owned = None
+    interrupted = False
+
+    def stop(signum, frame):
+        nonlocal interrupted
+        interrupted = True
+
+    old = {sig: signal.signal(sig, stop) for sig in (signal.SIGINT, signal.SIGTERM)}
+    started = time.monotonic()
+    try:
+        while True:
+            services = collect_snapshots(args)
+            # Classify separately; never add browser or probe RSS to application budgets.
+            if args.browser_pid_file and args.browser_pid_file.exists():
+                browser_pid = int(args.browser_pid_file.read_text().strip())
+                services.append(
+                    summarize_processes(
+                        "browser",
+                        args.frontend_url,
+                        ps_rows_for_pids(expand_process_tree([browser_pid])),
+                    )
+                )
+            services.append(
+                summarize_processes("probe", args.frontend_url, ps_rows_for_pids([os.getpid()]))
+            )
+            if owned:
+                services.append(
+                    summarize_processes(
+                        "operation",
+                        args.backend_url,
+                        ps_rows_for_pids(
+                            [
+                                pid
+                                for pid in expand_process_tree([owned.pid])
+                                if pid not in {p for service in services for p in service["pids"]}
+                            ]
+                        ),
+                    )
+                )
+            now = time.monotonic()
+            for service in services:
+                service["role"] = (
+                    "application"
+                    if service["label"] in ("backend", "frontend", "preview")
+                    else service["label"]
+                )
+                cpu = []
+                reads = []
+                writes = []
+                for pid in service["pids"]:
+                    if psutil is None:
+                        continue
+                    try:
+                        process = psutil.Process(pid)
+                        identity = (pid, process.create_time())
+                        times = process.cpu_times()
+                        total = times.user + times.system
+                        try:
+                            io = process.io_counters()
+                            read = io.read_bytes
+                            write = io.write_bytes
+                        except (AttributeError, psutil.Error):
+                            read = write = None
+                        before = previous.get(identity)
+                        if before:
+                            cpu.append(
+                                max(0, total - before[1]) / max(0.001, now - before[0]) * 100
+                            )
+                            reads.append(
+                                max(0, read - before[2])
+                                if read is not None and before[2] is not None
+                                else None
+                            )
+                            writes.append(
+                                max(0, write - before[3])
+                                if write is not None and before[3] is not None
+                                else None
+                            )
+                        else:
+                            reads.append(None)
+                            writes.append(None)
+                        previous[identity] = (now, total, read, write)
+                    except psutil.Error:
+                        pass
+                if cpu:
+                    service["cpu_percent"] = round(sum(cpu), 3)
+                service["cpu_evidence"] = "interval_cpu_seconds" if cpu else "ps_lifetime_percent"
+                service["read_delta"] = (
+                    sum(reads) if reads and all(v is not None for v in reads) else None
+                )
+                service["write_delta"] = (
+                    sum(writes) if writes and all(v is not None for v in writes) else None
+                )
+                service["io_evidence"] = (
+                    "process_counters"
+                    if service["read_delta"] is not None
+                    else "not_available_on_platform_or_first_observation"
+                )
+            point = {
+                "timestamp": time.time(),
+                "elapsed_ms": (now - started) * 1000,
+                "phase": args.phase_file.read_text().strip()
+                if args.phase_file and args.phase_file.exists()
+                else "unlabelled",
+                "services": services,
+                "files": file_sizes(args.watch_file),
+            }
+            series.append(point)
+            if args.ready_file and len(series) == 1:
+                args.ready_file.write_text(str(os.getpid()))
+            if interrupted:
+                break
+            if args.command and owned is None:
+                owned = subprocess.Popen(args.command, start_new_session=True)
+            elif owned and owned.poll() is not None:
+                break
+            elif args.stop_file and args.stop_file.exists():
+                break
+            elif not owned and not args.stop_file and time.monotonic() - started >= args.duration:
+                break
+            time.sleep(args.interval)
+        return series, (
+            owned.returncode
+            if owned and owned.returncode is not None
+            else 130
+            if interrupted
+            else 0
+        )
+    finally:
+        if owned and owned.poll() is None:
+            os.killpg(owned.pid, signal.SIGTERM)
+            try:
+                owned.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(owned.pid, signal.SIGKILL)
+                owned.wait()
+        for sig, handler in old.items():
+            signal.signal(sig, handler)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
-    snapshots = collect_snapshots(args)
+    if args.interval <= 0 or args.duration < 0:
+        raise ValueError("invalid sampling interval/window")
+    contract.local_url(args.backend_url)
+    contract.local_url(args.frontend_url)
+    context = contract.context_from_args(args)
+    series, operation_exit = collect_series(args)
+    peaks = series_peaks(series)
+    snapshots = [s.copy() for s in series[-1]["services"] if s["role"] == "application"]
+    for s in snapshots:
+        s["rss_mb"] = peaks[s["label"]]["peak_rss_mb"]
+        s["cpu_percent"] = peaks[s["label"]]["peak_cpu_percent"]
     report = build_json_report(snapshots)
+    # Total is the peak of simultaneous application trees, not sum of unrelated peaks.
+    report["total_rss_mb"] = max(
+        sum(s["rss_mb"] for s in p["services"] if s["role"] == "application") for p in series
+    )
+    report["total_cpu_percent"] = max(
+        sum(s["cpu_percent"] for s in p["services"] if s["role"] == "application") for p in series
+    )
+    records = []
+    for i, point in enumerate(series):
+        record = contract.sample(context, "resource_window", kind="resource", sequence=i)
+        record["snapshot"] = contract.snapshot_state(applicable=False)
+        record["process"] = {
+            "state": "not_applicable",
+            "id": os.getpid(),
+            "evidence": "resource_time_series",
+        }
+        record["started_at"] = record["ended_at"] = point["timestamp"]
+        record["timing"]["total_ms"] = 0
+        record["success"] = operation_exit == 0
+        record["observation"] = point
+        records.append(record)
+    report.update(contract.report("runtime_resource", context, records))
+    report.update(
+        measurement_scope="operation_window"
+        if args.command or args.stop_file
+        else "bounded_window"
+        if args.duration > 0
+        else "legacy_point_observation_not_operation_peak",
+        time_series=series,
+        peaks=peaks,
+        operation_exit=operation_exit,
+        file_size_delta={
+            key: series[-1]["files"][key]["bytes"] - value["bytes"]
+            for key, value in series[0]["files"].items()
+        },
+    )
     try:
         service_rss_budgets = collect_service_budgets(args.max_service_rss_mb)
         service_cpu_budgets = collect_service_budgets(args.max_service_cpu_percent)
@@ -323,7 +587,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         for failure in budget_failures:
             print(f"- {failure}", file=sys.stderr)
         return 1
-    return 0
+    return int(operation_exit != 0)
 
 
 if __name__ == "__main__":

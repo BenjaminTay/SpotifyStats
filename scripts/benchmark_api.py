@@ -1,276 +1,273 @@
 #!/usr/bin/env python3
-"""API performance benchmark script.
-
-Measures cold-start (cache miss) and hot-request (cache hit) response times
-for key Billboard endpoints, plus response body sizes (raw and gzip).
-
-Usage:
-    python scripts/benchmark_api.py                    # all endpoints, 22 runs each
-    python scripts/benchmark_api.py --endpoint /api/billboard/data  # single endpoint
-    python scripts/benchmark_api.py --warmup           # pre-warm caches, then measure hot only
-"""
+"""Measure observed local HTTP requests; first-request is never inferred cold."""
 
 from __future__ import annotations
 
 import argparse
-import gzip
-import io
 import json
-import statistics
-import time
+import sys
+from pathlib import Path
+
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import performance_contract as contract
+from scripts.performance_catalog import endpoint_catalog
 
 DEFAULT_BASE_URL = "http://localhost:8000"
-TIMEOUT = 120.0  # cold Billboard data computation can be slow
+TIMEOUT = 120.0
 DEFAULT_SLOW_MS = 500
-DEFAULT_RUNS = 22  # one cold request plus 21 hot samples for a meaningful P95
-
+DEFAULT_RUNS = 22
 ENDPOINTS = [
-    "/api/billboard/data",
-    "/api/billboard/weekly",
-    "/api/billboard/records",
-    "/api/billboard/power-scores",
-    "/api/billboard/summaries",
-    "/api/billboard/all-time",
-    "/api/home/overview",
-    "/api/dashboard/full",
-    "/api/health",
+    r["endpoint"]
+    for r in endpoint_catalog()
+    if r["usage"] in {"current", "compatible"} and r["configured"]
 ]
 
 
-def measure(endpoint: str, runs: int = DEFAULT_RUNS, base_url: str = DEFAULT_BASE_URL) -> dict:
-    """Measure cold and hot response times for an endpoint."""
-    try:
-        import httpx
-    except ImportError as e:
-        raise RuntimeError(
-            "httpx is required to run the benchmark. Install it with `pip install httpx`"
-        ) from e
+def measure(
+    endpoint,
+    runs=DEFAULT_RUNS,
+    base_url=DEFAULT_BASE_URL,
+    *,
+    context=None,
+    params=None,
+    warmup=False,
+    headers=None,
+    process_id=None,
+    process_cold=False,
+):
+    import httpx
 
-    times_cold = []
-    times_hot = []
-    raw_size = 0
-    gzip_size = 0
-    status = 0
-
-    with httpx.Client(base_url=base_url, timeout=TIMEOUT) as client:
-        # Cold: first run (caches likely cold if not pre-warmed)
-        for i in range(runs):
-            t0 = time.perf_counter()
-            resp = client.get(endpoint)
-            elapsed = time.perf_counter() - t0
-            status = resp.status_code
-
-            content = resp.content
-            raw_size = len(content)
-
-            # Gzip size
-            buf = io.BytesIO()
-            with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
-                gz.write(content)
-            gzip_size = buf.tell()
-
-            if i == 0:
-                times_cold.append(elapsed)
-            else:
-                times_hot.append(elapsed)
-
+    context = context or contract.metadata()
+    values = []
+    previous_pid = None
+    with httpx.Client(
+        base_url=contract.local_url(base_url), timeout=TIMEOUT, trust_env=False
+    ) as client:
+        for i in range(runs + int(warmup)):
+            # A live external process cannot be identified as cold. Warm is only a
+            # repeated request in this series; no claim of memory-cache hit.
+            observed_pid = process_id or contract.process_identity(base_url)
+            state = (
+                "cold"
+                if i == 0 and process_cold
+                else "warm"
+                if i > 0 and observed_pid and observed_pid == previous_pid
+                else "unknown"
+            )
+            value, _ = contract.request(
+                client,
+                endpoint,
+                params,
+                context=context,
+                process={
+                    "state": state,
+                    "id": observed_pid,
+                    "evidence": "owned_fresh_process"
+                    if process_cold
+                    else "same_service_request_sequence",
+                },
+                sequence=i,
+                headers=headers,
+            )
+            value["role"] = "warmup" if warmup and i == 0 else "measurement"
+            previous_pid = observed_pid
+            values.append(value)
+    warm = contract.summarize([v for v in values if v["process"]["state"] == "warm"])
+    last = values[-1]["http"]
     return {
         "endpoint": endpoint,
-        "status": status,
-        "cold_p50": _p50(times_cold) if times_cold else None,
-        "cold_p95": _p95(times_cold) if times_cold else None,
-        "hot_p50": _p50(times_hot) if times_hot else None,
-        "hot_p95": _p95(times_hot) if times_hot else None,
-        "cold_samples": times_cold,
-        "hot_samples": times_hot,
-        "raw_kb": round(raw_size / 1024, 1),
-        "gzip_kb": round(gzip_size / 1024, 1),
-        "compression_ratio": compression_ratio(raw_size, gzip_size),
+        "status": last["status"],
+        "samples": values,
+        "summary": contract.summarize(values),
+        "cold_p50": None,
+        "cold_p95": None,
+        "cold_samples": [],
+        "hot_p50": warm["median_ms"] / 1000 if warm["median_ms"] is not None else None,
+        "hot_p95": warm["p95_ms"] / 1000 if warm["p95_ms"] is not None else None,
+        "hot_samples": [
+            v["timing"]["total_ms"] / 1000
+            for v in values
+            if v["process"]["state"] == "warm" and v["success"]
+        ],
+        "raw_kb": last["raw_bytes"] / 1024 if last["raw_bytes"] is not None else None,
+        "gzip_kb": last["compressed_bytes"] / 1024 if last["content_encoding"] == "gzip" else None,
+        "compression_ratio": compression_ratio(
+            last["raw_bytes"] or 0, last["compressed_bytes"] or 0
+        ),
     }
 
 
-def _p50(values: list[float]) -> float:
-    return statistics.median(values)
+def compression_ratio(raw_size, gzip_size):
+    return round(max(0, (1 - gzip_size / raw_size) * 100), 1) if raw_size else 0
 
 
-def _p95(values: list[float]) -> float:
-    if len(values) < 2:
-        return values[0] if values else 0.0
-    sorted_vals = sorted(values)
-    idx = int(len(sorted_vals) * 0.95)
-    return sorted_vals[min(idx, len(sorted_vals) - 1)]
+def find_slow_results(results, slow_ms=DEFAULT_SLOW_MS):
+    return sorted(
+        [
+            r
+            for r in results
+            if isinstance(r.get("hot_p95"), (float, int)) and r["hot_p95"] > slow_ms / 1000
+        ],
+        key=lambda r: r["hot_p95"],
+        reverse=True,
+    )
 
 
-def compression_ratio(raw_size: int, gzip_size: int) -> float:
-    if raw_size <= 0:
-        return 0.0
-    ratio = (1 - gzip_size / raw_size) * 100
-    return round(max(0.0, ratio), 1)
+def build_json_report(results, base_url=DEFAULT_BASE_URL, slow_ms=DEFAULT_SLOW_MS, context=None):
+    slow = find_slow_results(results, slow_ms)
+    samples = [s for r in results for s in r.get("samples", [])]
+    return contract.report(
+        "benchmark_api",
+        context or contract.metadata(),
+        samples,
+        base_url=base_url,
+        slow_ms=slow_ms,
+        result_count=len(results),
+        slow_count=len(slow),
+        slow_endpoints=slow,
+        results=results,
+    )
 
 
-def find_slow_results(results: list[dict], slow_ms: float = DEFAULT_SLOW_MS) -> list[dict]:
-    threshold_seconds = slow_ms / 1000
-    slow_results = [
-        result
-        for result in results
-        if isinstance(result.get("hot_p95"), (float, int)) and result["hot_p95"] > threshold_seconds
-    ]
-    return sorted(slow_results, key=lambda result: result["hot_p95"], reverse=True)
-
-
-def build_json_report(
-    results: list[dict], base_url: str = DEFAULT_BASE_URL, slow_ms: float = DEFAULT_SLOW_MS
-) -> dict:
-    slow_results = find_slow_results(results, slow_ms=slow_ms)
-    return {
-        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "base_url": base_url,
-        "slow_ms": slow_ms,
-        "result_count": len(results),
-        "slow_count": len(slow_results),
-        "slow_endpoints": slow_results,
-        "results": results,
-    }
-
-
-def render_markdown(
-    results: list[dict], base_url: str = DEFAULT_BASE_URL, slow_ms: float = DEFAULT_SLOW_MS
-) -> str:
-    """Render benchmark results as a Markdown table."""
+def render_markdown(results, base_url=DEFAULT_BASE_URL, slow_ms=DEFAULT_SLOW_MS):
     lines = [
         "# API Performance Benchmark",
         "",
-        f"> Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"> Base URL: {base_url}",
-        f"> Slow threshold: hot P95 > {slow_ms:.0f}ms",
+        f"Base URL: {base_url}",
         "",
-        "## Response Time (seconds)",
-        "",
-        "| Endpoint | Status | Cold P50 | Cold P95 | Hot P50 | Hot P95 | Raw | Gzip | Ratio |",
-        "|----------|--------|----------|----------|---------|---------|-----|------|-------|",
+        "| Endpoint | HTTP | Warm median s | Warm P95 s | Success / Failure |",
+        "|---|---:|---:|---:|---|",
     ]
-
     for r in results:
-        if "error" in r:
-            lines.append(
-                f"| `{r['endpoint']}` | ERR | — | — | — | — | — | — | — |"
-            )
-            continue
-        cold_p50 = f"{r['cold_p50']:.2f}" if r["cold_p50"] is not None else "—"
-        cold_p95 = f"{r['cold_p95']:.2f}" if r["cold_p95"] is not None else "—"
-        hot_p50 = f"{r['hot_p50']:.2f}" if r["hot_p50"] is not None else "—"
-        hot_p95 = f"{r['hot_p95']:.2f}" if r["hot_p95"] is not None else "—"
+        summary = r.get("summary", {})
         lines.append(
-            f"| `{r['endpoint']}` | {r['status']} | {cold_p50} | {cold_p95} | "
-            f"{hot_p50} | {hot_p95} | {r['raw_kb']}KB | {r['gzip_kb']}KB | "
-            f"{r['compression_ratio']}% |"
+            f"| `{r['endpoint']}` | {r.get('status')} | {r.get('hot_p50')} | {r.get('hot_p95')} | {summary.get('success_count', '?')} / {summary.get('failure_count', '?')} |"
         )
-
-    slow_results = find_slow_results(results, slow_ms=slow_ms)
-    lines.extend(
-        [
-            "",
-            f"## Slow Endpoints (>{slow_ms:.0f}ms hot P95)",
-            "",
-        ]
-    )
-    if slow_results:
-        lines.extend(
-            [
-                "| Endpoint | Hot P95 | Hot P50 | Status |",
-                "|----------|---------|---------|--------|",
-            ]
-        )
-        for r in slow_results:
-            hot_p95_ms = r["hot_p95"] * 1000
-            hot_p50_ms = r["hot_p50"] * 1000 if r["hot_p50"] is not None else 0
-            lines.append(
-                f"| `{r['endpoint']}` | {hot_p95_ms:.1f}ms | {hot_p50_ms:.1f}ms | {r['status']} |"
-            )
-    else:
-        lines.append("No hot endpoints exceeded the configured threshold.")
-
-    lines.append("")
-    lines.append("## Notes")
-    lines.append("")
-    lines.append("- **Cold**: first request after server start (cache miss, full computation)")
-    lines.append("- **Hot**: subsequent requests (cache hit, instant response)")
-    lines.append("- **P50/P95**: median and 95th percentile across runs")
-    lines.append("- **Gzip**: FastAPI auto-gzip for responses > 500 bytes")
-    lines.append("")
-
+    lines += ["", f"## Slow Endpoints (>{slow_ms:.0f}ms hot P95)", ""]
+    lines += [
+        f"- `{r['endpoint']}`: {r['hot_p95'] * 1000:.2f}ms"
+        for r in find_slow_results(results, slow_ms)
+    ]
+    lines += [
+        "",
+        "First request has unknown process state unless owned fresh process evidence exists. Warm does not mean cache hit.",
+        "P95 requires 20 valid warm samples per state. Null P95 is insufficient evidence, not a pass. Compressed bytes come from the HTTP stream.",
+    ]
     return "\n".join(lines)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="API performance benchmark")
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="API base URL")
-    parser.add_argument("--endpoint", help="Benchmark a single endpoint")
-    parser.add_argument(
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--base-url", default=DEFAULT_BASE_URL)
+    p.add_argument("--endpoint")
+    p.add_argument(
         "--runs",
         type=int,
         default=DEFAULT_RUNS,
-        help=f"Number of runs per endpoint (default {DEFAULT_RUNS}: 1 cold + 21 hot)",
+        help="default 22: first observed + 21 same-process warm requests",
     )
-    parser.add_argument(
-        "--warmup", action="store_true", help="Pre-warm caches, then measure hot only"
+    p.add_argument("--warmup", action="store_true", help="Record an additional warmup attempt")
+    p.add_argument("--slow-ms", type=float, default=DEFAULT_SLOW_MS)
+    p.add_argument("--fail-on-slow", action="store_true")
+    p.add_argument("--output", type=Path)
+    p.add_argument("--json-output", type=Path)
+    p.add_argument("--catalog", action="store_true")
+    p.add_argument("--track-id", type=int)
+    p.add_argument("--album-project-id", type=int)
+    p.add_argument("--artist")
+    p.add_argument("--year", type=int)
+    p.add_argument("--entity-key")
+    p.add_argument("--job-id")
+    p.add_argument("--post-id")
+    p.add_argument("--params", default="{}", help="JSON request parameters")
+    p.add_argument(
+        "--surface",
+        choices=["auto", "public-readonly", "private-admin"],
+        default="auto",
+        help="auto uses each consumer's actual surface; explicit values override it",
     )
-    parser.add_argument(
-        "--slow-ms",
-        type=float,
-        default=DEFAULT_SLOW_MS,
-        help="Slow endpoint threshold for hot P95 in milliseconds",
+    p.add_argument(
+        "--independent-processes",
+        type=int,
+        default=0,
+        help="At least 3 owned backend processes on a temporary copy",
     )
-    parser.add_argument("--fail-on-slow", action="store_true", help="Exit 1 when hot P95 exceeds threshold")
-    parser.add_argument("--output", help="Write Markdown report to file")
-    parser.add_argument("--json-output", help="Write machine-readable JSON report to file")
-    args = parser.parse_args()
-
-    targets = [args.endpoint] if args.endpoint else ENDPOINTS
-
-    if args.warmup:
-        print("Pre-warming caches...")
-        try:
-            import httpx
-        except ImportError:
-            print("httpx not installed; skipping warmup (install httpx to enable warmup).")
-        else:
-            with httpx.Client(base_url=args.base_url, timeout=TIMEOUT) as client:
-                for ep in targets:
-                    client.get(ep)
-            print("Warmup complete.\n")
-
+    p.add_argument("--snapshot-root", type=Path)
+    contract.add_context_args(p)
+    a = p.parse_args()
+    if a.runs < 1:
+        p.error("--runs must be positive")
+    catalog = endpoint_catalog(
+        a.track_id, a.album_project_id, a.artist, a.year, a.entity_key, a.job_id, a.post_id
+    )
+    if a.catalog:
+        print(json.dumps(catalog, ensure_ascii=False, indent=2))
+        return 0
+    context = contract.context_from_args(a)
+    targets = (
+        [{"endpoint": a.endpoint, "params": json.loads(a.params)}]
+        if a.endpoint
+        else [r for r in catalog if r["usage"] in {"current", "compatible"} and r["configured"]]
+    )
+    if not targets:
+        p.error("No configured benchmark targets; an empty run cannot pass")
     results = []
-    for ep in targets:
-        print(f"Benchmarking {ep} ...", end=" ", flush=True)
-        try:
-            r = measure(ep, runs=args.runs, base_url=args.base_url)
-            results.append(r)
-            cold_str = f"cold={r['cold_p50']:.2f}s" if r["cold_p50"] is not None else "cold=N/A"
-            hot_str = f"hot={r['hot_p50']:.2f}s" if r["hot_p50"] is not None else "hot=N/A"
-            print(f"OK ({cold_str}, {hot_str}, {r['raw_kb']}KB/{r['gzip_kb']}KB gzip)")
-        except Exception as e:
-            print(f"FAILED: {e}")
-            results.append({"endpoint": ep, "status": "ERR", "error": str(e)})
+    if a.independent_processes:
+        from scripts.performance_server import owned_server
 
-    markdown = render_markdown(results, base_url=args.base_url, slow_ms=args.slow_ms)
-    print("\n" + markdown)
-
-    if args.output:
-        with open(args.output, "w") as f:
-            f.write(markdown)
-        print(f"Report written to {args.output}")
-
-    if args.json_output:
-        report = build_json_report(results, base_url=args.base_url, slow_ms=args.slow_ms)
-        with open(args.json_output, "w") as f:
-            json.dump(report, f, ensure_ascii=False, indent=2)
-        print(f"JSON report written to {args.json_output}")
-
-    slow_results = find_slow_results(results, slow_ms=args.slow_ms)
-    if args.fail_on_slow and slow_results:
-        return 1
-    return 0
+        if a.independent_processes < 3 or not a.db_path or not a.snapshot_root:
+            p.error("cold requires >=3 processes, --db-path and --snapshot-root")
+        for target in targets:
+            for _ in range(a.independent_processes):
+                with owned_server(a.db_path, a.snapshot_root) as (url, pid):
+                    results.append(
+                        measure(
+                            target["endpoint"],
+                            a.runs,
+                            url,
+                            context=context,
+                            params=target["params"],
+                            process_id=pid,
+                            process_cold=True,
+                            headers={
+                                "X-SpotifyStats-Surface": target.get("surface", "public-readonly")
+                                if a.surface == "auto"
+                                else a.surface
+                            },
+                        )
+                    )
+    else:
+        for target in targets:
+            results.append(
+                measure(
+                    target["endpoint"],
+                    a.runs,
+                    a.base_url,
+                    context=context,
+                    params=target["params"],
+                    warmup=a.warmup,
+                    headers={
+                        "X-SpotifyStats-Surface": target.get("surface", "public-readonly")
+                        if a.surface == "auto"
+                        else a.surface
+                    },
+                )
+            )
+    output = build_json_report(results, a.base_url, a.slow_ms, context)
+    output["catalog"] = catalog
+    output["unconfigured_targets"] = [r for r in catalog if not r["configured"]]
+    markdown = render_markdown(results, a.base_url, a.slow_ms)
+    print(markdown)
+    if a.output:
+        a.output.write_text(markdown + "\n")
+    if a.json_output:
+        a.json_output.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n")
+    failed = any(not s["success"] for s in output["samples"])
+    insufficient = any(r.get("hot_p95") is None for r in results)
+    return int(
+        bool(failed or (a.fail_on_slow and (find_slow_results(results, a.slow_ms) or insufficient)))
+    )
 
 
 if __name__ == "__main__":

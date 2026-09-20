@@ -217,12 +217,13 @@ def test_context_mode_is_explicitly_unavailable_instead_of_faking_measurements(
         str(json_output),
     )
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 1, result.stderr
     report = json.loads(json_output.read_text(encoding="utf-8"))
     assert report["status"] == "unavailable"
     assert report["profiles"][0]["status"] == "unavailable"
-    assert report["profiles"][0]["samples"] == []
-    assert report["profiles"][0]["unavailable_reason"] == CONTEXT_UNAVAILABLE_REASON
+    assert len(report["profiles"][0]["samples"]) == 3
+    assert all(s["status"] == "unavailable" for s in report["profiles"][0]["samples"])
+    assert report["profiles"][0]["samples"][0]["unavailable_reason"] == CONTEXT_UNAVAILABLE_REASON
     assert "private-query" not in result.stdout
     assert "private-query" not in json.dumps(report)
 
@@ -258,7 +259,8 @@ def test_cold_mode_uses_fresh_process_and_does_not_add_warm_samples(tmp_path: Pa
     assert result.returncode == 0, result.stderr
     report = json.loads(json_output.read_text(encoding="utf-8"))
     assert report["configuration"]["warm_repeat"] == 0
-    assert report["configuration"]["cold_repeat"] == 1
+    assert report["configuration"]["cold_repeat"] == 3
+    assert len({r["process"]["id"] for r in report["samples"]}) == 3
     assert len(report["profiles"]) == 1
     assert report["profiles"][0]["condition"] == "cold"
     assert report["profiles"][0]["strategy"] == "fresh_python_process_per_sample"
@@ -275,7 +277,7 @@ def test_probe_summarizes_nearest_rank_percentile_and_fails_budgets() -> None:
     profile = {"condition": "warm", "status": "ok", "summary": summary}
 
     assert summary["p50_ms"] == 2.5
-    assert summary["p95_ms"] == 100.0
+    assert summary["p95_ms"] is None
     failures = evaluate_budgets(
         [profile],
         max_p50_ms=2.0,
@@ -285,7 +287,7 @@ def test_probe_summarizes_nearest_rank_percentile_and_fails_budgets() -> None:
         max_response_kib=0.5,
     )
 
-    assert len(failures) == 4
+    assert len(failures) == 3
     assert any("warm p50" in failure for failure in failures)
     assert any("warm p95" in failure for failure in failures)
     assert any("condition budget" in failure for failure in failures)

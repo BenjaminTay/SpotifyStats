@@ -1,5 +1,12 @@
 # 变更日志
 
+## 2026-09-19：阶段 0 统一性能测量合同
+
+- 六个性能/全栈工具统一版本、数据/进程/快照状态、原始样本与失败统计；不再以首请求推断 cold，不用本地 gzip 冒充传输大小。
+- 浏览器采用 route-specific core-ready，保留全部重试；资源按完整操作窗口采样并分阶段记录。
+- 保留原预算；少于 20 个有效同状态 warm 样本不报告 P95，独立进程 cold 至少 3 次。产品逻辑与阶段 1 未改变。
+- [测量合同](reference/fullstack-verification.md)、[局部校准与交付报告](reports/2026-09-19-performance-measurement-contract.md)。
+
 本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
 ## 2026-09-13 — 遗留开发收口与生产发布
