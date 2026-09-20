@@ -108,12 +108,12 @@ def test_rebuild_publishes_one_valid_generation_with_fts_or_fallback() -> None:
     )
 
 
-def test_rebuild_generation_is_random_but_candidate_version_is_deterministic() -> None:
+def test_unchanged_documents_reuse_generation_and_candidate_version() -> None:
     conn = _conn()
     first = rebuild_music_search_index(conn)
     second = rebuild_music_search_index(conn)
 
-    assert first["generation_id"] != second["generation_id"]
+    assert first["generation_id"] == second["generation_id"]
     assert first["candidate_index_version"] == second["candidate_index_version"]
     assert first["content_digest"] == second["content_digest"]
 
@@ -522,9 +522,11 @@ def test_atomic_publish_retains_only_active_and_previous_generation() -> None:
     first = rebuild_music_search_index(conn)
     conn.execute("INSERT INTO tracks VALUES (103, 'august', 1, 10)")
     conn.execute("INSERT INTO track_artists VALUES (103, 1, 'primary')")
+    conn.execute("INSERT INTO plays VALUES (5, 103, 200000, 10)")
     second = rebuild_music_search_index(conn)
     conn.execute("INSERT INTO tracks VALUES (104, 'betty', 1, 10)")
     conn.execute("INSERT INTO track_artists VALUES (104, 1, 'primary')")
+    conn.execute("INSERT INTO plays VALUES (6, 104, 200000, 10)")
     third = rebuild_music_search_index(conn)
 
     generations = {
@@ -536,6 +538,12 @@ def test_atomic_publish_retains_only_active_and_previous_generation() -> None:
     assert generations == {second["generation_id"], third["generation_id"]}
     assert first["generation_id"] not in generations
     assert third["previous_generation_id"] == second["generation_id"]
+    repeated = rebuild_music_search_index(conn)
+    assert repeated["generation_id"] == third["generation_id"]
+    assert repeated["previous_generation_id"] == second["generation_id"]
+    assert {
+        row[0] for row in conn.execute("SELECT DISTINCT generation_id FROM music_search_documents")
+    } == generations
 
 
 def test_deny_overlay_filters_lkg_and_clears_only_after_absence_is_proven() -> None:

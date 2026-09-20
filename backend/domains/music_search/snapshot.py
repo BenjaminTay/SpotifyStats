@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import json
+import logging
 import sqlite3
 import time
 from typing import Any, Literal, cast
@@ -67,6 +68,7 @@ from backend.services.music_search_service import (
 
 SnapshotBuildStatus = Literal["pending", "running", "ready", "failed", "stale"]
 WeeklyLedgerRow = tuple[str, str, str, int, int, int, str]
+logger = logging.getLogger(__name__)
 
 
 def _snapshot_variant_state_exists(conn: sqlite3.Connection) -> bool:
@@ -235,7 +237,11 @@ def get_serving_music_search_snapshot(
     if (
         active is None
         or str(active[1] or "") not in {"ready", "stale"}
-        or str(active[2] or "") != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
+        or str(active[2] or "")
+        not in {
+            MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            "music_search_snapshot_v10_all_duration",
+        }
         or not bool(active[3])
     ):
         return {
@@ -575,6 +581,7 @@ def _shared_metric_maps(
     contexts: tuple[MusicSearchFilterContext, ...],
     *,
     shared_frames: dict[bool, tuple[pd.DataFrame, pd.DataFrame]] | None = None,
+    compact: bool = False,
 ) -> dict[tuple[int, bool], tuple[dict[int, tuple[int, int]], ...]]:
     """Build the four L2/L3 metric variants from one frame per threshold."""
     if shared_frames is None:
@@ -650,6 +657,10 @@ def _shared_metric_maps(
                 "track_id",
             )
             album_input = _build_metric_weighted_frame(primary_variant, duration_variant)
+            if compact:
+                from backend.domains.music_search.invocation import compact_album_facts
+
+                album_input = compact_album_facts(album_input)
             album_frame = compute_album_project_plays(
                 album_input,
                 conn,
@@ -842,6 +853,7 @@ def _shared_chart_lookups(
     shared_frames: dict[bool, tuple[pd.DataFrame, pd.DataFrame]],
     *,
     weekly_ledger: dict[tuple[int, bool], tuple[list[WeeklyLedgerRow], bool]] | None = None,
+    compact: bool = False,
 ) -> dict[tuple[int, bool], dict[str, dict[Any, MusicSearchChartSummary]]]:
     """Recompute each chart family globally from shared compact weekly rows."""
     result: dict[tuple[int, bool], dict[str, dict[Any, MusicSearchChartSummary]]] = {}
@@ -924,8 +936,37 @@ def _shared_chart_lookups(
         )
         weighted = keep_complete_billboard_weeks(weighted, open_week=open_week)
         artist_weighted = keep_complete_billboard_weeks(artist_weighted, open_week=open_week)
+        if compact:
+            # Interval slicing is complete. Ranking/project joins need these
+            # facts only; do not carry logical interval payloads through joins.
+            columns = {
+                "track_id",
+                "l1_id",
+                "representative_track_id",
+                "track_name",
+                "artist_id",
+                "artist_name",
+                "album_name",
+                "source_album_id",
+                "track_album_id",
+                "ts_date",
+                "ts",
+                "ms_played",
+                "billboard_week",
+                "play_count",
+                "total_ms",
+            }
+            weighted = weighted.loc[:, [c for c in weighted.columns if c in columns]]
+            artist_weighted = artist_weighted.loc[
+                :, [c for c in artist_weighted.columns if c in columns]
+            ]
         if artist_pre_agg is not None:
             artist_pre_agg = artist_weighted
+        album_weighted = weighted
+        if compact:
+            from backend.domains.music_search.invocation import compact_album_facts
+
+            album_weighted = compact_album_facts(weighted, weekly=True)
         for context in (item for item in contexts if item.dynamic_threshold == dynamic_threshold):
             weekly = (
                 compute_weekly_rankings(
@@ -939,9 +980,9 @@ def _shared_chart_lookups(
             )
             weekly_album = (
                 compute_album_weekly_rankings(
-                    weighted,
+                    album_weighted,
                     context.bb_album_top_n,
-                    pre_agg=weighted,
+                    pre_agg=album_weighted,
                     merge_level=context.merge_level,
                     include_compilations=context.include_compilations,
                 )
@@ -1084,9 +1125,7 @@ def _context_rows(
                 document["album_id"] if kind == "album" else document["album_project_id"]
             )
             play_events, total_ms = album_metrics.get(entity_id, (0, 0))
-            chart = chart_lookup["album"].get(
-                (str(document["album_name"]), str(document["artist_name"]))
-            )
+            chart = chart_lookup["album"].get(entity_id)
         else:
             entity_id = int(document["artist_id"])
             play_events, total_ms = artist_metrics.get(entity_id, (0, 0))
@@ -1289,6 +1328,14 @@ def build_music_search_snapshot(
     candidate_generation_id = str(
         get_music_search_index_state(conn).get("active_generation_id") or ""
     )
+    source_generation_id, source_dataset_digest = active_playback_lineage(conn)
+    try:
+        dependency_digest = music_search_snapshot_dependency_digest(conn)
+    except RuntimeError:
+        dependency_digest = None
+    lineage_columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(music_search_snapshot_meta)")
+    }
     conn.execute(
         """INSERT INTO music_search_snapshot_meta(
                snapshot_key, filter_fingerprint, source_revision, status, created_at,
@@ -1348,6 +1395,12 @@ def build_music_search_snapshot(
                 ).fetchone()
                 if owner is None or str(owner[0] or "") != context.filter_fingerprint:
                     raise RuntimeError("snapshot target ownership changed during build")
+            if active_playback_lineage(conn) != (source_generation_id, source_dataset_digest):
+                raise RuntimeError("playback lineage changed during snapshot build")
+            if dependency_digest is not None and (
+                music_search_snapshot_dependency_digest(conn) != dependency_digest
+            ):
+                raise RuntimeError("snapshot dependencies changed during snapshot build")
             clear_year_end_projection(conn, snapshot_key)
             conn.execute(
                 "DELETE FROM music_search_entity_context WHERE snapshot_key=?",
@@ -1367,6 +1420,20 @@ def build_music_search_snapshot(
                    WHERE snapshot_key=?""",
                 (snapshot_key,),
             )
+            if "policy_key" in lineage_columns:
+                conn.execute(
+                    """UPDATE music_search_snapshot_meta
+                       SET policy_key=?, source_generation_id=?, source_dataset_digest=?,
+                           dependency_digest=?, build_strategy='full', base_snapshot_key=NULL,
+                           change_set_digest=NULL WHERE snapshot_key=?""",
+                    (
+                        music_search_snapshot_policy_key(context),
+                        source_generation_id or "",
+                        source_dataset_digest,
+                        dependency_digest,
+                        snapshot_key,
+                    ),
+                )
             _activate_snapshot_variant(conn, context, snapshot_key)
             conn.commit()
         except Exception:
@@ -1680,6 +1747,7 @@ def _publish_shared_full_snapshot_set(
     source_dataset_digest: str | None,
     dependency_digest: str | None,
     publish_year_end: bool = False,
+    invocation_fallback: bool = False,
 ) -> None:
     """Fence and activate the exact four variants in one write transaction."""
     conn.execute("BEGIN IMMEDIATE")
@@ -1744,13 +1812,14 @@ def _publish_shared_full_snapshot_set(
                 conn.execute(
                     """UPDATE music_search_snapshot_meta
                        SET policy_key=?, source_generation_id=?, source_dataset_digest=?,
-                           base_snapshot_key=NULL, build_strategy='shared_full',
+                           base_snapshot_key=NULL, build_strategy=?,
                            dependency_digest=?, change_set_digest=NULL
                        WHERE snapshot_key=?""",
                     (
                         music_search_snapshot_policy_key(context),
                         source_generation_id,
                         source_dataset_digest,
+                        "invocation_full" if invocation_fallback else "shared_full",
                         dependency_digest,
                         snapshot_key,
                     ),
@@ -1762,26 +1831,35 @@ def _publish_shared_full_snapshot_set(
             tuple(context.filter_fingerprint for context in contexts),
         )
         if publish_year_end:
-            from backend.domains.music_search.year_end_projection import (
-                build_year_end_projection_rows,
-                projection_tables_available,
-                publish_year_end_projection,
-            )
-
-            if not projection_tables_available(conn):
-                raise RuntimeError("music-search Year-End projection tables are unavailable")
-            for context in contexts:
-                snapshot_key = context.filter_fingerprint
-                candidate_keys = {str(row[0]) for row in rows_by_fingerprint[snapshot_key]}
-                meta_rows, entity_rows = build_year_end_projection_rows(
-                    weekly_rows_by_fingerprint.get(snapshot_key, []),
-                    candidate_keys,
-                    track_top_n=context.bb_top_n,
-                    album_top_n=context.bb_album_top_n,
-                    artist_top_n=context.bb_artist_top_n,
-                    week_start_dow=context.bb_week_start_dow,
+            conn.execute("SAVEPOINT search_year_end")
+            try:
+                from backend.domains.music_search.year_end_projection import (
+                    build_year_end_projection_rows,
+                    projection_tables_available,
+                    publish_year_end_projection,
                 )
-                publish_year_end_projection(conn, snapshot_key, meta_rows, entity_rows)
+
+                if not projection_tables_available(conn):
+                    raise RuntimeError("music-search Year-End projection tables are unavailable")
+                for context in contexts:
+                    snapshot_key = context.filter_fingerprint
+                    candidate_keys = {str(row[0]) for row in rows_by_fingerprint[snapshot_key]}
+                    meta_rows, entity_rows = build_year_end_projection_rows(
+                        weekly_rows_by_fingerprint.get(snapshot_key, []),
+                        candidate_keys,
+                        track_top_n=context.bb_top_n,
+                        album_top_n=context.bb_album_top_n,
+                        artist_top_n=context.bb_artist_top_n,
+                        week_start_dow=context.bb_week_start_dow,
+                    )
+                    publish_year_end_projection(conn, snapshot_key, meta_rows, entity_rows)
+            except Exception:
+                conn.execute("ROLLBACK TO search_year_end")
+                logger.warning(
+                    "Search core is ready; Year-End projection will retry", exc_info=True
+                )
+            finally:
+                conn.execute("RELEASE search_year_end")
         for context in contexts:
             _activate_snapshot_variant(conn, context, context.filter_fingerprint)
         conn.commit()
@@ -1797,6 +1875,7 @@ def build_shared_full_music_search_snapshot_set(
     source_generation_id: str,
     require_complete_weekly_ledger: bool = False,
     publish_year_end: bool = False,
+    invocation_fallback: bool = False,
 ) -> dict[str, Any] | None:
     """Fully rebuild four L2/L3 variants from two shared logical-frame sets.
 
@@ -1815,6 +1894,16 @@ def build_shared_full_music_search_snapshot_set(
     candidate_generation_id = str(index_state.get("active_generation_id") or "")
     if not candidate_generation_id:
         return None
+    from pathlib import Path
+
+    from backend.core import db
+    from backend.domains.music_search.invocation import (
+        database_namespace,
+        load_invocation_frames,
+    )
+
+    compact = invocation_fallback or database_namespace(conn) == str(Path(db.DB_PATH).resolve())
+    load_frames = load_invocation_frames if compact else _load_shared_logical_frames
     started = time.perf_counter()
     rows_by_fingerprint: dict[str, list[tuple[Any, ...]]] = {}
     weekly_rows_by_fingerprint: dict[str, list[WeeklyLedgerRow]] = {}
@@ -1857,7 +1946,7 @@ def build_shared_full_music_search_snapshot_set(
                 (context.merge_level, context.dynamic_threshold): True
                 for context in threshold_contexts
             }
-            artist_frames = _load_shared_logical_frames(
+            artist_frames = load_frames(
                 conn,
                 threshold_contexts,
                 ("artist",),
@@ -1867,6 +1956,7 @@ def build_shared_full_music_search_snapshot_set(
                     conn,
                     threshold_contexts,
                     shared_frames=artist_frames,
+                    **({"compact": True} if compact else {}),
                 )
                 artist_ledger: dict[tuple[int, bool], tuple[list[WeeklyLedgerRow], bool]] = {}
                 artist_charts = _shared_chart_lookups(
@@ -1874,6 +1964,7 @@ def build_shared_full_music_search_snapshot_set(
                     threshold_contexts,
                     artist_frames,
                     weekly_ledger=artist_ledger,
+                    **({"compact": True} if compact else {}),
                 )
                 for variant, (variant_rows, complete) in artist_ledger.items():
                     ledger_rows[variant].extend(variant_rows)
@@ -1896,7 +1987,7 @@ def build_shared_full_music_search_snapshot_set(
                 invalidate("db")
                 gc.collect()
 
-            primary_frames = _load_shared_logical_frames(
+            primary_frames = load_frames(
                 conn,
                 threshold_contexts,
                 ("track", "album"),
@@ -1906,6 +1997,7 @@ def build_shared_full_music_search_snapshot_set(
                     conn,
                     threshold_contexts,
                     shared_frames=primary_frames,
+                    **({"compact": True} if compact else {}),
                 )
                 primary_ledger: dict[tuple[int, bool], tuple[list[WeeklyLedgerRow], bool]] = {}
                 primary_charts = _shared_chart_lookups(
@@ -1913,6 +2005,7 @@ def build_shared_full_music_search_snapshot_set(
                     threshold_contexts,
                     primary_frames,
                     weekly_ledger=primary_ledger,
+                    **({"compact": True} if compact else {}),
                 )
                 for variant, (variant_rows, complete) in primary_ledger.items():
                     ledger_rows[variant].extend(variant_rows)
@@ -1935,34 +2028,11 @@ def build_shared_full_music_search_snapshot_set(
                         metric_maps=metric_maps[variant],
                         chart_lookup=chart_lookups[variant],
                     )
-                    if ledger_complete[variant]:
-                        # The compact ledger carries stable entity IDs. Rebuild
-                        # chart summaries from it so shared-full and completed-week
-                        # deltas use the same identity semantics; display-name
-                        # collisions must never merge distinct albums or artists.
-                        from backend.domains.music_search.snapshot_ledger import (
-                            rebuild_context_rows_from_weekly_ledger,
-                        )
-
-                        candidate_keys = {
-                            str(row[0])
-                            for row in conn.execute(
-                                """SELECT entity_key FROM music_search_documents
-                                   WHERE generation_id=?
-                                     AND (kind NOT IN ('track', 'album_project') OR merge_level IN (0, ?))""",
-                                (candidate_generation_id, context.merge_level),
-                            ).fetchall()
-                        }
-                        rows = list(
-                            rebuild_context_rows_from_weekly_ledger(
-                                ledger_rows[variant],
-                                {str(row[0]): (int(row[1]), int(row[2])) for row in rows},
-                                candidate_keys,
-                                track_top_n=context.bb_top_n,
-                                album_top_n=context.bb_album_top_n,
-                                artist_top_n=context.bb_artist_top_n,
-                            )
-                        )
+                    # Lifetime metrics retain both count and duration tracks;
+                    # a Top-N weekly ledger cannot define the entity universe.
+                    ledger_rows[variant].sort(
+                        key=lambda row: {"track": 0, "album": 1, "artist": 2}[row[0]]
+                    )
                     _validate_context_rows(rows)
                     rows_by_fingerprint[context.filter_fingerprint] = rows
                     weekly_rows_by_fingerprint[context.filter_fingerprint] = ledger_rows[variant]
@@ -1992,6 +2062,7 @@ def build_shared_full_music_search_snapshot_set(
             source_dataset_digest=source_dataset_digest if lineage_ready else None,
             dependency_digest=dependency_digest,
             publish_year_end=publish_year_end,
+            **({"invocation_fallback": True} if invocation_fallback else {}),
         )
         for context in contexts:
             rows = rows_by_fingerprint[context.filter_fingerprint]
@@ -2002,14 +2073,22 @@ def build_shared_full_music_search_snapshot_set(
                     "filter_fingerprint": context.filter_fingerprint,
                     "entity_count": len(rows),
                     "source_revision": context.source_revision,
-                    "strategy": "shared_full_snapshot_rebuild",
+                    "strategy": (
+                        "invocation_full_fallback"
+                        if invocation_fallback
+                        else "shared_full_snapshot_rebuild"
+                    ),
                     "semantic_base_key": context.semantic_base_key,
                     "merge_level": context.merge_level,
                     "dynamic_threshold": context.dynamic_threshold,
                     "builder_version": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
                     "duration_ms": duration_by_fingerprint[context.filter_fingerprint],
                     "revalidated": False,
-                    "reuse_reason": "shared_full_logical_frames",
+                    "reuse_reason": (
+                        "invocation_logical_frames"
+                        if invocation_fallback
+                        else "shared_full_logical_frames"
+                    ),
                 }
             )
     except Exception:
@@ -2044,7 +2123,9 @@ def build_shared_full_music_search_snapshot_set(
         "failed_count": 0,
         "duration_ms": round((time.perf_counter() - started) * 1000, 3),
         "variants": reports,
-        "strategy": "shared_full_snapshot_rebuild",
+        "strategy": (
+            "invocation_full_fallback" if invocation_fallback else "shared_full_snapshot_rebuild"
+        ),
         "shared_logical_frame_sets": len({context.dynamic_threshold for context in contexts}),
         "chart_strategy": "full_family_recompute",
         "weekly_ledger_ready": weekly_ledger_ready,

@@ -273,7 +273,7 @@ def test_music_search_and_billboard_detail_share_merge_disabled_semantics(client
     assert unmerged_detail.json()["effective_play_count"] == 0
 
 
-def test_search_chart_lookup_respects_compilation_semantics(client):
+def test_search_chart_lookup_respects_compilation_semantics(client, seed_conn):
     from backend.services.music_search_service import _build_chart_lookup
 
     chart_params = {
@@ -291,7 +291,10 @@ def test_search_chart_lookup_respects_compilation_semantics(client):
         "max_merge_gap_minutes": 5,
         "merge_enabled": True,
     }
-    album_key = ("Fixture Compilation Plus", "Fixture Artist Alpha")
+    album_key = seed_conn.execute(
+        "SELECT project_id FROM album_projects WHERE canonical_name=?",
+        ("Fixture Compilation Plus",),
+    ).fetchone()[0]
 
     excluded = _build_chart_lookup(**chart_params, include_compilations=False)
     included = _build_chart_lookup(**chart_params, include_compilations=True)

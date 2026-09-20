@@ -157,13 +157,14 @@ def _select_base_snapshot_keys(
                FROM music_search_snapshot_meta
                WHERE policy_key=? AND source_dataset_digest=?
                  AND dependency_digest=? AND status IN ('ready', 'stale')
-                 AND build_strategy IN ('shared_full', 'delta')
+                 AND build_strategy IN ('shared_full', 'delta') AND builder_version=?
                ORDER BY COALESCE(activated_at, created_at) DESC
                LIMIT 1""",
             (
                 music_search_snapshot_policy_key(context),
                 previous_dataset_digest,
                 dependency_digest,
+                MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
             ),
         ).fetchone()
         if row is None or not row[0] or not row[1]:
@@ -189,7 +190,7 @@ def _assert_base_snapshot_fence(
         base_key = base_keys[context.filter_fingerprint]
         row = conn.execute(
             """SELECT policy_key, source_generation_id, source_dataset_digest,
-                      dependency_digest, status, build_strategy
+                      dependency_digest, status, build_strategy, builder_version
                FROM music_search_snapshot_meta WHERE snapshot_key=?""",
             (base_key,),
         ).fetchone()
@@ -200,6 +201,7 @@ def _assert_base_snapshot_fence(
             or str(row[3] or "") != dependency_digest
             or str(row[4] or "") not in {"ready", "stale"}
             or str(row[5] or "") not in {"shared_full", "delta"}
+            or str(row[6] or "") != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
         ):
             raise RuntimeError("incremental snapshot base changed before publication")
         current_proof = _base_snapshot_payload_proof(conn, base_key)
@@ -208,6 +210,41 @@ def _assert_base_snapshot_fence(
         source_generations.add(str(row[1]))
     if len(source_generations) != 1:
         raise RuntimeError("incremental snapshot bases do not share one source generation")
+
+
+def incremental_snapshot_dependencies_ready(
+    conn: sqlite3.Connection,
+    contexts: tuple[MusicSearchFilterContext, ...],
+    plan: dict[str, Any],
+) -> bool:
+    """Prove an unchanged attribution dependency before any lifetime planner.
+
+    Publication still repeats every owner/source/dependency/candidate fence.
+    This read-only preflight only avoids rebuilding already proven identity facts.
+    """
+    validated = _validated_incremental_plan(plan)
+    if validated is None:
+        return False
+    generation, digest = active_playback_lineage(conn)
+    if (
+        generation != validated["source_generation_id"]
+        or not digest
+        or digest == validated["previous_dataset_digest"]
+    ):
+        return False
+    try:
+        dependency = music_search_snapshot_dependency_digest(conn)
+    except (RuntimeError, sqlite3.OperationalError):
+        return False
+    return (
+        _select_base_snapshot_keys(
+            conn,
+            contexts,
+            previous_dataset_digest=validated["previous_dataset_digest"],
+            dependency_digest=dependency,
+        )
+        is not None
+    )
 
 
 def _base_snapshot_payload_proof(
@@ -254,6 +291,7 @@ def _track_delta_maps(
         max_gap_minutes=max_gap_minutes,
     )
     return {
+        1: physical,
         2: project_track_logical_delta(
             physical,
             merge_level=2,
@@ -386,7 +424,7 @@ def _clone_and_apply_context_rows(
     return [
         tuple(row)
         for row in by_key.values()
-        if int(row[1]) > 0 or any(value is not None for value in row[3:])
+        if int(row[1]) > 0 or int(row[2]) > 0 or any(value is not None for value in row[3:])
     ]
 
 
@@ -476,6 +514,9 @@ def build_incremental_music_search_snapshot_set(
     base_payload_proofs = {
         base_key: _base_snapshot_payload_proof(conn, base_key) for base_key in base_keys.values()
     }
+    candidate_generation = str(get_music_search_index_state(conn).get("active_generation_id") or "")
+    if not candidate_generation:
+        return None
     representative = contexts[0]
     started = time.perf_counter()
     physical_by_threshold: dict[bool, pd.DataFrame] = {}
@@ -525,11 +566,6 @@ def build_incremental_music_search_snapshot_set(
                 affected_weeks=set(validated_plan["billboard_weeks"]),
                 current_open_week=str(validated_plan["current_open_week"]),
             )
-            candidate_generation = str(
-                get_music_search_index_state(conn).get("active_generation_id") or ""
-            )
-            if not candidate_generation:
-                return None
             for context in contexts:
                 snapshot_key = context.filter_fingerprint
                 base_key = base_keys[snapshot_key]
@@ -574,10 +610,28 @@ def build_incremental_music_search_snapshot_set(
         prepare_music_search_snapshot_set,
     )
 
-    for rows in rows_by_fingerprint.values():
+    for context in contexts:
+        # Use the same document traversal as full, including duration-only
+        # additions; neither SQL context PK order nor numeric ledger order is
+        # the candidate traversal order.
+        ordered_keys = conn.execute(
+            """SELECT entity_key FROM music_search_documents
+               WHERE generation_id=? AND kind IN ('track', 'album_project', 'artist')
+                 AND (kind NOT IN ('track', 'album_project') OR merge_level IN (0, ?))""",
+            (candidate_generation, context.merge_level),
+        ).fetchall()
+        by_key = {row[0]: row for row in rows_by_fingerprint[context.filter_fingerprint]}
+        rows = [by_key[str(key[0])] for key in ordered_keys if str(key[0]) in by_key]
+        if len(rows) != len(by_key):
+            raise RuntimeError("incremental snapshot candidate universe changed before publication")
         _validate_context_rows(rows)
+        rows_by_fingerprint[context.filter_fingerprint] = rows
+        if affected_completed_weeks:
+            weekly_rows_by_fingerprint[context.filter_fingerprint].sort(
+                key=lambda row: ({"track": 0, "album": 1, "artist": 2}[row[0]], row[1], row[3])
+            )
     prepare_music_search_snapshot_set(conn, contexts)
-    candidate_generation = str(get_music_search_index_state(conn).get("active_generation_id") or "")
+    # Keep the candidate fence captured before any delta work.
     conn.execute("BEGIN IMMEDIATE")
     try:
         _assert_shared_full_publish_fence(
@@ -637,7 +691,9 @@ def build_incremental_music_search_snapshot_set(
                        )
                        SELECT ?, family, week, entity_key, rank,
                               play_count, total_ms, stable_sort_key
-                       FROM music_search_weekly_chart_context WHERE snapshot_key=?""",
+                       FROM music_search_weekly_chart_context WHERE snapshot_key=?
+                       ORDER BY CASE family WHEN 'track' THEN 0 WHEN 'album' THEN 1 ELSE 2 END,
+                                week, rank""",
                     (snapshot_key, base_key),
                 )
             conn.execute(

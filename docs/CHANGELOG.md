@@ -1,5 +1,22 @@
 # 变更日志
 
+## 2026-09-20：阶段 5C Search 真实 delta 可达性
+
+- importer compatibility identity/provider alias 相同值不再 bump revision；候选文档完全相同时复用 generation。
+- 合法 delta 通过完整依赖证明复用 attribution；跨周闭包补齐 canonical identity。真实追加、完整对账、性能与最终门禁见 [5C 报告](reports/2026-09-20-search-real-delta-reachability.md)。
+
+## 2026-09-20：阶段 5B Search shared-full 统计合同
+
+- shared-full 与两条 delta 保留 duration-only；Search 专辑成绩按稳定 Album Project 身份匹配，Power 排名保留正式 builder 完整稳定排序，修正原 5,242 / 4,740 / 10 项差异。
+- 复用 5A compact loader；v11 拒绝旧 exact/delta baseline，Year-End 故障不再撤销整组核心发布。真实 13 文件经正式 importer 接受 92,908 条，完成四变体、配置矩阵、并发、恢复和只读 GET 验证。
+- 真实同周/跨周追加因 identity revision 漂移安全回退，尚不宣称真实 delta 发布 Pass；完整 contract 有范围外既有失败，阶段 5 仍为 Partial，暂不进入阶段 6。详见[5B 报告](reports/2026-09-20-search-shared-full-contract.md)。
+
+## 2026-09-20：阶段 5A Search 配置重建共享
+
+- 正常 full fallback 按阈值共享单次主轨/artist 逻辑帧，保留 full 的时长实体与完整 chart 事实，原子发布四套成品；Year-End 复用 ledger。
+- exact-ready 复查当前 attribution 依赖后跳过重复规划；同一数据库维护等待者重新检查精确 ready 结果。
+- 原 shared-full/delta 默认语义不变；无 lineage 不标记为增量基线。性能、完整等价和剩余边界见[交付报告](reports/2026-09-20-search-invocation-fallback.md)。
+
 ## 2026-09-20：阶段 4B Billboard 配置失配重建收口
 
 - 沿用 4A 单次完整排名共享，raw fallback 绕过旧 LRU、复制消费者必要列并及时释放宽帧；补充最终发布后的 source fence。

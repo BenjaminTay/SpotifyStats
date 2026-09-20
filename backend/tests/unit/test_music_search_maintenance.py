@@ -435,7 +435,7 @@ def test_forced_candidate_rebuild_reuses_exact_statistics_set(monkeypatch) -> No
         rebuild_documents=True,
     )
 
-    assert report["index"]["generation_id"] != old_generation
+    assert report["index"]["generation_id"] == old_generation
     assert report["snapshot_set"]["revalidated"] is True
 
 
@@ -511,7 +511,9 @@ def test_candidate_version_drift_rebuilds_only_candidates(
         maintenance._current_filter_values(conn),
     )
     assert report["candidate_index"]["action"] == "rebuilt"
-    assert report["index"]["generation_id"] != before_generation
+    assert (report["index"]["generation_id"] == before_generation) == (
+        component in {"source", "builder"}
+    )
     assert [context.filter_fingerprint for context in after_contexts] == before_fingerprints
     assert report["snapshot_set"]["revalidated"] is True
     assert report["snapshot_set"]["duration_ms"] == 0
@@ -885,7 +887,7 @@ def test_shared_full_plan_rejects_settings_drift() -> None:
         ),
     ),
 )
-def test_identity_or_credit_revision_rebuilds_both_required_layers(
+def test_identity_or_credit_revision_rechecks_candidates_and_rebuilds_statistics(
     monkeypatch,
     table_name,
     create_sql,
@@ -916,7 +918,7 @@ def test_identity_or_credit_revision_rebuilds_both_required_layers(
     report = maintenance.rebuild_current_music_search_derived_data(conn)
 
     assert report["candidate_index"]["action"] == "rebuilt"
-    assert report["index"]["generation_id"] != old_generation
+    assert report["index"]["generation_id"] == old_generation
     assert len(captured) == 4
     assert captured[0].semantic_base_key != old_contexts[0].semantic_base_key
     assert report["snapshot_set"]["revalidated"] is False

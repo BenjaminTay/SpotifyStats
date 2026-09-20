@@ -988,35 +988,52 @@ def rebuild_music_search_index(conn: sqlite3.Connection) -> dict[str, Any]:
             if music_search_source_revision(conn) != source_revision:
                 raise RuntimeError("music-search candidate target changed during shadow build")
             previous = conn.execute(
-                "SELECT active_generation_id FROM music_search_index_state WHERE state_id=1"
+                """SELECT active_generation_id, content_digest, tokenizer, normalization_version
+                   FROM music_search_index_state WHERE state_id=1"""
             ).fetchone()
             previous_id = str(previous[0]) if previous and previous[0] else None
-            placeholders = ",".join("?" for _ in columns)
-            conn.executemany(
-                f"INSERT INTO music_search_documents({','.join(columns)}) VALUES ({placeholders})",
-                rows,
+            # A source revision can change without changing a single document.
+            # Keep that publication identity; real content/runtime changes still
+            # get a new generation and the source fence above remains mandatory.
+            reuse_generation = bool(
+                previous_id
+                and previous[1] == content_digest
+                and previous[2] == runtime.tokenizer
+                and previous[3] == SEARCH_NORMALIZATION_VERSION
             )
-            conn.executemany(
-                """INSERT INTO music_search_document_ngrams(
-                       generation_id, entity_key, merge_level, field, ngram
-                   ) VALUES (?, ?, ?, ?, ?)""",
-                ngram_rows,
-            )
-            if runtime.status == "ready":
+            if reuse_generation:
+                generation_id = previous_id
+                previous_row = conn.execute(
+                    "SELECT previous_generation_id FROM music_search_index_state WHERE state_id=1"
+                ).fetchone()
+                previous_id = previous_row[0] if previous_row else None
+            else:
+                placeholders = ",".join("?" for _ in columns)
                 conn.executemany(
-                    """INSERT INTO music_search_documents_fts(
-                           generation_id, entity_key, merge_level, search_text
-                       ) VALUES (?, ?, ?, ?)""",
-                    [
-                        (
-                            generation_id,
-                            item["entity_key"],
-                            item["merge_level"],
-                            item["search_text"],
-                        )
-                        for item in documents
-                    ],
+                    f"INSERT INTO music_search_documents({','.join(columns)}) VALUES ({placeholders})",
+                    rows,
                 )
+                conn.executemany(
+                    """INSERT INTO music_search_document_ngrams(
+                           generation_id, entity_key, merge_level, field, ngram
+                       ) VALUES (?, ?, ?, ?, ?)""",
+                    ngram_rows,
+                )
+                if runtime.status == "ready":
+                    conn.executemany(
+                        """INSERT INTO music_search_documents_fts(
+                               generation_id, entity_key, merge_level, search_text
+                           ) VALUES (?, ?, ?, ?)""",
+                        [
+                            (
+                                generation_id,
+                                item["entity_key"],
+                                item["merge_level"],
+                                item["search_text"],
+                            )
+                            for item in documents
+                        ],
+                    )
             conn.execute(
                 """UPDATE music_search_index_state
                    SET active_generation_id=?, previous_generation_id=?, status=?,

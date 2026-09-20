@@ -239,18 +239,29 @@ def _assert_tail_scope(
             )
 
 
-_RAW_SELECT = """SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour,
-                         p.ms_played, p.track_id, p.source_album_id,
+def _raw_select(conn: sqlite3.Connection) -> str:
+    from backend.domains.billboard.data_loader import _track_identity_sql
+
+    identity_columns, identity_joins, spotify_identity = _track_identity_sql(conn)
+    return f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour,
+                         p.ms_played, {identity_columns}, p.source_album_id,
                          t.album_id AS track_album_id, t.track_name, t.artist_id,
                          a.artist_name, al.album_name,
                          al_src.album_name AS source_album_name, stm.duration_ms
                   FROM plays p
-                  JOIN tracks t ON p.track_id=t.track_id
+                  {identity_joins}
                   JOIN artists a ON t.artist_id=a.artist_id
                   LEFT JOIN albums al ON t.album_id=al.album_id
                   LEFT JOIN albums al_src ON p.source_album_id=al_src.album_id
                   LEFT JOIN spotify_track_meta stm
-                    ON t.spotify_track_id=stm.spotify_track_id"""
+                    ON {spotify_identity}=stm.spotify_track_id"""
+
+
+def _closure_row(row: sqlite3.Row) -> dict[str, Any]:
+    payload = dict(row)
+    # The shared merge-run predicate names the canonical identity l1_id.
+    payload["l1_id"] = payload["track_id"]
+    return payload
 
 
 def _utc_week_boundary(week: str, week_start_hour: int) -> pd.Timestamp:
@@ -276,7 +287,7 @@ def _load_bounded_tail_closure(
     # Every row ending inside the range overlaps it. Rows ending later are
     # selected only when their own inferred interval starts before range end.
     seeds = conn.execute(
-        f"""{_RAW_SELECT}
+        f"""{_raw_select(conn)}
              WHERE p.ts>=?
                AND julianday(p.ts) - MAX(COALESCE(p.ms_played, 0), 0) / 86400000.0
                    < julianday(?)
@@ -288,18 +299,16 @@ def _load_bounded_tail_closure(
     if not seeds:
         return pd.DataFrame()
 
-    first = dict(seeds[0])
-    last = dict(seeds[-1])
+    first = _closure_row(seeds[0])
+    last = _closure_row(seeds[-1])
     span = conn.execute(
-        f"""{_RAW_SELECT}
-             WHERE ((p.ts>? OR (p.ts=? AND p.play_id>=?))
-               AND (p.ts<? OR (p.ts=? AND p.play_id<=?)))
+        f"""{_raw_select(conn)}
+             WHERE (p.ts, p.play_id)>=(?, ?)
+               AND (p.ts, p.play_id)<=(?, ?)
              ORDER BY p.ts, p.play_id LIMIT ?""",
         (
             first["ts"],
-            first["ts"],
             first["play_id"],
-            last["ts"],
             last["ts"],
             last["play_id"],
             max_source_rows + 1,
@@ -307,7 +316,7 @@ def _load_bounded_tail_closure(
     ).fetchall()
     if len(span) > max_source_rows:
         raise MusicSearchWeekDeltaIncompatibleError("bounded week source span cap exceeded")
-    rows = [dict(row) for row in span]
+    rows = [_closure_row(row) for row in span]
     rows = _extend_preceding_chain(conn, rows, max_gap_minutes, max_source_rows)
     rows = _extend_following_chain(conn, rows, max_gap_minutes, max_source_rows)
     if len(rows) > max_source_rows:
@@ -325,16 +334,16 @@ def _extend_preceding_chain(
     preceding: list[dict[str, Any]] = []
     while len(rows) + len(preceding) <= cap:
         page = conn.execute(
-            f"""{_RAW_SELECT}
-                 WHERE p.ts<? OR (p.ts=? AND p.play_id<?)
+            f"""{_raw_select(conn)}
+             WHERE (p.ts, p.play_id)<(?, ?)
                  ORDER BY p.ts DESC, p.play_id DESC LIMIT ?""",
-            (cursor["ts"], cursor["ts"], cursor["play_id"], _CLOSURE_PAGE_SIZE),
+            (cursor["ts"], cursor["play_id"], _CLOSURE_PAGE_SIZE),
         ).fetchall()
         if not page:
             break
         continued = False
         for raw in page:
-            prior = dict(raw)
+            prior = _closure_row(raw)
             if not _rows_share_merge_run(prior, cursor, max_gap_minutes=max_gap_minutes):
                 return [*reversed(preceding), *rows]
             preceding.append(prior)
@@ -357,16 +366,16 @@ def _extend_following_chain(
     following: list[dict[str, Any]] = []
     while len(rows) + len(following) <= cap:
         page = conn.execute(
-            f"""{_RAW_SELECT}
-                 WHERE p.ts>? OR (p.ts=? AND p.play_id>?)
+            f"""{_raw_select(conn)}
+             WHERE (p.ts, p.play_id)>(?, ?)
                  ORDER BY p.ts, p.play_id LIMIT ?""",
-            (cursor["ts"], cursor["ts"], cursor["play_id"], _CLOSURE_PAGE_SIZE),
+            (cursor["ts"], cursor["play_id"], _CLOSURE_PAGE_SIZE),
         ).fetchall()
         if not page:
             break
         continued = False
         for raw in page:
-            successor = dict(raw)
+            successor = _closure_row(raw)
             if not _rows_share_merge_run(cursor, successor, max_gap_minutes=max_gap_minutes):
                 return [*rows, *following]
             following.append(successor)

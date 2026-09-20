@@ -393,3 +393,21 @@ def test_l1_album_projection_is_not_corrupted_by_numeric_id_collisions(
         assert projected[9] == ["Source Album B"]
     finally:
         load_track_album_map.cache_clear()
+
+
+@pytest.mark.parametrize("provider", [None, "spotify-a"])
+def test_repeated_projection_is_noop_but_new_alias_changes_revision(provider) -> None:
+    conn = sqlite3.connect(":memory:")
+    _schema(conn)
+    conn.execute("INSERT INTO tracks VALUES (1, 'Song', 1, 1, ?)", (provider,))
+    ensure_track_projection_identity(conn, track_id=1, spotify_track_id=provider)
+    revision = get_track_identity_revision(conn)
+    changes = conn.total_changes
+    ensure_track_projection_identity(conn, track_id=1, spotify_track_id=provider)
+    assert conn.total_changes == changes
+    assert get_track_identity_revision(conn) == revision
+    ensure_track_projection_identity(conn, track_id=1, spotify_track_id="new-alias")
+    assert get_track_identity_revision(conn) == revision + 1
+    assert conn.execute(
+        "SELECT track_id FROM spotify_track_owners WHERE spotify_track_id='new-alias'"
+    ).fetchone() == (1,)

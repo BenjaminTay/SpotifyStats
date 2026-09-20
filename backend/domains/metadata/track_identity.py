@@ -119,8 +119,11 @@ def _ensure_compat_track_identity(
                   fallback_track_id=?,
                   identity_status=CASE WHEN ? THEN 'active' ELSE identity_status END,
                   representative_track_id=?, updated_at=datetime('now')
-            WHERE l1_id=?""",
-        (track_id, int(reactivate), track_id, track_id),
+            WHERE l1_id=?
+              AND (provider IS NOT 'local' OR external_track_id IS NOT NULL
+                   OR fallback_track_id IS NOT ? OR representative_track_id IS NOT ?
+                   OR (? AND identity_status IS NOT 'active'))""",
+        (track_id, int(reactivate), track_id, track_id, track_id, track_id, int(reactivate)),
     )
 
 
@@ -263,7 +266,9 @@ def ensure_spotify_track_owner(
            ON CONFLICT(provider, external_track_id) DO UPDATE SET
                l1_id=excluded.l1_id,
                evidence_type=excluded.evidence_type,
-               updated_at=datetime('now')""",
+               updated_at=datetime('now')
+           WHERE track_l1_external_ids.l1_id IS NOT excluded.l1_id
+              OR track_l1_external_ids.evidence_type IS NOT excluded.evidence_type""",
         (
             token,
             owner,

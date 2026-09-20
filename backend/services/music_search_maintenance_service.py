@@ -43,6 +43,7 @@ from backend.domains.music_search.snapshot import (
 from backend.domains.music_search.snapshot_delta import (
     build_incremental_music_search_snapshot_set,
     build_music_search_incremental_plan,
+    incremental_snapshot_dependencies_ready,
 )
 from backend.domains.music_search.variants import build_music_search_variant_contexts
 from backend.domains.music_search.year_end_projection import (
@@ -463,32 +464,70 @@ def rebuild_current_music_search_derived_data(
     shared_full_snapshot_plan: Mapping[str, Any] | None = None,
     atomic_snapshot_set: bool = False,
 ) -> dict[str, Any]:
+    from backend.domains.music_search.invocation import maintenance_owner
+
+    with maintenance_owner(conn):
+        return _rebuild_current_music_search_derived_data(
+            conn,
+            rebuild_documents=rebuild_documents,
+            statistics_reuse_only=statistics_reuse_only,
+            shared_full_snapshot_plan=shared_full_snapshot_plan,
+            atomic_snapshot_set=atomic_snapshot_set,
+        )
+
+
+def _rebuild_current_music_search_derived_data(
+    conn: sqlite3.Connection,
+    *,
+    rebuild_documents: bool,
+    statistics_reuse_only: bool,
+    shared_full_snapshot_plan: Mapping[str, Any] | None,
+    atomic_snapshot_set: bool,
+) -> dict[str, Any]:
+    from backend.domains.music_search.invocation import (
+        attribution_dependencies_ready,
+        build_invocation_full_fallback,
+    )
     from backend.domains.playback.l3_album_attribution import (
         apply_l3_album_attribution_plan,
         reconcile_l3_album_attribution_dependencies,
     )
 
-    # Maintenance is also used by compact test databases and by older local
-    # databases during upgrade.  Materialise the derived attribution schema
-    # before planning instead of assuming migration 68 has already run.
-    attribution_plan = reconcile_l3_album_attribution_dependencies(conn)
-    if attribution_plan.issues:
-        raise RuntimeError("L3 album attribution must be resolved before rebuilding music search")
-    has_album_catalog = all(
-        conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-            (table,),
-        ).fetchone()
-        is not None
-        for table in ("album_projects", "album_project_tracks")
+    # Reuse attribution only for an exact ready set or a delta whose complete
+    # base dependency proof still matches. Other changes take the full planner.
+    contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
+    attribution_ready = attribution_dependencies_ready(conn)
+    exact_ready = attribution_ready and _revalidated_snapshot_set_report(conn, contexts) is not None
+    incremental_plan = (shared_full_snapshot_plan or {}).get("incremental_snapshot_plan")
+    incremental_attribution_ready = (
+        attribution_ready
+        and isinstance(incremental_plan, dict)
+        and incremental_snapshot_dependencies_ready(conn, contexts, incremental_plan)
     )
-    if attribution_plan.changed and has_album_catalog:
-        apply_l3_album_attribution_plan(
-            conn,
-            attribution_plan,
-            commit=False,
-            ensure_schema=False,
+    if not exact_ready and not incremental_attribution_ready:
+        # Maintenance is also used by compact test databases and by older local
+        # databases during upgrade.  Materialise the derived attribution schema
+        # before planning instead of assuming migration 68 has already run.
+        attribution_plan = reconcile_l3_album_attribution_dependencies(conn)
+        if attribution_plan.issues:
+            raise RuntimeError(
+                "L3 album attribution must be resolved before rebuilding music search"
+            )
+        has_album_catalog = all(
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            is not None
+            for table in ("album_projects", "album_project_tracks")
         )
+        if attribution_plan.changed and has_album_catalog:
+            apply_l3_album_attribution_plan(
+                conn,
+                attribution_plan,
+                commit=False,
+                ensure_schema=False,
+            )
     if not _search_metadata_dependencies_ready(conn):
         raise RuntimeError("music-search metadata aggregate dependency is not ready")
     contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
@@ -569,6 +608,8 @@ def rebuild_current_music_search_derived_data(
             # context tuple into the compatibility full builder.
             contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
             snapshot_set_report = _revalidated_snapshot_set_report(conn, contexts)
+        if snapshot_set_report is None:
+            snapshot_set_report = build_invocation_full_fallback(conn, contexts)
         snapshot_set_report = snapshot_set_report or build_music_search_snapshot_set(conn, contexts)
         if delta_fallback_reason is not None and snapshot_set_report.get("strategy") == (
             "shared_full_snapshot_rebuild"
@@ -644,11 +685,17 @@ def handle_music_search_snapshot_rebuild(job: Job) -> None:
                     conn,
                     _current_filter_values(conn),
                 )
-                fail_pending_year_end_projection_set(
-                    conn,
-                    contexts,
-                    error_type=type(exc).__name__,
-                )
+                current_job_key = f"snapshot-set:{contexts[0].semantic_base_key}"
+                if job.entity_id.startswith("snapshot-set:") and job.entity_id != current_job_key:
+                    # This failure belongs to the superseded base. Do not mark
+                    # the new owner's Year-End target failed; enqueue its key.
+                    enqueue_music_search_snapshot_rebuild(conn=conn)
+                else:
+                    fail_pending_year_end_projection_set(
+                        conn,
+                        contexts,
+                        error_type=type(exc).__name__,
+                    )
                 conn.commit()
             except Exception:
                 conn.rollback()

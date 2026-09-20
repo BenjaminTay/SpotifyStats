@@ -11,6 +11,7 @@ from typing import Any, Literal, Optional, cast
 import pandas as pd
 
 from backend.domains.billboard.chart_power_score import (
+    _stable_power_rank,
     compute_album_power_scores,
     compute_artist_power_scores,
     compute_power_scores,
@@ -239,12 +240,19 @@ def _power_maps(
         album_frame["album_name"] = album_frame["entity_id"].map(lambda value: f"{int(value):020d}")
         album_frame["artist_name"] = ""
         scored = compute_album_power_scores(album_frame, top_n_by_family["album"])
+        # Keep identity-based aggregation, then use the Power builder's real
+        # display tie keys, rather than ranking numeric surrogate names.
+        names = album.drop_duplicates("entity_id").set_index("entity_id")
+        scored["entity_id"] = scored["album_name"].astype("int64")
+        scored["album_name"] = scored["entity_id"].map(names["album_name"])
+        scored["artist_name"] = scored["entity_id"].map(names["artist_name"])
+        scored = _stable_power_rank(scored, text_columns=("artist_name", "album_name"))
         key_by_surrogate = {
             f"{int(cast(Any, row.entity_id)):020d}": str(row.entity_key)
             for row in album.itertuples(index=False)
         }
         for row in scored.itertuples(index=False):
-            result[key_by_surrogate[str(row.album_name)]] = (
+            result[key_by_surrogate[f"{int(row.entity_id):020d}"]] = (
                 int(row.power_score),
                 int(row.power_rank),
             )
@@ -257,12 +265,16 @@ def _power_maps(
             lambda value: f"{int(value):020d}"
         )
         scored = compute_artist_power_scores(artist_frame, top_n_by_family["artist"])
+        names = artist.drop_duplicates("entity_id").set_index("entity_id")
+        scored["entity_id"] = scored["artist_name"].astype("int64")
+        scored["artist_name"] = scored["entity_id"].map(names["artist_name"])
+        scored = _stable_power_rank(scored, text_columns=("artist_name",))
         key_by_surrogate = {
             f"{int(cast(Any, row.entity_id)):020d}": str(row.entity_key)
             for row in artist.itertuples(index=False)
         }
         for row in scored.itertuples(index=False):
-            result[key_by_surrogate[str(row.artist_name)]] = (
+            result[key_by_surrogate[f"{int(row.entity_id):020d}"]] = (
                 int(row.power_score),
                 int(row.power_rank),
             )
@@ -303,8 +315,9 @@ def rebuild_context_rows_from_weekly_ledger(
     """Rebuild exact search context rows from complete ranked weekly facts.
 
     Power scores are recomputed across every entity in each chart family. Album
-    and artist scoring use numeric entity IDs as their grouping and tie keys, so
-    duplicate display names cannot merge otherwise distinct search entities.
+    and artist scoring use numeric entity IDs for grouping. Power ranks use
+    the existing Power builder's complete display tie order, retaining numeric
+    identity order only when all of those keys tie.
     """
     top_n_by_family: dict[LedgerFamily, int] = {
         "track": _strict_int(track_top_n, label="track chart limit", minimum=1),
@@ -346,7 +359,7 @@ def rebuild_context_rows_from_weekly_ledger(
     ):
         play_events, total_ms = metrics.get(entity_key, (0, 0))
         chart = charts.get(entity_key)
-        if play_events <= 0 and chart is None:
+        if play_events <= 0 and total_ms <= 0 and chart is None:
             continue
         if chart is None:
             result.append(

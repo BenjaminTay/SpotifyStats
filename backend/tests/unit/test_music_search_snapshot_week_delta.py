@@ -173,3 +173,59 @@ def test_builder_rejects_divergent_four_variant_policy() -> None:
             affected_weeks={"2026-08-14"},
             current_open_week="2026-08-21",
         )
+
+
+@pytest.mark.parametrize("provider_identity", [False, True])
+def test_real_sql_closure_uses_canonical_identity_on_both_boundaries(provider_identity) -> None:
+    from backend.domains.music_search.snapshot_week_delta import _load_bounded_tail_closure
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE artists(artist_id INTEGER, artist_name TEXT);
+        CREATE TABLE albums(album_id INTEGER, album_name TEXT);
+        CREATE TABLE tracks(track_id INTEGER, track_name TEXT, artist_id INTEGER,
+                            album_id INTEGER, spotify_track_id TEXT);
+        CREATE TABLE spotify_track_meta(spotify_track_id TEXT, duration_ms INTEGER);
+        CREATE TABLE plays(play_id INTEGER, ts TEXT, ts_date TEXT, ts_dow INTEGER,
+                           ts_hour INTEGER, ms_played INTEGER, track_id INTEGER,
+                           source_album_id INTEGER, spotify_track_id_at_play TEXT);
+        INSERT INTO artists VALUES(1, 'Artist');
+        INSERT INTO albums VALUES(1, 'Album');
+        INSERT INTO tracks VALUES(1, 'Song', 1, 1, 'a'), (2, 'Alias', 1, 1, 'b');
+        INSERT INTO spotify_track_meta VALUES('a', 180000), ('b', 180000);
+        INSERT INTO plays VALUES
+          (1, '2026-08-13T23:59:00Z', '2026-08-14', 4, 7, 180000, 1, 1, 'a'),
+          (2, '2026-08-14T00:02:00Z', '2026-08-14', 4, 8, 180000, 2, 1, 'b'),
+          (3, '2026-08-20T23:59:00Z', '2026-08-21', 4, 7, 180000, 2, 1, 'b'),
+          (4, '2026-08-21T00:05:00Z', '2026-08-21', 4, 8, 180000, 1, 1, 'a');
+    """)
+    if provider_identity:
+        conn.executescript("""
+            CREATE TABLE track_l1_external_ids(provider TEXT, external_track_id TEXT, l1_id INTEGER);
+            CREATE TABLE track_l1_identities(l1_id INTEGER, fallback_track_id INTEGER,
+                                            representative_track_id INTEGER, identity_status TEXT);
+            INSERT INTO track_l1_external_ids VALUES('spotify', 'a', 1), ('spotify', 'b', 1);
+            INSERT INTO track_l1_identities VALUES(1, 1, 1, 'active');
+        """)
+    conn.execute("CREATE INDEX test_plays_ts ON plays(ts, play_id)")
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    rows = _load_bounded_tail_closure(
+        conn,
+        {"2026-08-14"},
+        week_start_hour=8,
+        max_gap_minutes=5,
+        max_source_rows=100,
+    )
+    conn.set_trace_callback(None)
+    for sql in statements:
+        if "FROM plays p" in sql:
+            plan = [row[3] for row in conn.execute("EXPLAIN QUERY PLAN " + sql)]
+            assert any("SEARCH p USING INDEX test_plays_ts" in detail for detail in plan)
+            assert not any("SCAN p " in detail for detail in plan)
+    assert rows["play_id"].tolist() == ([1, 2, 3, 4] if provider_identity else [2, 3])
+    assert rows["l1_id"].tolist() == rows["track_id"].tolist()
+    if provider_identity:
+        assert rows["track_id"].tolist() == [1, 1, 1, 1]
+        assert rows["source_track_id"].tolist() == [1, 2, 2, 1]

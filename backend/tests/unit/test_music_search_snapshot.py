@@ -524,7 +524,7 @@ def test_shared_publish_supports_legacy_lineage_and_activates_year_end_atomicall
     assert conn.execute("SELECT COUNT(*) FROM music_search_year_end_meta").fetchone()[0] == 4
 
 
-def test_shared_year_end_failure_does_not_activate_any_variant(monkeypatch) -> None:
+def test_shared_year_end_failure_preserves_all_ready_core_variants(monkeypatch) -> None:
     conn = _conn()
     from backend.domains.music_search import snapshot as snapshot_module
 
@@ -546,30 +546,34 @@ def test_shared_year_end_failure_does_not_activate_any_variant(monkeypatch) -> N
     )
     conn.commit()
 
-    with pytest.raises(sqlite3.IntegrityError, match="projection fixture failure"):
-        snapshot_module._publish_shared_full_snapshot_set(
-            conn,
-            contexts,
-            {context.filter_fingerprint: [] for context in contexts},
-            {context.filter_fingerprint: [] for context in contexts},
-            source_generation_id="",
-            candidate_generation_id="g1",
-            semantic_base_key=contexts[0].semantic_base_key,
-            source_dataset_digest=None,
-            dependency_digest="legacy-dependency",
-            publish_year_end=True,
-        )
+    snapshot_module._publish_shared_full_snapshot_set(
+        conn,
+        contexts,
+        {context.filter_fingerprint: [] for context in contexts},
+        {context.filter_fingerprint: [] for context in contexts},
+        source_generation_id="",
+        candidate_generation_id="g1",
+        semantic_base_key=contexts[0].semantic_base_key,
+        source_dataset_digest=None,
+        dependency_digest="legacy-dependency",
+        publish_year_end=True,
+    )
 
     assert (
         conn.execute(
             "SELECT COUNT(*) FROM music_search_snapshot_variant_state WHERE active_snapshot_key IS NOT NULL"
         ).fetchone()[0]
-        == 0
+        == 4
     )
     assert (
         conn.execute(
             "SELECT COUNT(*) FROM music_search_snapshot_meta WHERE status='ready'"
         ).fetchone()[0]
+        == 4
+    )
+
+    assert (
+        conn.execute("SELECT COUNT(*) FROM music_search_year_end_projection_state").fetchone()[0]
         == 0
     )
 
@@ -700,6 +704,16 @@ def test_incremental_snapshot_delta_clones_base_and_applies_lifetime_metrics(
         )
     )
     assert incremental_plan is not None
+    assert delta_module.incremental_snapshot_dependencies_ready(
+        conn, target_contexts, incremental_plan
+    )
+    with monkeypatch.context() as changed_dependency:
+        changed_dependency.setattr(
+            delta_module, "music_search_snapshot_dependency_digest", lambda _conn: "changed"
+        )
+        assert not delta_module.incremental_snapshot_dependencies_ready(
+            conn, target_contexts, incremental_plan
+        )
     report = delta_module.build_incremental_music_search_snapshot_set(
         conn,
         target_contexts,
@@ -1779,7 +1793,10 @@ def test_shared_full_requires_exact_unique_four_variant_matrix() -> None:
         )
 
 
-def test_shared_full_releases_each_threshold_before_loading_next(monkeypatch) -> None:
+@pytest.mark.parametrize("invocation_fallback", (False, True))
+def test_shared_full_releases_each_threshold_before_loading_next(
+    monkeypatch, invocation_fallback: bool
+) -> None:
     conn = _conn()
     contexts = _shared_contexts(conn)
     from backend.domains.music_search import snapshot as snapshot_module
@@ -1818,10 +1835,15 @@ def test_shared_full_releases_each_threshold_before_loading_next(monkeypatch) ->
         },
     )
 
+    monkeypatch.setattr(
+        "backend.domains.music_search.invocation.load_invocation_frames",
+        snapshot_module._load_shared_logical_frames,
+    )
     report = build_shared_full_music_search_snapshot_set(
         conn,
         contexts,
         source_generation_id="import-g2",
+        invocation_fallback=invocation_fallback,
     )
 
     assert report is not None
@@ -1835,7 +1857,10 @@ def test_shared_full_releases_each_threshold_before_loading_next(monkeypatch) ->
     assert frame_sets == [{}, {}, {}, {}]
 
 
-def test_shared_full_failure_never_partially_activates_variants(monkeypatch) -> None:
+@pytest.mark.parametrize("invocation_fallback", (False, True))
+def test_shared_full_failure_never_partially_activates_variants(
+    monkeypatch, invocation_fallback: bool
+) -> None:
     conn = _conn()
     contexts = _shared_contexts(conn)
     from backend.domains.music_search import snapshot as snapshot_module
@@ -1888,11 +1913,16 @@ def test_shared_full_failure_never_partially_activates_variants(monkeypatch) -> 
     )
     conn.commit()
 
+    monkeypatch.setattr(
+        "backend.domains.music_search.invocation.load_invocation_frames",
+        snapshot_module._load_shared_logical_frames,
+    )
     with pytest.raises(sqlite3.IntegrityError, match="fixture failure"):
         build_shared_full_music_search_snapshot_set(
             conn,
             contexts,
             source_generation_id="import-g2",
+            invocation_fallback=invocation_fallback,
         )
 
     statuses = conn.execute(
@@ -1913,7 +1943,10 @@ def test_shared_full_failure_never_partially_activates_variants(monkeypatch) -> 
 
 
 @pytest.mark.parametrize("drift", ("playback", "candidate", "semantic"))
-def test_shared_full_publish_fence_rejects_mid_build_drift(monkeypatch, drift: str) -> None:
+@pytest.mark.parametrize("invocation_fallback", (False, True))
+def test_shared_full_publish_fence_rejects_mid_build_drift(
+    monkeypatch, drift: str, invocation_fallback: bool
+) -> None:
     conn = _conn()
     contexts = _shared_contexts(conn)
     from backend.domains.music_search import snapshot as snapshot_module
@@ -1966,11 +1999,16 @@ def test_shared_full_publish_fence_rejects_mid_build_drift(monkeypatch, drift: s
 
     monkeypatch.setattr(snapshot_module, "_context_rows", drift_on_last_context)
 
+    monkeypatch.setattr(
+        "backend.domains.music_search.invocation.load_invocation_frames",
+        snapshot_module._load_shared_logical_frames,
+    )
     with pytest.raises(RuntimeError, match="changed during shared-full snapshot build"):
         build_shared_full_music_search_snapshot_set(
             conn,
             contexts,
             source_generation_id="import-g2",
+            invocation_fallback=invocation_fallback,
         )
 
     assert (
@@ -2077,7 +2115,7 @@ def test_shared_chart_lookup_recomputes_power_rank_within_each_family(monkeypatc
 
     assert chart["track"][1].power_rank == 1
     assert chart["track"][2].power_rank == 2
-    assert chart["album"][("Album A", "Artist A")].power_rank == 1
+    assert chart["album"][10].power_rank == 1
     assert chart["artist"]["Artist A"].power_rank == 1
 
 
@@ -2296,3 +2334,79 @@ def test_role_only_revision_rekeys_compact_snapshot_without_metric_rebuild(
     assert tuple(pointer) == ("role-new", "ready")
     assert tuple(payload) == (7, 7000)
     assert tuple(meta) == ("role_only_rekey", "role-old", "new-dependency")
+
+
+@pytest.mark.parametrize("invocation_fallback", [False, True])
+def test_invocation_preserves_full_duration_only_context_rows(
+    monkeypatch, invocation_fallback
+) -> None:
+    conn = _conn()
+    contexts = _shared_contexts(conn)
+    metric_maps = {
+        (context.merge_level, context.dynamic_threshold): (
+            {1: (0, 4000 + context.merge_level)},
+            {2: (5 + context.merge_level, 5000 + context.merge_level)},
+            {3: (6, 6000)},
+        )
+        for context in contexts
+    }
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot._shared_metric_maps",
+        lambda *_args, **_kwargs: dict(metric_maps),
+    )
+    chart_lookup: dict[str, dict[Any, MusicSearchChartSummary]] = {
+        "track": {},
+        "album": {},
+        "artist": {},
+    }
+    monkeypatch.setattr(
+        "backend.domains.music_search.invocation.load_invocation_frames",
+        lambda _conn, threshold_contexts, _selected_kinds: {
+            threshold_contexts[0].dynamic_threshold: (pd.DataFrame(), pd.DataFrame())
+        },
+    )
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot._load_shared_logical_frames",
+        lambda _conn, threshold_contexts, _selected_kinds: {
+            threshold_contexts[0].dynamic_threshold: (pd.DataFrame(), pd.DataFrame())
+        },
+    )
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot._shared_chart_lookups",
+        lambda *_args, **_kwargs: {
+            (context.merge_level, context.dynamic_threshold): chart_lookup for context in contexts
+        },
+    )
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot._build_chart_lookup",
+        lambda **_kwargs: pytest.fail("shared rebuild performed a per-variant chart history load"),
+    )
+
+    report = build_shared_full_music_search_snapshot_set(
+        conn,
+        contexts,
+        source_generation_id="import-g2",
+        invocation_fallback=invocation_fallback,
+    )
+
+    assert report is not None
+    assert report["strategy"] == (
+        "invocation_full_fallback" if invocation_fallback else "shared_full_snapshot_rebuild"
+    )
+    assert report["shared_logical_frame_sets"] == 2
+    for context in contexts:
+        expected = _context_rows(
+            conn,
+            context,
+            metric_maps=metric_maps[(context.merge_level, context.dynamic_threshold)],
+            chart_lookup=chart_lookup,
+        )
+        actual = conn.execute(
+            """SELECT entity_key, play_events, total_ms, peak_position, peak_weeks,
+                      weeks_on_chart, weeks_at_no1, power_score, power_rank,
+                      first_week, latest_week, first_peak_week
+               FROM music_search_entity_context WHERE snapshot_key=?
+               ORDER BY entity_key""",
+            (context.filter_fingerprint,),
+        ).fetchall()
+        assert [tuple(row) for row in actual] == sorted(expected, key=lambda row: row[0])

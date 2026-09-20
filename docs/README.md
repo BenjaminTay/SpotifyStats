@@ -20,6 +20,13 @@
 
 长期问题入口：[`issues/README.md`](issues/README.md)；当前开放、部分完成、已解决和已确认不是问题的事项见 [`issues/2026-08-27-issue-register.md`](issues/2026-08-27-issue-register.md)。
 
+## 阶段 5A / 5B / 5C 交付
+
+- [Search 真实 delta 可达性与 identity revision 精度（阶段 5C）](reports/2026-09-20-search-real-delta-reachability.md)
+
+- [Search 四变体配置重建共享、完整等价与边界](reports/2026-09-20-search-invocation-fallback.md)
+- [Search shared-full 统计合同、真实 lineage 与验收边界（阶段 5B，Partial）](reports/2026-09-20-search-shared-full-contract.md)
+
 ## 阶段 4B 交付
 
 - [Billboard 配置失配重建收口、资源与完整字段证据](reports/2026-09-20-billboard-config-mismatch-closeout.md)

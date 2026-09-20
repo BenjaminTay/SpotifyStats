@@ -26,7 +26,7 @@ from backend.domains.playback.logical_timeline import LISTENING_DURATION_POLICY_
 MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION = "music_search_statistics_v10_all_duration"
 # Compatibility name used by existing reports and API terminology.
 MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = MUSIC_SEARCH_STATISTICS_FINGERPRINT_VERSION
-MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v10_all_duration"
+MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION = "music_search_snapshot_v11_shared_contract"
 MUSIC_SEARCH_CHART_BUILDER_VERSION = "music_search_chart_v10_all_duration"
 MUSIC_SEARCH_SNAPSHOT_POLICY_VERSION = "music_search_snapshot_policy_v2_all_duration"
 LEGACY_MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION = "music_search_filter_v2"

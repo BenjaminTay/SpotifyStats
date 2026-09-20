@@ -1,5 +1,11 @@
 # 交付与验证报告索引
 
+- [2026-09-20 阶段 5C：Search 真实 delta 可达性与 identity revision 精度](2026-09-20-search-real-delta-reachability.md)
+
+- [2026-09-20 阶段 5B：Search shared-full 统计合同与真实 lineage（Partial）](2026-09-20-search-shared-full-contract.md)
+
+- [2026-09-20 阶段 5A：Search 四变体配置重建共享收口](2026-09-20-search-invocation-fallback.md)
+
 - [2026-09-20 阶段 4B：Billboard 配置失配重建收口](2026-09-20-billboard-config-mismatch-closeout.md)
 
 - [2026-09-20 阶段 4A：Billboard 单次重建共享事实](2026-09-20-billboard-generation-facts.md)

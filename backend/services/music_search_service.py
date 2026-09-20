@@ -230,8 +230,9 @@ def _sorted_power_frame(data: dict[str, Any], key: str) -> pd.DataFrame:
     frame = pd.DataFrame(data.get(key) or [])
     if frame.empty or "power_score" not in frame.columns:
         return frame
-    frame = frame.sort_values("power_score", ascending=False).reset_index(drop=True)
-    frame["_detail_power_rank"] = frame.index + 1
+    # Power builders already publish the complete deterministic tie order.
+    # A second score-only sort can permute tied rows (pandas quicksort).
+    frame["_detail_power_rank"] = frame["power_rank"]
     return frame
 
 
@@ -310,18 +311,24 @@ def _ranked_group_chart(
     )
 
 
-def _album_chart_map(data: dict[str, Any]) -> dict[tuple[str, str], MusicSearchChartSummary]:
+def _album_chart_map(data: dict[str, Any]) -> dict[int, MusicSearchChartSummary]:
     weekly_album = pd.DataFrame(data.get("weekly_album") or [])
     if weekly_album.empty:
         return {}
     album_power_scores = _sorted_power_frame(data, "album_power_scores")
-    charts: dict[tuple[str, str], MusicSearchChartSummary] = {}
-    for (album_name, artist_name), group in weekly_album.groupby(["album_name", "artist_name"]):
-        album = str(album_name)
-        artist = str(artist_name)
-        charts[(album, artist)] = _ranked_group_chart(
+    charts: dict[int, MusicSearchChartSummary] = {}
+    if "album_project_id" not in weekly_album:
+        return charts
+    for project_id, group in weekly_album.groupby("album_project_id"):
+        # Project identity owns the facts. The weekly names are used only to
+        # locate the existing Power builder output, never to match a candidate.
+        names = group[["album_name", "artist_name"]].drop_duplicates()
+        if len(names) != 1:
+            raise ValueError("album project has ambiguous Power identity")
+        album, artist = names.iloc[0]
+        charts[int(project_id)] = _ranked_group_chart(
             group,
-            power=_power_row_by_album(album_power_scores, album, artist),
+            power=_power_row_by_album(album_power_scores, str(album), str(artist)),
         )
     return charts
 
@@ -398,6 +405,8 @@ def _chart_for_candidate(
     kind: EntityType,
     candidate: dict[str, Any],
     chart_lookup: dict[str, dict[Any, MusicSearchChartSummary]],
+    *,
+    conn: sqlite3.Connection | None = None,
 ) -> MusicSearchChartSummary | None:
     if kind == "track":
         track_id = candidate.get("track_id")
@@ -405,11 +414,34 @@ def _chart_for_candidate(
             return None
         return chart_lookup["track"].get(int(track_id))
     if kind == "album":
-        album_name = candidate.get("album_name") or candidate.get("name")
-        artist_name = candidate.get("artist_name")
-        if not album_name or not artist_name:
-            return None
-        return chart_lookup["album"].get((str(album_name), str(artist_name)))
+        project_id = candidate.get("album_project_id")
+        if project_id is None and conn is not None and _has_album_project_inputs(conn):
+            from backend.domains.metadata.artist_identity import get_artist_identity_map
+
+            identity_map = get_artist_identity_map(conn)
+
+            def canonical_id(value):
+                if value is None:
+                    return None
+                identity = identity_map.get(int(value))
+                return identity.canonical_artist_id if identity else int(value)
+
+            # Legacy source-album candidates also resolve through membership;
+            # display labels never serve as the chart fact key.
+            projects = conn.execute(
+                """SELECT ap.project_id, ap.artist_id FROM album_project_albums apa
+                   JOIN album_projects ap ON ap.project_id=apa.project_id
+                   WHERE apa.album_id=?""",
+                (candidate.get("album_id"),),
+            ).fetchall()
+            matching = [
+                int(row[0])
+                for row in projects
+                if canonical_id(row[1]) == canonical_id(candidate.get("artist_id"))
+                and int(row[0]) in chart_lookup["album"]
+            ]
+            project_id = matching[0] if len(matching) == 1 else None
+        return chart_lookup["album"].get(int(project_id)) if project_id is not None else None
     artist_name = candidate.get("artist_name") or candidate.get("name")
     return chart_lookup["artist"].get(str(artist_name)) if artist_name else None
 
@@ -628,7 +660,9 @@ def search_music_entities(
                     kind,
                     candidate,
                     metrics,
-                    _chart_for_candidate(kind, candidate, chart_lookup) if include_chart else None,
+                    _chart_for_candidate(kind, candidate, chart_lookup, conn=conn)
+                    if include_chart
+                    else None,
                 )
                 if item is not None:
                     rows.append(item)

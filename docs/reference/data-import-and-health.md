@@ -54,6 +54,8 @@
 - reconcile 和 replace 会在播放事实发布事务内同步活动 `track_albums`：已删除事实留下的专辑观察不会继续参与播放统计、自动 Album Project 或搜索；单次播放优先按 `plays.source_album_id` 归属，避免同曲多专辑关系产生重复 fan-out。自动 Track Group 使用 Spotify recording ID + artist ID 的稳定身份，同名不同艺人可以并存，人工组继续独立治理。
 - 已证明的尾部追加如果完全落在同一个当前开放榜单周、没有影响任何已发布完整周，并且四套基础 snapshot、周账本、候选与统计语义依赖全部兼容，则复制旧上下文和周账本，只把新增逻辑播放贡献应用到歌曲、具体来源专辑、L2/L3 Album Project 和有效署名艺人的 lifetime 指标，再整组四套原子激活。
 - 精确尾部追加若恰好跨一个开放周，则有界读取新完成周及必要的前后连续播放链，重建 fixed/dynamic、L2/L3 的歌曲、专辑和艺人周账本；旧历史周直接复用，当前开放周仍不发布。合并账本后按稳定实体 ID 全局重算 peak、在榜周数与 Power score/rank，同名不同 ID 的实体不会合并。
+- importer 的 Track identity revision 只记录实际身份变化：兼容 identity/provider alias 写回相同值不再触发递增；既有 play source link 的播放数与 first/last seen 属于证据更新，新增身份链接仍会递增。候选 shadow build 在完整文档 digest、tokenizer 与 normalization 均相同时复用 active generation，并更新当前来源版本；实际候选内容改变仍发布新 generation。
+- 合法 delta 在进入 L3 attribution planner 前先复查真实 importer lineage、当前 attribution 状态及四套 base 的 policy/builder/dependency digest。证明完全兼容时复用既有归属，避免对完整 plays 重新聚合；发布锁内全部 owner/source/dependency/candidate fence 仍再次执行。跨周闭包采用与 full 相同的 canonical identity SQL，前后相邻合并链使用 canonical identity 判断。
 - 两条搜索 delta 路径执行前后都会复核基础 snapshot、活动事实代际、候选与统计依赖，报告策略为 `incremental_snapshot_delta`，且不扫描完整 lifetime 播放事实。多周跳跃、存在删除/历史修正、缺少兼容 lineage/账本、依赖变化、合并关闭、闭包超过 100,000 行或其他成本门禁失败时安全回退 D1 `shared_full_snapshot_rebuild`。
 - schema 60–63 分别保存 candidate maintenance、四变体 active/target pointer、曲目署名 before/after change set 与即时 deny overlay。升级只新增表和索引；旧代码可忽略新表，回滚不得删除仍承担 LKG 或即时撤销展示职责的数据。
 - migration 46 从精确周账本派生独立版本的详情年榜投影。shared-full、delta 和 ready snapshot 复用都会在后台维护四套公开投影；核心 context snapshot 一经发布即可使用，Year-End 的后续失败只记录独立维护状态，不得把 candidate 或核心 context 降级。旧库已有 ready snapshot 但缺少账本/投影时，会幂等排入后台任务，账本只可在维护任务内补建，详情 GET 不得承担补建；同 fingerprint 重发与旧 snapshot pruning 必须同步清理过期年榜行。
