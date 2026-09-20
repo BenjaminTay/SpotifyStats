@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 
 import { queryKeys, normalizeCommunityParams } from '@/api/query-keys'
+import { SnapshotUnavailableError } from '@/api/errors'
 import { api } from '@/lib/api'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
@@ -11,6 +12,7 @@ import type { CommunityFeedResponse, CommunitySnapshotState } from '@/types/comm
 const DEFAULT_LIMIT = 50
 
 function errorMessage(error: unknown): string | null {
+  if (error instanceof SnapshotUnavailableError) return '社区数据正在准备，请稍后重新加载。'
   return error instanceof Error ? error.message : error ? String(error) : null
 }
 

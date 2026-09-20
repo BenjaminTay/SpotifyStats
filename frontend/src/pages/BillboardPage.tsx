@@ -138,14 +138,6 @@ export function BillboardPage() {
   return (
     <div className="relative" aria-busy={switching}>
       <SnapshotStatusNotice snapshot={projection?.snapshot} />
-      {switching && (
-        <p
-          role="status"
-          className="sticky top-3 z-20 ml-auto mb-3 w-fit rounded-full border border-border bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur"
-        >
-          正在切换榜单，当前内容会在新数据就绪后更新…
-        </p>
-      )}
       {viewportMode === 'phone'
         ? <MobileBillboardWeekly {...presentationProps} />
         : <DesktopBillboardWeekly {...presentationProps} />}

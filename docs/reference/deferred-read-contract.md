@@ -13,7 +13,7 @@ Community 后端现在遵守 [持久读模型合同](community-snapshots.md)：G
 ## 详情、播放统计与交互
 
 - Summary 与 `include_rank_context=false` 基础 stats 并行；EntityStatsPrefetch 只预取基础 stats。album-project 的 stats 身份由 project ID 确定，不因 summary 补齐 artist 而产生相同 HTTP 请求的第二个 key。按名称寻址的 album 仍保留 artist 区分。
-- 基础统计图表后展示排名区块，进入视口才启用 `include_rank_context=true`。排行榜区块独立观察；artist 仅请求当前 track/album 类型，类型切换、分页和 metric 使用各自精确 Query key。
+- 六个基础统计指标后立即展示排名区块；基础 stats 就绪后独立异步启用 `include_rank_context=true`，排名骨架和结果都不阻塞首屏基础指标。播放排行榜区块继续独立观察；artist 仅请求当前 track/album 类型，类型切换、分页和 metric 使用各自精确 Query key。
 - `useDeferredInView` 是按上下文触发一次的 IntersectionObserver，`rootMargin='0px'`。没有固定等待、设备延迟或缺少 Observer 时的 eager fallback。测试通过可控制的 Observer 注入相交事件。
 - RecentPlaysSection 的分页请求也由视口启用，使用 TanStack Query。错误、加载、空结果分开显示。上下文包含 kind、规范化实体、artist/project、merge level、filters 与 period/start/end；page、page size、search、date 再进入分页 key。底层 analysisApi 的项目 plays/play-dates key 同样包含 project ID。
 - Play-dates 只有首次打开日历才启用；关闭重开沿用同一 Query。实体、过滤或周期变化使用新 key。日期失败显示错误和重试，不把失败当作无播放日期。

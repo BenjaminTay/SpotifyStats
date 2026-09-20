@@ -107,7 +107,6 @@ export function librarySortFor(
 }
 
 export function archiveReadErrorMessage(error: unknown): string {
-  if (error instanceof SnapshotUnavailableError && error.snapshot.family === 'account_archive' && error.detail.includes('构建失败')) return error.detail
   return error instanceof SnapshotUnavailableError
     ? '音乐档案数据正在准备，请稍后重新读取。'
     : '请确认本地服务正在运行后重试。'

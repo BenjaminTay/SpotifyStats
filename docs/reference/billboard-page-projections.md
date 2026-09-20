@@ -47,7 +47,7 @@ queryFn 传递 AbortSignal，切周/实体/过滤条件后旧响应不会写入�
 
 All-Time 仅在实体和全部 Billboard context 相同、只改变本地视图参数时保留上一份相同实体事实，避免搜索输入框卸载和失焦；当前实体就绪后预取同视图的另外两个实体。切过滤条件不沿用旧响应。没有模块级响应 Map、全历史预取或同时发出的旧 full query。
 
-`/billboard` 六个子页面共享一个持久路由外壳，桌面子导航不随子页面 chunk 卸载；导航 hover/focus 预取目标页面 chunk。首次进入仍可显示页面骨架，已有内容后的切换只显示局部进度，不再用整页 skeleton 清空内容。同语义 LKG 由当前 Billboard 页面就地提示，不再依赖全局 Query Cache 扫描。
+`/billboard` 六个子页面共享一个持久路由外壳，桌面子导航不随子页面 chunk 卸载；导航 hover/focus 预取目标页面 chunk。首次进入仍可显示页面骨架；已有内容后的切换保留上一帧，稳定容器用 `aria-busy` 表达进度，不插入可见提示或整页 skeleton，因此导航、内容和右上区域都不因切换发生布局位移。同语义 LKG 保留旧事实并静默刷新，不再依赖全局 Query Cache 扫描。
 
 ## 验证与回滚
 

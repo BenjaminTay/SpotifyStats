@@ -146,12 +146,11 @@ export function EntityStatsPanel({
     apiParams,
     true,
   )
-  const { ref: rankRef, ready: rankReady } = useDeferredInView(JSON.stringify(rankRequest.queryKey))
   const { ref: rankingsRef, ready: rankingsReady } = useDeferredInView(JSON.stringify(request.queryKey))
   const { data: rankData, isPending: rankPending, error: rankError } = useQuery({
     queryKey: rankRequest.queryKey,
     queryFn: rankRequest.queryFn,
-    enabled: rankReady && !filtersLoading && entityId !== '' && data?.found === true,
+    enabled: !filtersLoading && entityId !== '' && data?.found === true,
   })
   const queryError = error instanceof Error ? error.message : error ? String(error) : null
 
@@ -320,6 +319,40 @@ export function EntityStatsPanel({
         <KpiCard label="最近播放" value={dateShort(data.last_played)} />
       </div>
 
+      <div className="space-y-5">
+        {/* KPIs Row 2: 个人排名；基础统计就绪后独立异步加载，不阻塞首屏。 */}
+        {rankError && <p role="alert">排名统计加载失败</p>}
+        {rankPending && (
+          <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4" aria-label="排名统计加载中">
+            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[112px] rounded-[16px]" />)}
+          </div>
+        )}
+        {rankData?.ranks && (
+          <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            <KpiCard label="全时段排名" value={rankLabel(rankData.ranks.lifetime)} />
+            <KpiCard label="近 6 个月排名" value={rankLabel(rankData.ranks.last_6_months)} />
+            <KpiCard label="近 4 周排名" value={rankLabel(rankData.ranks.last_4_weeks)} />
+            <KpiCard label="当前区间排名" value={rankLabel(rankData.ranks.current_period)} />
+          </div>
+        )}
+
+        {/* KPIs Row 3: Top 250 上榜 & 近期活跃 */}
+        {(rankData?.top250_counts || rankData?.recent_50_count != null) && (
+          <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            {rankData?.top250_counts && (
+              <>
+                <KpiCard label="全时段 Top 250 上榜" value={fmt(rankData.top250_counts.lifetime)} />
+                <KpiCard label="近 6 个月 Top 250 上榜" value={fmt(rankData.top250_counts.last_6_months)} />
+                <KpiCard label="近 4 周 Top 250 上榜" value={fmt(rankData.top250_counts.last_4_weeks)} />
+              </>
+            )}
+            {rankData?.recent_50_count != null && (
+              <KpiCard label="最近 50 次播放中出现" value={`${rankData.recent_50_count} 次`} />
+            )}
+          </div>
+        )}
+      </div>
+
       {isPhone ? (
         <GlassCard className="entity-stats-chart-card p-6">
           <div className="entity-stats-chart-heading">
@@ -402,41 +435,6 @@ export function EntityStatsPanel({
             </GlassCard>
           </>
         )}
-      </div>
-
-      <div ref={rankRef} data-deferred="rank" className="space-y-5">
-        {/* KPIs Row 2: 个人排名 */}
-        {rankError && <p role="alert">排名统计加载失败</p>}
-        {rankPending && (
-          <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4" aria-label="排名统计加载中">
-            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-[112px] rounded-[16px]" />)}
-          </div>
-        )}
-        {rankData?.ranks && (
-          <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            <KpiCard label="全时段排名" value={rankLabel(rankData.ranks.lifetime)} />
-            <KpiCard label="近 6 个月排名" value={rankLabel(rankData.ranks.last_6_months)} />
-            <KpiCard label="近 4 周排名" value={rankLabel(rankData.ranks.last_4_weeks)} />
-            <KpiCard label="当前区间排名" value={rankLabel(rankData.ranks.current_period)} />
-          </div>
-        )}
-
-        {/* KPIs Row 3: Top 250 上榜 & 近期活跃 */}
-        {(rankData?.top250_counts || rankData?.recent_50_count != null) && (
-          <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {rankData?.top250_counts && (
-              <>
-                <KpiCard label="全时段 Top 250 上榜" value={fmt(rankData.top250_counts.lifetime)} />
-                <KpiCard label="近 6 个月 Top 250 上榜" value={fmt(rankData.top250_counts.last_6_months)} />
-                <KpiCard label="近 4 周 Top 250 上榜" value={fmt(rankData.top250_counts.last_4_weeks)} />
-              </>
-            )}
-            {rankData?.recent_50_count != null && (
-              <KpiCard label="最近 50 次播放中出现" value={`${rankData.recent_50_count} 次`} />
-            )}
-          </div>
-        )}
-
       </div>
 
       {/* 专辑项目曲目排行：服务端分页，20 首以内保持单页。 */}

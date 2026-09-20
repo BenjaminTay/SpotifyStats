@@ -19,10 +19,8 @@ import {
   formatPlayEvents,
   fullSearchHref,
   hasSearchQuery,
-  musicSearchCandidateFreshness,
   musicSearchCandidateStatus,
   musicSearchOptionId,
-  musicSearchStatisticsFreshness,
   musicSearchStatisticsStatus,
 } from './musicSearchUtils'
 import { HighlightedSearchText } from './HighlightedSearchText'
@@ -69,12 +67,10 @@ function ResultMetrics({
   item,
   contextLoading,
   contextError,
-  previousStatistics,
 }: {
   item: MusicSearchCandidateView
   contextLoading: boolean
   contextError: string | null
-  previousStatistics: boolean
 }) {
   const chartParts = chartSummaryParts(item)
   return (
@@ -84,11 +80,6 @@ function ResultMetrics({
           <span className="shrink-0 tabular-nums">
             {formatPlayEvents(item.context.play_events)}
           </span>
-          {previousStatistics && (
-            <span className="rounded border border-border/80 bg-muted/50 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
-              上一版本
-            </span>
-          )}
           {chartParts.length > 0 && (
             <span className="min-w-0 text-[11px] font-medium text-muted-foreground/90">
               {chartParts.map((part, index) => (
@@ -126,15 +117,13 @@ function groupedResults(
   })).filter((group) => group.items.length > 0)
 }
 
-function searchStateMessage(
+function blockingSearchStateMessage(
   data: MusicSearchCandidateResponse | null,
   publicReadonly: boolean,
 ): { title: string; detail: string; canRetry: boolean } | null {
   if (!data) return null
   const candidateStatus = musicSearchCandidateStatus(data)
-  const candidateFreshness = musicSearchCandidateFreshness(data)
   const statisticsStatus = musicSearchStatisticsStatus(data)
-  const statisticsFreshness = musicSearchStatisticsFreshness(data)
 
   if (candidateStatus === 'unavailable' && data.total === 0) {
     if (statisticsStatus === 'warming' || statisticsStatus === 'stale') {
@@ -150,60 +139,6 @@ function searchStateMessage(
         ? '当前公开页面只读取已准备的数据，请稍后重新检查。'
         : '当前还没有可用的候选索引，可以重新检查或前往设置查看数据维护状态。',
       canRetry: true,
-    }
-  }
-
-  if (candidateFreshness === 'fallback') {
-    return {
-      title: '正在使用基础搜索',
-      detail: '完整索引尚未准备好，当前结果来自本地音乐目录，仍可正常打开详情。',
-      canRetry: false,
-    }
-  }
-
-  if (candidateFreshness === 'last_known_good' || candidateStatus === 'degraded') {
-    return {
-      title: '搜索索引正在更新',
-      detail: statisticsFreshness === 'last_known_good'
-        ? '当前继续使用上一可用版本，播放统计也来自上一版本；新版本完成后会自动切换。'
-        : '当前继续使用上一可用版本，新索引完成后会自动切换，搜索结果仍可正常打开。',
-      canRetry: statisticsStatus === 'failed',
-    }
-  }
-
-  if (statisticsStatus === 'warming' || statisticsStatus === 'stale') {
-    return {
-      title: '搜索可用，播放统计正在更新',
-      detail: statisticsFreshness === 'last_known_good'
-        ? '名称和详情入口可正常使用；当前显示上一版本统计，新版本完成后会自动切换。'
-        : '名称和详情入口可正常使用；统计完成后会渐进补充播放次数和榜单摘要。',
-      canRetry: false,
-    }
-  }
-
-  if (statisticsStatus === 'failed') {
-    return {
-      title: '搜索可用，播放统计更新失败',
-      detail: publicReadonly
-        ? '名称和详情入口仍可使用；公开页面会继续读取上一可用统计。'
-        : '名称和详情入口仍可使用；可以重新检查或前往设置查看数据维护状态。',
-      canRetry: true,
-    }
-  }
-
-  if (statisticsStatus === 'unavailable') {
-    return {
-      title: '搜索可用，播放统计暂不可用',
-      detail: '名称和详情入口仍可使用；播放次数和榜单摘要会在统计准备完成后显示。',
-      canRetry: true,
-    }
-  }
-
-  if (statisticsFreshness === 'last_known_good') {
-    return {
-      title: '搜索可用，播放统计来自上一版本',
-      detail: '名称和详情入口可正常使用；统计更新完成后会自动无缝切换。',
-      canRetry: false,
     }
   }
 
@@ -232,7 +167,7 @@ function SnapshotNotice({
   maintenanceHref,
   blocking = false,
 }: {
-  notice: NonNullable<ReturnType<typeof searchStateMessage>>
+  notice: NonNullable<ReturnType<typeof blockingSearchStateMessage>>
   onRetry?: () => void
   maintenanceHref?: string | null
   blocking?: boolean
@@ -319,20 +254,14 @@ export function MusicSearchResults({
     return <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-6 text-sm text-destructive">{error}</div>
   }
 
-  const snapshotNotice = searchStateMessage(data, publicReadonly)
-  const candidateUnavailable = Boolean(
-    data && musicSearchCandidateStatus(data) === 'unavailable' && data.total === 0,
-  )
-  if (snapshotNotice && (!data || candidateUnavailable)) {
+  const snapshotNotice = blockingSearchStateMessage(data, publicReadonly)
+  if (snapshotNotice) {
     return <SnapshotNotice notice={snapshotNotice} onRetry={onRetry} maintenanceHref={maintenanceHref} blocking />
   }
 
   if (!data || data.total === 0) {
     return (
-      <div className="space-y-3">
-        {snapshotNotice && (
-          <SnapshotNotice notice={snapshotNotice} onRetry={onRetry} maintenanceHref={maintenanceHref} />
-        )}
+      <div>
         <div className="rounded-lg border border-border bg-card px-4 py-8 text-center">
           <p className="text-sm font-medium text-foreground">没有找到匹配的音乐详情</p>
           <p className="mt-1 text-xs text-muted-foreground">换一个歌曲、专辑或艺人名称试试。</p>
@@ -341,22 +270,18 @@ export function MusicSearchResults({
     )
   }
 
-  const previousStatistics = musicSearchStatisticsFreshness(contextData ?? data) === 'last_known_good'
-
   return (
     <div
       id={listboxId}
       role={listboxId ? 'listbox' : undefined}
       aria-label={listboxId ? '音乐搜索结果' : undefined}
+      aria-busy={updating}
       className={cn('space-y-3', compact && 'space-y-2')}
     >
-      {(updating || error) && (
-        <p className={cn('text-xs font-medium', error ? 'text-destructive' : 'text-muted-foreground')} role="status" aria-live="polite">
-          {error ?? '正在更新结果…'}
+      {error && (
+        <p className="text-xs font-medium text-destructive" role="alert">
+          {error}
         </p>
-      )}
-      {snapshotNotice && (
-        <SnapshotNotice notice={snapshotNotice} onRetry={onRetry} maintenanceHref={maintenanceHref} />
       )}
       {groupedResults(data, contextData).map((group) => (
         <ResultGroup
@@ -369,7 +294,6 @@ export function MusicSearchResults({
           compact={compact}
           contextLoading={contextLoading}
           contextError={contextError}
-          previousStatistics={previousStatistics}
           activeEntityKey={activeEntityKey}
           onActiveEntityKeyChange={onActiveEntityKeyChange}
           onResultClick={onResultClick}
@@ -391,7 +315,6 @@ type ResultGroupProps = {
   compact: boolean
   contextLoading: boolean
   contextError: string | null
-  previousStatistics: boolean
   activeEntityKey?: string | null
   onActiveEntityKeyChange?: (entityKey: string) => void
   onResultClick?: (item: MusicSearchCandidate) => void
@@ -409,7 +332,6 @@ function ResultGroup({
   compact,
   contextLoading,
   contextError,
-  previousStatistics,
   activeEntityKey,
   onActiveEntityKeyChange,
   onResultClick,
@@ -442,7 +364,6 @@ function ResultGroup({
                   { label: '在榜', value: `${chart.weeks_on_chart}周` },
                 ] : []}
                 badges={[
-                  ...(previousStatistics && item.context ? ['上一版本'] : []),
                   ...(chart?.power_rank ? [`走势 #${chart.power_rank}`] : []),
                 ]}
                 to={item.href}
@@ -477,7 +398,6 @@ function ResultGroup({
             compact={compact}
             contextLoading={contextLoading}
             contextError={contextError}
-            previousStatistics={previousStatistics}
             isActive={item.entity_key === activeEntityKey}
             onActiveEntityKeyChange={onActiveEntityKeyChange}
             onResultClick={onResultClick}
@@ -496,7 +416,6 @@ function ResultRow({
   compact,
   contextLoading,
   contextError,
-  previousStatistics,
   isActive,
   onActiveEntityKeyChange,
   onResultClick,
@@ -508,7 +427,6 @@ function ResultRow({
   compact: boolean
   contextLoading: boolean
   contextError: string | null
-  previousStatistics: boolean
   isActive: boolean
   onActiveEntityKeyChange?: (entityKey: string) => void
   onResultClick?: (item: MusicSearchCandidate) => void
@@ -545,7 +463,6 @@ function ResultRow({
             item={item}
             contextLoading={contextLoading}
             contextError={contextError}
-            previousStatistics={previousStatistics}
           />
         </span>
         <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden="true" />

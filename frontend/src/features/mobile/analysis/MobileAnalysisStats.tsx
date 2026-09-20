@@ -23,6 +23,7 @@ function formatHours(value: number): string {
 interface MobileAnalysisStatsProps {
   data: AnalysisStatsResponse
   metric: AnalysisMetric
+  busy?: boolean
   filters: AnalysisFilters
   apiParams: { period: AnalysisPeriod; start_date?: string; end_date?: string }
   fetchPage: (page: number, limit: number, search?: string, date?: string) => Promise<EntityPlaysResponse>
@@ -37,6 +38,7 @@ type FullscreenChart = 'trend' | 'clock' | 'distribution'
 export function MobileAnalysisStats({
   data,
   metric,
+  busy = false,
   filters,
   apiParams,
   fetchPage,
@@ -89,7 +91,7 @@ export function MobileAnalysisStats({
       : distributionFullscreenRef
 
   return (
-    <div className="mobile-m3-page" data-mobile-page="analysis-stats">
+    <div className="mobile-m3-page" data-mobile-page="analysis-stats" aria-busy={busy}>
       {timeControl && <div className="mobile-analysis-floating-time-control">{timeControl}</div>}
 
       <section className="mobile-kpi-grid mobile-analysis-kpi-grid" aria-label="播放统计核心数据">

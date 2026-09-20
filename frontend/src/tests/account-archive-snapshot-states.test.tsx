@@ -17,10 +17,11 @@ describe('Archive unpublished and failed reads', () => {
     expect(screen.getByRole('button', { name: '重新读取' })).toBeInTheDocument()
     expect(screen.queryByText('档案柜还是空的')).not.toBeInTheDocument()
   })
-  it('shows failed local build as a failure', async () => {
+  it('keeps failed local build details out of the user-facing archive', async () => {
     vi.spyOn(api, 'get').mockRejectedValue(new SnapshotUnavailableError({ error: 'snapshot_unavailable', status: 'unavailable', family: 'account_archive', message: '音乐档案构建失败，请检查本地重建任务后重新读取。' }))
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}><MemoryRouter><AccountArchiveDesktopRoute /></MemoryRouter></QueryClientProvider>)
-    await screen.findByText('音乐档案构建失败，请检查本地重建任务后重新读取。')
+    await screen.findByText('音乐档案数据正在准备，请稍后重新读取。')
+    expect(screen.queryByText(/构建失败|重建任务/)).not.toBeInTheDocument()
   })
 })

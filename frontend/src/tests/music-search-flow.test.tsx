@@ -219,7 +219,7 @@ describe('music search flow', () => {
       filterFingerprint: 'served-fingerprint',
       enabled: true,
     }))
-    expect(screen.getByText('搜索索引正在更新')).toBeInTheDocument()
+    expect(screen.queryByText('搜索索引正在更新')).not.toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: '搜索结果分页' })).toBeInTheDocument()
   })
 

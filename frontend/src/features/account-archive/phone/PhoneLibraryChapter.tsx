@@ -142,8 +142,7 @@ export function PhoneLibraryChapter() {
             <label><span>排序方式</span><select aria-label="排序方式" value={sort} onChange={event => patchUrl({ sort: event.target.value, page: null })}>{LIBRARY_SORTS[entityType].map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           </div>
           <div className="phone-library-dialog-summary"><span>{search ? `“${search}”` : `全部${LIBRARY_LABELS[entityType]}`}</span><strong>{formatArchiveNumber(query.data.total)} 条</strong></div>
-          <main>
-            {query.isFetching ? <div className="phone-library-updating">正在更新目录…</div> : null}
+          <main aria-busy={query.isFetching}>
             {query.data.items.length ? query.data.items.map((item, index) => <PhoneLibraryRow key={item.item_key} item={item} index={(page - 1) * 10 + index + 1} />) : <p className="phone-library-empty">没有找到匹配的收藏</p>}
           </main>
           <footer aria-label="收藏库分页">

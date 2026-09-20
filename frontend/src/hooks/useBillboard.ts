@@ -3,6 +3,7 @@ import { keepPreviousData, type QueryClient, useQuery, useQueryClient } from '@t
 
 import { queryClient } from '@/api/query-client'
 import { queryKeys } from '@/api/query-keys'
+import { SnapshotUnavailableError } from '@/api/errors'
 import type { BillboardContextParams } from '@/features/billboard/billboardContext'
 import {
   api,
@@ -63,6 +64,7 @@ interface UseBillboardResult {
 }
 
 function errorMessage(error: unknown): string | null {
+  if (error instanceof SnapshotUnavailableError) return '榜单数据正在准备，请稍后重新加载。'
   return error instanceof Error ? error.message : error ? String(error) : null
 }
 

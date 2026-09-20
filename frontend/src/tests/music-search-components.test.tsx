@@ -179,7 +179,7 @@ describe('MusicSearchResults', () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps last-known-good candidates clickable while the new index and statistics rebuild', () => {
+  it('keeps last-known-good candidates clickable without exposing maintenance state', () => {
     renderResults({
       ...sampleResults,
       snapshot_status: 'warming',
@@ -198,14 +198,14 @@ describe('MusicSearchResults', () => {
       filter_fingerprint: 'previous-fingerprint',
     })
 
-    expect(screen.getByText('搜索索引正在更新')).toBeInTheDocument()
-    expect(screen.getByText(/当前继续使用上一可用版本/)).toBeInTheDocument()
+    expect(screen.queryByText('搜索索引正在更新')).not.toBeInTheDocument()
+    expect(screen.queryByText(/当前继续使用上一可用版本/)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Cruel Summer/ })).toHaveAttribute('href', '/music/tracks/42')
-    expect(screen.getAllByText('上一版本').length).toBeGreaterThan(0)
+    expect(screen.queryByText('上一版本')).not.toBeInTheDocument()
     expect(screen.queryByText('搜索暂不可用')).not.toBeInTheDocument()
   })
 
-  it('shows a non-blocking statistics notice alongside a valid empty candidate result', () => {
+  it('keeps non-blocking statistics maintenance silent for a valid empty result', () => {
     renderResults({
       ...sampleResults,
       snapshot_status: 'warming',
@@ -218,12 +218,12 @@ describe('MusicSearchResults', () => {
       tracks: [], albums: [], artists: [],
     }, 'zzzz', null)
 
-    expect(screen.getByText('搜索可用，播放统计正在更新')).toBeInTheDocument()
+    expect(screen.queryByText('搜索可用，播放统计正在更新')).not.toBeInTheDocument()
     expect(screen.getByText('没有找到匹配的音乐详情')).toBeInTheDocument()
     expect(screen.queryByText('搜索暂不可用')).not.toBeInTheDocument()
   })
 
-  it('does not replace candidates when statistics maintenance fails', () => {
+  it('does not replace candidates or expose backend maintenance when statistics refresh fails', () => {
     renderResults({
       ...sampleResults,
       snapshot_status: 'failed',
@@ -233,11 +233,11 @@ describe('MusicSearchResults', () => {
       statistics_freshness: 'last_known_good',
     })
 
-    expect(screen.getByText('搜索可用，播放统计更新失败')).toBeInTheDocument()
+    expect(screen.queryByText('搜索可用，播放统计更新失败')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Cruel Summer/ })).toBeInTheDocument()
   })
 
-  it('labels bounded local-catalog fallback without hiding its candidates', () => {
+  it('keeps bounded local-catalog fallback usable without a maintenance banner', () => {
     renderResults({
       ...sampleResults,
       snapshot_status: 'unavailable',
@@ -248,8 +248,19 @@ describe('MusicSearchResults', () => {
       served_filter_fingerprint: null,
     }, 'love', null)
 
-    expect(screen.getByText('正在使用基础搜索')).toBeInTheDocument()
+    expect(screen.queryByText('正在使用基础搜索')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Cruel Summer/ })).toBeInTheDocument()
+  })
+
+  it('marks retained results busy without rendering a visible update row', () => {
+    render(
+      <MemoryRouter>
+        <MusicSearchResults data={sampleResults} contextData={sampleContext} query="love" updating listboxId="search-results" />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('listbox', { name: '音乐搜索结果' })).toHaveAttribute('aria-busy', 'true')
+    expect(screen.queryByText('正在更新结果…')).not.toBeInTheDocument()
   })
 
   it('shows an empty state only for a ready snapshot with no matches', () => {

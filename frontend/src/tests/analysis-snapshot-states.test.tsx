@@ -27,6 +27,7 @@ describe('analysis publication errors', () => {
         const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
         const view = render(<QueryClientProvider client={client}><MemoryRouter><Page /></MemoryRouter></QueryClientProvider>)
         expect(await screen.findByRole('alert')).toHaveTextContent(unavailable ? '暂不可用' : '加载播放')
+        if (unavailable) expect(screen.getByRole('alert')).not.toHaveTextContent('发布')
         expect(screen.queryByText('暂无播放记录')).not.toBeInTheDocument()
         expect(screen.queryByLabelText('正在加载')).not.toBeInTheDocument()
         expect(view.container.querySelector('[data-slot="skeleton"]')).toBeNull()

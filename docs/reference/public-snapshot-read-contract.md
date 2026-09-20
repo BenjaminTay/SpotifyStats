@@ -47,7 +47,7 @@ Home target_revision 为现有 exact 文件名摘要，覆盖过滤 context、da
 
 ## 前端与验证口径
 
-前端将 snapshot_unavailable 解析为独立错误，但用户文案使用“数据正在准备 / 暂时不可用”，不暴露发布管线。LKG 提示由 Home、播放分析和 Billboard 等具体页面根据自己消费的数据渲染，不再由全局布局扫描所有 Query；旧事实保留，不转为空态。
+前端将 snapshot_unavailable 解析为独立错误，但普通页面统一使用“数据正在准备 / 暂时不可用”等业务语言，不显示后端返回的“尚未发布、构建失败、重建任务”等维护详情。只要 LKG 或保留内容仍可正常使用，Home、播放分析、Billboard 与音乐搜索都不渲染可见维护横幅；稳定容器仅用 `aria-busy` 或屏幕阅读器状态表达后台刷新，旧事实保留且页面布局不改变。完全没有可用事实、真实请求错误和可操作的设置治理状态继续明确显示。
 
 播放分析的 GET 继续严格只读。private-admin 可通过独立 POST 显式排队缺失范围并轮询 GET；public-readonly 不开放该 POST，只能读取已维护的 lifetime / last_4_weeks / last_6_months 等结果。任何 surface 的 GET 都不得同步构建或写入。
 

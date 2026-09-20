@@ -201,7 +201,6 @@
 .phone-library-tools select { width: 100%; min-height: 44px; padding-inline: 8px; border: 1px solid var(--phone-archive-rule); background: var(--background); color: var(--foreground); font-size: 10px; }
 .phone-library-dialog-summary { padding-inline: var(--mobile-gutter); }
 .phone-library-dialog > main { position: relative; overflow-y: auto; overscroll-behavior: contain; }
-.phone-library-updating { position: sticky; z-index: 2; top: 0; padding: 6px; background: var(--phone-archive-red); color: white; font-size: 10px; text-align: center; }
 .phone-library-empty { display: flex; min-height: 260px; align-items: center; justify-content: center; color: var(--muted-foreground); font-size: 10px; }
 .phone-library-dialog > footer { position: relative; display: flex; min-height: calc(62px + env(safe-area-inset-bottom)); align-items: start; justify-content: center; gap: 10px; padding-top: 9px; padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid var(--phone-archive-rule); background: var(--phone-archive-paper); }
 .phone-library-dialog > footer button { display: flex; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px solid var(--phone-archive-rule); }

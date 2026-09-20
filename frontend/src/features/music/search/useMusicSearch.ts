@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { queryKeys } from '@/api/query-keys'
+import { SnapshotUnavailableError } from '@/api/errors'
 import type { AnalysisFilters } from '@/types/analysis'
 import type { MusicSearchCandidateResponse, MusicSearchKind } from '@/types/music-search'
 
@@ -39,6 +40,11 @@ function semanticParams(filters: AnalysisFilters): Record<string, string | numbe
 
 export function musicSearchSemanticFilterKey(filters: AnalysisFilters): string {
   return JSON.stringify(semanticParams(filters))
+}
+
+function searchErrorMessage(error: unknown): string | null {
+  if (error instanceof SnapshotUnavailableError) return '音乐搜索数据正在准备，请稍后重新搜索。'
+  return error instanceof Error ? error.message : null
 }
 
 function supportedVariantParams(filters: AnalysisFilters): MusicSearchVariantParams {
@@ -131,7 +137,7 @@ export function useMusicSearchCandidates({
     initialLoading: analysis.eligible && (filtersLoading || result.isPending),
     updating: result.isFetching && !result.isPending,
     isPlaceholderData: result.isPlaceholderData,
-    error: result.error instanceof Error ? result.error.message : null,
+    error: searchErrorMessage(result.error),
     refetch: () => void result.refetch(),
   }
 }
@@ -169,6 +175,6 @@ export function useMusicSearchContext({
     data,
     loading: result.isPending && result.fetchStatus === 'fetching',
     updating: result.isFetching && !result.isPending,
-    error: result.error instanceof Error ? result.error.message : null,
+    error: searchErrorMessage(result.error),
   }
 }

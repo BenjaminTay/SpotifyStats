@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { queryKeys } from '@/api/query-keys'
+import { SnapshotUnavailableError } from '@/api/errors'
 import { api } from '@/lib/api'
 import { useWeeklyProjection, useRecordsProjection, useNumberOnesProjection, useAllTimeProjection } from '@/hooks/useBillboard'
 
@@ -12,6 +13,15 @@ function setup() {
 }
 afterEach(() => vi.restoreAllMocks())
 describe('published Billboard page queries', () => {
+  it('keeps publication details out of projection errors', async () => {
+    const { wrapper } = setup()
+    vi.spyOn(api, 'get').mockRejectedValue(new SnapshotUnavailableError({
+      error: 'snapshot_unavailable', status: 'unavailable', family: 'billboard', message: '当前筛选的数据尚未发布，请稍后重试。',
+    }))
+    const { result } = renderHook(() => useRecordsProjection({ merge_level: 2 }), { wrapper })
+    await waitFor(() => expect(result.current.error).toBe('榜单数据正在准备，请稍后重新加载。'))
+    expect(result.current.error).not.toContain('发布')
+  })
   it('isolates every response parameter in the query key', () => {
     const base = { entity: 'tracks', week: '2026-01-02', page: 1, page_size: 50, sort: 'power_score', direction: 'desc', peak_filter: 'all', search: '', merge_level: 2, min_ms: 30000, bb_top_n: 30 }
     const key = JSON.stringify(queryKeys.billboard.projection('weekly', base))

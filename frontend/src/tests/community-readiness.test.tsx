@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCommunityChartParams, useCommunityFeed } from '@/hooks/useCommunity'
 import { queryKeys } from '@/api/query-keys'
+import { SnapshotUnavailableError } from '@/api/errors'
 import { CommunityExperience } from '@/features/community/CommunityExperience'
 import { CommunityAccountExperience } from '@/features/community/CommunityAccountExperience'
 import { PostDetailExperience } from '@/features/community/PostDetailExperience'
@@ -28,6 +29,16 @@ describe('Community final settings contract', () => {
   it('surfaces settings failure without fallback requests', async () => {
     mock.error = 'settings failed'; const Wrapper = wrapper(); const view = render(<Wrapper><MemoryRouter><CommunityExperience /></MemoryRouter></Wrapper>)
     expect(view.getByText('settings failed')).toBeInTheDocument(); expect(mock.get).not.toHaveBeenCalled()
+  })
+  it('keeps publication details out of community errors', async () => {
+    mock.settings = settings
+    mock.get.mockRejectedValue(new SnapshotUnavailableError({
+      error: 'snapshot_unavailable', status: 'unavailable', family: 'community', message: '社区快照尚未发布，请重建。',
+    }))
+    const Wrapper = wrapper()
+    const view = render(<Wrapper><MemoryRouter><CommunityExperience /></MemoryRouter></Wrapper>)
+    expect(await view.findByText('社区数据正在准备，请稍后重新加载。')).toBeInTheDocument()
+    expect(view.queryByText(/发布|重建/)).not.toBeInTheDocument()
   })
   it('normalizes equivalent filters but retains all semantic dimensions', () => {
     expect(queryKeys.community.feed({ accounts: 'b,a,a', highlights_only: false, offset: 0, limit: 50, search: undefined, significance_min: 0 })).toEqual(queryKeys.community.feed({ accounts: 'a,b' }))

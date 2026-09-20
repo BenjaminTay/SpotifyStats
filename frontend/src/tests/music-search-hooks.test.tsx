@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys } from '@/api/query-keys'
+import { SnapshotUnavailableError } from '@/api/errors'
 import {
   normalizeMusicSearchQuery,
   analyzeMusicSearchQuery,
@@ -92,6 +93,20 @@ describe('music search v2 hooks', () => {
 
     unmount()
     await waitFor(() => expect(capturedSignal?.aborted).toBe(true))
+  })
+
+  it('keeps publication details out of candidate errors', async () => {
+    const client = createClient()
+    vi.spyOn(api, 'get').mockRejectedValue(new SnapshotUnavailableError({
+      error: 'snapshot_unavailable', status: 'unavailable', family: 'music_search', message: '搜索快照尚未发布，请重建。',
+    }))
+
+    const { result } = renderHook(
+      () => useMusicSearchCandidates({ query: 'taylor', filters }),
+      { wrapper: wrapperFor(client) },
+    )
+    await waitFor(() => expect(result.current.error).toBe('音乐搜索数据正在准备，请稍后重新搜索。'))
+    expect(result.current.error).not.toContain('发布')
   })
 
   it('normalizes equivalent queries into one candidate cache key', async () => {

@@ -5,9 +5,10 @@ import { SnapshotStatusNotice } from '@/components/shared/SnapshotStatusNotice'
 import { HomeError } from '@/features/home/HomeStates'
 
 describe('published snapshot presentation', () => {
-  it('shows page-local LKG freshness without backend publication wording', () => {
+  it('keeps page-local LKG freshness accessible without adding visible layout', () => {
     const view = render(<SnapshotStatusNotice snapshot={{ status: 'warming', freshness: 'last_known_good', target_revision: 'next' }} />)
-    expect(screen.getByRole('status')).toHaveTextContent('数据正在更新')
+    expect(screen.getByRole('status')).toHaveTextContent('内容正在后台更新')
+    expect(screen.getByRole('status')).toHaveClass('sr-only')
     expect(screen.getByRole('status')).not.toHaveTextContent('发布')
     view.rerender(<SnapshotStatusNotice snapshot={{ status: 'ready', freshness: 'current', target_revision: 'next' }} />)
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -22,5 +23,6 @@ describe('published snapshot presentation', () => {
 
 it('reads infinite Community pages and reports a failed rebuild with LKG', () => {
   render(<SnapshotStatusNotice snapshot={{ status: 'warming', freshness: 'last_known_good', target_revision: 'next', build_status: 'failed' }} />)
-  expect(screen.getByRole('status')).toHaveTextContent('数据更新暂未完成')
+  expect(screen.getByRole('status')).toHaveTextContent('后台更新暂未完成')
+  expect(screen.getByRole('status')).toHaveClass('sr-only')
 })

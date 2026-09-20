@@ -197,8 +197,8 @@ describe('专辑详情播放排行分页', () => {
 })
 
 
-describe('deferred rank and rankings', () => {
-  it.each(['track', 'album', 'artist'] as const)('gates %s rank context independently from its rankings', async (kind) => {
+describe('asynchronous rank context and deferred rankings', () => {
+  it.each(['track', 'album', 'artist'] as const)('loads %s rank context after base stats while keeping rankings deferred', async (kind) => {
     const observer = installDeferredObserver()
     mocks.get.mockReset()
     mocks.get.mockImplementation((path: string, params: { include_rank_context?: boolean }) => Promise.resolve(path.endsWith('/rankings')
@@ -207,14 +207,15 @@ describe('deferred rank and rankings', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300000 } } })
     render(<QueryClientProvider client={client}><MemoryRouter><EntityStatsPanel kind={kind} trackId={1} albumName="Project" albumProjectId={9} artistName="Artist" mergeLevel={3} /></MemoryRouter></QueryClientProvider>)
     await screen.findByText('总播放次数')
-    expect(mocks.get.mock.calls).toHaveLength(1)
     expect(mocks.get.mock.calls[0][1].include_rank_context).toBe(false)
-    observer.enter('[data-deferred="rank"]')
     await screen.findByText('#7')
+    expect(
+      screen.getByText('全时段排名').compareDocumentPosition(
+        screen.getByRole('heading', { name: '每日播放' }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0)
     expect(mocks.get.mock.calls.filter(([, p]) => p.include_rank_context)).toHaveLength(1)
     expect(mocks.get.mock.calls.some(([p])=>p.endsWith('/rankings'))).toBe(false)
-    observer.enter('[data-deferred="rank"]')
-    expect(mocks.get.mock.calls.filter(([, p]) => p.include_rank_context)).toHaveLength(1)
     if (kind !== 'track') {
       observer.enter('[data-deferred="rankings"]')
       await screen.findByText('项目歌曲 1')
@@ -237,5 +238,9 @@ it('project summary resolving an artist does not fork the identical stats key', 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300000 } } })
   const view = (artistName?: string) => <QueryClientProvider client={client}><MemoryRouter><EntityStatsPrefetch kind="album" albumProjectId={9} artistName={artistName} /><EntityStatsPanel kind="album" albumProjectId={9} albumName="Project" artistName={artistName} /></MemoryRouter></QueryClientProvider>
   const result=render(view()); await screen.findByText('总播放次数'); result.rerender(view('Artist'))
-  expect(mocks.get.mock.calls.filter(([path])=>path==='/music/album-projects/9/stats')).toHaveLength(1)
+  await waitFor(() => expect(mocks.get.mock.calls.filter(([path])=>path==='/music/album-projects/9/stats')).toHaveLength(2))
+  const statsCalls = mocks.get.mock.calls.filter(([path])=>path==='/music/album-projects/9/stats')
+  expect(statsCalls.filter(([, params]) => params.include_rank_context === false)).toHaveLength(1)
+  expect(statsCalls.filter(([, params]) => params.include_rank_context === true)).toHaveLength(1)
+  expect(statsCalls.every(([, params]) => params.artist === undefined)).toBe(true)
 })

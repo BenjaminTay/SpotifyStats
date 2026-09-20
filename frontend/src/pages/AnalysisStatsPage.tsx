@@ -37,7 +37,11 @@ export function AnalysisStatsPage() {
     <div role={switching ? 'status' : 'alert'} className="py-16 text-center">
       <p>{switching ? '正在准备这个时间范围的数据' : errorObject instanceof SnapshotUnavailableError ? '当前时间范围暂不可用' : '加载播放统计失败'}</p>
       <p className="mt-2 text-sm text-muted-foreground">
-        {switching ? '可以停留在当前页面，准备完成后会自动显示。' : error}
+        {switching
+          ? '可以停留在当前页面，准备完成后会自动显示。'
+          : errorObject instanceof SnapshotUnavailableError
+            ? '当前还没有可用的统计结果，请稍后重新加载。'
+            : error}
       </p>
     </div>
   )
@@ -51,10 +55,10 @@ export function AnalysisStatsPage() {
     return (
       <>
         <SnapshotStatusNotice snapshot={data.snapshot} />
-        {switching && <p role="status" className="mb-3 text-sm text-muted-foreground">正在切换时间范围…</p>}
         <MobileAnalysisStats
           data={data}
           metric={metric}
+          busy={switching}
           timeControl={(
             <MobileAnalysisTimeControl
               compact
@@ -78,9 +82,8 @@ export function AnalysisStatsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" aria-busy={switching}>
       <SnapshotStatusNotice snapshot={data.snapshot} />
-      {switching && <p role="status" className="text-sm text-muted-foreground">正在切换时间范围…</p>}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Playback Stats</p>
