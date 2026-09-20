@@ -3,7 +3,6 @@ import { AlertCircle } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 
 import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
-import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useRecordsProjection } from '@/hooks/useBillboard'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
@@ -13,6 +12,7 @@ import { buildBillboardContextParams } from '@/features/billboard/billboardConte
 import { projectedCoverMaps } from '@/features/billboard/records/recordsData'
 import { ChampionshipSection } from '@/features/billboard/records/ChampionshipSection'
 import { useViewportMode } from '@/hooks/useViewportMode'
+import { SnapshotStatusNotice } from '@/components/shared/SnapshotStatusNotice'
 
 const LongevitySection = lazy(() =>
   import('@/features/billboard/records/LongevitySection').then((m) => ({
@@ -153,8 +153,7 @@ export function RecordsPage() {
 
   return (
     <div className={isPhone ? 'mobile-m4-page' : 'mx-auto max-w-[1200px]'} data-mobile-page={isPhone ? 'billboard-records' : undefined}>
-      {!isPhone && <BillboardSubNav active="records" />}
-
+      <SnapshotStatusNotice snapshot={data.snapshot} />
       {!isPhone && <section className="mt-6 mb-6">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">Chart / Hall of Fame</p>
         <h1 className="font-serif text-[44px] font-bold leading-[1.06] tracking-[-1.2px]">榜单记录</h1>

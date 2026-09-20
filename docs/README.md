@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [阶段 8：快照可用性与 Billboard 交互连续性收口](reports/2026-09-21-stage8-snapshot-and-billboard-ux-closeout.md)
+
 - [全应用性能优化成果与最终验收报告](reports/2026-09-21-full-application-performance-optimization-outcome.md)
 
 - [阶段 7E：最终本地全栈 Pass 与测试存储收口](reports/2026-09-21-stage7e-final-fullstack-acceptance.md)

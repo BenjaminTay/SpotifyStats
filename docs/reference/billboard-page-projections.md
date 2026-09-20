@@ -43,9 +43,11 @@ Records 用同一完整过滤参数构造三个 family 的 context，并在读�
 
 所有投影使用 TanStack Query 和 `queryKeys.billboard.projection(path, params)`；参数带完整 Billboard context。Weekly 额外包含 week/entity；All-Time 包含 entity/page/page_size/sort/direction/peak_filter/search。All-Time 的这些视图参数不改变实体全集，服务端只用 entity 投影，浏览器保持现有排序/搜索语义。
 
-queryFn 传递 AbortSignal，切周/实体/过滤条件后旧响应不会写入新 key。All-Time 仅在实体和全部 Billboard context 相同、只改变本地视图参数时保留上一份相同实体事实，避免搜索输入框卸载和失焦。切实体或过滤条件不沿用旧响应。没有模块级响应 Map、全历史预取或同时发出的旧 full query。
+queryFn 传递 AbortSignal，切周/实体/过滤条件后旧响应不会写入新 key。Weekly 切周或实体时使用上一份投影作为过渡帧，但展示标签始终取自该投影自己的 `entity` / `selected_week`；新结果就绪后再原子替换，不能把旧单曲事实标成专辑榜。当前周的相邻实体和相邻两周会在后台预取，5 分钟内返回已缓存目标不重复请求。
 
-加载/错误组件沿用原页面；unavailable 保留阶段 1 的专用错误与禁重试行为；同语义 LKG 继续由全局 SnapshotStatusNotice 提示旧事实。
+All-Time 仅在实体和全部 Billboard context 相同、只改变本地视图参数时保留上一份相同实体事实，避免搜索输入框卸载和失焦；当前实体就绪后预取同视图的另外两个实体。切过滤条件不沿用旧响应。没有模块级响应 Map、全历史预取或同时发出的旧 full query。
+
+`/billboard` 六个子页面共享一个持久路由外壳，桌面子导航不随子页面 chunk 卸载；导航 hover/focus 预取目标页面 chunk。首次进入仍可显示页面骨架，已有内容后的切换只显示局部进度，不再用整页 skeleton 清空内容。同语义 LKG 由当前 Billboard 页面就地提示，不再依赖全局 Query Cache 扫描。
 
 ## 验证与回滚
 

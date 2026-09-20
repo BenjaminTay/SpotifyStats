@@ -62,6 +62,11 @@ class OperationAudit:
 
 
 TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
+    ("POST", "/api/analysis/snapshots/prepare"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/unit/test_analysis_snapshots.py",
+        "Private analysis range preparation is exact-key deduplicated; public POST is denied and GET remains read-only.",
+    ),
     ("POST", "/api/community/refresh"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_community_contract.py",

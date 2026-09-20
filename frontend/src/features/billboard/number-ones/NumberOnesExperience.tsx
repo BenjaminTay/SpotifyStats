@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 
-import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { useNumberOnesProjection } from '@/hooks/useBillboard'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
@@ -18,6 +17,7 @@ import {
 } from './numberOnesData'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileNumberOnes } from '@/features/mobile/billboard/MobileNumberOnes'
+import { SnapshotStatusNotice } from '@/components/shared/SnapshotStatusNotice'
 
 export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }) {
   const isPhone = useViewportMode() === 'phone'
@@ -52,22 +52,24 @@ export function NumberOnesExperience({ mergeLevel = 2 }: { mergeLevel?: number }
 
   if (isPhone && !loading && !error && data) {
     return (
-      <MobileNumberOnes
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        computed={computed}
-        yearFiltered={yearFiltered}
-        availableYears={availableYears}
-        selectedYear={effectiveSelectedYear}
-        onYearChange={handleYearChange}
-      />
+      <>
+        <SnapshotStatusNotice snapshot={data.snapshot} />
+        <MobileNumberOnes
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          computed={computed}
+          yearFiltered={yearFiltered}
+          availableYears={availableYears}
+          selectedYear={effectiveSelectedYear}
+          onYearChange={handleYearChange}
+        />
+      </>
     )
   }
 
   return (
     <>
-      <BillboardSubNav active="number-ones" />
-
+      <SnapshotStatusNotice snapshot={data?.snapshot} />
       <section className="mt-6 mb-6">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           Chart / Number Ones

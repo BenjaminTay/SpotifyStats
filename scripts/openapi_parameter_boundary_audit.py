@@ -76,6 +76,12 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("query", "family", "string|enum=analysis_stats,analysis_records"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "Analysis snapshot preparation restricts maintenance to the two registered result families.",
+        ("backend/tests/unit/test_analysis_snapshots.py",),
+    ),
     ("query", "entity", "string|enum=tracks,albums,artists"): ParameterEvidence(
         "targeted_contract",
         (),

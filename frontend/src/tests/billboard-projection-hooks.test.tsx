@@ -31,6 +31,47 @@ describe('published Billboard page queries', () => {
     await act(async () => resolveOld({ selected_week: 'old', entity: 'tracks' }))
     expect(result.current.data?.entity).toBe('albums')
   })
+  it('keeps the previous weekly projection as a correctly labelled transition frame', async () => {
+    const { wrapper } = setup()
+    let resolveNext: (value: unknown) => void = () => {}
+    vi.spyOn(api, 'get').mockImplementation((_url, params) => {
+      if (params?.entity === 'tracks') return Promise.resolve({ selected_week: '2026-01-02', entity: 'tracks', meta: { all_weeks_desc: ['2026-01-02'] }, current: [], previous: [], historical: [] })
+      if (params?.entity === 'albums') return new Promise(resolve => { resolveNext = resolve })
+      return Promise.resolve({ selected_week: '2026-01-02', entity: 'artists', meta: { all_weeks_desc: ['2026-01-02'] }, current: [], previous: [], historical: [] })
+    })
+    const { result, rerender } = renderHook(({ tab }) => useWeeklyProjection({ merge_level: 2 }, '2026-01-02', tab), {
+      wrapper,
+      initialProps: { tab: 'tracks' },
+    })
+    await waitFor(() => expect(result.current.data?.entity).toBe('tracks'))
+    rerender({ tab: 'albums' })
+    expect(result.current.switching).toBe(true)
+    expect(result.current.data?.entity).toBe('tracks')
+    await act(async () => resolveNext({ selected_week: '2026-01-02', entity: 'albums', meta: { all_weeks_desc: ['2026-01-02'] }, current: [], previous: [], historical: [] }))
+    await waitFor(() => expect(result.current.data?.entity).toBe('albums'))
+    expect(result.current.switching).toBe(false)
+  })
+  it('prefetches sibling weekly entities and reuses them when switching back', async () => {
+    const { wrapper } = setup()
+    const get = vi.spyOn(api, 'get').mockImplementation((_url, params) => Promise.resolve({
+      selected_week: '2026-01-02',
+      entity: params?.entity,
+      meta: { all_weeks_desc: ['2026-01-02'] },
+      current: [],
+      previous: [],
+      historical: [],
+    }))
+    const { result, rerender } = renderHook(({ tab }) => useWeeklyProjection({ merge_level: 2 }, '2026-01-02', tab), {
+      wrapper,
+      initialProps: { tab: 'tracks' },
+    })
+    await waitFor(() => expect(get.mock.calls.filter(([path]) => path === '/billboard/weekly')).toHaveLength(3))
+    rerender({ tab: 'albums' })
+    await waitFor(() => expect(result.current.data?.entity).toBe('albums'))
+    rerender({ tab: 'tracks' })
+    await waitFor(() => expect(result.current.data?.entity).toBe('tracks'))
+    expect(get.mock.calls.filter(([path]) => path === '/billboard/weekly')).toHaveLength(3)
+  })
   it('retains identical entity rows for local controls, but clears them on context changes', async () => {
     const { wrapper } = setup()
     vi.spyOn(api, 'get').mockImplementation((_url, params) => params?.search === ''
@@ -57,8 +98,8 @@ describe('published Billboard page queries', () => {
     await waitFor(() => expect(result.current.data?.entity).toBe('artists'))
     rerender({ entity: 'tracks' })
     await waitFor(() => expect(result.current.data?.entity).toBe('tracks'))
-    expect(get).toHaveBeenCalledTimes(4)
+    expect(get.mock.calls.filter(([path]) => path === '/billboard/records')).toHaveLength(1)
     expect(get.mock.calls.every(([path, params]) => path !== '/billboard/data' && params?.projection)).toBe(true)
-    expect(get.mock.calls.filter(([path]) => path === '/billboard/all-time').map(([,params])=>params?.projection)).toEqual(['number-ones', 'entity', 'entity'])
+    expect(get.mock.calls.filter(([path]) => path === '/billboard/all-time').map(([,params])=>params?.projection)).toEqual(expect.arrayContaining(['number-ones', 'entity']))
   })
 })

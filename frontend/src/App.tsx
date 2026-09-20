@@ -2,18 +2,27 @@ import { lazy, Suspense, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigationType, useParams } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { CapabilityRoute } from '@/components/capabilities/CapabilityGate'
+import {
+  loadAllTimeChartsPage,
+  loadBillboardPage,
+  loadBillboardVersusPage,
+  loadBillboardYearEndPage,
+  loadNumberOnesPage,
+  loadRecordsPage,
+} from '@/pages/billboardRouteLoaders'
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })))
-const BillboardPage = lazy(() => import('@/pages/BillboardPage').then((m) => ({ default: m.BillboardPage })))
+const BillboardLayout = lazy(() => import('@/pages/BillboardLayout').then((m) => ({ default: m.BillboardLayout })))
+const BillboardPage = lazy(() => loadBillboardPage().then((m) => ({ default: m.BillboardPage })))
 const MusicSearchPage = lazy(() => import('@/pages/MusicSearchPage').then((m) => ({ default: m.MusicSearchPage })))
 const TrackDetailPage = lazy(() => import('@/pages/TrackDetailPage').then((m) => ({ default: m.TrackDetailPage })))
 const ArtistDetailPage = lazy(() => import('@/pages/ArtistDetailPage').then((m) => ({ default: m.ArtistDetailPage })))
 const AlbumDetailPage = lazy(() => import('@/pages/AlbumDetailPage').then((m) => ({ default: m.AlbumDetailPage })))
-const NumberOnesPage = lazy(() => import('@/pages/NumberOnesPage').then((m) => ({ default: m.NumberOnesPage })))
-const AllTimeChartsPage = lazy(() => import('@/pages/AllTimeChartsPage').then((m) => ({ default: m.AllTimeChartsPage })))
-const BillboardYearEndPage = lazy(() => import('@/pages/BillboardYearEndPage').then((m) => ({ default: m.BillboardYearEndPage })))
-const RecordsPage = lazy(() => import('@/pages/RecordsPage').then((m) => ({ default: m.RecordsPage })))
-const BillboardVersusPage = lazy(() => import('@/pages/BillboardVersusPage').then((m) => ({ default: m.BillboardVersusPage })))
+const NumberOnesPage = lazy(() => loadNumberOnesPage().then((m) => ({ default: m.NumberOnesPage })))
+const AllTimeChartsPage = lazy(() => loadAllTimeChartsPage().then((m) => ({ default: m.AllTimeChartsPage })))
+const BillboardYearEndPage = lazy(() => loadBillboardYearEndPage().then((m) => ({ default: m.BillboardYearEndPage })))
+const RecordsPage = lazy(() => loadRecordsPage().then((m) => ({ default: m.RecordsPage })))
+const BillboardVersusPage = lazy(() => loadBillboardVersusPage().then((m) => ({ default: m.BillboardVersusPage })))
 const CommunityPage = lazy(() => import('@/pages/CommunityPage').then((m) => ({ default: m.CommunityPage })))
 const CommunityAccountPage = lazy(() => import('@/pages/CommunityAccountPage').then((m) => ({ default: m.CommunityAccountPage })))
 const PostDetailPage = lazy(() => import('@/pages/PostDetailPage').then((m) => ({ default: m.PostDetailPage })))
@@ -87,7 +96,14 @@ function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route path="/" element={<Suspense fallback={<RouteFallback />}><DashboardPage /></Suspense>} />
-          <Route path="/billboard" element={<Suspense fallback={<RouteFallback />}><BillboardPage /></Suspense>} />
+          <Route path="/billboard" element={<Suspense fallback={<RouteFallback />}><BillboardLayout /></Suspense>}>
+            <Route index element={<Suspense fallback={<RouteFallback />}><BillboardPage /></Suspense>} />
+            <Route path="number-ones" element={<Suspense fallback={<RouteFallback />}><NumberOnesPage /></Suspense>} />
+            <Route path="all-time" element={<Suspense fallback={<RouteFallback />}><AllTimeChartsPage /></Suspense>} />
+            <Route path="year-end" element={<Suspense fallback={<RouteFallback />}><BillboardYearEndPage /></Suspense>} />
+            <Route path="records" element={<Suspense fallback={<RouteFallback />}><RecordsPage /></Suspense>} />
+            <Route path="versus" element={<Suspense fallback={<RouteFallback />}><BillboardVersusPage /></Suspense>} />
+          </Route>
           <Route path="/music/search" element={<Suspense fallback={<RouteFallback />}><MusicSearchPage /></Suspense>} />
           <Route path="/music/tracks/canonical/:trackId" element={<LegacyCanonicalTrackRedirect />} />
           <Route path="/music/tracks/l1/:trackId" element={<LegacyCanonicalTrackRedirect />} />
@@ -98,11 +114,6 @@ function App() {
           <Route path="/billboard/track/:trackId" element={<LegacyMusicRedirect kind="track" />} />
           <Route path="/billboard/artist/:artistName" element={<LegacyMusicRedirect kind="artist" />} />
           <Route path="/billboard/album/:albumName" element={<LegacyMusicRedirect kind="album" />} />
-          <Route path="/billboard/number-ones" element={<Suspense fallback={<RouteFallback />}><NumberOnesPage /></Suspense>} />
-          <Route path="/billboard/all-time" element={<Suspense fallback={<RouteFallback />}><AllTimeChartsPage /></Suspense>} />
-          <Route path="/billboard/year-end" element={<Suspense fallback={<RouteFallback />}><BillboardYearEndPage /></Suspense>} />
-          <Route path="/billboard/records" element={<Suspense fallback={<RouteFallback />}><RecordsPage /></Suspense>} />
-          <Route path="/billboard/versus" element={<Suspense fallback={<RouteFallback />}><BillboardVersusPage /></Suspense>} />
           <Route path="/community" element={<Suspense fallback={<RouteFallback />}><CommunityPage /></Suspense>} />
           <Route path="/community/post/:postId" element={<Suspense fallback={<RouteFallback />}><PostDetailPage /></Suspense>} />
           <Route path="/community/account/:handle" element={<Suspense fallback={<RouteFallback />}><CommunityAccountPage /></Suspense>} />

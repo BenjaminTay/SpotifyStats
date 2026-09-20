@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 
 import { Skeleton } from '@/components/ui/skeleton'
+import { SnapshotStatusNotice } from '@/components/shared/SnapshotStatusNotice'
 import { MobileStatePanel } from '@/components/mobile'
 import { DesktopBillboardWeekly } from '@/features/billboard/weekly/DesktopBillboardWeekly'
 import {
@@ -20,6 +21,7 @@ import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import type { BillboardWeeklyResponse } from '@/types/billboard'
 
 const PAGE_SIZE = 50
+const EMPTY_WEEKLY_ENTRIES: BillboardWeeklyEntry[] = []
 
 function BillboardSkeleton() {
   return (
@@ -51,20 +53,23 @@ export function BillboardPage() {
   const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { filters, loading: settingsLoading } = useAnalysisFilters()
   const params = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
-  const { data: projection, loading, error, refetch } = useWeeklyProjection(params, initialWeek, activeTab, !settingsLoading)
+  const { data: projection, loading, switching, error, refetch } = useWeeklyProjection(params, initialWeek, activeTab, !settingsLoading)
   const data = useMemo(() => projection ? { ...projection, weekly: [], weekly_album: [], weekly_artist: [] } as BillboardWeeklyResponse : null, [projection])
+  const displayTab: BillboardWeeklyTab = projection?.entity && isBillboardWeeklyTab(projection.entity)
+    ? projection.entity
+    : activeTab
   const selectedWeek = projection?.selected_week ?? ''
   const currentIndex = data?.meta.all_weeks_desc.indexOf(selectedWeek) ?? 0
   const totalWeeks = data?.meta.all_weeks_desc.length ?? 0
-  const entries = (projection?.current ?? []) as BillboardWeeklyEntry[]
-  const previousEntries = (projection?.previous ?? []) as BillboardWeeklyEntry[]
-  const historicalEntries = (projection?.historical ?? []) as BillboardWeeklyEntry[]
+  const entries = (projection?.current as BillboardWeeklyEntry[] | undefined) ?? EMPTY_WEEKLY_ENTRIES
+  const previousEntries = (projection?.previous as BillboardWeeklyEntry[] | undefined) ?? EMPTY_WEEKLY_ENTRIES
+  const historicalEntries = (projection?.historical as BillboardWeeklyEntry[] | undefined) ?? EMPTY_WEEKLY_ENTRIES
   const summary = useMemo(
-    () => buildWeeklySummary(entries, previousEntries, historicalEntries, activeTab),
-    [activeTab, entries, historicalEntries, previousEntries],
+    () => buildWeeklySummary(entries, previousEntries, historicalEntries, displayTab),
+    [displayTab, entries, historicalEntries, previousEntries],
   )
 
-  const paginationKey = `${activeTab}:${selectedWeek}`
+  const paginationKey = `${displayTab}:${selectedWeek}`
   const [pagination, setPagination] = useState({ key: paginationKey, page: 1 })
   const requestedPage = pagination.key === paginationKey ? pagination.page : 1
   const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE))
@@ -88,7 +93,7 @@ export function BillboardPage() {
       : <BillboardSkeleton />
   }
 
-  if (error) {
+  if (error && !projection) {
     return viewportMode === 'phone' ? (
       <div className="mobile-m3-page">
         <MobileStatePanel variant="error" description={`榜单加载失败：${error}`} actionLabel="重新加载" onAction={refetch} />
@@ -112,7 +117,7 @@ export function BillboardPage() {
 
   const presentationProps = {
     data,
-    activeTab,
+    activeTab: displayTab,
     onTabChange: selectTab,
     selectedWeek,
     currentIndex,
@@ -130,7 +135,20 @@ export function BillboardPage() {
     onPageChange: selectPage,
   }
 
-  return viewportMode === 'phone'
-    ? <MobileBillboardWeekly {...presentationProps} />
-    : <DesktopBillboardWeekly {...presentationProps} />
+  return (
+    <div className="relative" aria-busy={switching}>
+      <SnapshotStatusNotice snapshot={projection?.snapshot} />
+      {switching && (
+        <p
+          role="status"
+          className="sticky top-3 z-20 ml-auto mb-3 w-fit rounded-full border border-border bg-background/90 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur"
+        >
+          正在切换榜单，当前内容会在新数据就绪后更新…
+        </p>
+      )}
+      {viewportMode === 'phone'
+        ? <MobileBillboardWeekly {...presentationProps} />
+        : <DesktopBillboardWeekly {...presentationProps} />}
+    </div>
+  )
 }

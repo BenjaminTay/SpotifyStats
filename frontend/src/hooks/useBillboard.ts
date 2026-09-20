@@ -395,13 +395,19 @@ export function useReleaseCycleCompare(
 }
 
 /** An old tab/week/filter must never masquerade as the selected context. */
-function useBillboardProjection<T>(path: string, params: Record<string, string | number | boolean>, enabled = true, retainEntityRows = false) {
+function useBillboardProjection<T>(
+  path: string,
+  params: Record<string, string | number | boolean>,
+  enabled = true,
+  retainEntityRows = false,
+  retainPreviousContext = false,
+) {
   const query = useQuery<T>({
     queryKey: queryKeys.billboard.projection(path, params),
     // Entity projections contain every row. Local view changes can keep those
     // identical facts while the new query resolves, without unmounting inputs.
     // A different entity or Billboard filter must show its own loading state.
-    placeholderData: retainEntityRows ? (previous, previousQuery) => {
+    placeholderData: retainPreviousContext ? keepPreviousData : retainEntityRows ? (previous, previousQuery) => {
       const old = previousQuery?.queryKey[3] as Record<string, unknown> | undefined
       const local = new Set(['page', 'page_size', 'sort', 'direction', 'peak_filter', 'search'])
       const keys = new Set([...Object.keys(params), ...Object.keys(old ?? {})])
@@ -409,18 +415,69 @@ function useBillboardProjection<T>(path: string, params: Record<string, string |
     } : undefined,
     queryFn: ({ signal }) => api.get<T>(`/billboard/${path}`, params, undefined, signal),
     enabled,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   })
-  return { data: query.data ?? null, loading: query.isLoading, error: errorMessage(query.error), refetch: () => void query.refetch() }
+  return {
+    data: query.data ?? null,
+    loading: query.isLoading,
+    fetching: query.isFetching,
+    switching: query.isPlaceholderData,
+    error: errorMessage(query.error),
+    refetch: () => void query.refetch(),
+  }
 }
 
 export function useRecordsProjection(params: BillboardContextParams, enabled = true) {
   return useBillboardProjection<import('@/types/billboard').BillboardRecordsProjection>('records', { ...params, projection: 'page' }, enabled)
 }
 export function useWeeklyProjection(params: BillboardContextParams, week: string | null, entity: string, enabled = true) {
-  return useBillboardProjection<import('@/types/billboard').BillboardWeeklyProjection>('weekly', { ...params, projection: 'page', ...(week ? { week } : {}), entity }, enabled)
+  const client = useQueryClient()
+  const result = useBillboardProjection<import('@/types/billboard').BillboardWeeklyProjection>(
+    'weekly',
+    { ...params, projection: 'page', ...(week ? { week } : {}), entity },
+    enabled,
+    false,
+    true,
+  )
+  useEffect(() => {
+    const projection = result.data
+    if (!projection || result.switching) return
+    const prefetch = (nextWeek: string, nextEntity: string) => {
+      const nextParams = { ...params, projection: 'page', week: nextWeek, entity: nextEntity }
+      void client.prefetchQuery({
+        queryKey: queryKeys.billboard.projection('weekly', nextParams),
+        queryFn: ({ signal }) => api.get('/billboard/weekly', nextParams, undefined, signal),
+        staleTime: 5 * 60 * 1000,
+      })
+    }
+    for (const sibling of ['tracks', 'albums', 'artists']) {
+      if (sibling !== projection.entity) prefetch(projection.selected_week, sibling)
+    }
+    const weeks = projection.meta?.all_weeks_desc ?? []
+    const index = weeks.indexOf(projection.selected_week)
+    for (const neighbor of [weeks[index - 1], weeks[index + 1]]) {
+      if (neighbor) prefetch(neighbor, projection.entity)
+    }
+  }, [client, params, result.data, result.switching])
+  return result
 }
 export function useAllTimeProjection(params: BillboardContextParams, view: Record<string, string | number | boolean>, enabled = true) {
-  return useBillboardProjection<import('@/types/billboard').BillboardAllTimeProjection>('all-time', { ...params, ...view, projection: 'entity' }, enabled, true)
+  const client = useQueryClient()
+  const result = useBillboardProjection<import('@/types/billboard').BillboardAllTimeProjection>('all-time', { ...params, ...view, projection: 'entity' }, enabled, true)
+  useEffect(() => {
+    if (!result.data) return
+    for (const sibling of ['tracks', 'albums', 'artists']) {
+      if (sibling === result.data.entity) continue
+      const nextParams = { ...params, ...view, entity: sibling, projection: 'entity' }
+      void client.prefetchQuery({
+        queryKey: queryKeys.billboard.projection('all-time', nextParams),
+        queryFn: ({ signal }) => api.get('/billboard/all-time', nextParams, undefined, signal),
+        staleTime: 5 * 60 * 1000,
+      })
+    }
+  }, [client, params, result.data, view])
+  return result
 }
 export function useNumberOnesProjection(params: BillboardContextParams, enabled = true) {
   return useBillboardProjection<import('@/types/billboard').BillboardNumberOnesProjection>('all-time', { ...params, projection: 'number-ones' }, enabled)

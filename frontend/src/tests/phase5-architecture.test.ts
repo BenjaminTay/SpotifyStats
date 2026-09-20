@@ -131,12 +131,10 @@ describe('Phase 5 architecture guardrails', () => {
 
   it('keeps NumberOnesExperience chrome stable while loading', () => {
     expect(numberOnesExperienceSource).not.toContain('if (loading) return <SkeletonBlock />')
-    expect(numberOnesExperienceSource).toContain('<BillboardSubNav active="number-ones" />')
     expect(numberOnesExperienceSource).toContain('{loading && <SkeletonBlock />}')
   })
 
   it('keeps Billboard Year-End aligned with shared Billboard visual primitives', () => {
-    expect(yearEndExperienceSource).toContain('<BillboardSubNav active="year-end" />')
     expect(yearEndExperienceSource).toContain('tracking-[1.8px]')
     expect(yearEndHonorsSource).toContain('aria-label="Year-End Summary"')
     expect(yearEndHonorsSource).not.toContain('<GlassCard')

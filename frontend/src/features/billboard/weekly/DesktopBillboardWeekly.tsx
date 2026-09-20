@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 
-import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { ChangeCell } from '@/components/shared/ChangeCell'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { GlassCard } from '@/components/shared/GlassCard'
@@ -71,8 +70,6 @@ export function DesktopBillboardWeekly({
 
   return (
     <>
-      <BillboardSubNav active="weekly" />
-
       <section className="mb-6 mt-6">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           Chart / Weekly

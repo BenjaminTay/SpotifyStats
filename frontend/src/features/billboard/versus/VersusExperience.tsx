@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Plus, Sparkles } from 'lucide-react'
-import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { useEntityLists, useVersus } from '@/hooks/useBillboard'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
@@ -119,8 +118,6 @@ export function VersusExperience() {
 
   return (
     <div className={cn(isPhone && 'mobile-m4-page')} data-mobile-page={isPhone ? 'billboard-versus' : undefined}>
-      {!isPhone && <BillboardSubNav active="versus" />}
-
       {isPhone ? (
         <MobilePageHeader
           eyebrow="Chart / Versus"

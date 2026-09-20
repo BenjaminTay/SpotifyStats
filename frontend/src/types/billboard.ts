@@ -318,6 +318,7 @@ export interface BillboardYearEndHonors {
 }
 
 export interface BillboardYearEndResponse {
+  snapshot?: import('@/api/generated/api-types').components['schemas']['SnapshotReadState'] | null
   meta: BillboardYearEndMeta
   tracks: BillboardYearEndTrackRow[]
   albums: BillboardYearEndAlbumRow[]
@@ -1724,7 +1725,9 @@ export interface BillboardRecordsProjection {
   artist_track_counts: ArtistTrackCounts[]
 }
 export type BillboardNumberOnesProjection = Pick<BillboardAllTimeResponse,
-  'weekly' | 'weekly_album' | 'weekly_artist' | 'power_scores' | 'album_power_scores' | 'artist_power_scores'>
+  'weekly' | 'weekly_album' | 'weekly_artist' | 'power_scores' | 'album_power_scores' | 'artist_power_scores'> & {
+    snapshot?: BillboardWeeklyProjection['snapshot']
+  }
 export interface BillboardAllTimeProjection {
   snapshot?: BillboardWeeklyProjection['snapshot']
   entity: 'tracks' | 'albums' | 'artists'

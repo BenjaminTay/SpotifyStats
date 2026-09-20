@@ -4,7 +4,6 @@ import { useSearchParams } from 'react-router-dom'
 
 import { getDefaultMergeLevel, normalizeMergeLevel } from '@/lib/merge-level'
 import { getBillboardName } from '@/lib/billboard-name'
-import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AllTimeTable, Pagination } from '@/features/billboard/all-time/AllTimeTable'
 import { AllTimeControls } from '@/features/billboard/all-time/AllTimeControls'
@@ -34,6 +33,7 @@ import { cn } from '@/lib/utils'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileAllTime } from '@/features/mobile/billboard/MobileAllTime'
 import { useChineseTextVersion } from '@/lib/chinese'
+import { SnapshotStatusNotice } from '@/components/shared/SnapshotStatusNotice'
 
 let cachedEntityTab: EntityTab = 'tracks'
 let cachedPeakFilter: PeakFilter = 'all'
@@ -167,36 +167,38 @@ export function AllTimeChartsPage() {
 
   if (isPhone) {
     return (
-      <MobileAllTime
-        activeTab={activeTab}
-        rows={displayRows.rows}
-        total={displayRows.total}
-        searchQuery={searchQuery}
-        peakFilter={peakFilter}
-        sortKey={sortKey}
-        sortDir={sortDir}
-        visibleColumnIds={visibleColumnsByTab[activeTab]}
-        page={page}
-        pageSize={20}
-        onTabChange={(tab) => {
-          cachedEntityTab = tab
-          setActiveTab(tab)
-          setPage(1)
-          updateSearchQuery('')
-        }}
-        onSearchChange={updateSearchQuery}
-        onPeakFilterChange={(filter) => { setPeakFilter(filter); setPage(1) }}
-        onSortChange={handleColumnClick}
-        onVisibleColumnsChange={updateVisibleColumns}
-        onPageChange={setPage}
-      />
+      <>
+        <SnapshotStatusNotice snapshot={data.snapshot} />
+        <MobileAllTime
+          activeTab={activeTab}
+          rows={displayRows.rows}
+          total={displayRows.total}
+          searchQuery={searchQuery}
+          peakFilter={peakFilter}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          visibleColumnIds={visibleColumnsByTab[activeTab]}
+          page={page}
+          pageSize={20}
+          onTabChange={(tab) => {
+            cachedEntityTab = tab
+            setActiveTab(tab)
+            setPage(1)
+            updateSearchQuery('')
+          }}
+          onSearchChange={updateSearchQuery}
+          onPeakFilterChange={(filter) => { setPeakFilter(filter); setPage(1) }}
+          onSortChange={handleColumnClick}
+          onVisibleColumnsChange={updateVisibleColumns}
+          onPageChange={setPage}
+        />
+      </>
     )
   }
 
   return (
     <>
-      <BillboardSubNav active="all-time" />
-
+      <SnapshotStatusNotice snapshot={data.snapshot} />
       <section className="mt-6 mb-6">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           Chart / All-Time

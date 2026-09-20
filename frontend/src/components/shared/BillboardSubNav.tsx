@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { BILLBOARD_ROUTE_LOADERS } from '@/pages/billboardRouteLoaders'
 
 const NAV_ITEMS = [
   { to: '/billboard', label: '周榜', active: 'weekly' as const },
@@ -10,8 +11,10 @@ const NAV_ITEMS = [
   { to: '/billboard/versus', label: '对决', active: 'versus' as const },
 ]
 
+export type BillboardSection = 'weekly' | 'number-ones' | 'all-time' | 'year-end' | 'records' | 'versus'
+
 interface BillboardSubNavProps {
-  active: 'weekly' | 'number-ones' | 'all-time' | 'year-end' | 'records' | 'versus'
+  active: BillboardSection
 }
 
 export function BillboardSubNav({ active }: BillboardSubNavProps) {
@@ -24,6 +27,8 @@ export function BillboardSubNav({ active }: BillboardSubNavProps) {
           end={item.to === '/billboard'}
           role="tab"
           aria-selected={active === item.active}
+          onPointerEnter={() => { void BILLBOARD_ROUTE_LOADERS[item.to]?.() }}
+          onFocus={() => { void BILLBOARD_ROUTE_LOADERS[item.to]?.() }}
           className={cn(
             'shrink-0 pb-2.5 font-sans text-[13px] font-medium border-b-2 transition-colors -mb-[1px]',
             active === item.active

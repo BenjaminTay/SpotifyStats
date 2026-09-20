@@ -209,11 +209,13 @@ describe('正式首页 V1', () => {
     }))
   })
 
-  it('briefly retries a cold cache-only preview and stops after it becomes ready', async () => {
+  it('polls a private LKG until the exact Home result becomes ready', async () => {
     vi.useFakeTimers()
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const pending: HomeOverviewResponse = {
       ...data,
+      cache_state: 'warming',
+      snapshot: { status: 'warming', freshness: 'last_known_good', target_revision: 'next' },
       billboard: { state: 'unavailable', week: null, track: null, album: null, artist: null },
       yearly_review: { state: 'not_generated', year: 2026, headline: null, statement: null, entity: null },
     }

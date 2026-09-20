@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 
-import { BillboardSubNav } from '@/components/shared/BillboardSubNav'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBillboardYearEnd } from '@/hooks/useBillboard'
 import { useSettings } from '@/hooks/useSettings'
@@ -25,6 +24,7 @@ import {
 } from './yearEndData'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileYearEnd } from '@/features/mobile/billboard/MobileYearEnd'
+import { SnapshotStatusNotice } from '@/components/shared/SnapshotStatusNotice'
 
 let cachedTab: YearEndTab = 'tracks'
 let cachedPage = 1
@@ -172,29 +172,31 @@ export function YearEndExperience() {
 
   if (isPhone && visibleData) {
     return (
-      <MobileYearEnd
-        data={visibleData}
-        selectedYear={selectedYear}
-        availableYears={availableYears}
-        coverageMessage={coverageMessage(visibleData.meta)}
-        activeTab={activeTab}
-        rows={sortedRows}
-        sortKey={sortKey}
-        sortDir={sortDir}
-        page={page}
-        pageSize={20}
-        onYearChange={handleYearChange}
-        onTabChange={handleTabChange}
-        onSortChange={handleSortChange}
-        onPageChange={setPage}
-      />
+      <>
+        <SnapshotStatusNotice snapshot={visibleData.snapshot} />
+        <MobileYearEnd
+          data={visibleData}
+          selectedYear={selectedYear}
+          availableYears={availableYears}
+          coverageMessage={coverageMessage(visibleData.meta)}
+          activeTab={activeTab}
+          rows={sortedRows}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          page={page}
+          pageSize={20}
+          onYearChange={handleYearChange}
+          onTabChange={handleTabChange}
+          onSortChange={handleSortChange}
+          onPageChange={setPage}
+        />
+      </>
     )
   }
 
   return (
     <>
-      <BillboardSubNav active="year-end" />
-
+      <SnapshotStatusNotice snapshot={visibleData?.snapshot ?? data?.snapshot} />
       <section className="mt-6 mb-6">
         <p className="mb-4 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
           Chart / Year-End
