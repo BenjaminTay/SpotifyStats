@@ -4,7 +4,7 @@ pythonpath = ["."]
 markers = [
     "unit: Pure function tests — no DB, no network, no FastAPI TestClient",
     "contract: Tests against seed SQLite test DB — minimal fast-running DB tests",
-    "integration: Tests against real production SQLite DB — full data reality",
+    "integration: Real-distribution tests; explicit real_data_integration plugin and run-scoped Online Backup required",
     "slow: Tests that take >2s each — optional in CI/pre-commit",
 ]
 

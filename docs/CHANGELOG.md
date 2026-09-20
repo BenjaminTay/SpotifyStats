@@ -1,5 +1,12 @@
 # 变更日志
 
+## 2026-09-21：阶段 7E 最终本地全栈 Pass
+
+- Import Preflight 优化已独立提交 `53dbf90`，精确缓存、staging 复用与 source fence 证据正式归档。
+- Analysis 移动交互验收对齐结构化 snapshot_unavailable；保留真实时间筛选与 year Query 覆盖，只精确分类已核实的预期资源 503，不改产品 GET/快照发布行为。
+- unit/contract 使用 seed，真实 integration 通过独立进程显式 opt-in；3039 项 collection 无遗漏、无重复。Analysis case 及时清理，storage guard 集中创建 pytest 父目录，并统一保护与清理 run-owned 临时文件。
+- 唯一新的默认 fullstack 八个必需阶段全部 PASS；后端 3036 passed / 3 skipped，前端 659 passed / 4 skipped，API slow_count=0，Preflight hot P95 64.329ms，三浏览器通过。详见[阶段 7E 报告](reports/2026-09-21-stage7e-final-fullstack-acceptance.md)。
+
 ## 2026-09-20：阶段 7C 检查点与 Analysis revision（Partial）
 
 - 已完成阶段整理为四个本地检查点提交，保留原阶段边界与对应测试、生成类型和文档。

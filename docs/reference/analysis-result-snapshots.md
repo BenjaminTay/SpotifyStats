@@ -22,6 +22,12 @@
 
 完整只读 smoke / boundary 契约通过私有 fixture 真实发布两个默认 family 后再请求 GET；不得通过改成预期 503、返回假零或在 GET 中构建来消除测试失败。
 
+## 非 lifetime 的用户可见边界
+
+时间选择器保留近 4 周、近 6 个月、year/month/week/day/custom 等选项，但自动维护仅保证默认 lifetime。未发布范围返回结构化 unavailable，页面显示“播放统计暂不可用”及“此时间范围尚未提供已发布快照，请切换为全部时间。”，退出 skeleton，不呈现假零。`SnapshotStatusNotice` 用于有旧发布的 LKG；无发布使用明确的 alert 错误状态。
+
+移动端真实选择 last_4_weeks 的 unavailable 消费继续纳入[全栈交互验收](fullstack-verification.md)。是否让这些范围立即可用、如何发布任意范围，以及错误态下筛选入口的可达性，属于后续产品决策；本轮不新增任意日期缓存或公开 GET 维护行为。
+
 ## 来源 revision 与失效
 
 `analysis_snapshot_revision.py` 列出实际表依赖。migration 78 为这些依赖安装持久 epoch、逐表 revision 和事务内触发器；语义列发生实际 INSERT/DELETE/UPDATE 时同步递增。GET 校验触发器与列合同并读取 revision 向量，不扫描或 repr 全部事实行。不是 MAX(ts)、mtime、进程内计数或“缺失则 0”。

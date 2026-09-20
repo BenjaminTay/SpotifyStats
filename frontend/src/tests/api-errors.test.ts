@@ -33,6 +33,17 @@ describe('apiClient error responses', () => {
       expect(retry(2, new ApiError(500, 'error'))).toBe(false)
     }
   })
+  it('keeps ordinary 503 and 500 responses as API failures', async () => {
+    for (const status of [503, 500]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: 'service failed' }), { status })))
+      let error: unknown
+      try { await apiClient.get('/analysis/stats') } catch (caught) { error = caught }
+      expect(error).toBeInstanceOf(ApiError)
+      expect(error).not.toBeInstanceOf(SnapshotUnavailableError)
+      expect(error).toMatchObject({ status, detail: 'service failed' })
+    }
+  })
+
   it('serializes array parameters as repeated query keys', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', {
       status: 200,

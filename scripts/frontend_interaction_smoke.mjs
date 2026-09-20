@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import net from 'node:net'
+import { pathToFileURL } from 'node:url'
 import { findChrome } from './lib/chrome_executable.mjs'
 
 const DEFAULT_BASE_URL = 'http://localhost:5173'
@@ -49,6 +50,7 @@ function parseArgs(argv) {
     waitMs: DEFAULT_WAIT_MS,
     output: null,
     chrome: null,
+    screenshotDir: null,
   }
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -60,6 +62,7 @@ function parseArgs(argv) {
       args.scenarios = argv[++i].split(',').map((scenario) => scenario.trim()).filter(Boolean)
     } else if (arg === '--wait-ms') args.waitMs = Number(argv[++i])
     else if (arg === '--output') args.output = argv[++i]
+    else if (arg === '--screenshot-dir') args.screenshotDir = argv[++i]
     else if (arg === '--chrome') args.chrome = argv[++i]
     else if (arg === '--help' || arg === '-h') {
       printHelp()
@@ -90,6 +93,7 @@ Options:
   --scenario <a,b,c>      Comma-separated scenarios, default ${DEFAULT_SCENARIOS.join(',')}
   --wait-ms <ms>          Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}
   --output <path>         Write JSON results to a file
+  --screenshot-dir <dir>  Save final scenario screenshots to an existing directory
   --chrome <path>         Chrome/Chromium executable path
 
 Scenarios:
@@ -464,6 +468,9 @@ async function pageState(client) {
       scrollWidth: Math.max(document.body ? document.body.scrollWidth : 0, document.documentElement ? document.documentElement.scrollWidth : 0),
       viewportWidth: innerWidth,
       search: location.search,
+      alerts: Array.from(document.querySelectorAll('[role="alert"]')).filter(el => el.getClientRects().length).map(el => el.innerText),
+      skeletonCount: document.querySelectorAll('main [data-slot="skeleton"], main .mobile-state-loading').length,
+      statsKpiCount: document.querySelectorAll('main [aria-label="播放统计核心数据"]').length,
     }))();
   `)
 }
@@ -617,18 +624,35 @@ async function waitForCondition(check, timeoutMs, failureMessage) {
 function collectConsole(client) {
   const consoleEntries = []
   const pageErrors = []
+  const analysisResponses = []
 
   client.on('Runtime.exceptionThrown', (params) => {
     pageErrors.push(params.exceptionDetails?.text || params.exceptionDetails?.exception?.description || 'Runtime exception')
   })
   client.on('Runtime.consoleAPICalled', (params) => {
-    consoleEntries.push({ level: params.type, text: formatConsoleArgs(params.args || []) })
+    consoleEntries.push({ source: 'console-api', level: params.type, text: formatConsoleArgs(params.args || []) })
   })
   client.on('Log.entryAdded', (params) => {
-    if (params.entry) consoleEntries.push({ level: params.entry.level, text: params.entry.text || '' })
+    if (params.entry) consoleEntries.push({ ...params.entry, level: params.entry.level, text: params.entry.text || '' })
   })
 
-  return { consoleEntries, pageErrors }
+  client.on('Network.responseReceived', ({ requestId, response }) => {
+    if (new URL(response.url).pathname === '/api/analysis/stats') {
+      analysisResponses.push({ requestId, url: response.url, status: response.status, detail: null, complete: false })
+    }
+  })
+  client.on('Network.loadingFinished', ({ requestId }) => {
+    const response = analysisResponses.find(item => item.requestId === requestId)
+    if (!response) return
+    void client.send('Network.getResponseBody', { requestId }).then(result => {
+      const text = result.base64Encoded ? Buffer.from(result.body, 'base64').toString('utf8') : result.body
+      const body = JSON.parse(text)
+      response.detail = body.detail ?? null
+      response.snapshot = body.snapshot ?? null
+      response.complete = true
+    }).catch(error => { response.bodyError = String(error) })
+  })
+  return { consoleEntries, pageErrors, analysisResponses }
 }
 
 const SCENARIOS = {
@@ -783,17 +807,16 @@ const SCENARIOS = {
 
   'mobile-section-sheet': async ({ client, baseUrl, waitMs, viewportName }) => {
     if (viewportName !== 'mobile') throw new Error('mobile-section-sheet requires --viewport mobile')
-    await navigate(client, baseUrl, '/analysis/stats?period=year&period_value=2025', waitMs)
+    await navigate(client, baseUrl, '/analysis/stats?period=lifetime', waitMs)
     await waitForText(client, '播放统计', waitMs)
     await clickByAriaLabel(client, '切换播放分析栏目，当前播放统计', waitMs)
     await waitForSelector(client, '[data-mobile-sheet="section-switcher"]', waitMs)
     await clickTextWithin(client, '[data-mobile-sheet="section-switcher"]', '播放排行', waitMs)
     await waitForPath(client, '/analysis/charts', waitMs)
-    await waitForSearchParam(client, 'period', 'year', waitMs)
-    await waitForSearchParam(client, 'period_value', '2025', waitMs)
+    await waitForSearchParam(client, 'period', 'lifetime', waitMs)
   },
 
-  'mobile-time-filter': async ({ client, baseUrl, waitMs, viewportName }) => {
+  'mobile-time-filter': async ({ client, baseUrl, waitMs, viewportName, analysisResponses }) => {
     if (viewportName !== 'mobile') throw new Error('mobile-time-filter requires --viewport mobile')
     const dataWaitMs = Math.max(waitMs, MOBILE_DATA_WAIT_MS)
     await navigate(client, baseUrl, '/analysis/stats?period=lifetime', waitMs)
@@ -803,24 +826,69 @@ const SCENARIOS = {
     await clickTextWithin(client, '[data-mobile-sheet="time-range"]', '近 4 周', waitMs)
     await clickTextWithin(client, '[data-mobile-sheet="time-range"]', '应用时间范围', waitMs)
     await waitForSearchParam(client, 'period', 'last_4_weeks', waitMs)
+    await waitForCondition(async () => {
+      const state = await pageState(client)
+      return analysisResponses.some(response => isAnalysisUnavailable(response, state)) ? state : null
+    }, waitMs, 'Expected completed Analysis snapshot_unavailable response and visible unavailable UI')
   },
 }
 
-async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs, viewportName }) {
+export function isAnalysisUnavailable(response, state) {
+  const url = new URL(response.url)
+  const finalUrl = new URL(state.url)
+  return response.complete && response.status === 503
+    && url.origin === finalUrl.origin && url.pathname === '/api/analysis/stats'
+    && url.searchParams.get('period') === 'last_4_weeks'
+    && finalUrl.pathname === '/analysis/stats'
+    && finalUrl.searchParams.get('period') === 'last_4_weeks'
+    && response.detail?.error === 'snapshot_unavailable'
+    && response.detail?.status === 'unavailable'
+    && response.detail?.family === 'analysis_stats'
+    && typeof response.detail?.message === 'string' && response.detail.message.length > 0
+    && state.alerts?.some(text => text.includes('播放统计暂不可用') && text.includes(response.detail.message))
+    && state.skeletonCount === 0 && state.statsKpiCount === 0
+}
+
+export function classifyAnalysisConsole(scenario, entries, responses, state) {
+  const expectedUnavailable = []
+  const consoleErrors = []
+  for (const entry of entries.filter(item => ['error', 'assert'].includes(item.level))) {
+    // Only the browser's network log for the already-proven response qualifies.
+    // Runtime console.error/assert, other resources/statuses and warnings retain
+    // their original failure behavior. Request IDs also prevent URL-only matches.
+    const expected = scenario === 'mobile-time-filter' && entry.source === 'network'
+      && entry.level === 'error'
+      && entry.text === 'Failed to load resource: the server responded with a status of 503 (Service Unavailable)'
+      && responses.some(response => response.requestId && entry.networkRequestId === response.requestId
+        && entry.url === response.url && isAnalysisUnavailable(response, state))
+    ;(expected ? expectedUnavailable : consoleErrors).push(entry)
+  }
+  return { consoleErrors, expectedUnavailable }
+}
+
+async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs, viewportName, screenshotDir }) {
   const client = await makeClient(port)
-  const { consoleEntries, pageErrors } = collectConsole(client)
+  const { consoleEntries, pageErrors, analysisResponses } = collectConsole(client)
 
   try {
     await setupPage(client, baseUrl, apiBaseUrl, VIEWPORTS[viewportName])
-    await SCENARIOS[scenario]({ client, baseUrl, waitMs, viewportName })
-    const consoleErrors = consoleEntries.filter((entry) => ['error', 'assert'].includes(entry.level))
-    const consoleWarnings = consoleEntries.filter((entry) => ['warning', 'warn'].includes(entry.level))
+    await SCENARIOS[scenario]({ client, baseUrl, waitMs, viewportName, analysisResponses })
     const finalState = await pageState(client)
+    const { consoleErrors, expectedUnavailable } = classifyAnalysisConsole(scenario, consoleEntries, analysisResponses, finalState)
+    const consoleWarnings = consoleEntries.filter((entry) => ['warning', 'warn'].includes(entry.level))
     const scrollOverflow = Math.max(0, finalState.scrollWidth - finalState.viewportWidth)
 
+    if (screenshotDir) {
+      const { data } = await client.send('Page.captureScreenshot', { format: 'png' })
+      await writeFile(join(screenshotDir, `${scenario}-${viewportName}.png`), Buffer.from(data, 'base64'))
+    }
     return {
       scenario,
       viewport: viewportName,
+      finalState,
+      analysisResponses,
+      consoleEntries,
+      expectedUnavailable,
       ok: consoleErrors.length === 0 && consoleWarnings.length === 0 && pageErrors.length === 0 && scrollOverflow === 0,
       failures: [
         ...(consoleErrors.length ? [`${consoleErrors.length} console error(s)`] : []),
@@ -847,7 +915,9 @@ async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs, viewpo
       consoleWarningCount: 0,
       pageErrorCount: pageErrors.length,
       scrollOverflow: null,
-      consoleErrors: [],
+      consoleErrors: consoleEntries.filter(entry => ['error', 'assert'].includes(entry.level)),
+      consoleEntries,
+      analysisResponses,
       pageErrors: pageErrors.slice(0, 5),
     }
   } finally {
@@ -940,6 +1010,7 @@ async function main() {
         scenario,
         waitMs: args.waitMs,
         viewportName: args.viewport,
+        screenshotDir: args.screenshotDir,
       })
       results.push(result)
       process.stderr.write(`${result.ok ? 'PASS' : 'FAIL'}\n`)
@@ -958,7 +1029,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error)
-  process.exit(1)
-})
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error)
+    process.exit(1)
+  })
+}

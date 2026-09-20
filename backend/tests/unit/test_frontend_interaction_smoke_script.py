@@ -85,3 +85,40 @@ def test_frontend_interaction_smoke_script_can_rewrite_preview_api_requests():
     assert "Fetch.continueRequest" in source
     assert "'/api'" in source
     assert "'/covers'" in source
+
+
+def test_only_proven_analysis_network_unavailable_is_classified():
+    script = r"""
+import assert from 'node:assert/strict';
+import { classifyAnalysisConsole, isAnalysisUnavailable } from './scripts/frontend_interaction_smoke.mjs';
+const url = 'http://127.0.0.1:5173/api/analysis/stats?period=last_4_weeks';
+const response = {requestId:'r1',url,status:503,complete:true,detail:{error:'snapshot_unavailable',status:'unavailable',family:'analysis_stats',message:'unpublished'}};
+const state = {url:'http://127.0.0.1:5173/analysis/stats?period=last_4_weeks',alerts:['播放统计暂不可用 unpublished'],skeletonCount:0,statsKpiCount:0};
+const entry = {networkRequestId:'r1',url,source:'network',level:'error',text:'Failed to load resource: the server responded with a status of 503 (Service Unavailable)'};
+const classify = (e=entry,r=response,s=state,scenario='mobile-time-filter') => classifyAnalysisConsole(scenario,[e],[r],s);
+assert.equal(classify().expectedUnavailable.length,1);
+assert.equal(classify().consoleErrors.length,0);
+for (const invalid of [
+ {...response,status:500}, {...response,complete:false}, {...response,detail:{error:'ordinary_503'}},
+ {...response,detail:{...response.detail,family:'analysis_records'}},
+ {...response,url:url.replace('/analysis/stats','/other')},
+ {...response,url:url.replace('last_4_weeks','custom')},
+ {...response,requestId:'r2'},
+]) assert.equal(classify(entry,invalid).consoleErrors.length,1);
+for (const invalid of [
+ {...state,skeletonCount:1}, {...state,statsKpiCount:1}, {...state,alerts:[]},
+ {...state,alerts:['播放统计暂不可用 other message']},
+ {...state,url:state.url.replace('last_4_weeks','lifetime')},
+]) assert.equal(isAnalysisUnavailable(response,invalid),false);
+for (const invalid of [
+ {...entry,source:'console-api'}, {...entry,source:'javascript'}, {...entry,networkRequestId:undefined},
+ {...entry,url:url+'/other'}, {...entry,text:'JS exception'}, {...entry,level:'assert'},
+]) assert.equal(classify(invalid).consoleErrors.length,1);
+assert.equal(classify(entry,response,state,'mobile-section-sheet').consoleErrors.length,1);
+const extra = {...entry,networkRequestId:'other',url:url+'/other'};
+assert.equal(classifyAnalysisConsole('mobile-time-filter',[entry,extra],[response],state).consoleErrors.length,1);
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script], cwd=ROOT, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr

@@ -4,6 +4,24 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT_DIR"
 
+# Own every pytest/browser temporary file for an actual run. CLI-only queries
+# do not allocate storage. Preserve the host lock/report roots before TMPDIR changes.
+if [ "${SPOTIFY_STATS_STORAGE_GUARDED:-0}" != "1" ]; then
+  storage_query=0
+  for storage_arg in "$@"; do
+    case "$storage_arg" in --help|-h|--list-stages|--dry-run) storage_query=1 ;; esac
+  done
+  if [ "$storage_query" = "0" ]; then
+    storage_python=$(command -v python3 || command -v python)
+    FULLSTACK_RUN_ROOT=${FULLSTACK_RUN_ROOT:-${TMPDIR:-/tmp}/spotify-fullstack-verification}
+    FULLSTACK_LOCK_FILE=${FULLSTACK_LOCK_FILE:-${TMPDIR:-/tmp}/spotify-fullstack-verification.lock}
+    FULLSTACK_RUN_ID=${FULLSTACK_RUN_ID:-$("$storage_python" -c 'from datetime import datetime, timezone; from uuid import uuid4; print(datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ-")+uuid4().hex[:12])')}
+    export FULLSTACK_RUN_ROOT FULLSTACK_LOCK_FILE FULLSTACK_RUN_ID
+    exec "$storage_python" scripts/test_storage_guard.py \
+      --report "$FULLSTACK_RUN_ROOT/$FULLSTACK_RUN_ID/test-storage.json" -- sh "$0" "$@"
+  fi
+fi
+
 BACKEND_URL=${BACKEND_URL:-http://127.0.0.1:8000}
 FRONTEND_URL=${FRONTEND_URL:-http://localhost:5173}
 PREVIEW_URL=${PREVIEW_URL:-}
@@ -748,7 +766,9 @@ stage_quality() {
 }
 
 stage_backend() {
-  run pytest backend/tests/ -q || return $?
+  test_base=${SPOTIFY_STATS_TEST_BASETEMP:?missing owned pytest basetemp}
+  run pytest backend/tests/ -q --ignore=backend/tests/integration -x --basetemp "$test_base/seed" --junitxml "$RUN_DIR/backend-seed.xml" || return $?
+  run pytest -p backend.tests.real_data_integration backend/tests/integration -q -x --basetemp "$test_base/integration" --junitxml "$RUN_DIR/backend-integration.xml" || return $?
 }
 
 stage_api() {

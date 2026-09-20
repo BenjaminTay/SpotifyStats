@@ -1,6 +1,6 @@
 # 全栈验证与阶段执行规则
 
-> 更新日期：2026-09-19
+> 更新日期：2026-09-20
 > 状态：当前规则
 > 适用范围：本地 Phase 5、全栈门禁、局部排障和机器可读验收报告
 
@@ -19,7 +19,7 @@ sh scripts/fullstack_verification_check.sh \
 
 1. `preflight`：migration 注册表、脚本语法、全部 Markdown 链接、OpenAPI 静态覆盖和 `git diff --check`；
 2. `quality`：pre-commit；Phase 5 的文档审计、CI parity、Ruff、前端测试和 production build；
-3. `backend`：一次 `pytest backend/tests/ -q`，不再由 Phase 5 重跑 unit/contract；
+3. `backend`：两个独立 pytest 进程分别执行完整 seed suite（排除 integration 目录）和显式真实数据 integration；collection 不重不漏，合并为一个 backend 阶段，不再由 Phase 5 重跑 unit/contract；
 4. `api`：API smoke、boundary 和 首个观测请求 + 21 个同进程请求 benchmark（首个请求不推断为 cold）；
 5. `browser-routes`：完整路由与重点视口矩阵；
 6. `browser-interactions`：桌面/移动交互和图表交互；
@@ -91,15 +91,17 @@ sh scripts/fullstack_verification_check.sh \
   --frontend-url http://localhost:5173
 ```
 
-父门禁会把该路径同时传给 pytest 和两个进程内 API 探针。`api_smoke_probe.py`、`api_boundary_probe.py` 不得在已指定副本时重新打开默认数据库；否则探针触发的 schema/派生缓存写入会污染正式本地库。HTTP benchmark 与浏览器阶段仍以传入的 `backend-url` 为准，因此该后端进程也必须使用同一验收副本启动。
+父门禁把该路径用于显式真实数据 integration 插件和两个 API acceptance 探针；普通 seed suite 不受该环境变量影响。integration 进程最多建立一份 session 可写副本，Analysis 参数化 unit 测试始终复制小型 seed。`api_smoke_probe.py`、`api_boundary_probe.py` 不得在已指定副本时重新打开默认数据库；否则探针触发的 schema/派生缓存写入会污染正式本地库。HTTP benchmark 与浏览器阶段仍以传入的 `backend-url` 为准，因此该后端进程也必须使用同一验收副本启动。
 
 ## 4. 共享阶段排他
 
-`api`、浏览器阶段和显式 `optional` 性能探针使用主机级 Python `fcntl` 锁。设置 `SPOTIFY_STATS_TEST_SOURCE_DB` 时，`backend` 阶段也进入该排他区，避免多个 worktree 同时读取真实副本并争用派生构建、端口或 CPU。锁只覆盖共享/性能阶段，不覆盖廉价 preflight 和普通 quality。
+`api`、浏览器阶段和显式 `optional` 性能探针使用主机级 Python `fcntl` 锁。设置 `SPOTIFY_STATS_TEST_SOURCE_DB` 时，`backend` 阶段也保留该排他区，避免多个 worktree 的测试与真实验收争用 CPU。锁只覆盖共享/性能阶段，不覆盖廉价 preflight 和普通 quality。
 
 默认锁为 `/tmp/spotify-fullstack-verification.lock`。锁持有者元数据记录 run ID、父 PID、holder PID、worktree、Git SHA、UTC 开始时间和当前阶段。竞争者不会继续执行并制造性能 `FAIL`，而是将所见 owner 写入自己的 run 目录并把阶段和整体状态标为 `BLOCKED`。进程正常退出、失败或收到中断时都会释放锁；`fcntl` 还保证 holder 异常退出后由操作系统回收锁。
 
 如需隔离测试，可用 `FULLSTACK_LOCK_FILE`、`FULLSTACK_LOCK_METADATA_FILE` 和 `FULLSTACK_RUN_ROOT` 改写位置，但正式证据应使用默认主机级位置。
+
+实际运行由存储保护进程创建独立 TMPDIR 与 pytest basetemp，成功/失败均清理；12 GiB 最低可用空间、2 GiB 本轮临时文件上限及证据字段见[后端测试隔离](backend-test-isolation.md)。数据副本和报告不放进待清理目录。存储保护触发后停止本轮，不自动重试。
 
 ## 5. Phase 5 边界
 
@@ -116,6 +118,14 @@ sh scripts/fullstack_verification_check.sh \
 - 本地门禁不代表真实部署、远程生产、备份或发布通过。
 - 阶段耗时必须引用当前 JSON；历史报告中的数字只代表当时快照。
 
+
+## Analysis 移动交互的 unavailable 验收
+
+`mobile-section-sheet` 使用已发布的 lifetime 验证栏目切换并保留时间 Query；year/period_value 的保留继续由 `mobile-shell.test.tsx` 的实际栏目点击测试覆盖。
+
+`mobile-time-filter` 必须从 lifetime 真实点击“近 4 周”并应用，最终 URL 为 `period=last_4_weeks`。当前非 lifetime 合同要求结构化 503 `snapshot_unavailable`；脚本必须同时核实已完成响应的 error/status/family/message、可见“播放统计暂不可用”和后端原始消息、无加载骨架与统计 KPI。只有这个场景、这个已核实请求 ID 和 URL 对应的浏览器原生 network 503 日志可记为 `expectedUnavailable`，原始日志与 HTTP detail 仍保留。普通 503/500、其他资源失败、应用 console.error/assert、warning 和 JS/page error 继续失败。
+
+这是错误状态消费的交互验收，不把 unavailable 计为 ready 或成功 API 性能样本，也不改变路由 core-ready 门槛。GET 不构建、不写入、不排队；测试不自动发布非 lifetime 快照。`--screenshot-dir` 可保存每个交互场景结束时的截图。
 
 ## 7. 统一性能测量合同（阶段 0）
 

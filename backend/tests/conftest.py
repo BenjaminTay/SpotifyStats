@@ -1,8 +1,8 @@
 """Shared fixtures for backend tests.
 
 Database and derived paths are isolated before application import. By default
-tests use the portable seed; production-shaped tests may explicitly supply an
-Online Backup outside repository data/. Contract tests can still replace the
+tests use the portable seed; the explicit integration CLI plugin selects one
+session copy before this module loads. Contract tests can still replace the
 session database with function-scoped copies.
 """
 
@@ -83,8 +83,7 @@ def client():
     Keep this fixture lightweight so focused selections like
     ``pytest -k Wrapped`` do not pay Billboard warmup costs. Tests that need
     expensive shared data should request their own warming fixture explicitly.
-    The integration suite intentionally reads the real database, so derived
-    search invalidation and rebuild jobs must remain disabled here as well.
+    Derived search invalidation and rebuild jobs remain disabled here as well.
     """
     with (
         patch("backend.services.music_search_maintenance_service.mark_music_search_for_rebuild"),

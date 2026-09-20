@@ -140,9 +140,11 @@ class TestPathConnection(sqlite3.Connection):
         return super().cursor(factory)
 
 
-def install_test_paths():
+def install_test_paths(*, source=None):
     global SESSION_ROOT
     if SESSION_ROOT is not None:
+        if source is not None:
+            raise RuntimeError("Real integration source must be selected before test bootstrap")
         return SESSION_ROOT
     # A pytest-owned process directory is available during conftest import,
     # earlier than tmp_path_factory/session fixtures or test-module imports.
@@ -197,10 +199,12 @@ def install_test_paths():
         if os.environ.get(key):
             require_test_path(os.environ[key])
         os.environ[key] = str(path)
-    source = resolved_path(os.environ.get("SPOTIFY_STATS_TEST_SOURCE_DB"))
-    if source is None:
-        source = ROOT / "backend/tests/fixtures/seed.db"
-    require_test_path(source)
+    # Only the command-level integration plugin may provide a real source.
+    # SOURCE_DB alone never changes the ordinary seed suite.
+    require_test_path(os.environ.get("SPOTIFY_STATS_TEST_SOURCE_DB"))
+    source = (
+        require_test_path(source) if source is not None else ROOT / "backend/tests/fixtures/seed.db"
+    )
     database = root / "spotify_stats-test.db"
     immutable = "&immutable=1" if source == ROOT / "backend/tests/fixtures/seed.db" else ""
     with sqlite3.connect(f"{source.as_uri()}?mode=ro{immutable}", uri=True) as src:

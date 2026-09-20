@@ -14,11 +14,27 @@
 | Home JSON / LKG | 临时 `home/` |
 | 封面读写 | 临时数据库旁的 `covers/` |
 
-默认数据来自只读的受控 seed，经 SQLite Online Backup 复制；保留 integrity_check。真实分布测试须显式提供位于仓库 `data/` **之外**的 Online Backup：
+unit、contract 和其他普通测试固定从只读 tracked seed 初始化，经 SQLite Online Backup 复制并执行 integrity_check。单独设置 `SPOTIFY_STATS_TEST_SOURCE_DB` 不会改变这些测试的数据源。
+
+`backend/tests/integration` 保留真实数据分布语义，必须在独立 pytest 进程中通过命令级插件显式 opt-in。插件在父 conftest/应用导入之前选定源，只接受 integration 目录内的测试目标；缺少源或混入 unit/contract 路径直接拒绝。进程从既有、正式 `data/` 外的 Online Backup 创建**一个 session-scoped 可写副本**，所有 integration case 共享，不按 case 再复制：
 
 ```sh
-SPOTIFY_STATS_TEST_SOURCE_DB=/tmp/my-test-copy.db .venv/bin/pytest backend/tests/integration/
+SPOTIFY_STATS_TEST_SOURCE_DB=/tmp/acceptance/data/main.db \
+  .venv/bin/pytest -p backend.tests.real_data_integration backend/tests/integration -q
 ```
+
+API acceptance 探针继续显式使用同一个既有工作副本：
+
+```sh
+python scripts/api_smoke_probe.py --db-path /tmp/acceptance/data/main.db
+python scripts/api_boundary_probe.py --db-path /tmp/acceptance/data/main.db
+```
+
+fullstack 的 backend 阶段先执行 `backend/tests --ignore=backend/tests/integration`，再执行上述真实 integration 命令；两个 pytest 进程有不同的 run-owned basetemp，并分别保存 backend-seed.xml / backend-integration.xml 的数量与耗时。任一失败则统一 backend FAIL。两部分 collection 并集必须等于原始完整集合、交集为空，不以 marker 过滤遗漏测试。缺少明确真实源不能把 integration 静默改成 seed 或 skip。
+
+Analysis 参数化测试直接复制小型 immutable seed，保留每个写测试的事务/revision 隔离，不复制 session 数据库。backup 源/目标连接显式关闭；每个 case 的自有目录在成功或失败时删除主库、WAL/SHM 和快照。
+
+fullstack 通过 `scripts/test_storage_guard.py` 创建独立 TMPDIR 和 pytest `--basetemp`，成功、命令失败或中断均停止自有子进程并清理自有临时目录。报告保留在原 run 目录。每 200ms 检查逻辑文件字节总量和磁盘可用空间：本轮临时文件超过 2 GiB 或可用空间低于 12 GiB，立即终止，不自动重试。`test-storage.json` 保存峰值、全部采样、退出原因和清理结果；采样峰值不代表采样间隔内的绝对瞬时峰值。默认主机锁与证据目录在改变 TMPDIR 前固定，不因隔离而绕过并发锁。pytest retention 不是本修复的依据。
 
 不再默认读取正式主库。上述六类 `SPOTIFY_STATS_*_CACHE_PATH` 无需运行者 export；若 caller 将它们或测试源设为正式 `data/`，bootstrap 直接失败。安全的既有导出值也会被当前 session 临时目标替代；测试内仍可 monkeypatch 到自己的 `tmp_path`。
 

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -125,6 +125,19 @@ describe('mobile app shell', () => {
     expect(manageLink).toHaveAttribute('href', expect.stringContaining('track_id='))
     expect(manageLink).toHaveAttribute('href', expect.stringContaining('track_id=4455'))
     expect(manageLink).toHaveAttribute('href', expect.stringContaining('return_to=%2Fmusic%2Ftracks%2F4455%3Ftab%3Doverview'))
+  })
+
+  it('preserves the explicit year query when switching from stats to charts', () => {
+    function Location() {
+      const location = useLocation()
+      return <output data-testid="analysis-location">{location.pathname}{location.search}</output>
+    }
+    render(<MemoryRouter initialEntries={['/analysis/stats?period=year&period_value=2025&metric=hours']}>
+      <MobileTopBar /><Location />
+    </MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: /切换播放分析栏目/ }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: '播放分析栏目' })).getByRole('link', { name: /播放排行/ }))
+    expect(screen.getByTestId('analysis-location')).toHaveTextContent('/analysis/charts?period=year&period_value=2025')
   })
 
   it('opens the analysis section sheet, preserves time state, and restores focus on Escape', async () => {

@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import Barrier
 
 import pytest
@@ -20,18 +22,32 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
-def isolated(isolated_test_database, monkeypatch, tmp_path):
-    use_seed_db = str(tmp_path / "main.db")
-    with sqlite3.connect(isolated_test_database) as src, sqlite3.connect(use_seed_db) as dst:
-        src.backup(dst)
-    monkeypatch.setattr(db, "DB_PATH", use_seed_db)
-    from backend.core.migrations import run_migrations
+def isolated(monkeypatch, tmp_path):
+    # Each case mutates facts/revisions; copy the small immutable seed directly,
+    # never the session DB (which historically inherited the acceptance source).
+    seed = Path(__file__).resolve().parents[1] / "fixtures" / "seed.db"
+    with TemporaryDirectory(prefix="analysis-", dir=tmp_path) as owned:
+        root = Path(owned)
+        use_seed_db = str(root / "main.db")
+        with (
+            closing(sqlite3.connect(f"{seed.as_uri()}?mode=ro&immutable=1", uri=True)) as src,
+            closing(sqlite3.connect(use_seed_db)) as dst,
+        ):
+            src.backup(dst)
+        monkeypatch.setattr(db, "DB_PATH", use_seed_db)
+        from backend.core.migrations import run_migrations
 
-    run_migrations()
-    monkeypatch.setattr(config, "SPOTIFY_STATS_ANALYSIS_CACHE_PATH", str(tmp_path / "analysis.db"))
-    invalidate_all()
-    yield Path(use_seed_db), tmp_path
-    invalidate_all()
+        try:
+            run_migrations()
+            monkeypatch.setattr(
+                config, "SPOTIFY_STATS_ANALYSIS_CACHE_PATH", str(root / "analysis.db")
+            )
+            invalidate_all()
+            yield Path(use_seed_db), root
+        finally:
+            invalidate_all()
+        # TemporaryDirectory removes this case's DB/WAL/SHM and publications,
+        # including on assertion failure; other tests' files are never removed.
 
 
 def context(family):
