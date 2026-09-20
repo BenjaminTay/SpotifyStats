@@ -20,22 +20,37 @@ class TestPlayFilterPropagation:
     def test_artist_language_coverage_applies_dynamic_threshold_and_merge_gap(
         self, client, monkeypatch
     ):
-        from backend.api import artist_language_metadata
+        from backend.core.db import get_db
+        from backend.domains.metadata import governance_facts
+        from backend.domains.metadata.governance_revision import install_revision_tracking
+        from backend.services.governance_snapshot_service import ensure
 
         captured: list[dict[str, object]] = []
-        original = artist_language_metadata.load_plays
+        original = governance_facts.build_facts
 
-        def recording_load_plays(conn, **kwargs):
-            captured.append(kwargs)
-            return original(conn, **kwargs)
+        def recording_build_facts(conn, params):
+            captured.append(params)
+            return original(conn, params)
 
-        monkeypatch.setattr(artist_language_metadata, "load_plays", recording_load_plays)
+        monkeypatch.setattr(governance_facts, "build_facts", recording_build_facts)
         params = {
             "min_ms": 30000,
             "music_only": True,
             "merge_enabled": True,
             "max_merge_gap_minutes": 37,
         }
+        conn = get_db(readonly=False)
+        try:
+            with conn:
+                install_revision_tracking(conn)
+            for dynamic_threshold in (False, True):
+                ensure(
+                    conn,
+                    {**params, "dynamic_threshold": dynamic_threshold},
+                    families=["language_coverage"],
+                )
+        finally:
+            conn.close()
         static = client.get(
             "/api/metadata/artist-languages/coverage",
             params={**params, "dynamic_threshold": False},

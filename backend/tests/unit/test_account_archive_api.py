@@ -44,7 +44,7 @@ def test_archive_overview_endpoint_uses_strict_response_contract(monkeypatch) ->
         },
         "featured_items": [],
     }
-    monkeypatch.setattr(account, "get_archive_overview", lambda _conn: payload)
+    monkeypatch.setattr(account, "read_archive_snapshot", lambda _conn, _family: payload)
     test_app = FastAPI()
     test_app.include_router(account.router, prefix="/api")
     test_app.dependency_overrides[get_conn] = lambda: object()
@@ -52,6 +52,6 @@ def test_archive_overview_endpoint_uses_strict_response_contract(monkeypatch) ->
     response = TestClient(test_app).get("/api/account/archive-overview")
 
     assert response.status_code == 200
-    assert response.json() == payload
+    assert response.json() == {**payload, "snapshot": None}
     route_schema = test_app.openapi()["paths"]["/api/account/archive-overview"]["get"]
     assert "schema" in route_schema["responses"]["200"]["content"]["application/json"]

@@ -27,7 +27,8 @@ export function CommunityExperience() {
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const chartParams = useCommunityChartParams()
+  const chart = useCommunityChartParams()
+  const chartParams = chart.params
   const viewportMode = useViewportMode()
   const isPhone = viewportMode === 'phone'
   const isCompact = viewportMode === 'compact'
@@ -59,7 +60,7 @@ export function CommunityExperience() {
     return f
   }, [activeTab, chartParams, period, searchQuery])
 
-  const { posts, meta, loading, loadingMore, error, refetch, hasMore, loadMore } = useCommunityFeed(filters)
+  const { posts, meta, loading: feedLoading, loadingMore, error: feedError, refetch: feedRefetch, hasMore, loadMore } = useCommunityFeed(filters, chart.ready)
 
   // Trending data from server — independent of pagination
   const trendingParams = useMemo(() => {
@@ -68,7 +69,10 @@ export function CommunityExperience() {
     if (period.date_to) params.date_to = period.date_to
     return params
   }, [chartParams, period])
-  const { trending } = useCommunityTrending(trendingParams)
+  const { trending } = useCommunityTrending(trendingParams, chart.ready)
+  const loading = chart.loading || (!chart.ready && !chart.error) || feedLoading
+  const error = chart.error || feedError
+  const refetch = chart.error ? chart.refetch : feedRefetch
 
   const handleTabChange = useCallback((tab: FeedTab) => {
     cachedTab = tab
@@ -178,7 +182,7 @@ export function CommunityExperience() {
                   <p className="text-[13px] opacity-60">{error}</p>
                   <button
                     type="button"
-                    className="mt-3 px-5 py-1.5 text-[14px] font-medium rounded-full bg-accent-foreground text-primary-foreground transition-opacity hover:opacity-85"
+                    className="community-touch-action mt-3 px-5 py-1.5 text-[14px] font-medium rounded-full bg-accent-foreground text-primary-foreground transition-opacity hover:opacity-85"
                     onClick={() => refetch()}
                   >
                     Retry

@@ -58,7 +58,7 @@ from backend.services.import_plan_service import (
 router = APIRouter(prefix="/import", tags=["Import"])
 
 # In-memory job store (single-user local app, no persistence needed)
-_jobs = {}
+_jobs: dict[str, dict] = {}
 _import_lock = threading.Lock()
 
 
@@ -78,10 +78,23 @@ def get_import_preflight(
 @router.get("/health", response_model=ImportHealthResponse)
 def get_import_health(conn=Depends(get_conn)) -> dict:
     """Return raw, relationship, metadata, and derived-data health."""
-    return {
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-        **build_import_health_report(conn),
-    }
+    from backend.services.governance_snapshot_service import read
+
+    report = read(conn, "import_health")
+    latest = next(reversed(_jobs.values()), None) if _jobs else None
+    if latest is not None:
+        report["runtime"]["import_job"] = {
+            key: latest.get(key) for key in ("job_id", "status", "message", "progress_pct")
+        }
+        if latest.get("status") in {"error", "blocked"}:
+            report["runtime"]["errors"].append(latest.get("message") or "导入任务失败")
+            report["status"] = "failed"
+            report["summary"] = {
+                **report["summary"],
+                "safe_to_use": False,
+                "headline": "当前导入任务失败，请检查任务错误",
+            }
+    return report
 
 
 @router.post(

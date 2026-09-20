@@ -93,6 +93,10 @@ def artist_language_db(tmp_path, monkeypatch) -> Iterator[str]:
                      'Reviewed fixture evidence')"""
     )
     conn.commit()
+    from backend.services.governance_snapshot_service import ensure
+
+    ensure(conn, families=["language_coverage"])
+    ensure(conn, {"max_merge_gap_minutes": 45}, families=["language_coverage"])
     conn.close()
     db_mod._load_plays_cached.cache_clear()
 

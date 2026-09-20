@@ -116,6 +116,9 @@ class ImportHealthIssue(BaseModel):
 
 
 class ImportHealthResponse(BaseModel):
+    snapshot: dict | None = None
+    runtime: dict | None = None
+
     status: ImportStatus
     checked_at: str
     database: dict[str, Any] = Field(default_factory=dict)

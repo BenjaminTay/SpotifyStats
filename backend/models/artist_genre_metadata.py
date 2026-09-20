@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field
 
 
 class ArtistGenreCoverageResponse(BaseModel):
+    snapshot: dict | None = None
+    checked_at: str | None = None
+
     known_hours: float
     unknown_hours: float
     known_pct: float
@@ -32,6 +35,9 @@ class ArtistGenreAxisGapItem(BaseModel):
 
 
 class ArtistGenreAxisGapResponse(BaseModel):
+    snapshot: dict | None = None
+    checked_at: str | None = None
+
     axis: str
     total: int
     unknown_hours: float
@@ -101,6 +107,9 @@ class ArtistGenrePassthroughItem(BaseModel):
 
 
 class ArtistGenreTaxonomyResponse(BaseModel):
+    snapshot: dict | None = None
+    checked_at: str | None = None
+
     display_taxonomy_version: str
     raw_genre_count: int
     canonical_genre_count: int

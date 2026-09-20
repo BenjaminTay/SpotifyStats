@@ -37,6 +37,14 @@ public Home 跳过 private 的计算 LRU，只读取当前 exact JSON 或同语�
 
 Home target_revision 为现有 exact 文件名摘要，覆盖过滤 context、database revision、facts version、Billboard `full_data` 持久发布的 cache-key / 内容摘要和 yearly cache state。不使用进程内 preview 计数；相同来源与配置在重启后仍命中 exact。新发布同时保存这个来源；历史 LKG 没有记录来源时 source_revision=null，不冒充当前来源。语义 LKG key、os.replace 发布与 private warmup/维护路径保留。
 
+## 艺人排名与年度维护状态
+
+默认 lifetime 艺人详情的 `include_rank_context=true` 复用私有维护发布的全局排名，使用既有 Analysis sidecar 的 `artist_rank_context` family。发布包含三个既有时间范围的竞赛排名、Top 250 统计和最近 50 个逻辑事件的艺人计数。实体自己的事实按艺人范围装载；基础 stats 仍由消费者显式传 `include_rank_context=false`。
+
+排名发布缺失或来源 revision 漂移时返回 503，不把旧排名拼到新实体事实中，不在 GET 上重建。应用启动和已提交的相关变更由私有 JobQueue 维护默认发布；过滤参数、数据库身份和 builder version 参与 key。
+
+年度 generation-status 优先只读查询已发布 artifact 的 preparation-key / cache-key 元数据，不读取完整 artifact。私有年度构建同步保存 preparation-key，来源、语言或配置变化后不能借用旧 key；旧 sidecar 的元数据只能由私有维护补齐。
+
 ## 前端与验证口径
 
 前端将 snapshot_unavailable 解析为独立错误，展示“当前筛选的数据尚未发布”，不自动重试该错误；用户可以手动刷新。其他错误原有重试次数不变。有观察者的 Home/Billboard Query 命中 LKG 时展示上次发布提示并保留事实，不转为空态。
@@ -44,3 +52,7 @@ Home target_revision 为现有 exact 文件名摘要，覆盖过滤 context、da
 零写入验证包括 builder/writer/排队 sentinel、主数据库及 Billboard DB/WAL 字节、Home JSON 内容/mtime、相关表和队列对比。SQLite WAL 的 `-shm` read-mark 可能由只读连接更新，这是锁协调，**不宣称操作系统层完全没有共享内存写入**。保留正常只读 WAL 可见性；不能用 immutable 连接忽略已提交 WAL 来伪造零变化。
 
 所有验证在 seed 或 Online Backup 副本进行；生产状态需独立验证。本合同不扩展为全应用所有 GET 的无计算保证，也不改变 L2/L3、播放次数与双轨时长规则。
+
+## Community
+
+Community 三个 GET 的只读发布、LKG、unavailable、分页及私有维护规则见 [Community 持久读模型](community-snapshots.md)。公开请求不构建、不发布、不排队。

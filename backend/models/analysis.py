@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from backend.models.snapshot import SnapshotReadState
 from backend.models.wrapped import ConsumerTasteProfile
 
 # ── Sub-structures for /analysis/overview ──
@@ -156,7 +157,13 @@ class AnalysisStatsBehaviorSummary(BaseModel):
     top_end_reason: str
 
 
+class AnalysisSnapshotReadState(SnapshotReadState):
+    builder_version: str
+    request_key: str
+
+
 class AnalysisStatsResponse(BaseModel):
+    snapshot: AnalysisSnapshotReadState | None = None
     period: AnalysisResolvedPeriod
     summary: AnalysisStatsSummary
     daily_metrics: AnalysisDailyMetrics
@@ -362,6 +369,7 @@ class PlaybackRecordsMeta(BaseModel):
 
 
 class PlaybackRecordsResponse(BaseModel):
+    snapshot: AnalysisSnapshotReadState | None = None
     period: AnalysisResolvedPeriod
     meta: PlaybackRecordsMeta
     records: PlaybackRecordsData

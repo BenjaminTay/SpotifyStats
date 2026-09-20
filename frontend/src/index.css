@@ -4737,6 +4737,18 @@
     min-height: 44px;
   }
 
+  .community-avatar-action {
+    display: grid;
+    min-width: 44px;
+    min-height: 44px;
+    place-items: center;
+  }
+
+  .community-touch-action {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
   .mobile-community-post {
     padding-inline: 2px;
     gap: 10px;

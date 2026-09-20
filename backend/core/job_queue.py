@@ -415,10 +415,70 @@ class JobQueue:
                 "playback_import_maintenance",
                 "music_search_snapshot_rebuild",
                 "billboard_snapshot_rebuild",
+                "analysis_snapshot_rebuild",
+                "community_snapshot_rebuild",
+                "account_archive_snapshot_rebuild",
+                "governance_snapshot_rebuild",
             }
             with self._cpu_heavy_gate if cpu_heavy else nullcontext():
                 handler(job)
             self._update_db_status(job.job_id, "done")
+            if job.job_type in {
+                "playback_import_maintenance",
+                "artist_identity_rebuild",
+                "track_credit_rebuild",
+            }:
+                from backend.services.analysis_snapshot_service import enqueue_defaults
+
+                try:
+                    enqueue_defaults(job.job_type, queue=self)
+                except Exception:
+                    logger.exception(
+                        "Analysis maintenance scheduling failed after %s", job.job_type
+                    )
+            if job.job_type in {
+                "playback_import_maintenance",
+                "artist_identity_rebuild",
+                "track_credit_rebuild",
+                "billboard_snapshot_rebuild",
+            }:
+                from backend.services.community_snapshot_service import (
+                    enqueue_defaults as enqueue_community,
+                )
+
+                try:
+                    enqueue_community(job.job_type, queue=self)
+                except Exception:
+                    logger.exception(
+                        "Community maintenance scheduling failed after %s", job.job_type
+                    )
+            if job.job_type in {
+                "playback_import_maintenance",
+                "artist_identity_rebuild",
+                "track_credit_rebuild",
+            }:
+                from backend.services.account_archive_snapshot_service import (
+                    enqueue_defaults as enqueue_archive,
+                )
+
+                try:
+                    enqueue_archive(job.job_type, queue=self)
+                except Exception:
+                    logger.exception("Archive maintenance scheduling failed after %s", job.job_type)
+            if job.job_type in {
+                "playback_import_maintenance",
+                "artist_identity_rebuild",
+                "track_credit_rebuild",
+                "billboard_snapshot_rebuild",
+            }:
+                from backend.services.governance_snapshot_service import (
+                    enqueue_defaults as enqueue_governance,
+                )
+
+                try:
+                    enqueue_governance(job.job_type, queue=self)
+                except Exception:
+                    logger.exception("Governance scheduling failed after %s", job.job_type)
             return True
         except Exception as exc:
             logger.exception("Job %s (%s) failed.", job.job_id, job.job_type)

@@ -1,4 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { queryKeys } from '@/api/query-keys'
+import { useDeferredInView } from '@/hooks/useDeferredInView'
 import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, ChevronRight, Search, CalendarIcon, X } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
@@ -14,6 +17,7 @@ import { recentPlayRowKey } from './recentPlaysUtils'
 
 const PAGE_SIZE = 50
 const EMPTY_RECENT_ROWS: RecentPlayRow[] = []
+const EMPTY_PLAY_DATES: PlayDateEntry[] = []
 
 function formatMinutes(n: number): string {
   const totalSec = Math.round(n * 3600)
@@ -46,6 +50,8 @@ interface RecentPlaysSectionProps {
   kind: 'track' | 'album' | 'artist' | 'global'
   entityId?: string
   artistName?: string
+  albumProjectId?: number
+  mergeLevel?: number
   filters: AnalysisFilters
   apiParams: { period: AnalysisPeriod; start_date?: string; end_date?: string }
   fetchPage: (page: number, limit: number, search?: string, date?: string) => Promise<EntityPlaysResponse>
@@ -54,10 +60,11 @@ interface RecentPlaysSectionProps {
 }
 
 export function RecentPlaysSection(props: RecentPlaysSectionProps) {
-  return <RecentPlaysContent key={JSON.stringify(props.apiParams)} {...props} />
+  return <RecentPlaysContent key={JSON.stringify([props.kind, props.entityId, props.artistName, props.albumProjectId, props.mergeLevel, props.filters, props.apiParams])} {...props} />
 }
 
 function RecentPlaysContent({
+  kind, entityId, artistName, albumProjectId, mergeLevel, filters,
   apiParams,
   fetchPage,
   fetchPlayDates,
@@ -76,47 +83,26 @@ function RecentPlaysContent({
     dates: new Set(),
   })
   const [calendarOpen, setCalendarOpen] = useState(false)
-  const [playDates, setPlayDates] = useState<PlayDateEntry[]>([])
-  const abortRef = useRef(0)
-
-  const paramsKey = JSON.stringify(apiParams)
-  const requestKey = `${paramsKey}:${page}:${debouncedSearch}:${selectedDate ?? ''}`
-  const [resultState, setResultState] = useState<{
-    key: string
-    rows: RecentPlayRow[]
-    total: number
-  }>({ key: '', rows: [], total: 0 })
-  const isCurrentResult = resultState.key === requestKey
-  const rows = isCurrentResult ? resultState.rows : EMPTY_RECENT_ROWS
-  const total = isCurrentResult ? resultState.total : 0
-  const loading = !isCurrentResult
+  const [calendarRequested, setCalendarRequested] = useState(false)
+  const context = { kind, entityId: albumProjectId != null ? `album-project:${albumProjectId}` : entityId,
+    artistName, albumProjectId, mergeLevel, filters, ...apiParams }
+  const { ref: regionRef, ready: regionReady } = useDeferredInView(JSON.stringify(context))
+  const pageQuery = useQuery({
+    queryKey: queryKeys.recentPlays.page(context, page, PAGE_SIZE, debouncedSearch, selectedDate),
+    queryFn: () => fetchPage(page, PAGE_SIZE, debouncedSearch || undefined, selectedDate || undefined),
+    enabled: regionReady,
+  })
+  const datesQuery = useQuery({
+    queryKey: queryKeys.recentPlays.dates(context),
+    queryFn: fetchPlayDates,
+    enabled: calendarRequested,
+  })
+  const playDates = datesQuery.data ?? EMPTY_PLAY_DATES
+  const rows = pageQuery.data?.rows ?? EMPTY_RECENT_ROWS
+  const total = pageQuery.data?.total ?? 0
+  const loading = pageQuery.isPending
   const defaultExpandedDates = useMemo(() => new Set(rows.map((row) => row.date)), [rows])
   const expandedDates = expandedState.rows === rows ? expandedState.dates : defaultExpandedDates
-
-  // Fetch play dates
-  useEffect(() => {
-    let active = true
-    fetchPlayDates().then((dates) => {
-      if (active) setPlayDates(dates)
-    })
-    return () => { active = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paramsKey])
-
-  // Fetch page data
-  useEffect(() => {
-    let active = true
-    const token = ++abortRef.current
-    fetchPage(page, PAGE_SIZE, debouncedSearch || undefined, selectedDate || undefined).then((result) => {
-      if (!active || token !== abortRef.current) return
-      setResultState({ key: requestKey, rows: result.rows, total: result.total })
-    }).catch(() => {
-      if (!active || token !== abortRef.current) return
-      setResultState({ key: requestKey, rows: [], total: 0 })
-    })
-    return () => { active = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestKey])
 
   // Debounced search
   useEffect(() => {
@@ -196,7 +182,7 @@ function RecentPlaysContent({
   const calendarDates = useMemo(() => playDates.map((d) => parseISO(d.date)), [playDates])
 
   return (
-    <div className="space-y-4">
+    <div ref={regionRef} data-deferred="plays" className="space-y-4">
       {/* Toolbar: Search + Calendar */}
       <div className={cn('flex items-center gap-2', mobile && 'mobile-recent-toolbar')}>
         <div className="relative flex-1">
@@ -212,7 +198,10 @@ function RecentPlaysContent({
             )}
           />
         </div>
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+        <Popover open={calendarOpen} onOpenChange={(open) => {
+          setCalendarOpen(open)
+          if (open) setCalendarRequested(true)
+        }}>
           <PopoverTrigger asChild>
             <button
               className={cn(
@@ -228,6 +217,8 @@ function RecentPlaysContent({
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0 bg-card/80 backdrop-blur-xl border-border/60 shadow-xl" side="bottom" align="end" sideOffset={8}>
+            {datesQuery.isPending ? <p role="status" className="p-3 text-sm">日历加载中...</p>
+              : datesQuery.isError ? <p role="alert" className="p-3 text-sm">日历加载失败 <button onClick={() => void datesQuery.refetch()}>重试</button></p> : null}
             <Calendar
               month={selectedDate ? parseISO(selectedDate) : undefined}
               endMonth={new Date()}
@@ -277,7 +268,9 @@ function RecentPlaysContent({
       </div>
 
       {/* Content */}
-      {loading ? (
+      {pageQuery.isError ? (
+        <p role="alert" className="py-10 text-center text-sm">播放记录加载失败 <button onClick={() => void pageQuery.refetch()}>重试</button></p>
+      ) : loading ? (
         mobile ? <MobileStatePanel variant="loading" compact /> : <p className="py-10 text-center font-sans text-[13px] text-muted-foreground">加载中...</p>
       ) : sortedGroups.length === 0 ? (
         mobile

@@ -53,7 +53,7 @@ def _daily_binge(frame, group_col, name_col, artist_col, entity_type="track"):
 
 def _daily_duration(frame, group_col, name_col, artist_col, entity_type="track"):
     """單日聆聽時長：單日內某 entity 累計播放時長最高。"""
-    duration = records_duration_frame(frame)
+    duration = records_duration_frame(frame, copy=False)
     if frame.empty and duration.empty:
         return pd.DataFrame()
     gb_cols = safe_groupby_cols(["ts_date"], group_col, name_col, artist_col or name_col)
@@ -95,7 +95,12 @@ def _consecutive_marathon(frame, group_col, name_col, artist_col, entity_type="t
     """連續播放馬拉松：播放序列中連續出現同一 entity 的最長 run。"""
     if frame.empty:
         return pd.DataFrame()
-    df = frame.copy()
+    columns = list(
+        dict.fromkeys(
+            [group_col, name_col, artist_col, "play_id", "ms_played", "ts", "_artist_event_id"]
+        )
+    )
+    df = frame[[column for column in columns if column in frame.columns]].copy()
     df["_entity"] = df[group_col].astype(str)
 
     if entity_type == "artist" and "_artist_event_id" in df.columns:
@@ -216,7 +221,7 @@ def _top_daily_entity(frame, group_col, name_col, artist_col=None, prefix="track
 
 def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_frame=None):
     """單日總量紀錄。"""
-    duration = records_duration_frame(event_frame)
+    duration = records_duration_frame(event_frame, copy=False)
     if event_frame.empty and duration.empty:
         return pd.DataFrame()
 
@@ -340,7 +345,7 @@ def _daily_total_record(event_frame, track_frame=None, album_frame=None, artist_
 
 def _build_entity_records(frame, group_col, name_col, artist_col, entity_type):
     """為一個 entity type 構建三種記錄。"""
-    if frame.empty and records_duration_frame(frame).empty:
+    if frame.empty and records_duration_frame(frame, copy=False).empty:
         return {
             "daily_binge": pd.DataFrame(),
             "daily_duration": pd.DataFrame(),
@@ -386,7 +391,7 @@ def compute_obsession_records(
         ("album", album_frame),
         ("artist", artist_frame),
     ]:
-        if frame.empty and records_duration_frame(frame).empty:
+        if frame.empty and records_duration_frame(frame, copy=False).empty:
             tr = {
                 "daily_binge": pd.DataFrame(),
                 "daily_duration": pd.DataFrame(),

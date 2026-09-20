@@ -16,9 +16,6 @@ from backend.domains.metadata.artist_genre_review import (
 )
 from backend.domains.metadata.artist_genres import (
     AXIS_ORDER,
-    compute_genre_axis_gaps,
-    compute_genre_coverage,
-    compute_genre_taxonomy_audit,
 )
 from backend.domains.metadata.artist_languages import build_primary_artist_ms
 from backend.models.artist_genre_metadata import (
@@ -32,6 +29,7 @@ from backend.models.artist_genre_metadata import (
     ArtistGenreTaxonomyResponse,
     MetadataPreReviewRequest,
 )
+from backend.services.governance_snapshot_service import read as read_governance
 
 router = APIRouter(prefix="/metadata/artist-genres", tags=["Artist Genre Metadata"])
 
@@ -82,12 +80,7 @@ def get_artist_genre_coverage(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    artist_hours, excluded_hours = _load_artist_play_hours(conn, filters)
-    report = compute_genre_coverage(conn, artist_hours)
-    report["artist_count"] = len(artist_hours)
-    report["total_hours"] = round(sum(artist_hours.values()), 1)
-    report["excluded_unattributed_hours"] = excluded_hours
-    return report
+    return read_governance(conn, "genre_coverage", filters)
 
 
 @router.get("/taxonomy", response_model=ArtistGenreTaxonomyResponse)
@@ -95,8 +88,7 @@ def get_artist_genre_taxonomy(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    artist_hours, _ = _load_artist_play_hours(conn, filters)
-    return compute_genre_taxonomy_audit(conn, artist_hours)
+    return read_governance(conn, "genre_taxonomy", filters)
 
 
 @router.get("/axis-gaps", response_model=ArtistGenreAxisGapResponse)
@@ -108,8 +100,8 @@ def get_artist_genre_axis_gaps(
 ):
     if axis not in AXIS_ORDER:
         raise HTTPException(status_code=422, detail=f"unsupported genre axis: {axis}")
-    artist_hours, _ = _load_artist_play_hours(conn, filters)
-    gaps = compute_genre_axis_gaps(conn, artist_hours, axis=axis)
+    published = read_governance(conn, "genre_axis_gaps", filters)
+    gaps = published["axes"][axis]
     artist_names = [item["artist_name"] for item in gaps]
     reviews_by_artist = {}
     if artist_names:
@@ -128,6 +120,8 @@ def get_artist_genre_axis_gaps(
         item["review_status"] = review["status"] if review else None
         item["pre_review_recommendation"] = review["pre_review_recommendation"] if review else None
     return {
+        "snapshot": published["snapshot"],
+        "checked_at": published["checked_at"],
         "axis": axis,
         "total": len(gaps),
         "unknown_hours": round(sum(float(item["hours"]) for item in gaps), 1),

@@ -1,3 +1,4 @@
+import { SnapshotUnavailableError } from '@/api/errors'
 /** Playback Records page — route container for /analysis/records, aligned with Billboard RecordsPage. */
 
 import { useAnalysisFilters, analysisApi } from '@/hooks/useAnalysis'
@@ -64,9 +65,9 @@ export function AnalysisRecordsPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-[1200px] py-16 text-center">
+      <div role="alert" className="mx-auto max-w-[1200px] py-16 text-center">
         <AlertCircle className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-        <p className="font-sans text-[14px] text-muted-foreground">加载播放记录失败</p>
+        <p className="font-sans text-[14px] text-muted-foreground">{error instanceof SnapshotUnavailableError ? '播放记录暂不可用' : '加载播放记录失败'}</p>
         <p className="mt-1 font-sans text-[12px] text-muted-foreground/60">{String(error)}</p>
       </div>
     )

@@ -95,3 +95,36 @@ def _enrich_post_images(post: CommunityPost, cover_maps: dict) -> None:
                     break
 
     post.images = images
+
+
+def load_page_cover_maps(conn, posts):
+    """Read cover identities only for entities linked from the returned posts."""
+    entities = [e for p in posts for e in p.linked_entities]
+    tracks = list({e["id"] for e in entities if e.get("type") == "track" and e.get("id")})
+    artists = list({e["name"] for e in entities if e.get("type") == "artist" and e.get("name")})
+    albums = list({e["name"] for e in entities if e.get("type") == "album" and e.get("name")})
+
+    def rows(sql, values):
+        result = []
+        for start in range(0, len(values), 500):
+            chunk = values[start : start + 500]
+            result.extend(conn.execute(sql.format(",".join("?" for _ in chunk)), chunk).fetchall())
+        return result
+
+    return {
+        "track_to_album": dict(
+            rows(
+                "SELECT track_id,album_id FROM tracks WHERE album_id IS NOT NULL AND track_id IN ({})",
+                tracks,
+            )
+        ),
+        "artist_to_id": dict(
+            rows("SELECT artist_name,artist_id FROM artists WHERE artist_name IN ({})", artists)
+        ),
+        "album_name_to_id": {
+            (r[1], r[2]): r[0]
+            for r in rows(
+                "SELECT album_id,album_name,artist_id FROM albums WHERE album_name IN ({})", albums
+            )
+        },
+    }

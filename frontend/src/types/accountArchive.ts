@@ -24,6 +24,7 @@ export interface ArchiveFeaturedItem {
 }
 
 export interface ArchiveOverview {
+  snapshot?: ArchiveSnapshotState | null
   schema_version: 'account_archive_v1'
   content_version: 'account_archive_v1_0'
   data_revision: string
@@ -101,6 +102,7 @@ export interface ArchiveCollectionMilestone {
 }
 
 export interface ArchiveJourney {
+  snapshot?: ArchiveSnapshotState | null
   schema_version: 'account_archive_journey_v2'
   content_version: 'account_archive_journey_v2_0'
   data_revision: string
@@ -132,6 +134,7 @@ export interface ArchiveGrowthPoint {
 }
 
 export interface ArchiveCohorts {
+  snapshot?: ArchiveSnapshotState | null
   schema_version: 'account_archive_cohorts_v2'
   content_version: 'account_archive_cohorts_v2_0'
   data_revision: string
@@ -231,6 +234,7 @@ export interface ArchiveSleepingStory {
 }
 
 export interface ArchiveReturns {
+  snapshot?: ArchiveSnapshotState | null
   schema_version: 'account_archive_returns_v1'
   content_version: 'account_archive_returns_v1_0'
   data_revision: string
@@ -262,6 +266,7 @@ export interface ArchiveReturns {
 }
 
 export interface ArchiveDiscovery {
+  snapshot?: ArchiveSnapshotState | null
   schema_version: 'account_archive_discovery_v1'
   content_version: 'account_archive_discovery_v1_0'
   data_revision: string
@@ -367,6 +372,7 @@ export interface ArchiveLibraryPage {
 }
 
 export interface ArchiveOtherMedia {
+  snapshot?: ArchiveSnapshotState | null
   schema_version: 'account_archive_other_media_v2'
   content_version: 'account_archive_other_media_v2_0'
   data_revision: string
@@ -414,4 +420,12 @@ export interface ArchiveOtherMedia {
     video_effective_events: number
     video_effective_ms: number
   }
+}
+
+export interface ArchiveSnapshotState {
+  status: 'ready' | 'warming' | 'stale'
+  freshness: 'current' | 'last_known_good'
+  source_revision: string
+  target_revision: string
+  build_status: 'ready' | 'pending' | 'failed'
 }

@@ -75,11 +75,11 @@ class TestFeedFilterPropagation:
         )
         calls = {}
 
-        monkeypatch.setattr(feed_data, "load_billboard_raw", lambda *args, **kwargs: raw)
+        monkeypatch.setattr(feed_data, "_load_compact_raw", lambda *args, **kwargs: raw)
+        monkeypatch.setattr(feed_data, "_artist_frame_from_raw", lambda *args, **kwargs: raw)
         monkeypatch.setattr(
-            feed_data, "load_billboard_raw_for_artists", lambda *args, **kwargs: raw
+            feed_data, "_try_load_from_agg", lambda *args, **kwargs: (None, None, None)
         )
-        monkeypatch.setattr(feed_data, "_try_load_from_agg", lambda *args: (None, None, None))
 
         def fake_track_rankings(_df, top_n, pre_agg=None, merge_level=2):
             calls["track_merge_level"] = merge_level

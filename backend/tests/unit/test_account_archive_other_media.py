@@ -320,8 +320,14 @@ def test_other_media_keeps_video_when_local_track_catalog_is_absent() -> None:
     assert response.audio_video_comparison.audio_effective_events == 0
 
 
-def test_other_media_route_returns_strict_filter_context() -> None:
+def test_other_media_route_returns_strict_filter_context(monkeypatch) -> None:
     conn = _media_conn()
+    monkeypatch.setattr(
+        "backend.api.account.read_archive_snapshot",
+        lambda connection, family, filters: build_archive_other_media(
+            connection, build_archive_filter_context(connection, filters)
+        ),
+    )
     app = FastAPI()
     app.include_router(account_router, prefix="/api")
     app.dependency_overrides[get_conn] = lambda: conn

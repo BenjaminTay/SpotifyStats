@@ -1,12 +1,12 @@
 import { useMemo } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 
-import { queryClient } from '@/api/query-client'
-import { queryKeys } from '@/api/query-keys'
+import { queryKeys, normalizeCommunityParams } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { useSettings } from '@/hooks/useSettings'
-import type { CommunityFeedResponse } from '@/types/community'
+import type { CommunityFeedResponse, CommunitySnapshotState } from '@/types/community'
 
 const DEFAULT_LIMIT = 50
 
@@ -23,40 +23,27 @@ function getStoredBool(key: string, fallback: boolean): boolean {
   return fallback
 }
 
-export function useCommunityChartParams(): Record<string, string | number | boolean> {
-  const { settings } = useSettings()
-
-  return useMemo(() => {
-    const params: Record<string, string | number | boolean> = {
-      merge_level: getDefaultMergeLevel(),
-      dynamic_threshold: getStoredBool('spotify_stats_dynamic_threshold', true),
-    }
-    if (settings) {
-      params.min_ms = settings.min_ms
-      params.music_only = settings.music_only
-      params.bb_top_n = settings.bb_top_n
-      params.bb_album_top_n = settings.bb_album_top_n
-      params.bb_artist_top_n = settings.bb_artist_top_n
-      params.bb_week_start_dow = settings.bb_week_start_dow
-      params.bb_week_start_hour = settings.bb_week_start_hour
-      params.include_compilations = settings.include_compilations
-      params.max_merge_gap_minutes = settings.max_merge_gap_minutes
-    } else {
-      params.max_merge_gap_minutes = 5
-    }
-    return params
-  }, [settings])
+export function useCommunityChartParams() {
+  const { settings, loading, error, refetch } = useSettings()
+  const params = useMemo(() => settings ? buildBillboardContextParams({
+    ...settings,
+    merge_level: getDefaultMergeLevel(),
+    dynamic_threshold: getStoredBool('spotify_stats_dynamic_threshold', true),
+  }) : {}, [settings])
+  return { params, ready: !!settings && !error, loading, error, refetch }
 }
 
-export function useCommunityFeed(params: Record<string, string | number | boolean> = {}) {
+export function useCommunityFeed(input: Record<string, string | number | boolean>, enabled: boolean) {
+  const params = normalizeCommunityParams(input)
   const query = useInfiniteQuery<CommunityFeedResponse>({
     queryKey: queryKeys.community.feed(params),
-    queryFn: ({ pageParam }: { pageParam: unknown }) =>
+    queryFn: ({ pageParam, signal }) =>
       api.get<CommunityFeedResponse>('/community/feed', {
         ...params,
         limit: DEFAULT_LIMIT,
         offset: pageParam as number,
-      }),
+      }, undefined, signal),
+    enabled,
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const nextOffset = lastPage.meta.offset + lastPage.meta.returned
@@ -81,15 +68,6 @@ export function useCommunityFeed(params: Record<string, string | number | boolea
   }
 }
 
-export function preloadCommunityFeed(): void {
-  void queryClient.prefetchInfiniteQuery({
-    queryKey: queryKeys.community.feed(),
-    queryFn: ({ pageParam }: { pageParam: unknown }) =>
-      api.get<CommunityFeedResponse>('/community/feed', { limit: DEFAULT_LIMIT, offset: pageParam as number }),
-    initialPageParam: 0,
-  })
-}
-
 export interface TrendingEntity {
   name: string
   count: number
@@ -97,6 +75,7 @@ export interface TrendingEntity {
 }
 
 export interface TrendingData {
+  snapshot?: CommunitySnapshotState
   artists: TrendingEntity[]
   tracks: TrendingEntity[]
   latest_no1: { track: string | null; artist: string | null; post_id: string } | null
@@ -104,19 +83,22 @@ export interface TrendingData {
 }
 
 export interface PostDetail {
+  snapshot?: CommunitySnapshotState
   post: Record<string, unknown>
   replies: Record<string, unknown>[]
 }
 
 export function useCommunityPost(
   postId: string,
-  params: Record<string, string | number | boolean> = {},
+  input: Record<string, string | number | boolean>,
+  enabled: boolean,
 ) {
+  const params = normalizeCommunityParams(input)
   const { data, isLoading, error, refetch } = useQuery<PostDetail>({
     queryKey: queryKeys.community.post(postId, params),
-    queryFn: () => api.get<PostDetail>(`/community/post/${postId}`, params),
+    queryFn: ({ signal }) => api.get<PostDetail>(`/community/post/${postId}`, params, undefined, signal),
     staleTime: 5 * 60 * 1000,
-    enabled: !!postId,
+    enabled: enabled && !!postId,
   })
 
   return {
@@ -127,10 +109,12 @@ export function useCommunityPost(
   }
 }
 
-export function useCommunityTrending(params: Record<string, string | number | boolean> = {}) {
+export function useCommunityTrending(input: Record<string, string | number | boolean>, enabled: boolean) {
+  const params = normalizeCommunityParams(input)
   const { data, isLoading, error, refetch } = useQuery<TrendingData>({
     queryKey: queryKeys.community.trending(params),
-    queryFn: () => api.get<TrendingData>('/community/trending', params),
+    queryFn: ({ signal }) => api.get<TrendingData>('/community/trending', params, undefined, signal),
+    enabled,
     staleTime: 5 * 60 * 1000,
   })
 

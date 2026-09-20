@@ -15,7 +15,7 @@ export function PhoneJourneyChapter() {
     <section ref={ref} id="archive-journey" className="phone-archive-chapter" data-archive-section="journey">
       <PhoneChapterHeading number="01" title="收藏旅程" />
       {!enabled || query.isLoading ? <PhoneArchiveLoading /> : null}
-      {query.isError ? <PhoneArchiveError onRetry={() => void query.refetch()} /> : null}
+      {query.isError ? <PhoneArchiveError error={query.error} onRetry={() => void query.refetch()} /> : null}
       {query.data ? (
         <>
           <div className="phone-archive-dual-facts">

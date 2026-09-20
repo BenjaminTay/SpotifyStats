@@ -1,5 +1,29 @@
 # 变更日志
 
+## 2026-09-20：阶段 7B 验收阻塞修复（Partial）
+
+- 修复 Archive 自身 revision 合同、migration 77 / seed 和 Analysis 私有发布测试；Home 重启复用稳定 exact key。
+- 年度状态读取复用持久 preparation-key，艺人排名复用既有 Analysis 发布；Records 优化保持完整字段，最终 cold median 10.111 秒，仍高于 10 秒门槛。
+- 完成三引擎详情历史流程与 Phone 主要触控区修正；完整验收、数据边界和未通过项见 [7B 报告](reports/2026-09-20-stage7b-performance-closeout.md)。未进入最终 fullstack 或提交；Docker 三模式另作发布前验收。
+
+## 2026-09-20：阶段 6C 治理 Coverage / Health
+
+- Genre / Language 共用紧凑主艺人时长事实；五类重型治理结果按精确分域 revision 持久发布，读取支持 exact / LKG / unavailable，失败保留旧结果并展示检查时间。
+- Desktop 导入与语言面板按展开状态启用 Query；实时任务错误不被旧健康结果覆盖，显式文件 preflight 保持原行为。
+- 真实副本联合冷建中位数 34.525 → 0.683 秒，改善 98.02%；完整证据及既有两个 Analysis contract 失败见 [6C 报告](reports/2026-09-20-governance-coverage-health.md)。未改正式数据、提交或部署，停止于 6C。
+
+## 2026-09-20：阶段 6B 音乐档案共享事件与持久结果
+
+- 三个关系章节联合构建只加载一次有效事件；六章结果持久发布，公开读取支持 exact/LKG/unavailable，失败保留旧代。
+- 新增分域写入 revision、迁移 75 和本地 rebuild；搜索、收藏与分组精确失效，前端保留按章节加载并说明不可用状态。
+- 实施、性能和完整边界见 [6B 报告](reports/2026-09-20-account-archive-shared-events.md)。未提交、部署或改动正式数据。
+
+## 2026-09-20：阶段 6A Community 持久读模型
+
+- Community GET 改为 SQLite sidecar 的分页、trending 和帖子投影；后台按精确事实 revision 原子发布 active/previous，缺失明确 unavailable，public 零构建/写入/排队。
+- raw 历史只加载一次，展示仅补全返回集合；修正开放边缘周与时代总结发布时间。真实副本冷构建中位数 21.974 秒（改善 48.1%）、峰值 690.05 MiB，exact/LKG 三接口首次读取均低于 117 ms。
+- Community 范围 Pass；完整 contract 仍有两个既有 analysis 503 测试失败。证据与边界见 [6A 报告](reports/2026-09-20-community-read-model.md)。未提交或部署，未开始阶段 6B。
+
 ## 2026-09-20：阶段 5C Search 真实 delta 可达性
 
 - importer compatibility identity/provider alias 相同值不再 bump revision；候选文档完全相同时复用 generation。
@@ -29,6 +53,31 @@
 - 六配置 72 完整快照及 3,954 投影逐字段等价；Desktop/Phone 五页的 exact/LKG/missing 共 30 次只读验收通过。
 - 性能样本、资源/并发、数据不变性及剩余边界见[交付报告](reports/2026-09-20-billboard-generation-facts.md)。不进入阶段 4B 或 Search。
 
+## 2026-09-20：阶段 3C Records 单次共享事实收口
+
+- 单次builder共享小时切片几何及按实体准备的longevity facts，保留独立artist fan-out、名称分组、双轨时长、Top50和所有快照合同；不修改loader或共享timeline核心。
+- 真实副本十组完整payload等价、1,791后端unit、58定向contract/snapshot、50前端测试和production build通过。
+- 同轮新进程重建median 22.41→17.49s（≤10s未通过）；7次exact冷读经验P95 469.05ms，本组通过但读取代码未改、未证明稳定SLA；warm线性P95 57.72ms。阶段3C为Partial，到此停止。
+- 正式4,180文件bytes/大小不变；仅SQLite SHM在只读Online Backup时段mtime变化，SHA相同。详见[交付报告](reports/2026-09-20-records-invocation-facts.md)。
+
+## 2026-09-20：阶段 3B Records 局部优化
+
+- 根据 profile 批量化 Records 来源哈希、原版专辑查询，消除不重复序列逐行 Series、逐实体日期转换和重复时长拷贝；不改变 key/revision/schema、双轨时长、L2/L3 或 Yearly 预加载语义。
+- 真实副本十组全字段对账、1,785 项 backend unit、53 项定向后端及18项前端测试通过；双端公开 exact/LKG/重建中/缺失状态验证通过。
+- exact P95 840ms、重建中位数23.60s，两个主要目标仍未达标；warm、RSS与并发边界通过。详见[阶段 3B 报告](reports/2026-09-20-records-read-build-optimization.md)，结论 Partial，未实施3C。
+
+## 2026-09-19：阶段 3A 默认播放分析持久结果快照
+
+- Stats/Records 新增独立 analysis sidecar；用户 GET 只读 exact/同 key LKG，缺失返回明确 unavailable；private JobQueue 维护两个默认 lifetime，修复同参数构建与排队去重。
+- 保留原 builder、双轨时长与 L2/L3 语义，扩展测试导入前派生路径隔离。真实副本全字段对账通过；Records 冷读 P95 和重建 10 秒目标仍未达标，见[阶段 3A 报告](reports/2026-09-19-analysis-result-snapshots.md)。本地结论 Partial。
+
+
+## 2026-09-19：阶段 2B Community 与详情请求组织
+
+- Community 等待最终设置后发出一轮 feed/post + trending，共用规范化参数和精确 Query key。
+- 详情排名、实体排行与 Recent plays 按视口加载；日历首次打开才读取日期，错误与空结果分开。保留基础 stats 与 summary 并行，修正项目身份导致的重复或混用缓存。
+- 完整 backend unit 1754、frontend 647 通过；92,908 plays 临时副本及双端 production build 请求图、失败样本、随机内容回放和正式文件零变更证据见[阶段 2B 报告](reports/2026-09-19-deferred-community-details.md)。本地结论为 Partial，Community 冷计算留待阶段 6。
+
 ## 2026-09-19：阶段 2A Billboard 页面响应投影
 
 - Records、Weekly、All-Time 和 Number Ones 改读已发布快照的纯投影；保留兼容完整接口、所有榜单事实和 public exact/LKG/unavailable 边界。
@@ -42,6 +91,12 @@
 - 按当前正式主库与默认参数在临时目标重新生成 12 条 Billboard 派生快照，经 exact/checksum/公开只读验证后原子替换；保留受损 Online Backup、原主文件及 WAL/SHM。
 - Backend pytest 在导入应用前隔离主库、Billboard/yearly/Home、封面与 JobQueue；正式路径写入/SQLite 连接/ATTACH fail closed，退出不恢复正式路径。
 - [恢复与验收报告](reports/2026-09-19-billboard-sidecar-safety-closeout.md)、[测试隔离约定](reference/backend-test-isolation.md)。正式主库保持 schema 73，migration 74 未应用到正式库。
+
+## 2026-09-19：阶段 0.5 旧数据库身份索引一致性
+
+- migration 74 显式修复历史 `provider='local'` partial index，收敛到所有非空 fallback 唯一索引；不修改 loader JOIN 或身份事实。
+- 正确 DDL 不重建；重复 fallback 阻止迁移；SAVEPOINT 保证创建失败后原索引仍可用。seed 仅同步版本记录。
+- [迁移合同](reference/track-identity-index-migration.md)、[双副本语义对账与性能复测](reports/2026-09-19-track-identity-index-repair.md)。
 
 ## 2026-09-19：阶段 0 统一性能测量合同
 
@@ -57,8 +112,6 @@
 - public Home 只读已发布 JSON，不创建/替换文件、不启动后台线程；保留 private 发布与语义 LKG。
 - 默认 Billboard 维护补齐 records，并确保独立 power_scores/summaries 发布；Records 页面请求与计算算法不变。
 - seed、真实 Online Backup 和 Desktop/Phone 定向验证见 [交付报告](reports/2026-09-19-public-snapshot-boundary.md)。局部结果为 Partial，未提交、未推送、未部署；索引迁移与后续性能阶段未实施。
-
-本文件只记录按日期排列的变更摘要。详细实施、验收和真实数据证据见 [`reports/README.md`](reports/README.md)；当前规则见 [`reference/`](reference/)。历史条目中的数字和路径仅代表当时状态。
 
 ## 2026-09-13 — 遗留开发收口与生产发布
 

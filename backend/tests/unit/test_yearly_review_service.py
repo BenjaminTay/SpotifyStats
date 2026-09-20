@@ -357,3 +357,53 @@ def test_scoped_dependency_revision_ignores_unreachable_metadata(monkeypatch, tm
     conn.close()
 
     assert yearly_review_service._year_scoped_dependency_revision(2025, _context()) == base
+
+
+def test_published_preparation_survives_memory_reset_without_source_scan(monkeypatch, tmp_path):
+    from backend.domains.yearly_review import artifact_cache as cache
+
+    monkeypatch.setattr(cache, "YEARLY_REVIEW_CACHE_PATH", str(tmp_path / "yearly.db"))
+    context = _context()
+    prepared = yearly_review_service._prepare_artifact_with_revisions(
+        2025,
+        context,
+        db_revision="db-a",
+        language_revision="lang-a",
+        scoped_dependency_revision="scope-a",
+    )
+    cache.store_persisted_artifact(
+        prepared.cache_key,
+        {"report": {}, "record_catalog": {}},
+        year=2025,
+        filter_fingerprint=context.filter_fingerprint,
+        source_db_revision="db-a",
+    )
+    cache.store_prepared_key(prepared.cache_key, prepared.preparation_key)
+    before = (tmp_path / "yearly.db").read_bytes()
+    yearly_review_service._prepare_artifact_cached.cache_clear()
+    monkeypatch.setattr(
+        yearly_review_service,
+        "_year_scoped_dependency_revision",
+        lambda *_args: pytest.fail("published preparation scanned source"),
+    )
+    restored = yearly_review_service._prepare_artifact_cached(
+        2025, context.model_dump_json(), "db-a", "lang-a"
+    )
+    assert restored == prepared
+    assert cache.has_persisted_artifact(restored.cache_key)
+    assert (tmp_path / "yearly.db").read_bytes() == before
+    for changed in (
+        yearly_review_service._preparation_key(2025, context, "db-b", "lang-a"),
+        yearly_review_service._preparation_key(2025, context, "db-a", "lang-b"),
+        yearly_review_service._preparation_key(
+            2025, context.model_copy(update={"min_ms": 45000}), "db-a", "lang-a"
+        ),
+    ):
+        assert cache.load_prepared_key(changed) is None
+    monkeypatch.setattr(yearly_review_service, "YEARLY_REVIEW_CONTENT_VERSION", "next")
+    assert (
+        cache.load_prepared_key(
+            yearly_review_service._preparation_key(2025, context, "db-a", "lang-a")
+        )
+        is None
+    )

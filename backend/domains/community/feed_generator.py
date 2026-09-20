@@ -88,6 +88,7 @@ def _generate_core_posts(
     max_merge_gap_minutes: int | None = 5,
     merge_level: int = 2,
     include_compilations: bool = False,
+    merge_enabled: bool = True,
 ) -> tuple[list[CommunityPost], HistoricalState]:
     """Cached core chart post generation — iterates full chart history.
 
@@ -108,6 +109,7 @@ def _generate_core_posts(
         max_merge_gap_minutes=max_merge_gap_minutes,
         merge_level=merge_level,
         include_compilations=include_compilations,
+        merge_enabled=merge_enabled,
     )
 
     if not all_weeks:
@@ -166,7 +168,7 @@ def _generate_core_posts(
         if not entries:
             continue
 
-        posted_at = _week_end_date(week_val)
+        posted_at = _week_end_date(week_val, week_start_hour=bb_week_start_hour)
         personal = personal_weekly.get(week_val, {})
 
         if personal.get("plays", 0) < 3:
@@ -520,12 +522,15 @@ def _generate_core_posts(
         if yp:
             posts.append(yp)
 
-    posts.extend(_gen_alltime_stats(weekly, state))
+    summaries = _gen_alltime_stats(weekly, state)
+    for post in summaries:
+        post.posted_at = _week_end_date(all_weeks[-1], week_start_hour=bb_week_start_hour)
+    posts.extend(summaries)
 
     end_date = all_weeks[-1]
     try:
         end_dt = pd.Timestamp(end_date)
-        era_posted_at = end_dt.strftime("%Y-%m-%dT12:00:00")
+        era_posted_at = _week_end_date(end_dt, week_start_hour=bb_week_start_hour)
     except Exception:
         era_posted_at = datetime.now().strftime("%Y-%m-%dT12:00:00")
     dc = _gen_decade_comparison(state, all_weeks, era_posted_at)
@@ -626,5 +631,21 @@ def generate_all_posts(
                 str(acct.get("follower_tier", "mid")),
             )
 
+    posts.sort(key=lambda p: p.posted_at, reverse=True)
+    return posts
+
+
+def build_publication_posts(conn, **params):
+    """Uncached facts for a single privately owned publication invocation."""
+    import inspect
+
+    from backend.core.access_surface import public_readonly_db_guard_active
+
+    if public_readonly_db_guard_active():
+        raise PermissionError("Public requests cannot generate Community facts")
+    posts, state = inspect.unwrap(_generate_core_posts)(**params)
+    collection = _load_collection_data(conn)
+    posts.extend(_gen_collection_posts(collection, state))
+    posts.extend(_gen_collection_milestone(collection, state))
     posts.sort(key=lambda p: p.posted_at, reverse=True)
     return posts

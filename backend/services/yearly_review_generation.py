@@ -31,6 +31,7 @@ class PreparedYearlyReview:
     context_json: str
     cache_key: str
     db_revision: str
+    preparation_key: str | None = None
 
 
 @dataclass

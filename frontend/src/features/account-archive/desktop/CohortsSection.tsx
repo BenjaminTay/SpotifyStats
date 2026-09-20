@@ -40,7 +40,7 @@ export function CohortsSection() {
         title="播放多久后收藏"
       />
       {!enabled || query.isLoading ? <ArchiveLoading /> : null}
-      {query.isError && <ArchiveError onRetry={() => void query.refetch()} />}
+      {query.isError && <ArchiveError error={query.error} onRetry={() => void query.refetch()} />}
       {query.data?.status === 'unavailable' && (
         <ArchiveUnavailable>暂时没有可展示的收藏与播放关联数据。</ArchiveUnavailable>
       )}

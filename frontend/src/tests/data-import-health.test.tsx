@@ -142,6 +142,16 @@ describe('data import health UI', () => {
     expect(screen.getByText('关联 7,831 条 · 当前播放影响 0 条')).toBeInTheDocument()
   })
 
+  it('labels a failed publication as a previous check instead of current health', () => {
+    render(<DataHealthSummary health={{ ...health, snapshot: {
+      status: 'warming', freshness: 'last_known_good', build_status: 'failed',
+      checked_at: '2026-09-20T00:00:00Z', checked_revision: 'previous',
+    } }} loading={false} error={null} onRefresh={vi.fn()} />)
+    expect(screen.getByRole('heading', { name: '本次检查失败，以下为上次检查结果' })).toBeVisible()
+    expect(screen.getByText(/上次结论：核心统计正常/)).toBeVisible()
+    expect(screen.getByRole('button', { name: '重新读取' })).toBeVisible()
+  })
+
   it('keeps preflight as an explicit read-only action', () => {
     const onRun = vi.fn()
     render(<ImportPreflightPanel preflight={preflight} loading={false} error={null} onRun={onRun} />)

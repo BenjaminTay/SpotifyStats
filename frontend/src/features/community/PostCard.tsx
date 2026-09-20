@@ -39,7 +39,7 @@ function PostCardInner({ post }: PostCardProps) {
       {/* Left: avatar — links to account profile */}
       <Link
         to={`/community/account/${encodeURIComponent(post.account_handle)}`}
-        className="shrink-0 self-start"
+        className="community-avatar-action shrink-0 self-start"
       >
         <AccountAvatar handle={post.account_handle} />
       </Link>
@@ -79,7 +79,7 @@ function PostCardInner({ post }: PostCardProps) {
               {' '}
               <button
                 type="button"
-                className="text-accent-foreground hover:underline whitespace-nowrap"
+                className="community-touch-action text-accent-foreground hover:underline whitespace-nowrap"
                 onClick={(e) => { e.stopPropagation(); setExpanded(true) }}
               >
                 展开
@@ -93,7 +93,7 @@ function PostCardInner({ post }: PostCardProps) {
                   {' '}
                   <button
                     type="button"
-                    className="text-accent-foreground hover:underline whitespace-nowrap"
+                    className="community-touch-action text-accent-foreground hover:underline whitespace-nowrap"
                     onClick={(e) => { e.stopPropagation(); setExpanded(false) }}
                   >
                     收起

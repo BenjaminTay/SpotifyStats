@@ -894,6 +894,11 @@ def build_import_health_report(
     metadata.update(_recent_album_project_health(conn, effective_since_date))
     metadata["since_date"] = effective_since_date
 
+    return format_import_health(database, relationships, metadata, derived)
+
+
+def format_import_health(database, relationships, metadata, derived):
+    """The same health conclusions for persisted DB facts and current runtime state."""
     blockers: list[str] = []
     warnings: list[str] = []
     if database["play_count"] == 0:

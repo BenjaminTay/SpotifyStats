@@ -236,7 +236,7 @@
 .phone-archive-podcast-row > b { font-family: var(--font-serif); font-size: 10px; white-space: nowrap; }
 .phone-archive-video-list .phone-archive-entity { min-height: 68px; grid-template-columns: 46px minmax(0, 1fr); }
 .phone-archive-video-list .phone-archive-entity-art { width: 46px; height: 46px; }
-.phone-archive-page-state { display: flex; min-height: calc(100svh - var(--mobile-topbar-height) - var(--mobile-bottom-nav-height) - 40px); flex-direction: column; align-items: center; justify-content: center; gap: 13px; text-align: center; }
+.phone-archive-page-state { --phone-archive-red: var(--accent-foreground); display: flex; min-height: calc(100svh - var(--mobile-topbar-height) - var(--mobile-bottom-nav-height) - 40px); flex-direction: column; align-items: center; justify-content: center; gap: 13px; text-align: center; }
 .phone-archive-page-state > svg { width: 42px; height: 42px; color: var(--phone-archive-red); }
 .phone-archive-page-state h1 { font-family: var(--font-serif); font-size: 30px; }
 .phone-archive-page-state p { max-width: 290px; color: var(--muted-foreground); font-size: 11px; line-height: 1.65; }

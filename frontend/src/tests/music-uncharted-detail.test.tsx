@@ -12,7 +12,8 @@ import { TrackDetailExperience } from '@/features/music/details/TrackDetailExper
 import { api } from '@/lib/api'
 import type { TrackDetailResponse } from '@/types/billboard'
 import { RuntimeCapabilitiesProvider } from '@/hooks/useRuntimeCapabilities'
-import { FULL_CAPABILITIES } from '@/hooks/runtimeCapabilities'
+import { FULL_CAPABILITIES, PUBLIC_CAPABILITIES } from '@/hooks/runtimeCapabilities'
+import * as viewport from '@/hooks/useViewportMode'
 
 vi.mock('@/hooks/useAnalysis', () => ({
   useAnalysisFilters: () => ({
@@ -38,9 +39,9 @@ vi.mock('@/components/shared/EntityStatsPanel', () => ({
   EntityStatsPrefetch: () => null,
 }))
 
-function detailWrapper(initialEntry: string) {
+function detailWrapper(initialEntry: string, capabilities = FULL_CAPABILITIES) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  client.setQueryData(['runtime', 'capabilities'], FULL_CAPABILITIES)
+  client.setQueryData(['runtime', 'capabilities'], capabilities)
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <MemoryRouter initialEntries={[initialEntry]}>
@@ -62,6 +63,30 @@ function detailWrapper(initialEntry: string) {
 afterEach(() => vi.restoreAllMocks())
 
 describe('未入榜实体详情', () => {
+  it.each(['desktop', 'phone'] as const)('公开专辑名称解析到 project 后正常展示且不重试 summary（%s）', async (mode) => {
+    vi.spyOn(viewport, 'useViewportMode').mockReturnValue(mode)
+    const get = vi.spyOn(api, 'get').mockImplementation((path: string) => {
+      if (!['/billboard/album/Public Album', '/billboard/album-project/3'].includes(path)) {
+        return Promise.reject(new Error(`unexpected GET ${path}`))
+      }
+      return Promise.resolve({ found: true, chart_status: 'not_charted',
+        album_project_id: 3, album_name: 'Public Album', artist_name: 'Artist',
+        effective_play_count: 9, meta: null, chart_summary: null, album_project: null,
+        album_weekly_history: [], album_no1_by_week: [], best_singles_overlay: [], tracks: [] })
+    })
+    render(<AlbumDetailExperience />, {
+      wrapper: detailWrapper('/music/albums/Public%20Album?artist=Artist', PUBLIC_CAPABILITIES),
+    })
+    await waitFor(() => expect(get).toHaveBeenCalledWith(
+      '/billboard/album-project/3', expect.objectContaining({ view: 'summary' }),
+    ))
+    expect(await screen.findByText('播放统计内容')).toBeInTheDocument()
+    expect(screen.queryByText(/加载失败/)).not.toBeInTheDocument()
+    expect(get.mock.calls.filter(([path, params]) => (
+      path === '/billboard/album-project/3' && params?.view === 'summary'
+    ))).toHaveLength(1)
+  })
+
   it('稳定专辑项目入口不依赖含斜杠的专辑名', async () => {
     const get = vi.spyOn(api, 'get').mockImplementation((path: string) => {
       if (path !== '/billboard/album-project/3') {

@@ -76,6 +76,18 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("query", "entity", "string|enum=tracks,albums,artists"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "Billboard page projections reject unsupported entities with 422",
+        ("backend/tests/contract/test_billboard_projections.py",),
+    ),
+    ("query", "projection", "string|enum=entity,number-ones"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "Billboard all-time rejects unsupported projections with 422",
+        ("backend/tests/contract/test_billboard_projections.py",),
+    ),
     ("path", "left_l1_id", "integer"): ParameterEvidence(
         "targeted_contract",
         (),

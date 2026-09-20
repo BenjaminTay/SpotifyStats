@@ -29,7 +29,7 @@ export function OtherMediaSection() {
         title="音乐之外"
       />
       {!enabled || query.isLoading ? <ArchiveLoading /> : null}
-      {query.isError && <ArchiveError onRetry={() => void query.refetch()} />}
+      {query.isError && <ArchiveError error={query.error} onRetry={() => void query.refetch()} />}
       {query.data?.status === 'unavailable' && (
         <ArchiveUnavailable>当前导入没有播客或视频记录，本章不会占用额外空间。</ArchiveUnavailable>
       )}

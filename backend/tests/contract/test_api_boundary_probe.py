@@ -7,7 +7,9 @@ from scripts.api_boundary_probe import DEFAULT_BOUNDARY_CASES, assert_results, r
 pytestmark = pytest.mark.contract
 
 
-def test_api_boundary_probe(client):
+def test_api_boundary_probe(
+    client, published_community_snapshot, published_archive_snapshot, published_analysis_snapshot
+):
     results = run_cases(client)
 
     assert len(DEFAULT_BOUNDARY_CASES) >= 15

@@ -53,6 +53,7 @@ export interface FeedMeta {
 }
 
 export interface CommunityFeedResponse {
+  snapshot?: CommunitySnapshotState
   meta: FeedMeta
   posts: CommunityPost[]
 }
@@ -67,4 +68,12 @@ export interface FeedFilters {
   post_types?: string
   limit?: number
   offset?: number
+}
+
+export interface CommunitySnapshotState {
+  status: 'ready' | 'warming'
+  freshness: 'current' | 'last_known_good'
+  source_revision: string
+  target_revision: string
+  build_status?: 'ready' | 'pending' | 'failed'
 }

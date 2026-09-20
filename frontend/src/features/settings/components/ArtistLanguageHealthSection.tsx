@@ -1,3 +1,4 @@
+import { GovernanceSnapshotNotice } from './GovernanceSnapshotNotice'
 import { useState } from 'react'
 import { ChevronDown, Languages, RefreshCw, Search } from 'lucide-react'
 
@@ -55,11 +56,14 @@ function errorMessage(error: unknown, fallback: string): string {
 function LanguageCollapsibleSection({
   summary,
   children,
+  open,
+  onOpenChange,
 }: {
   summary: string
   children: React.ReactNode
+  open: boolean
+  onOpenChange: (value: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
 
   return (
     <section aria-label="艺人语言数据" className="border-t border-border/70 pt-5">
@@ -67,7 +71,7 @@ function LanguageCollapsibleSection({
         aria-expanded={open}
         aria-label="艺人语言数据"
         className="group w-full text-left focus-visible:outline-none"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => onOpenChange(!open)}
         type="button"
       >
         <div className="flex items-start justify-between gap-3">
@@ -95,6 +99,7 @@ function LanguageCollapsibleSection({
 
 export function ArtistLanguageHealthSection() {
   useChineseTextVersion()
+  const [open, setOpen] = useState(false)
   const { filters } = useAnalysisFilters()
   const [reviewStatus, setReviewStatus] = useState<ArtistLanguageReviewStatus>('open')
   const artistInput = useMusicSearchInputController('')
@@ -104,7 +109,7 @@ export function ArtistLanguageHealthSection() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
-  const coverageQuery = useArtistLanguageCoverage(filters)
+  const coverageQuery = useArtistLanguageCoverage(filters, open)
   const reviewsQuery = useArtistLanguageReviews(reviewStatus, 100)
   const openReviewsQuery = useArtistLanguageReviews('open', 100)
   const startReview = useStartArtistLanguageReview(filters)
@@ -121,7 +126,7 @@ export function ArtistLanguageHealthSection() {
   const openCount = openReviewsQuery.data?.total ?? 0
   const summary = coverage
     ? `已分类 ${formatPct(coverage.classified_pct)} · 未知 ${formatPct(coverage.unknown_pct)} · 待审核 ${openCount}`
-    : `语言覆盖率加载中 · 待审核 ${openCount}`
+    : '展开查看语言覆盖率与审核记录'
 
   const openReview = (review: ArtistLanguageReviewItem) => {
     setActiveReview(review)
@@ -153,7 +158,8 @@ export function ArtistLanguageHealthSection() {
 
   return (
     <>
-      <LanguageCollapsibleSection summary={summary}>
+      <GovernanceSnapshotNotice snapshot={coverage?.snapshot} />
+      <LanguageCollapsibleSection summary={summary} open={open} onOpenChange={setOpen}>
         <div className="space-y-5">
           <div className="grid grid-cols-3 gap-2" aria-label="语言数据摘要">
             <div className="min-w-0 rounded-[8px] bg-muted/25 px-3 py-3">

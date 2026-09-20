@@ -1,3 +1,4 @@
+import { archiveReadErrorMessage } from '@/features/account-archive/model/archiveModel'
 import { Link } from 'react-router-dom'
 import { AlertCircle, Archive, LoaderCircle } from 'lucide-react'
 
@@ -30,12 +31,12 @@ function ArchivePageSkeleton() {
   )
 }
 
-function ArchivePageError({ onRetry }: { onRetry: () => void }) {
+function ArchivePageError({ onRetry, error }: { onRetry: () => void; error: unknown }) {
   return (
     <div className="archive-page-state" role="alert">
       <AlertCircle aria-hidden="true" />
       <h1>档案暂时无法打开</h1>
-      <p>请确认本地服务正在运行后重试。</p>
+      <p>{archiveReadErrorMessage(error)}</p>
       <button type="button" onClick={onRetry}>重新读取</button>
     </div>
   )
@@ -62,7 +63,7 @@ export function AccountArchiveDesktopRoute() {
       <AnalysisPageHeader />
       <AnalysisSubNav />
       {query.isLoading && <ArchivePageSkeleton />}
-      {query.isError && <ArchivePageError onRetry={() => void query.refetch()} />}
+      {query.isError && <ArchivePageError error={query.error} onRetry={() => void query.refetch()} />}
       {query.data?.status === 'empty' && <ArchiveEmptyState />}
       {query.data && query.data.status !== 'empty' && (
         <main className="archive-page">

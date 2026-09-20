@@ -1581,6 +1581,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/community/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Community
+         * @description Private maintenance only; GET never queues or constructs a publication.
+         */
+        post: operations["refresh_community_api_community_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version-merge/groups": {
         parameters: {
             query?: never;
@@ -4577,6 +4597,27 @@ export interface components {
             /** End Date */
             end_date: string | null;
         };
+        /** AnalysisSnapshotReadState */
+        AnalysisSnapshotReadState: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "warming";
+            /**
+             * Freshness
+             * @enum {string}
+             */
+            freshness: "current" | "last_known_good";
+            /** Source Revision */
+            source_revision?: string | null;
+            /** Target Revision */
+            target_revision: string;
+            /** Builder Version */
+            builder_version: string;
+            /** Request Key */
+            request_key: string;
+        };
         /** AnalysisStatsBehaviorSummary */
         AnalysisStatsBehaviorSummary: {
             /** Forward Rate */
@@ -4594,6 +4635,7 @@ export interface components {
         };
         /** AnalysisStatsResponse */
         AnalysisStatsResponse: {
+            snapshot?: components["schemas"]["AnalysisSnapshotReadState"] | null;
             period: components["schemas"]["AnalysisResolvedPeriod"];
             summary: components["schemas"]["AnalysisStatsSummary"];
             daily_metrics: components["schemas"]["AnalysisDailyMetrics"];
@@ -4798,6 +4840,10 @@ export interface components {
         };
         /** ArchiveCohortsResponse */
         ArchiveCohortsResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Schema Version
              * @default account_archive_cohorts_v2
@@ -4964,6 +5010,10 @@ export interface components {
         };
         /** ArchiveDiscoveryResponse */
         ArchiveDiscoveryResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Schema Version
              * @default account_archive_discovery_v1
@@ -5192,6 +5242,10 @@ export interface components {
         };
         /** ArchiveJourneyResponse */
         ArchiveJourneyResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Schema Version
              * @default account_archive_journey_v2
@@ -5358,6 +5412,10 @@ export interface components {
         };
         /** ArchiveOtherMediaResponse */
         ArchiveOtherMediaResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Schema Version
              * @default account_archive_other_media_v2
@@ -5385,6 +5443,10 @@ export interface components {
         };
         /** ArchiveOverviewResponse */
         ArchiveOverviewResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Schema Version
              * @default account_archive_v1
@@ -5559,6 +5621,10 @@ export interface components {
         };
         /** ArchiveReturnsResponse */
         ArchiveReturnsResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Schema Version
              * @default account_archive_returns_v1
@@ -5894,6 +5960,12 @@ export interface components {
         };
         /** ArtistGenreAxisGapResponse */
         ArtistGenreAxisGapResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Checked At */
+            checked_at?: string | null;
             /** Axis */
             axis: string;
             /** Total */
@@ -5982,6 +6054,12 @@ export interface components {
         };
         /** ArtistGenreCoverageResponse */
         ArtistGenreCoverageResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Checked At */
+            checked_at?: string | null;
             /** Known Hours */
             known_hours: number;
             /** Unknown Hours */
@@ -6144,6 +6222,12 @@ export interface components {
         };
         /** ArtistGenreTaxonomyResponse */
         ArtistGenreTaxonomyResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Checked At */
+            checked_at?: string | null;
             /** Display Taxonomy Version */
             display_taxonomy_version: string;
             /** Raw Genre Count */
@@ -6200,6 +6284,12 @@ export interface components {
         };
         /** ArtistLanguageCoverageResponse */
         ArtistLanguageCoverageResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Checked At */
+            checked_at?: string | null;
             /** Eligible Hours */
             eligible_hours: number;
             /** Excluded Unattributed Hours */
@@ -7108,6 +7198,10 @@ export interface components {
         };
         /** CommunityFeedResponse */
         CommunityFeedResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
             meta: components["schemas"]["FeedMeta"];
             /** Posts */
             posts: {
@@ -7735,7 +7829,7 @@ export interface components {
              */
             entity_type: "track" | "album" | "artist";
             /** Entity Id */
-            entity_id?: number | string | null;
+            entity_id?: string | number | null;
             /** Name */
             name: string;
             /** Artist Name */
@@ -8180,6 +8274,14 @@ export interface components {
         };
         /** ImportHealthResponse */
         ImportHealthResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Runtime */
+            runtime?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Status
              * @enum {string}
@@ -9736,6 +9838,7 @@ export interface components {
         };
         /** PlaybackRecordsResponse */
         PlaybackRecordsResponse: {
+            snapshot?: components["schemas"]["AnalysisSnapshotReadState"] | null;
             period: components["schemas"]["AnalysisResolvedPeriod"];
             meta: components["schemas"]["PlaybackRecordsMeta"];
             records: components["schemas"]["PlaybackRecordsData"];
@@ -9934,6 +10037,10 @@ export interface components {
         };
         /** PostDetailResponse */
         PostDetailResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
             post: components["schemas"]["PostItem"];
             /** Replies */
             replies: components["schemas"]["PostItem"][];
@@ -11483,6 +11590,10 @@ export interface components {
         };
         /** TrendingResponse */
         TrendingResponse: {
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
             /** Artists */
             artists: components["schemas"]["TrendingItem"][];
             /** Tracks */
@@ -11990,7 +12101,7 @@ export interface components {
              */
             entity_type: "track" | "album" | "artist";
             /** Entity Id */
-            entity_id?: number | string | null;
+            entity_id?: string | number | null;
             /** Name */
             name: string;
             /** Artist Name */
@@ -12834,6 +12945,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
         };
     };
     analysis_charts_api_analysis_charts_get: {
@@ -13024,6 +13144,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
                 };
             };
         };
@@ -16989,6 +17118,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PostDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_community_api_community_refresh_post: {
+        parameters: {
+            query?: {
+                include_compilations?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number | null;
+                /** @description 仅音乐 */
+                music_only?: boolean | null;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean | null;
+                /** @description 单曲榜 Top N */
+                bb_top_n?: number | null;
+                /** @description 专辑榜 Top N */
+                bb_album_top_n?: number | null;
+                /** @description 艺人榜 Top N */
+                bb_artist_top_n?: number | null;
+                /** @description 周起始星期 (0=周一) */
+                bb_week_start_dow?: number | null;
+                /** @description 周起始小时 */
+                bb_week_start_hour?: number | null;
+                /** @description 起始年份 (含) */
+                year_start?: number | null;
+                /** @description 结束年份 (含) */
+                year_end?: number | null;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本归并级别（L2/L3） */
+                merge_level?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

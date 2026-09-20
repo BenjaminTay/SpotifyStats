@@ -32,7 +32,7 @@ def _fmt_number(n: int) -> str:
     return str(n)
 
 
-def _week_end_date(week_val) -> str:
+def _week_end_date(week_val, *, week_start_hour: int = 0) -> str:
     """Given a billboard_week value (Timestamp, date, or string), return ISO date of
     the week's end (next week's first day) — when posts for this week would appear."""
     if isinstance(week_val, pd.Timestamp):
@@ -43,7 +43,7 @@ def _week_end_date(week_val) -> str:
         dt = datetime.combine(week_val, datetime.min.time())
     else:
         dt = pd.Timestamp(str(week_val)).to_pydatetime()
-    return (dt + timedelta(days=7)).strftime("%Y-%m-%dT12:00:00")
+    return (dt + timedelta(days=7)).strftime("%Y-%m-%d") + f"T{max(12, week_start_hour):02d}:00:00"
 
 
 def _pick(*choices: str) -> str:

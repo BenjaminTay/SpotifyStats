@@ -1,9 +1,13 @@
+import type { GovernanceSnapshot } from '@/types/governance-snapshot'
+
 export interface ArtistGenreMissingItem {
   artist_name: string
   hours: number
 }
 
 export interface ArtistGenreCoverageResponse {
+  snapshot?: GovernanceSnapshot | null
+
   known_hours: number
   unknown_hours: number
   known_pct: number
@@ -28,6 +32,8 @@ export interface ArtistGenreAxisGapItem {
 }
 
 export interface ArtistGenreAxisGapResponse {
+  snapshot?: GovernanceSnapshot | null
+
   axis: string
   total: number
   unknown_hours: number
@@ -97,6 +103,8 @@ export interface ArtistGenrePassthroughItem {
 }
 
 export interface ArtistGenreTaxonomyResponse {
+  snapshot?: GovernanceSnapshot | null
+
   raw_genre_count: number
   canonical_genre_count: number
   noncanonical_passthrough_count: number

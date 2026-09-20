@@ -168,3 +168,11 @@ Billboard 四张预聚合已经支持精确尾部变化的周分区更新：局�
 - API：`backend/api/import_.py`
 - 前端入口：`frontend/src/features/settings/components/DataImportSection.tsx`
 - 前端查询：`frontend/src/hooks/useDataImportHealth.ts`
+
+## Community 派生维护
+
+播放导入、身份/credit 和 Billboard 维护完成后，私有 JobQueue 幂等确保默认 Community generation；设置/元数据/收藏同步写入及应用启动同样检查 exact。旧代在后台构建期间作为 LKG 可读，页面 GET 不排任务。完整参数的非默认投影通过私有 `POST /api/community/refresh` 维护。见 [Community 持久读模型合同](community-snapshots.md)。
+
+## 治理健康持久读取
+
+阶段 6C 的共享主艺人时长、精确 revision、持久结果与实时状态拆分见 [治理 Coverage / Health 合同](governance-snapshots.md)。GET 不承担冷建；用户显式 preflight 保持原文件检查行为。

@@ -52,6 +52,13 @@ def _connect(cache_path: str | os.PathLike[str] | None = None) -> sqlite3.Connec
         """CREATE INDEX IF NOT EXISTS idx_yearly_artifacts_created
            ON yearly_review_artifacts(created_at DESC)"""
     )
+    if "preparation_key" not in {
+        row[1] for row in conn.execute("PRAGMA table_info(yearly_review_artifacts)")
+    }:
+        conn.execute("ALTER TABLE yearly_review_artifacts ADD COLUMN preparation_key TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_yearly_artifacts_preparation ON yearly_review_artifacts(preparation_key)"
+    )
     conn.commit()
     return conn
 
@@ -129,7 +136,8 @@ def has_persisted_artifact(
 ) -> bool:
     """Check an exact persistent hit without inflating its payload."""
     try:
-        conn = _connect(cache_path)
+        path = Path(cache_path or YEARLY_REVIEW_CACHE_PATH)
+        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=30)
     except (FileNotFoundError, sqlite3.Error):
         return False
     try:
@@ -142,6 +150,39 @@ def has_persisted_artifact(
         except sqlite3.Error:
             return False
         return row is not None
+    finally:
+        conn.close()
+
+
+def load_prepared_key(preparation_key: str) -> str | None:
+    """Read publication metadata without parsing artifacts or creating a sidecar."""
+    path = Path(YEARLY_REVIEW_CACHE_PATH)
+    try:
+        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return None
+    try:
+        row = conn.execute(
+            "SELECT cache_key FROM yearly_review_artifacts WHERE preparation_key=? AND cache_format_version=?",
+            (preparation_key, CACHE_FORMAT_VERSION),
+        ).fetchone()
+        return str(row[0]) if row is not None else None
+    except sqlite3.Error:
+        return None  # Older sidecars are backfilled by private maintenance.
+    finally:
+        conn.close()
+
+
+def store_prepared_key(cache_key: str, preparation_key: str) -> None:
+    if public_readonly_db_guard_active():
+        raise PermissionError("Public requests cannot publish yearly preparation keys")
+    conn = _connect()
+    try:
+        with conn:
+            conn.execute(
+                "UPDATE yearly_review_artifacts SET preparation_key=? WHERE cache_key=?",
+                (preparation_key, cache_key),
+            )
     finally:
         conn.close()
 

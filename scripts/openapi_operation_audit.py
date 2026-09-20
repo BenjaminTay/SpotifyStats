@@ -62,6 +62,11 @@ class OperationAudit:
 
 
 TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
+    ("POST", "/api/community/refresh"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_community_contract.py",
+        "Private Community publication maintenance; public writes are denied and GET remains read-only.",
+    ),
     **{
         (method, path): OperationEvidence(
             "targeted_contract",

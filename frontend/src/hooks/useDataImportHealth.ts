@@ -4,13 +4,14 @@ import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import type { ImportCleanupPreviewResponse, ImportHealthResponse, ImportPreflightResponse } from '@/types/data-import'
 
-export function useDataImportHealth() {
+export function useDataImportHealth(enabled = true) {
   const queryClient = useQueryClient()
   const healthQuery = useQuery({
     queryKey: queryKeys.dataImport.health(),
     queryFn: () => api.get<ImportHealthResponse>('/import/health'),
     staleTime: 30_000,
-    retry: 1,
+    retry: 0,
+    enabled,
   })
   const preflightQuery = useQuery({
     queryKey: queryKeys.dataImport.preflight(),

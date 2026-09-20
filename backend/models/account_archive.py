@@ -73,6 +73,7 @@ class ArchiveFeaturedItem(StrictArchiveModel):
 
 
 class ArchiveOverviewResponse(StrictArchiveModel):
+    snapshot: dict | None = None
     schema_version: Literal["account_archive_v1"] = "account_archive_v1"
     content_version: Literal["account_archive_v1_0"] = "account_archive_v1_0"
     data_revision: str
@@ -135,6 +136,7 @@ class ArchiveCollectionMilestone(StrictArchiveModel):
 
 
 class ArchiveJourneyResponse(StrictArchiveModel):
+    snapshot: dict | None = None
     schema_version: Literal["account_archive_journey_v2"] = "account_archive_journey_v2"
     content_version: Literal["account_archive_journey_v2_0"] = "account_archive_journey_v2_0"
     data_revision: str
@@ -240,6 +242,7 @@ class ArchiveRelationshipMatrix(StrictArchiveModel):
 
 
 class ArchiveCohortsResponse(StrictArchiveModel):
+    snapshot: dict | None = None
     schema_version: Literal["account_archive_cohorts_v2"] = "account_archive_cohorts_v2"
     content_version: Literal["account_archive_cohorts_v2_0"] = "account_archive_cohorts_v2_0"
     data_revision: str
@@ -306,6 +309,7 @@ class ArchiveSleepingStory(StrictArchiveModel):
 
 
 class ArchiveReturnsResponse(StrictArchiveModel):
+    snapshot: dict | None = None
     schema_version: Literal["account_archive_returns_v1"] = "account_archive_returns_v1"
     content_version: Literal["account_archive_returns_v1_0"] = "account_archive_returns_v1_0"
     data_revision: str
@@ -378,6 +382,7 @@ class ArchiveDiscoveryTrackPreview(StrictArchiveModel):
 
 
 class ArchiveDiscoveryResponse(StrictArchiveModel):
+    snapshot: dict | None = None
     schema_version: Literal["account_archive_discovery_v1"] = "account_archive_discovery_v1"
     content_version: Literal["account_archive_discovery_v1_0"] = "account_archive_discovery_v1_0"
     data_revision: str
@@ -524,6 +529,7 @@ class ArchiveAudioVideoComparison(StrictArchiveModel):
 
 
 class ArchiveOtherMediaResponse(StrictArchiveModel):
+    snapshot: dict | None = None
     schema_version: Literal["account_archive_other_media_v2"] = "account_archive_other_media_v2"
     content_version: Literal["account_archive_other_media_v2_0"] = (
         "account_archive_other_media_v2_0"

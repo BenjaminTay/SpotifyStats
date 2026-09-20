@@ -74,7 +74,7 @@ describe('Account archive Phone route', () => {
     expect(screen.queryByText(/播放数据截至/)).not.toBeInTheDocument()
     expect(screen.queryByText(/数据状态/)).not.toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: '音乐档案章节' })).toBeInTheDocument()
-    await waitFor(() => expect(get).toHaveBeenCalledWith('/account/archive-overview'))
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/account/archive-overview', undefined, undefined, expect.any(AbortSignal)))
     expect(get.mock.calls.some(([path]) => path === '/account' || path === '/profile')).toBe(false)
   })
 

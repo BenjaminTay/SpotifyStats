@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sqlite3
 from collections.abc import Callable
 
@@ -20,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 73
+LATEST_SCHEMA_VERSION = 77
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3912,6 +3913,84 @@ def migrate_073(conn: sqlite3.Connection):
     """Repair Agent-branch databases whose historical version 69 was the event log."""
 
     migrate_069(conn)
+
+
+@migration(74, "track_l1_fallback_index_repair")
+def migrate_074(conn: sqlite3.Connection):
+    """Converge historical provider-only indexes to the canonical fallback key.
+
+    Provider is a compatibility projection, not part of fallback uniqueness.
+    A savepoint also protects callers outside the migration runner: neither a
+    duplicate nor a failed CREATE may leave the previous index missing.
+    """
+    ddl = (
+        "CREATE UNIQUE INDEX idx_track_l1_local_identity "
+        "ON track_l1_identities(fallback_track_id) "
+        "WHERE fallback_track_id IS NOT NULL"
+    )
+
+    def normalized(sql: str) -> str:
+        return re.sub(r'[\s"`\[\];]', "", sql).lower().replace("ifnotexists", "")
+
+    # Keep the runner's version-ledger insert in the same transaction. An
+    # outermost SAVEPOINT would otherwise commit DDL on RELEASE before it.
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
+    conn.execute("SAVEPOINT track_l1_fallback_index_repair")
+    try:
+        current = conn.execute(
+            "SELECT sql, tbl_name FROM sqlite_master WHERE type='index' "
+            "AND name='idx_track_l1_local_identity'"
+        ).fetchone()
+        if current is not None and current[1] != "track_l1_identities":
+            raise sqlite3.IntegrityError(
+                "Migration 74 blocked: fallback index name belongs to another table"
+            )
+        if current is None or normalized(current[0] or "") != normalized(ddl):
+            duplicate = conn.execute(
+                """SELECT 1 FROM track_l1_identities
+                    WHERE fallback_track_id IS NOT NULL
+                    GROUP BY fallback_track_id HAVING COUNT(*) > 1 LIMIT 1"""
+            ).fetchone()
+            if duplicate is not None:
+                raise sqlite3.IntegrityError(
+                    "Migration 74 blocked: duplicate non-null fallback_track_id; "
+                    "identity facts and the existing index were not changed. "
+                    "Resolve identity ownership explicitly before retrying."
+                )
+            conn.execute("DROP INDEX IF EXISTS idx_track_l1_local_identity")
+            conn.execute(ddl)
+        conn.execute("RELEASE SAVEPOINT track_l1_fallback_index_repair")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT track_l1_fallback_index_repair")
+        conn.execute("RELEASE SAVEPOINT track_l1_fallback_index_repair")
+        raise
+
+
+@migration(75, "account_archive_source_revisions")
+def migrate_075(conn: sqlite3.Connection):
+    """Track Archive dependencies without changing source records."""
+    from backend.domains.account_archive.snapshot_revision import install_revision_tracking
+
+    install_revision_tracking(conn)
+
+
+@migration(76, "governance_source_revisions")
+def _migrate_governance_revisions(conn):
+    from backend.domains.metadata.governance_revision import install_revision_tracking
+
+    install_revision_tracking(conn)
+
+
+@migration(77, "archive_revision_contract_version")
+def migrate_077(conn: sqlite3.Connection):
+    from backend.domains.account_archive.snapshot_revision import install_revision_tracking
+    from backend.domains.metadata.governance_revision import (
+        install_revision_tracking as install_governance,
+    )
+
+    install_revision_tracking(conn)
+    install_governance(conn)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

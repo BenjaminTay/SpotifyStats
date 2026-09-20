@@ -56,11 +56,11 @@ def _entity_monthly_peak(frame, group_col, name_col, artist_col, entity_type):
     """每月播放最多的 entity。"""
     if frame.empty:
         return pd.DataFrame()
-    fm = frame.copy()
+    fm = frame.copy(deep=False)
     fm["_ym"] = fm["ts_date"].astype(str).str[:7]
     gb_cols = safe_groupby_cols(["_ym"], group_col, name_col, artist_col)
     monthly = fm.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
-    duration = records_duration_frame(frame).copy()
+    duration = records_duration_frame(frame, copy=False).copy(deep=False)
     if not duration.empty:
         duration["_ym"] = duration["ts_date"].astype(str).str[:7]
     duration_monthly = (
@@ -336,7 +336,7 @@ def _new_year_eve(event_frame):
         )
     )
 
-    duration = records_duration_frame(event_frame).copy()
+    duration = records_duration_frame(event_frame)
     if not duration.empty:
         duration = duration[
             ((duration["ts_date"].astype(str).str.endswith("-12-31")) & (duration["ts_hour"] >= 20))

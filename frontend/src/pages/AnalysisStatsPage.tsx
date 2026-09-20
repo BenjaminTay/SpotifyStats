@@ -4,6 +4,7 @@ import { MetricToggle, useAnalysisQueryState } from '@/components/shared/Analysi
 import { GlassCard } from '@/components/shared/GlassCard'
 import { KpiCard } from '@/components/shared/KpiCard'
 import { RecentPlaysSection } from '@/components/shared/RecentPlaysSection'
+import { SnapshotUnavailableError } from '@/api/errors'
 import { Skeleton } from '@/components/ui/skeleton'
 import { analysisApi, useAnalysisFilters, useApiData } from '@/hooks/useAnalysis'
 import { MobileAnalysisStats } from '@/features/mobile/analysis/MobileAnalysisStats'
@@ -23,7 +24,12 @@ export function AnalysisStatsPage() {
   const isPhone = useViewportMode() === 'phone'
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { metric, period, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
-  const { data, loading } = useApiData(() => analysisApi.stats(filters, apiParams), [filters, apiParams], !filtersLoading)
+  const { data, loading, error, errorObject } = useApiData(() => analysisApi.stats(filters, apiParams), [filters, apiParams], !filtersLoading)
+
+  if (error) return <div role="alert" className="py-16 text-center">
+    <p>{errorObject instanceof SnapshotUnavailableError ? '播放统计暂不可用' : '加载播放统计失败'}</p>
+    <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+  </div>
 
   if (loading || !data) return isPhone ? <MobileStatePanel variant="loading" /> : <Skeleton className="h-[640px] rounded-[16px]" />
 

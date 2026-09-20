@@ -15,11 +15,11 @@ from backend.models.analysis import (
     AnalysisStatsResponse,
     PlaybackRecordsResponse,
 )
-from backend.services.analysis_records_service import get_analysis_records
+from backend.models.snapshot import SnapshotUnavailableResponse
 from backend.services.analysis_service import get_analysis_overview
+from backend.services.analysis_snapshot_service import read_snapshot
 from backend.services.analysis_stats_service import (
     get_analysis_charts,
-    get_analysis_stats,
     get_global_play_dates,
     get_global_plays,
 )
@@ -44,7 +44,11 @@ def analysis_overview(
     )
 
 
-@router.get("/stats", response_model=AnalysisStatsResponse)
+@router.get(
+    "/stats",
+    response_model=AnalysisStatsResponse,
+    responses={503: {"model": SnapshotUnavailableResponse}},
+)
 def analysis_stats(
     filters: PlayFilters = Depends(),
     period: str = Query(default="lifetime"),
@@ -52,14 +56,15 @@ def analysis_stats(
     end_date: str | None = Query(default=None),
     conn: Connection = Depends(get_conn),
 ):
-    return get_analysis_stats(
+    return read_snapshot(
         conn,
-        filters.min_ms,
-        filters.music_only,
-        filters.merge_enabled,
-        period,
-        start_date,
-        end_date,
+        "analysis_stats",
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        merge_enabled=filters.merge_enabled,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
         dynamic_threshold=filters.dynamic_threshold,
         max_merge_gap_minutes=filters.max_merge_gap_minutes,
     )
@@ -142,7 +147,11 @@ def analysis_play_dates(
     )
 
 
-@router.get("/records", response_model=PlaybackRecordsResponse)
+@router.get(
+    "/records",
+    response_model=PlaybackRecordsResponse,
+    responses={503: {"model": SnapshotUnavailableResponse}},
+)
 def analysis_records(
     filters: PlayFilters = Depends(),
     merge_cfg: MergeConfig = Depends(),
@@ -153,8 +162,9 @@ def analysis_records(
     conn: Connection = Depends(get_conn),
 ):
     """获取播放记录 — 基于有效播放事件的个人音乐史极值、连续、回归与行为纪录。"""
-    return get_analysis_records(
+    return read_snapshot(
         conn=conn,
+        family="analysis_records",
         min_ms=filters.min_ms,
         music_only=filters.music_only,
         merge_enabled=filters.merge_enabled,

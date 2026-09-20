@@ -37,6 +37,10 @@ def test_directory_fd_cleanup_resolves_actual_directory(tmp_path, monkeypatch):
 
 
 def test_paths_are_bound_before_collection():
+    from backend.domains.account_archive import snapshot_store as archive_store
+    from backend.domains.community import snapshot_store as community_store
+    from backend.domains.metadata import governance_store
+
     root = path_safety.SESSION_ROOT
     assert root is not None
     for path in (
@@ -44,6 +48,9 @@ def test_paths_are_bound_before_collection():
         cache.BILLBOARD_CACHE_PATH,
         artifact_cache.YEARLY_REVIEW_CACHE_PATH,
         home_service._HOME_SNAPSHOT_DIR,
+        archive_store.path(),
+        community_store.path(),
+        governance_store.path(),
     ):
         assert root in Path(path).resolve().parents
     assert os.environ["SPOTIFY_STATS_BILLBOARD_CACHE_PATH"] == cache.BILLBOARD_CACHE_PATH

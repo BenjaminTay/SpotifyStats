@@ -211,7 +211,9 @@ def test_cleanup_preview_rejects_out_of_range_sample_limit(client, sample_limit)
     assert response.status_code == 422
 
 
-def test_import_health_has_nested_database_and_derived_sections(client):
+def test_import_health_has_nested_database_and_derived_sections(
+    client, published_governance_snapshot
+):
     response = client.get("/api/import/health")
 
     assert response.status_code == 200

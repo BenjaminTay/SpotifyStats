@@ -1,3 +1,4 @@
+import { SnapshotUnavailableError } from '@/api/errors'
 import type {
   ArchiveLibraryEntityType,
   ArchiveLibrarySort,
@@ -103,4 +104,11 @@ export function librarySortFor(
   return value && allowed.includes(value as ArchiveLibrarySort)
     ? (value as ArchiveLibrarySort)
     : DEFAULT_LIBRARY_SORT[entityType]
+}
+
+export function archiveReadErrorMessage(error: unknown): string {
+  if (error instanceof SnapshotUnavailableError && error.snapshot.family === 'account_archive' && error.detail.includes('构建失败')) return error.detail
+  return error instanceof SnapshotUnavailableError
+    ? '音乐档案数据尚未发布，请等待本地档案重建完成后重新读取。'
+    : '请确认本地服务正在运行后重试。'
 }

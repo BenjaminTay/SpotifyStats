@@ -1,7 +1,7 @@
 # 音乐档案统计规则
 
-版本：`account_archive_filter_v2` / `account_archive_journey_v2_0` / `account_archive_cohorts_v2_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0` / `account_archive_library_v1_0` / `account_archive_other_media_v2_0`
-日期：2026-08-15
+版本：`account_archive_filter_v3` / `account_archive_journey_v2_0` / `account_archive_cohorts_v2_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0` / `account_archive_library_v1_0` / `account_archive_other_media_v2_0`
+日期：2026-09-20
 
 ## 1. 适用范围
 
@@ -184,7 +184,30 @@ track interaction burst
 
 ## 15. 缓存与契约
 
-缓存键包含：最短时长、连续合并、动态阈值、最大合并间隔、merge level、UTC 观察边界、播放/收藏 source revision、track group revision 和账号导入/日期 provenance revision。`discovery` 另对搜索内容生成不暴露原文的精确 revision；`other-media` 另对播客内容及本地节目元数据生成精确 revision；即使行数不变，相关内容变化也会失效缓存。收藏库使用短 SQL 分页直接读取，并通过内容 revision 表达快照变化。
+六个章节 GET 读取持久结果，公开和私有页面读取都不构建、不排队、不写快照。精确结果返回 `snapshot.status=ready`；相同 family、相同筛选范围的旧代返回 `warming / last_known_good`，失败时附 `build_status=failed`。没有可用结果返回 HTTP 503 `snapshot_unavailable`，不伪造空收藏或零值。收藏库仍使用原有 SQL 分页，不接入章节快照。
+
+`filter_fingerprint` v3 只表示 min_ms、merge_enabled、dynamic_threshold、max_merge_gap_minutes、merge_level、music_only 与 Asia/Shanghai，不混入源 revision；overview 不接受播放筛选。完整结果身份由数据库 namespace（设备/inode）、family、筛选指纹、builder/publication 版本与精确源 revision vector 组成。观察边界在构建时计算，通过 observation revision 失效；GET 不扫描 plays 或 track group 全表。
+
+迁移 75 安装 `account_archive_source_revisions` 分域 counter 和事务触发器；迁移 77 将 marker 改为 Archive 自身的合同版本与 trigger 定义指纹，不再绑定全局 `PRAGMA schema_version`。无关 DDL 和 Governance 迁移不使 Archive 失效。实际字段变化与插入/删除在原写事务内递增；相同值 UPDATE 和回滚不递增。marker、必要 counter 或 trigger 缺失/变更时拒绝作为 ready 读取，由私有 backfill 或正常启动修复并更新 epoch；重复启动保留有效 epoch。没有固定 revision 0 回退。兼容的内部 builder 可对未迁移 fixture 做真实内容哈希，公开读取不会进入该路径。
+
+- cohorts / returns：播放、观察窗、收藏与保存日期、曲目/专辑/艺人元数据、duration/release、稳定 identity 和 track groups。
+- discovery：上述依赖加 search；仅搜索内容变化只失效 discovery。
+- overview / journey：收藏、本地关联元数据、identity、观察窗；overview 另含五类收藏/歌单计数。两者不依赖 track groups 或 search。
+- other-media：播放、观察窗、曲目/专辑/艺人/曲长、identity、podcast 与节目展示信息，不依赖 collection 或 search。
+
+私有联合维护为 cohorts/returns/discovery 共享一份调用内有效事件事实，复用紧凑 track/time 列、分组时间序列和收藏实体。overview/journey 保留轻量构建，other-media 保留独立媒体边界。原有连续合并、有效事件、逻辑计数与时长合同不变。
+
+压缩结果存入 `account_archive_cache.db`（可由 `SPOTIFY_STATS_ARCHIVE_CACHE_PATH` 指定），在同一事务内校验源/config fence、切换 active/previous 并剪枝。损坏 active 可回退 previous，再由私有重建修复。发布失败保留旧代；按实际 SQLite 页分配控制总大小不超过 30 MiB。同 key 维护使用 singleflight，并由 sidecar 文件锁跨线程/进程串行复查 exact，避免重复构建。
+
+导入完成、收藏同步完成、设置/identity/group/相关元数据写入后只由私有任务维护默认配置，任务执行时重新解析最新 revision。已有数据库的显式本地补建入口：
+
+```bash
+.venv/bin/python scripts/rebuild_account_archive.py --db /absolute/path/to/copy.db --install-revisions
+```
+
+可用 `--cache` 指定隔离结果库、`--families discovery` 限定章节，或用 `--filters-json '{"merge_enabled":false,"merge_level":3}'` 补建特定筛选。打开页面不会补建缺失配置；本阶段只在隔离副本执行了补建，正式数据库尚未执行迁移或重建。
+
+实测与状态证据见 [阶段 6B 报告](../reports/2026-09-20-account-archive-shared-events.md)。
 
 所有正式响应使用 `extra="forbid"` 的 Pydantic 白名单模型；不得返回 profile、原始搜索词、prompts、inferences、banned items、Spotify URI 或未分页实体全集。
 

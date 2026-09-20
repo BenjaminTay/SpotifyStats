@@ -1,6 +1,21 @@
 # SpotifyStats 文档地图
 
+- [阶段 7B：验收阻塞修复与本地收口（Partial）](reports/2026-09-20-stage7b-performance-closeout.md)
+
+- [阶段 7：全路由性能验收与本地收口（Partial）](reports/2026-09-20-stage7-local-performance-acceptance.md)
+
+- [阶段 6C：治理 Coverage / Health 实施报告](reports/2026-09-20-governance-coverage-health.md)
+
+- [治理 Coverage / Health 持久结果](reference/governance-snapshots.md)
+
+- [阶段 6B：音乐档案共享事件与持久结果](reports/2026-09-20-account-archive-shared-events.md)
+
 本目录按“当前规则、进行中的计划、已确认设计、交付证据、历史归档”分层。阅读时先判断文档状态，再判断它属于规则、计划还是证据；历史文件不会自动代表当前实现。
+
+## 阶段 6A Community
+
+- [Community 冷计算、持久读模型与分页](reports/2026-09-20-community-read-model.md)
+- [Community 持久读取合同](reference/community-snapshots.md)
 
 ## 从哪里开始
 
@@ -35,6 +50,21 @@
 
 - [Billboard 单次重建共享事实、性能与等价证据](reports/2026-09-20-billboard-generation-facts.md)
 
+## 阶段 3B 交付
+
+- [Records 单次构建共享事实收口](reports/2026-09-20-records-invocation-facts.md)
+- [播放纪录读取与 builder 专项优化、未达标项及对账](reports/2026-09-20-records-read-build-optimization.md)
+
+## 阶段 3A 交付
+
+- [默认播放分析结果快照合同](reference/analysis-result-snapshots.md)
+- [阶段 3A 实测与验证](reports/2026-09-19-analysis-result-snapshots.md)
+
+## 阶段 2B 交付
+
+- [Community 与详情非核心请求合同](reference/deferred-read-contract.md)
+- [阶段 2B 请求图、事实对账与双端验收](reports/2026-09-19-deferred-community-details.md)
+
 ## 阶段 2A 交付
 
 - [Billboard 页面投影合同](reference/billboard-page-projections.md)
@@ -46,6 +76,7 @@
 
 - [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md)：逻辑播放事件、收听时长、版本合并、专辑项目和 Billboard 统计
 - [`reference/backend-test-isolation.md`](reference/backend-test-isolation.md)：Backend pytest 导入前隔离、临时数据库/派生缓存与 fail-closed 规则
+- [`reference/track-identity-index-migration.md`](reference/track-identity-index-migration.md)：migration 74 的 fallback 唯一性、原子修复和失败回滚合同
 - [`reference/public-snapshot-read-contract.md`](reference/public-snapshot-read-contract.md)：Home / Billboard 公开快照、缺失状态、只读边界及专辑 project GET
 - [`reference/homepage-presentation-rules.md`](reference/homepage-presentation-rules.md)：首页 Billboard 状态、长期记忆候选池与刷新随机选择
 - [`reference/account-archive-statistics.md`](reference/account-archive-statistics.md)：音乐档案、收藏旅程、回归、发现和其他媒体统计
@@ -90,6 +121,8 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 ## 交付与验证报告
 
 - [`reports/2026-09-19-billboard-sidecar-safety-closeout.md`](reports/2026-09-19-billboard-sidecar-safety-closeout.md)：阶段 0.5 事故安全收口，重新生成正式 Billboard 快照与测试隔离
+
+- [`reports/2026-09-19-track-identity-index-repair.md`](reports/2026-09-19-track-identity-index-repair.md)：阶段 0.5，旧身份索引 migration、全字段对账和双副本性能复测，Partial
 
 - [`reports/2026-09-19-performance-measurement-contract.md`](reports/2026-09-19-performance-measurement-contract.md)：阶段 0 统一测量合同、六探针、seed/Online Backup 校准，Partial
 

@@ -167,6 +167,25 @@ class TestBillboardEndpoints:
 class TestAnalysisRecordsEndpoint:
     """Contract: /api/analysis/records returns correct nested structure with non-empty P0 records."""
 
+    @pytest.fixture(autouse=True)
+    def published_records(self, client, monkeypatch, tmp_path):
+        # Contract GETs consume publications; maintenance is explicit test setup.
+        import json
+
+        from backend.core import config, db
+        from backend.services.analysis_snapshot_service import rebuild, request_context
+
+        monkeypatch.setattr(
+            config, "SPOTIFY_STATS_ANALYSIS_CACHE_PATH", str(tmp_path / "analysis.db")
+        )
+        conn = db.get_db(readonly=True)
+        try:
+            for overrides in ({}, {"merge_level": 3}, {"min_ms": 9999999}):
+                params, key, revision, _ = request_context(conn, "analysis_records", overrides)
+                rebuild("analysis_records", json.dumps(params, sort_keys=True), key, revision)
+        finally:
+            conn.close()
+
     def test_records_returns_200_with_nested_structure(self, client):
         r = client.get(
             "/api/analysis/records",

@@ -48,7 +48,7 @@ class MockIntersectionObserver {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
-  communityHookMocks.useCommunityChartParams.mockReturnValue({})
+  communityHookMocks.useCommunityChartParams.mockReturnValue({ params: {}, ready: true, loading: false, error: null })
   communityHookMocks.useCommunityFeed.mockReturnValue({
     posts: [],
     meta: { total: 0, total_all: 0, returned: 0, offset: 0, limit: 50 },
@@ -348,7 +348,7 @@ describe('CommunityExperience filter propagation', () => {
       dynamic_threshold: false,
       max_merge_gap_minutes: 45,
     }
-    communityHookMocks.useCommunityChartParams.mockReturnValue(chartParams)
+    communityHookMocks.useCommunityChartParams.mockReturnValue({ params: chartParams, ready: true, loading: false, error: null })
 
     renderWithRouter(<CommunityExperience />)
 
@@ -358,10 +358,10 @@ describe('CommunityExperience filter propagation', () => {
         limit: 50,
         offset: 0,
         highlights_only: true,
-      }),
+      }), true,
     )
     expect(communityHookMocks.useCommunityTrending).toHaveBeenCalledWith(
-      expect.objectContaining(chartParams),
+      expect.objectContaining(chartParams), true,
     )
   })
 })

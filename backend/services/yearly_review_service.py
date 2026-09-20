@@ -12,6 +12,7 @@ import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import lru_cache
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -23,7 +24,9 @@ from backend.domains.settings.repository import SettingsRepository
 from backend.domains.yearly_review.artifact_cache import (
     has_persisted_artifact,
     load_persisted_artifact,
+    load_prepared_key,
     store_persisted_artifact,
+    store_prepared_key,
 )
 from backend.domains.yearly_review.context import build_yearly_review_context
 from backend.domains.yearly_review.orchestrator import build_yearly_review_artifact
@@ -233,6 +236,29 @@ def _build_cached_artifact(
     return result
 
 
+def _preparation_key(year, context, db_revision, language_revision):
+    from backend.core import db as db_module
+
+    # Persist the same cheap dependency boundary as the existing preparation
+    # LRU, plus database namespace and all builder/policy versions.
+    semantic = build_yearly_review_cache_key(
+        year,
+        context,
+        db_revision=db_revision,
+        language_revision=language_revision,
+        scoped_dependency_revision="preparation",
+    )
+    return hashlib.sha256(
+        (
+            str(Path(db_module.DB_PATH).resolve())
+            + "\0"
+            + context.model_dump_json()
+            + "\0"
+            + semantic
+        ).encode()
+    ).hexdigest()
+
+
 @singleflight
 @lru_cache(maxsize=64)
 def _prepare_artifact_cached(
@@ -242,6 +268,12 @@ def _prepare_artifact_cached(
     language_revision: str,
 ) -> PreparedYearlyReview:
     context = YearlyReviewFilterContext.model_validate_json(context_json)
+    preparation_key = _preparation_key(year, context, db_revision, language_revision)
+    published_key = load_prepared_key(preparation_key)
+    if published_key is not None:
+        return PreparedYearlyReview(
+            year, context, context_json, published_key, db_revision, preparation_key
+        )
     return _prepare_artifact_with_revisions(
         year,
         context,
@@ -287,6 +319,7 @@ def _prepare_artifact_with_revisions(
         context_json=context.model_dump_json(),
         cache_key=key,
         db_revision=db_revision,
+        preparation_key=_preparation_key(year, context, db_revision, language_revision),
     )
 
 
@@ -295,12 +328,11 @@ def _prepare_artifacts(
 ) -> dict[int, PreparedYearlyReview]:
     language_revision = _language_revision()
     return {
-        year: _prepare_artifact_with_revisions(
+        year: _prepare_artifact_cached(
             year,
-            context,
-            db_revision=database_revision(year),
-            language_revision=language_revision,
-            scoped_dependency_revision=_year_scoped_dependency_revision(year, context),
+            context.model_dump_json(),
+            database_revision(year),
+            language_revision,
         )
         for year in dict.fromkeys(years)
     }
@@ -598,12 +630,15 @@ def _refresh_prepared_artifact(prepared: PreparedYearlyReview) -> PreparedYearly
 
 
 def _build_prepared_artifact(prepared: PreparedYearlyReview) -> dict[str, Any]:
-    return _build_cached_artifact(
+    result = _build_cached_artifact(
         prepared.year,
         prepared.context_json,
         prepared.cache_key,
         prepared.db_revision,
     )
+    if prepared.preparation_key is not None:
+        store_prepared_key(prepared.cache_key, prepared.preparation_key)
+    return result
 
 
 _generation_coordinator = YearlyReviewGenerationCoordinator(

@@ -23,7 +23,7 @@ function MetricButton({ icon: Icon, label, count, onNavigate }: { icon: React.Co
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onNavigate?.() }}
-      className="group flex items-center gap-1 hover:text-foreground transition-colors"
+      className="community-touch-action group flex items-center gap-1 hover:text-foreground transition-colors"
       title={`${formatCount(count)} ${label}`}
       aria-label={`${formatCount(count)} ${label}`}
     >

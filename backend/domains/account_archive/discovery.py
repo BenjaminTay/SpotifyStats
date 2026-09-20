@@ -227,6 +227,8 @@ def _funnel(
     conn: sqlite3.Connection,
     events: list[dict[str, Any]],
     context: ArchiveFilterContext,
+    *,
+    facts=None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     track_events = [
         event for event in events if _interaction_type(event["interaction_uri"]) == "track"
@@ -248,9 +250,13 @@ def _funnel(
 
     uri_map = _track_uri_map(conn)
     group_map = load_track_group_map(conn, context.merge_level)
-    play_frame = load_effective_archive_plays(conn, context)
-    times_by_track = _play_times(play_frame)
-    saved_entities, _ = load_saved_track_entities(conn, context)
+    if facts is not None:
+        facts.check(context)
+    play_frame = facts.frame if facts is not None else load_effective_archive_plays(conn, context)
+    times_by_track = facts.times if facts is not None else _play_times(play_frame)
+    saved_entities, _ = (
+        facts.saved if facts is not None else load_saved_track_entities(conn, context)
+    )
     saved_at_by_track = {
         int(entity["archive_track_id"]): saved_at
         for entity in saved_entities
@@ -329,6 +335,8 @@ def build_archive_discovery(
     conn: sqlite3.Connection,
     context: ArchiveFilterContext,
     search_revision: str | None = None,
+    *,
+    facts=None,
 ) -> dict[str, Any]:
     rows = _search_rows(conn)
     revision = search_revision or _search_revision_from_rows(rows)
@@ -343,7 +351,7 @@ def build_archive_discovery(
         for kind in ("track", "artist", "album", "playlist", "show", "episode", "other")
     }
     weekday_distribution, hour_distribution, active_days = _distribution(events, bursts)
-    funnel, examples = _funnel(conn, events, context)
+    funnel, examples = _funnel(conn, events, context, facts=facts)
     interaction_bursts = {int(event["burst_id"]) for event in interactions}
 
     if not rows:

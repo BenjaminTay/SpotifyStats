@@ -1,3 +1,5 @@
+import type { GovernanceSnapshot } from '@/types/governance-snapshot'
+
 export type LanguageClassification = 'single_language' | 'multilingual' | 'instrumental'
 export type LanguageOrigin = 'manual' | 'curated_seed' | 'legacy_import'
 export type ArtistLanguageEvidenceKind =
@@ -71,6 +73,7 @@ export interface ArtistLanguageMissingItem {
 }
 
 export interface ArtistLanguageCoverage {
+  snapshot?: GovernanceSnapshot | null
   eligible_hours: number
   excluded_unattributed_hours: number
   classified_hours: number

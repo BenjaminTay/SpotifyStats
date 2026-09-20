@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import sqlite3
 
@@ -12,6 +11,7 @@ from backend.domains.playback.records_helpers import (
     TOP_RECORD_LIMIT,
     grouped_records_duration,
     safe_groupby_cols,
+    unique_cols,
 )
 from backend.domains.playback.records_sorting import sort_and_limit
 
@@ -206,13 +206,15 @@ def _no_repeat_streak(frame, group_col, entity_type):
     sequence_columns = ["ts"]
     if "play_id" in frame.columns:
         sequence_columns.append("play_id")
-    df = frame.sort_values(sequence_columns, kind="stable").copy()
-    df["_entity"] = df[group_col].astype(str)
+    sequence = (
+        frame[unique_cols(*sequence_columns, group_col)]
+        .sort_values(sequence_columns, kind="stable")[group_col]
+        .astype(str)
+    )
     seen = set()
     run_length = 0
     max_run = 0
-    for _, row in df.iterrows():
-        eid = row["_entity"]
+    for eid in sequence:
         if eid in seen:
             if run_length > max_run:
                 max_run = run_length
@@ -256,7 +258,7 @@ def _album_full_replays(frame, conn, merge_level=2):
 
     song_col = "canonical_song_key" if "canonical_song_key" in frame.columns else "track_id"
 
-    working = frame.copy()
+    working = frame.copy(deep=False)
     if "play_id" not in working.columns:
         working["_play_marker"] = 1
         play_column = "_play_marker"
@@ -271,6 +273,12 @@ def _album_full_replays(frame, conn, merge_level=2):
     if per_song.empty:
         return pd.DataFrame()
 
+    from backend.domains.playback.records_album_facts import load_original_memberships
+
+    original_memberships = (
+        load_original_memberships(conn, merge_level) if album_id_col == "album_project_id" else {}
+    )
+    album_totals = _load_album_total_tracks(conn)
     results = []
     group_cols = list(dict.fromkeys([album_id_col, album_name_col, "artist_name"]))
     duration_totals = grouped_records_duration(frame, group_cols)
@@ -296,7 +304,7 @@ def _album_full_replays(frame, conn, merge_level=2):
             try:
                 project_id = int(float(album_id))
                 is_numeric_project = True
-                original = _get_album_project_original_membership(conn, project_id, merge_level)
+                original = original_memberships.get(project_id)
                 if original is None:
                     continue
                 original_song_keys, total = original
@@ -304,7 +312,7 @@ def _album_full_replays(frame, conn, merge_level=2):
             except (TypeError, ValueError, OverflowError):
                 total = None
         if not total and not is_numeric_project:
-            total = _get_album_total_tracks(conn, album_name, artist_name)
+            total = album_totals.get((album_name, artist_name))
 
         observed = int(replay_songs[song_col].nunique())
         # Unknown totals and incomplete coverage cannot produce a complete round.
@@ -351,144 +359,34 @@ _album_completionist = _album_full_replays
 
 
 def _get_album_project_original_membership(conn, project_id, merge_level=2):
-    """Return trusted original-edition song keys and its Spotify track total.
+    from backend.domains.playback.records_album_facts import load_original_memberships
 
-    A project is eligible only when its declared primary album is also
-    explicitly classified as ``original_album``. This alignment is the safety
-    boundary: we never infer the original by release order, title length, or an
-    arbitrary project member. The local original membership must also match one
-    unambiguous Spotify ``total_tracks`` value, otherwise the project is
-    conservatively excluded from complete-replay ranking.
-    """
+    return load_original_memberships(conn, merge_level).get(project_id)
+
+
+def _load_album_total_tracks(conn):
+    """One statement; retain each legacy LIMIT 1 lookup's exact selection."""
     try:
-        project = conn.execute(
-            """SELECT ap.primary_album_id, ap.canonical_name, ap.release_date,
-                      al.album_name, ar.artist_name
-               FROM album_projects ap
-               JOIN album_project_albums apa
-                 ON apa.project_id = ap.project_id
-                AND apa.album_id = ap.primary_album_id
-               JOIN albums al ON al.album_id = ap.primary_album_id
-               LEFT JOIN artists ar ON ar.artist_id = ap.artist_id
-               WHERE ap.project_id = ?
-                 AND apa.role = 'primary'
-                 AND apa.source_bucket = 'original_album'""",
-            (project_id,),
-        ).fetchone()
-        if not project or project["primary_album_id"] is None:
-            return None
-        primary_album_id = int(project["primary_album_id"])
-
-        track_rows = conn.execute(
-            """SELECT DISTINCT track_id
-               FROM album_project_tracks
-               WHERE project_id = ?
-                 AND source_album_id = ?
-                 AND membership_role = 'standard'
-                 AND min_merge_level <= ?
-               ORDER BY track_id""",
-            (project_id, primary_album_id, merge_level),
-        ).fetchall()
-        track_ids = [int(row["track_id"]) for row in track_rows]
-        if not track_ids:
-            return None
-
-        from backend.domains.playback.album_projects import apply_canonical_song_keys
-
-        def normalized(value):
-            return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
-
-        expected_titles = {
-            normalized(project["canonical_name"]),
-            normalized(project["album_name"]),
-        }
-        expected_titles.discard("")
-        expected_artist = normalized(project["artist_name"])
-        expected_date = project["release_date"]
-
-        local_rows = conn.execute(
-            f"""SELECT t.track_id, t.spotify_track_id
-                FROM tracks t
-                WHERE t.track_id IN ({",".join("?" for _ in track_ids)})""",
-            track_ids,
-        ).fetchall()
-        local_spotify_to_track = {
-            str(row["spotify_track_id"]): int(row["track_id"])
-            for row in local_rows
-            if row["spotify_track_id"]
-        }
-        if not local_spotify_to_track:
-            return None
-
-        candidates = conn.execute(
-            """SELECT REPLACE(sam.spotify_album_id, 'spotify:album:', '') AS spotify_album_id,
-                      sam.album_name, sam.album_artists, sam.release_date,
-                      sam.total_tracks, sam.track_list,
-                      MAX(COALESCE(asl.confidence, 0)) AS confidence,
-                      SUM(COALESCE(asl.play_count, 0)) AS play_count,
-                      MAX(COALESCE(asl.track_count, 0)) AS linked_track_count
-               FROM album_spotify_links asl
-               JOIN spotify_album_meta sam
-                 ON REPLACE(sam.spotify_album_id, 'spotify:album:', '') =
-                    REPLACE(asl.spotify_album_id, 'spotify:album:', '')
-               WHERE asl.album_id = ?
+        rows = conn.execute(
+            """SELECT names.album_name, names.artist_name, (SELECT sam.total_tracks
+               FROM albums al
+               JOIN artists a ON al.artist_id = a.artist_id
+               LEFT JOIN tracks t ON t.album_id = al.album_id
+               LEFT JOIN spotify_track_meta stm ON t.spotify_track_id = stm.spotify_track_id
+               LEFT JOIN spotify_album_meta sam
+                 ON stm.spotify_album_id = sam.spotify_album_id
+                 OR 'spotify:album:' || stm.spotify_album_id = sam.spotify_album_id
+               WHERE al.album_name = names.album_name AND a.artist_name = names.artist_name
+                 AND sam.total_tracks IS NOT NULL
                  AND LOWER(COALESCE(sam.album_type, '')) = 'album'
-               GROUP BY REPLACE(sam.spotify_album_id, 'spotify:album:', '')""",
-            (primary_album_id,),
+               LIMIT 1) AS total_tracks FROM (SELECT DISTINCT al.album_name, a.artist_name FROM albums al JOIN artists a ON a.artist_id=al.artist_id
+                 WHERE al.album_name IS NOT NULL AND a.artist_name IS NOT NULL) names"""
         ).fetchall()
-
-        trusted = []
-        for candidate in candidates:
-            if normalized(candidate["album_name"]) not in expected_titles:
-                continue
-            album_artists = {
-                normalized(value)
-                for value in re.split(r"\s*,\s*", str(candidate["album_artists"] or ""))
-                if normalized(value)
-            }
-            if expected_artist and expected_artist not in album_artists:
-                continue
-            if expected_date and candidate["release_date"] != expected_date:
-                continue
-            total = int(candidate["total_tracks"] or 0)
-            try:
-                spotify_track_ids = {
-                    str(value) for value in json.loads(candidate["track_list"] or "[]") if value
-                }
-            except (json.JSONDecodeError, TypeError):
-                continue
-            if total < 2 or len(spotify_track_ids) != total:
-                continue
-            if int(candidate["linked_track_count"] or 0) < total:
-                continue
-            if not spotify_track_ids.issubset(local_spotify_to_track):
-                continue
-
-            selected_track_ids = [local_spotify_to_track[value] for value in spotify_track_ids]
-            keyed = apply_canonical_song_keys(
-                pd.DataFrame({"track_id": selected_track_ids}), conn, merge_level
-            )
-            song_keys = {str(value) for value in keyed["canonical_song_key"].dropna().tolist()}
-            if len(song_keys) != total:
-                continue
-            trusted.append(
-                (
-                    song_keys,
-                    total,
-                    int(candidate["play_count"] or 0),
-                    float(candidate["confidence"] or 0),
-                )
-            )
-
-        if not trusted:
-            return None
-        canonical_sets = {frozenset(item[0]) for item in trusted}
-        if len(canonical_sets) != 1:
-            return None
-        selected = max(trusted, key=lambda item: (item[2], item[3]))
-        return selected[0], selected[1]
+        return {
+            (str(row["album_name"]), str(row["artist_name"])): row["total_tracks"] for row in rows
+        }
     except Exception:
-        return None
+        return {}
 
 
 def _get_album_total_tracks(conn, album_name, artist_name):
@@ -531,8 +429,6 @@ def _has_feat_marker(name):
     if not isinstance(name, str):
         return False
 
-    import re
-
     # feat. / ft. — explicit collab, with or without parentheses/brackets
     if re.search(r"(?:^|[(\[\s])(?:feat|ft)\.\s", name, re.IGNORECASE):
         return True
@@ -553,8 +449,9 @@ def _feat_lover_track(event_frame):
     if event_frame.empty or "track_name" not in event_frame.columns:
         return pd.DataFrame()
 
-    ef = event_frame.copy()
-    ef["_has_feat"] = ef["track_name"].apply(_has_feat_marker)
+    ef = event_frame.copy(deep=False)
+    event_names = ef["track_name"].unique()
+    ef["_has_feat"] = ef["track_name"].map({name: _has_feat_marker(name) for name in event_names})
     feat_count = int(ef["_has_feat"].sum())
     total = len(ef)
     if total == 0:
@@ -628,9 +525,12 @@ def _feat_lover_artist(artist_frame):
         return pd.DataFrame()
 
     # Detect feat tracks by track_name markers and group by artist
-    af = artist_frame.copy()
+    af = artist_frame.copy(deep=False)
+    event_names = af["track_name"].unique() if "track_name" in af.columns else []
     af["_has_feat"] = (
-        af["track_name"].apply(_has_feat_marker) if "track_name" in af.columns else False
+        af["track_name"].map({name: _has_feat_marker(name) for name in event_names})
+        if "track_name" in af.columns
+        else False
     )
     feat_plays = af[af["_has_feat"] & af["role"].eq("featured")]
     if feat_plays.empty:
@@ -658,8 +558,9 @@ def _feat_lover_album(album_frame):
     if album_frame.empty or "track_name" not in album_frame.columns:
         return pd.DataFrame()
 
-    af = album_frame.copy()
-    af["_has_feat"] = af["track_name"].apply(_has_feat_marker)
+    af = album_frame.copy(deep=False)
+    event_names = af["track_name"].unique() if "track_name" in af.columns else []
+    af["_has_feat"] = af["track_name"].map({name: _has_feat_marker(name) for name in event_names})
     feat_plays = af[af["_has_feat"]]
     if feat_plays.empty:
         return pd.DataFrame()

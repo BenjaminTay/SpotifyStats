@@ -146,6 +146,7 @@ export function useApiData<T>(loader: () => Promise<T>, deps: DependencyList, en
     data: query.data ?? null,
     loading: enabled ? query.isLoading : true,
     error: errorMessage(query.error),
+    errorObject: query.error,
     refetch: () => void query.refetch(),
   }
 }
@@ -360,7 +361,7 @@ export const analysisApi = {
       ...(kind === 'album' && artistName ? { artist: artistName } : {}),
     })
     return fetchQuery(
-      queryKeys.music.entityPlays(kind, id, q, Math.floor(Number(q.offset ?? 0) / Number(q.limit ?? 50)) + 1),
+      queryKeys.music.entityPlays(kind, albumProjectId != null ? `album-project:${albumProjectId}` : id, q, Math.floor(Number(q.offset ?? 0) / Number(q.limit ?? 50)) + 1),
       () => api.get<EntityPlaysResponse>(path, q),
     )
   },
@@ -404,7 +405,7 @@ export const analysisApi = {
       ...(kind === 'album' && artistName ? { artist: artistName } : {}),
     })
     return fetchQuery(
-      queryKeys.music.entityPlays(kind, `${id}:dates`, queryParams, 0),
+      queryKeys.music.entityPlays(kind, `${albumProjectId != null ? `album-project:${albumProjectId}` : id}:dates`, queryParams, 0),
       () => api.get<{ date: string; count: number }[]>(path, queryParams),
     )
   },

@@ -16,7 +16,7 @@ export function PhoneDiscoveryChapter() {
     <section ref={ref} id="archive-discovery" className="phone-archive-chapter" data-archive-section="discovery">
       <PhoneChapterHeading number="05" title="搜索与发现" />
       {!enabled || query.isLoading ? <PhoneArchiveLoading /> : null}
-      {query.isError ? <PhoneArchiveError onRetry={() => void query.refetch()} /> : null}
+      {query.isError ? <PhoneArchiveError error={query.error} onRetry={() => void query.refetch()} /> : null}
       {query.data?.status === 'unavailable' ? <PhoneArchiveUnavailable>尚未导入搜索记录。</PhoneArchiveUnavailable> : null}
       {query.data && query.data.status !== 'unavailable' ? (
         <>

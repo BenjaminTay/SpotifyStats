@@ -1,5 +1,13 @@
 # 交付与验证报告索引
 
+- [阶段 7B：验收阻塞修复与本地收口（Partial）](2026-09-20-stage7b-performance-closeout.md)
+
+- [阶段 7：全路由性能验收与本地收口（Partial）](2026-09-20-stage7-local-performance-acceptance.md)
+
+- [阶段 6C：治理 Coverage / Health 共享事实与持久结果](2026-09-20-governance-coverage-health.md)
+
+- [阶段 6B：音乐档案共享事件与持久结果](2026-09-20-account-archive-shared-events.md)
+
 - [2026-09-20 阶段 5C：Search 真实 delta 可达性与 identity revision 精度](2026-09-20-search-real-delta-reachability.md)
 
 - [2026-09-20 阶段 5B：Search shared-full 统计合同与真实 lineage（Partial）](2026-09-20-search-shared-full-contract.md)
@@ -10,9 +18,21 @@
 
 - [2026-09-20 阶段 4A：Billboard 单次重建共享事实](2026-09-20-billboard-generation-facts.md)
 
+- [2026-09-20 阶段 3C：Records 单次构建共享事实收口](2026-09-20-records-invocation-facts.md)
+- [2026-09-20 阶段 3B：播放纪录读取与 builder 专项优化（性能目标未达标）](2026-09-20-records-read-build-optimization.md)
+
+- [2026-09-19 阶段 3A：默认播放统计与播放纪录结果快照](2026-09-19-analysis-result-snapshots.md)
+
+
 这里保存一次性实施、验收、审计、真实性能和生产发布证据。报告不是当前规则的唯一来源；当前统计和数据契约以 [`../reference/`](../reference/) 为准，当前部署操作以 [`../../deploy/production/README.md`](../../deploy/production/README.md) 为准。
 
+## 阶段 6A Community
+
+- [Community 冷计算、持久读模型与分页](2026-09-20-community-read-model.md)
+
 ## 最近交付
+
+- [2026-09-19：阶段 2B Community 请求去重与详情非核心按需读取](2026-09-19-deferred-community-details.md)
 
 ### 播放统计与详情
 

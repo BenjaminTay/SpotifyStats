@@ -1,3 +1,4 @@
+import { archiveReadErrorMessage } from '@/features/account-archive/model/archiveModel'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, ArrowUpRight, Disc3, LoaderCircle } from 'lucide-react'
@@ -93,11 +94,11 @@ export function ArchiveLoading({ label = '正在整理这一章' }: { label?: st
   )
 }
 
-export function ArchiveError({ onRetry }: { onRetry: () => void }) {
+export function ArchiveError({ onRetry, error }: { onRetry: () => void; error?: unknown }) {
   return (
     <div className="archive-inline-state archive-inline-error" role="alert">
       <AlertCircle aria-hidden="true" />
-      <span>这一章暂时无法读取。</span>
+      <span>{archiveReadErrorMessage(error)}</span>
       <button type="button" onClick={onRetry}>重新加载</button>
     </div>
   )

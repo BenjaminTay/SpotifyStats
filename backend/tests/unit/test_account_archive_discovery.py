@@ -225,8 +225,14 @@ def test_discovery_revision_changes_when_search_content_changes() -> None:
     assert first.data_revision != second.data_revision
 
 
-def test_discovery_route_returns_strict_contract_and_filter_context() -> None:
+def test_discovery_route_returns_strict_contract_and_filter_context(monkeypatch) -> None:
     conn = _discovery_conn()
+    monkeypatch.setattr(
+        "backend.api.account.read_archive_snapshot",
+        lambda connection, family, filters: build_archive_discovery(
+            connection, build_archive_filter_context(connection, filters)
+        ),
+    )
     app = FastAPI()
     app.include_router(account_router, prefix="/api")
     app.dependency_overrides[get_conn] = lambda: conn

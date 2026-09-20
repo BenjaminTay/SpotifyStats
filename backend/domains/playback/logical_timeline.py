@@ -667,26 +667,55 @@ def explode_listening_slices(
     if LISTENING_INTERVALS_COLUMN not in frame.columns:
         return frame.copy()
 
-    source_positions: list[int] = []
-    slice_start_ns: list[int] = []
-    slice_end_ns: list[int] = []
-    for position, intervals in enumerate(frame[LISTENING_INTERVALS_COLUMN].tolist()):
-        if not intervals:
-            continue
-        for raw_start_ns, raw_end_ns in intervals:
-            cursor_ns = int(raw_start_ns)
-            end_ns = int(raw_end_ns)
-            while cursor_ns < end_ns:
-                cursor_utc = pd.Timestamp(cursor_ns, unit="ns", tz="UTC")
-                cursor_local = cursor_utc.tz_convert(PLAYBACK_TIMEZONE)
-                boundary_local = _next_boundary(cursor_local, granularity)
-                boundary_ns = int(boundary_local.tz_convert("UTC").value)
-                part_end_ns = min(end_ns, boundary_ns)
-                source_positions.append(position)
-                slice_start_ns.append(cursor_ns)
-                slice_end_ns.append(part_end_ns)
-                cursor_ns = part_end_ns
-
+    if granularity == "hour":
+        # Batch the same timezone-aware floor/add operation used by
+        # _next_boundary. Keep original interval order and per-slice rounding.
+        intervals = [
+            (position, int(start), int(end))
+            for position, values in enumerate(frame[LISTENING_INTERVALS_COLUMN])
+            for start, end in (values or ())
+            if int(start) < int(end)
+        ]
+        source_positions: list[int] = []
+        slice_start_ns: list[int] = []
+        slice_end_ns: list[int] = []
+        if intervals:
+            values = np.asarray(intervals, dtype=np.int64)
+            pending = np.arange(len(values))
+            cursors = values[:, 1].copy()
+            pieces = []
+            while len(pending):
+                local = pd.to_datetime(cursors[pending], utc=True).tz_convert(PLAYBACK_TIMEZONE)
+                boundary = (local.floor("h") + pd.Timedelta(hours=1)).asi8
+                ends = np.minimum(values[pending, 2], boundary)
+                pieces.append(np.column_stack((pending, cursors[pending], ends)))
+                cursors[pending] = ends
+                pending = pending[ends < values[pending, 2]]
+            slices = np.concatenate(pieces)
+            slices = slices[np.lexsort((slices[:, 1], slices[:, 0]))]
+            source_positions = values[slices[:, 0], 0].tolist()
+            slice_start_ns = slices[:, 1].tolist()
+            slice_end_ns = slices[:, 2].tolist()
+    else:
+        source_positions = []
+        slice_start_ns = []
+        slice_end_ns = []
+        for position, intervals in enumerate(frame[LISTENING_INTERVALS_COLUMN].tolist()):
+            if not intervals:
+                continue
+            for raw_start_ns, raw_end_ns in intervals:
+                cursor_ns = int(raw_start_ns)
+                end_ns = int(raw_end_ns)
+                while cursor_ns < end_ns:
+                    cursor_utc = pd.Timestamp(cursor_ns, unit="ns", tz="UTC")
+                    cursor_local = cursor_utc.tz_convert(PLAYBACK_TIMEZONE)
+                    boundary_local = _next_boundary(cursor_local, granularity)
+                    boundary_ns = int(boundary_local.tz_convert("UTC").value)
+                    part_end_ns = min(end_ns, boundary_ns)
+                    source_positions.append(position)
+                    slice_start_ns.append(cursor_ns)
+                    slice_end_ns.append(part_end_ns)
+                    cursor_ns = part_end_ns
     if not source_positions:
         return frame.iloc[0:0].copy()
     result = frame.iloc[source_positions].copy().reset_index(drop=True)

@@ -49,10 +49,11 @@ function invalidateArtistLanguageConsumers(
   void queryClient.invalidateQueries({ queryKey: queryKeys.analysis.all })
 }
 
-export function useArtistLanguageCoverage(filters: ArtistLanguagePlayFilters) {
+export function useArtistLanguageCoverage(filters: ArtistLanguagePlayFilters, enabled = true) {
   const params = playParams(filters)
   return useQuery({
     queryKey: queryKeys.metadata.artistLanguages.coverage(params),
+    enabled,
     queryFn: () =>
       api.get<ArtistLanguageCoverageResponse>(
         '/metadata/artist-languages/coverage',

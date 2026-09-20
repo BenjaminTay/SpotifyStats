@@ -1,3 +1,4 @@
+import { installDeferredObserver } from './deferred-observer'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -98,6 +99,7 @@ describe('专辑详情播放排行分页', () => {
       max_merge_gap_minutes: 5,
     }
     mocks.get.mockReset()
+    installDeferredObserver(true)
   })
 
   it('预取与面板复用同一个统计请求，不重复计算', async () => {
@@ -192,4 +194,48 @@ describe('专辑详情播放排行分页', () => {
       expect.objectContaining({ min_ms: 45000, offset: 0 }),
     ))
   })
+})
+
+
+describe('deferred rank and rankings', () => {
+  it.each(['track', 'album', 'artist'] as const)('gates %s rank context independently from its rankings', async (kind) => {
+    const observer = installDeferredObserver()
+    mocks.get.mockReset()
+    mocks.get.mockImplementation((path: string, params: { include_rank_context?: boolean }) => Promise.resolve(path.endsWith('/rankings')
+      ? { found: true, total: 1, rows: [rankingRow(1)] }
+      : params.include_rank_context ? { ...stats, ranks: { lifetime: 7 } } : stats))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300000 } } })
+    render(<QueryClientProvider client={client}><MemoryRouter><EntityStatsPanel kind={kind} trackId={1} albumName="Project" albumProjectId={9} artistName="Artist" mergeLevel={3} /></MemoryRouter></QueryClientProvider>)
+    await screen.findByText('总播放次数')
+    expect(mocks.get.mock.calls).toHaveLength(1)
+    expect(mocks.get.mock.calls[0][1].include_rank_context).toBe(false)
+    observer.enter('[data-deferred="rank"]')
+    await screen.findByText('#7')
+    expect(mocks.get.mock.calls.filter(([, p]) => p.include_rank_context)).toHaveLength(1)
+    expect(mocks.get.mock.calls.some(([p])=>p.endsWith('/rankings'))).toBe(false)
+    observer.enter('[data-deferred="rank"]')
+    expect(mocks.get.mock.calls.filter(([, p]) => p.include_rank_context)).toHaveLength(1)
+    if (kind !== 'track') {
+      observer.enter('[data-deferred="rankings"]')
+      await screen.findByText('项目歌曲 1')
+      expect(mocks.get.mock.calls.filter(([p])=>p.endsWith('/rankings'))).toHaveLength(1)
+      if (kind === 'artist') {
+        expect(mocks.get.mock.calls.at(-1)?.[1].entity).toBe('track')
+        fireEvent.click(screen.getByRole('button', { name: '专辑' }))
+        await waitFor(()=>expect(mocks.get.mock.calls.at(-1)?.[1].entity).toBe('album'))
+        fireEvent.click(screen.getByRole('button', { name: '歌曲' }))
+        expect(mocks.get.mock.calls.filter(([p])=>p.endsWith('/rankings'))).toHaveLength(2)
+      }
+    }
+  })
+})
+
+
+it('project summary resolving an artist does not fork the identical stats key', async () => {
+  installDeferredObserver()
+  mocks.get.mockReset(); mocks.get.mockResolvedValue(stats)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300000 } } })
+  const view = (artistName?: string) => <QueryClientProvider client={client}><MemoryRouter><EntityStatsPrefetch kind="album" albumProjectId={9} artistName={artistName} /><EntityStatsPanel kind="album" albumProjectId={9} albumName="Project" artistName={artistName} /></MemoryRouter></QueryClientProvider>
+  const result=render(view()); await screen.findByText('总播放次数'); result.rerender(view('Artist'))
+  expect(mocks.get.mock.calls.filter(([path])=>path==='/music/album-projects/9/stats')).toHaveLength(1)
 })

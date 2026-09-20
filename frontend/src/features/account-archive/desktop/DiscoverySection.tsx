@@ -23,7 +23,7 @@ export function DiscoverySection() {
         title="搜索与发现"
       />
       {!enabled || query.isLoading ? <ArchiveLoading /> : null}
-      {query.isError && <ArchiveError onRetry={() => void query.refetch()} />}
+      {query.isError && <ArchiveError error={query.error} onRetry={() => void query.refetch()} />}
       {query.data?.status === 'unavailable' && (
         <ArchiveUnavailable>尚未导入搜索记录。</ArchiveUnavailable>
       )}

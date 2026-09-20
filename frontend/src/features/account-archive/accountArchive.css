@@ -370,7 +370,7 @@ a.archive-library-row:hover, a.archive-library-row:focus-visible { background: c
 .archive-loading-cover span:first-child { grid-row: 1 / 3; }
 .archive-loading-line { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 36px; color: var(--muted-foreground); font-size: 11px; }
 .archive-loading-line svg { width: 17px; height: 17px; }
-.archive-page-state { display: flex; min-height: 520px; flex-direction: column; align-items: center; justify-content: center; padding: 60px 24px; border-block: 1px solid var(--archive-rule); text-align: center; }
+.archive-page-state { --archive-red: var(--accent-foreground); --archive-rule: var(--border); display: flex; min-height: 520px; flex-direction: column; align-items: center; justify-content: center; padding: 60px 24px; border-block: 1px solid var(--archive-rule); text-align: center; }
 .archive-page-state > svg { width: 46px; height: 46px; color: var(--archive-red); }
 .archive-page-state h1 { margin-top: 18px; font-family: var(--font-serif); font-size: 40px; }
 .archive-page-state > p:not(.archive-kicker) { max-width: 540px; margin-top: 12px; color: var(--muted-foreground); font-size: 13px; line-height: 1.7; }

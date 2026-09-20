@@ -91,6 +91,7 @@ def _scoped_play_loader(
     *,
     music_only: bool,
     ids_are_l1: bool = False,
+    loader=None,
 ):
     """Load target rows plus the preceding eligible row for exact merging.
 
@@ -101,8 +102,9 @@ def _scoped_play_loader(
     whole library.
     """
 
+    loader = loader or load_plays
     if not track_ids:
-        return partial(load_plays, extra_where="0")
+        return partial(loader, extra_where="0")
     has_l1 = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_l1_source_links'"
     ).fetchone()
@@ -118,23 +120,23 @@ def _scoped_play_loader(
             ).fetchall()
         ]
     if not source_track_ids:
-        return partial(load_plays, extra_where="0")
+        return partial(loader, extra_where="0")
     placeholders = ",".join("?" for _ in source_track_ids)
-    eligible_where = "WHERE track_id IS NOT NULL" if music_only else ""
+    preceding_filter = "AND prior.track_id IS NOT NULL" if music_only else ""
     selector = f"""p.play_id IN (
-        WITH ordered AS (
-            SELECT play_id, track_id,
-                   LAG(play_id) OVER (ORDER BY ts, play_id) AS previous_play_id
-            FROM plays {eligible_where}
-        ), target AS (
-            SELECT play_id, previous_play_id FROM ordered
+        WITH target AS (
+            SELECT play_id, ts FROM plays
             WHERE track_id IN ({placeholders})
         )
         SELECT play_id FROM target
         UNION
-        SELECT previous_play_id FROM target WHERE previous_play_id IS NOT NULL
+        SELECT (SELECT prior.play_id FROM plays prior
+                WHERE (prior.ts, prior.play_id) < (target.ts, target.play_id)
+                  {preceding_filter}
+                ORDER BY prior.ts DESC, prior.play_id DESC LIMIT 1)
+        FROM target
     )"""
-    return partial(load_plays, extra_where=selector, extra_params=source_track_ids)
+    return partial(loader, extra_where=selector, extra_params=source_track_ids)
 
 
 def _global_period_bounds(
@@ -955,6 +957,7 @@ def _filter_artist_owned_album_events(
     artist_name: str,
     *,
     merge_level: int = 2,
+    owned_song_keys: set | None = None,
 ) -> pd.DataFrame:
     """Keep only events whose canonical album project belongs to the artist.
 
@@ -972,16 +975,17 @@ def _filter_artist_owned_album_events(
     )
 
     keyed = apply_canonical_song_keys(df, conn, merge_level)
-    membership = load_album_project_membership(conn, merge_level=merge_level)
-    if membership.empty:
-        return keyed.iloc[0:0].copy()
+    if owned_song_keys is None:
+        membership = load_album_project_membership(conn, merge_level=merge_level)
+        if membership.empty:
+            return keyed.iloc[0:0].copy()
 
-    owned_song_keys = set(
-        membership.loc[
-            membership["artist_name"] == artist_name,
-            "canonical_song_key",
-        ].dropna()
-    )
+        owned_song_keys = set(
+            membership.loc[
+                membership["artist_name"] == artist_name,
+                "canonical_song_key",
+            ].dropna()
+        )
     if not owned_song_keys:
         return keyed.iloc[0:0].copy()
     return keyed[keyed["canonical_song_key"].isin(owned_song_keys)].copy()
@@ -1005,7 +1009,25 @@ def _build_artist_stats(
     identity = resolve_artist_name(conn, artist_name)
     if identity is not None:
         artist_name = identity.display_name
-    scoped = not include_rank_context and period in {"lifetime", "custom"}
+    published_context = None
+    if include_rank_context and period == "lifetime" and _is_primary_connection(conn):
+        if identity is None:
+            return {"found": False}
+        from backend.services.entity_rank_context_service import read
+
+        published_context = read(
+            conn,
+            dict(
+                min_ms=min_ms,
+                music_only=music_only,
+                merge_enabled=merge_enabled,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+            ),
+        )
+    scoped = (
+        not include_rank_context and period in {"lifetime", "custom"}
+    ) or published_context is not None
     if scoped:
         from backend.domains.metadata.track_credits import get_effective_track_credits
 
@@ -1016,7 +1038,12 @@ def _build_artist_stats(
                 if str(row["artist_name"]) == artist_name
             }
         )
-        loader = _scoped_play_loader(conn, track_ids, music_only=music_only)
+        loader = _scoped_play_loader(
+            conn,
+            track_ids,
+            music_only=music_only,
+            loader=load_plays_for_artists if published_context is not None else None,
+        )
     else:
         loader = load_plays_for_artists
     all_df, current_df, resolved = load_period_plays(
@@ -1033,12 +1060,12 @@ def _build_artist_stats(
         _loader=loader,
     )
     if scoped:
-        resolved = _global_period_bounds(
-            conn,
-            period=period,
-            start_date=start_date,
-            end_date=end_date,
-            music_only=music_only,
+        resolved = (
+            published_context["periods"]["lifetime"]
+            if published_context is not None
+            else _global_period_bounds(
+                conn, period=period, start_date=start_date, end_date=end_date, music_only=music_only
+            )
         )
         current_df = filter_period_events(all_df, resolved)
         placeholders = ",".join("?" for _ in track_ids)
@@ -1058,8 +1085,9 @@ def _build_artist_stats(
             target_ids = set(track_ids)
         all_df = all_df[all_df["track_id"].isin(target_ids)].copy()
         current_df = current_df[current_df["track_id"].isin(target_ids)].copy()
-        all_df["artist_name"] = artist_name
-        current_df["artist_name"] = artist_name
+        if published_context is None:
+            all_df["artist_name"] = artist_name
+            current_df["artist_name"] = artist_name
     duration_all = _duration_source(all_df)
     entity_all = all_df[all_df["artist_name"] == artist_name]
     entity_df = current_df[current_df["artist_name"] == artist_name]
@@ -1082,10 +1110,26 @@ def _build_artist_stats(
             0,
             duration_frame=entity_duration,
         )
-        owned_album_all = _filter_artist_owned_album_events(conn, entity_all, artist_name)
-        owned_album_df = _filter_artist_owned_album_events(conn, entity_df, artist_name)
+        from backend.domains.playback.album_projects import load_album_project_membership
+
+        membership = load_album_project_membership(conn)
+        owned_keys = (
+            set(
+                membership.loc[
+                    membership["artist_name"] == artist_name, "canonical_song_key"
+                ].dropna()
+            )
+            if not membership.empty
+            else set()
+        )
+        owned_album_all = _filter_artist_owned_album_events(
+            conn, entity_all, artist_name, owned_song_keys=owned_keys
+        )
+        owned_album_df = _filter_artist_owned_album_events(
+            conn, entity_df, artist_name, owned_song_keys=owned_keys
+        )
         owned_album_duration_source = _filter_artist_owned_album_events(
-            conn, entity_duration_source, artist_name
+            conn, entity_duration_source, artist_name, owned_song_keys=owned_keys
         )
         owned_album_duration = build_duration_frame(
             owned_album_all,
@@ -1121,6 +1165,8 @@ def _build_artist_stats(
         recent_50_count = int(len(recent_50_artist_rows))
     else:
         recent_50_count = None
+    if published_context is not None:
+        recent_50_count = published_context["recent_50_counts"].get(artist_name, 0)
     data = _entity_base(all_df, entity_df, resolved, entity_duration)
     data.update(
         {
@@ -1133,7 +1179,17 @@ def _build_artist_stats(
             "first_played": str(entity_time_source["ts"].min()),
             "last_played": str(entity_time_source["ts"].max()),
             "ranks": (
-                _ranks(
+                (
+                    {
+                        **{
+                            period: ranks.get(artist_name)
+                            for period, ranks in published_context["ranks"].items()
+                        },
+                        "current_period": published_context["ranks"]["lifetime"].get(artist_name),
+                    }
+                )
+                if published_context is not None
+                else _ranks(
                     conn,
                     all_df,
                     current_df,
@@ -1145,7 +1201,14 @@ def _build_artist_stats(
                 else None
             ),
             "top250_counts": (
-                _top250_counts(conn, all_df, artist_name=artist_name)
+                (
+                    {
+                        period: counts.get(artist_name, 0)
+                        for period, counts in published_context["top250_counts"].items()
+                    }
+                )
+                if published_context is not None
+                else _top250_counts(conn, all_df, artist_name=artist_name)
                 if include_rank_context
                 else None
             ),
@@ -1180,6 +1243,20 @@ def get_artist_personal_ranking(
     identity = resolve_artist_name(conn, artist_name)
     if identity is not None:
         artist_name = identity.display_name
+    loader = load_plays_for_artists
+    if period in {"lifetime", "custom"} and _is_primary_connection(conn):
+        from backend.domains.metadata.track_credits import get_effective_track_credits
+
+        track_ids = sorted(
+            {
+                int(row["track_id"])
+                for row in get_effective_track_credits(conn)
+                if str(row["artist_name"]) == artist_name
+            }
+        )
+        loader = _scoped_play_loader(
+            conn, track_ids, music_only=music_only, loader=load_plays_for_artists
+        )
     all_df, current_df, resolved = load_period_plays(
         conn,
         min_ms,
@@ -1191,8 +1268,23 @@ def get_artist_personal_ranking(
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
         attach_duration_slices=False,
-        _loader=load_plays_for_artists,
+        _loader=loader,
     )
+    if period == "lifetime" and _is_primary_connection(conn):
+        from backend.services.entity_rank_context_service import read
+
+        published = read(
+            conn,
+            dict(
+                min_ms=min_ms,
+                music_only=music_only,
+                merge_enabled=merge_enabled,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+            ),
+        )
+        resolved = published["periods"]["lifetime"]
+        current_df = filter_period_events(all_df, resolved)
     duration_all = _duration_source(all_df)
     artist_duration_source = duration_all[duration_all["artist_name"] == artist_name].copy()
     if all_df[all_df["artist_name"] == artist_name].empty and artist_duration_source.empty:

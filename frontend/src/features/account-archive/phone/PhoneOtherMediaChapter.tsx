@@ -19,7 +19,7 @@ export function PhoneOtherMediaChapter() {
     <section ref={ref} id="archive-other-media" className="phone-archive-chapter" data-archive-section="other-media">
       <PhoneChapterHeading number="07" title="音乐之外" />
       {!enabled || query.isLoading ? <PhoneArchiveLoading /> : null}
-      {query.isError ? <PhoneArchiveError onRetry={() => void query.refetch()} /> : null}
+      {query.isError ? <PhoneArchiveError error={query.error} onRetry={() => void query.refetch()} /> : null}
       {query.data?.status === 'unavailable' ? <PhoneArchiveUnavailable>当前导入没有播客或视频记录，本章不会占用额外空间。</PhoneArchiveUnavailable> : null}
       {query.data && query.data.status !== 'unavailable' ? (
         <div className="phone-archive-media-stack">

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from typing import Callable, cast
 
 import pandas as pd
 import pytest
@@ -167,7 +168,7 @@ def test_archive_context_resolves_settings_anchor_and_group_revision() -> None:
     assert first.latest_play_at == "2024-04-01T00:00:00Z"
     assert first.latest_play_date == "2024-04-01"
     assert first.track_group_revision != second.track_group_revision
-    assert first.filter_fingerprint != second.filter_fingerprint
+    assert first.filter_fingerprint == second.filter_fingerprint
 
 
 def test_collection_journey_uses_exact_dates_durations_and_strict_contract() -> None:
@@ -298,8 +299,19 @@ def test_vitality_metrics_separate_early_return_from_long_term_survival() -> Non
     assert metrics["after_365d"]["return_rate_pct"] == 100.0
 
 
-def test_journey_and_cohorts_routes_return_strict_json() -> None:
+def test_journey_and_cohorts_routes_return_strict_json(monkeypatch) -> None:
     conn = _relationship_conn()
+    monkeypatch.setattr(
+        "backend.api.account.read_archive_snapshot",
+        lambda connection, family, filters: cast(
+            Callable[..., dict],
+            {
+                "journey": build_collection_journey,
+                "cohorts": build_collection_cohorts,
+                "returns": build_archive_returns,
+            }[family],
+        )(connection, _context(connection)),
+    )
     app = FastAPI()
     app.include_router(account_router, prefix="/api")
     app.dependency_overrides[get_conn] = lambda: conn
@@ -369,7 +381,7 @@ def test_return_metrics_detect_gap_and_current_sleeping_without_overlap() -> Non
     }
 
 
-def test_archive_returns_route_uses_event_start_and_strict_private_contract() -> None:
+def test_archive_returns_route_uses_event_start_and_strict_private_contract(monkeypatch) -> None:
     conn = _relationship_conn()
     conn.execute(
         "INSERT INTO plays VALUES (?, ?, ?, ?, ?, ?)",
@@ -382,6 +394,17 @@ def test_archive_returns_route_uses_event_start_and_strict_private_contract() ->
     cohorts = ArchiveCohortsResponse.model_validate(build_collection_cohorts(conn, _context(conn)))
     serialized = json.dumps(result)
 
+    monkeypatch.setattr(
+        "backend.api.account.read_archive_snapshot",
+        lambda connection, family, filters: cast(
+            Callable[..., dict],
+            {
+                "journey": build_collection_journey,
+                "cohorts": build_collection_cohorts,
+                "returns": build_archive_returns,
+            }[family],
+        )(connection, _context(connection)),
+    )
     app = FastAPI()
     app.include_router(account_router, prefix="/api")
     app.dependency_overrides[get_conn] = lambda: conn

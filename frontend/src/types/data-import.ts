@@ -1,3 +1,5 @@
+import type { GovernanceSnapshot } from '@/types/governance-snapshot'
+
 export type ImportHealthStatus = 'healthy' | 'partial' | 'blocked' | 'stale' | 'failed'
 
 export type ImportHealthIssueCategory = 'database' | 'relationship' | 'metadata' | 'derived'
@@ -115,6 +117,8 @@ export interface ImportHealthIssue {
 }
 
 export interface ImportHealthResponse {
+  snapshot?: GovernanceSnapshot | null
+
   status: ImportHealthStatus
   checked_at: string
   database: {

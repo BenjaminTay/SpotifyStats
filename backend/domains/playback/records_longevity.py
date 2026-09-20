@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pandas as pd
 
 from backend.domains.playback.records_helpers import (
@@ -28,39 +30,110 @@ def _event_totals(frame: pd.DataFrame, group_col: str) -> pd.DataFrame:
     )
 
 
-def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="track"):
+@dataclass(frozen=True)
+class _PresenceFacts:
+    entity_id: object
+    name: str
+    artist: str
+    dates: tuple
+    first_date: object
+    last_date: object
+    total_plays: int
+    total_ms: float
+    total_hours: float
+
+
+@dataclass(frozen=True)
+class _LongevityFacts:
+    presence: tuple[_PresenceFacts, ...]
+    named_totals: pd.DataFrame
+    group_cols: tuple[str, ...]
+
+
+def _build_longevity_facts(frame, group_col, name_col, artist_col):
+    """Read-only per-frame facts; entity-only and named grains stay distinct."""
+    cols = unique_cols(group_col, name_col, artist_col, "ts_date")
+    presence = frame[cols].drop_duplicates().sort_values(unique_cols(group_col, "ts_date"))
+    presence["ts_date"] = pd.to_datetime(presence["ts_date"])
+    presence["_record_date"] = presence["ts_date"].dt.date
+    duration_totals = _duration_totals(frame, group_col)
+    event_totals = _event_totals(frame, group_col)
+    # Presence is already sorted by entity/date. Iterate its compact tuples
+    # once instead of constructing thousands of DataFrames and Series lookups.
+    from itertools import groupby
+
+    entities = []
+    column_index = {column: index for index, column in enumerate(presence.columns)}
+    group_index = column_index[group_col]
+    date_index = column_index["_record_date"]
+    totals_by_entity = event_totals.to_dict("index")
+    duration_by_entity = duration_totals
+    for entity_id, group in groupby(
+        presence.itertuples(index=False, name=None), lambda row: row[group_index]
+    ):
+        if pd.isna(entity_id):
+            continue  # Same null exclusion as pandas groupby.
+        rows = list(group)
+        dates = tuple(sorted({row[date_index] for row in rows if pd.notna(row[date_index])}))
+        totals = totals_by_entity[entity_id]
+        total_ms = duration_by_entity.get(entity_id)
+        if total_ms is None:
+            total_ms = float(totals["event_total_ms"])
+        entities.append(
+            _PresenceFacts(
+                entity_id=entity_id,
+                name=str(rows[0][column_index[name_col]])
+                if name_col in column_index
+                else str(entity_id),
+                artist=str(rows[0][column_index[artist_col]]) if artist_col in column_index else "",
+                dates=dates,
+                first_date=rows[0][date_index],
+                last_date=rows[-1][date_index],
+                total_plays=int(totals["total_plays"]),
+                total_ms=total_ms,
+                total_hours=round(total_ms / 3_600_000, 1),
+            )
+        )
+
+    # Span/month records retain the original name-sensitive grouping, including
+    # pandas' null exclusion. Do not derive these from entity-only totals.
+    gb_cols = safe_groupby_cols([], group_col, name_col, artist_col)
+    named = frame[unique_cols(*gb_cols, "ts_date", "play_id")].copy()
+    named["_ym"] = named["ts_date"].astype(str).str[:7]
+    named["ts_date"] = pd.to_datetime(named["ts_date"])
+    named = (
+        named.groupby(gb_cols)
+        .agg(
+            first_date=("ts_date", "min"),
+            last_date=("ts_date", "max"),
+            total_plays=("play_id", "count"),
+            active_months=("_ym", "nunique"),
+        )
+        .reset_index()
+    )
+    named = named.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
+    named["total_ms"] = named["total_ms"].fillna(0)
+    named["first_date"] = pd.to_datetime(named["first_date"])
+    named["last_date"] = pd.to_datetime(named["last_date"])
+    return _LongevityFacts(tuple(entities), named, tuple(gb_cols))
+
+
+def _longest_streak_days(
+    frame, group_col, name_col, artist_col, entity_type="track", *, facts=None
+):
     """最長連續播放天數。"""
     if frame.empty:
         return pd.DataFrame()
 
-    cols = unique_cols(group_col, name_col, artist_col, "ts_date")
-    presence = frame[cols].drop_duplicates()
-    sort_cols = unique_cols(group_col, "ts_date")
-    presence = presence.sort_values(sort_cols)
-    presence["ts_date"] = pd.to_datetime(presence["ts_date"])
-    duration_totals = _duration_totals(frame, group_col)
-    event_totals = _event_totals(frame, group_col)
+    facts = facts or _build_longevity_facts(frame, group_col, name_col, artist_col)
 
     results = []
-    for entity_id, grp in presence.groupby(group_col):
-        name = str(grp[name_col].iloc[0]) if name_col in grp.columns else str(entity_id)
-        artist = str(grp[artist_col].iloc[0]) if artist_col in grp.columns else ""
-        dates = (
-            pd.to_datetime(grp["ts_date"], errors="coerce")
-            .dropna()
-            .dt.date.drop_duplicates()
-            .sort_values()
-            .tolist()
-        )
+    for item in facts.presence:
+        entity_id, name, artist, dates = item.entity_id, item.name, item.artist, item.dates
         if not dates:
             continue
 
-        totals = event_totals.loc[entity_id]
-        total_plays = int(totals["total_plays"])
-        total_ms = duration_totals.get(entity_id)
-        if total_ms is None:
-            total_ms = float(totals["event_total_ms"])
-        total_hours = round(total_ms / 3_600_000, 1)
+        total_plays, total_ms, total_hours = item.total_plays, item.total_ms, item.total_hours
 
         if len(dates) < 2:
             results.append(
@@ -69,8 +142,8 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
                     "name": name,
                     "artist_name": artist,
                     "streak_days": 1,
-                    "start_date": str(grp["ts_date"].iloc[0].date()),
-                    "end_date": str(grp["ts_date"].iloc[-1].date()),
+                    "start_date": str(item.first_date),
+                    "end_date": str(item.last_date),
                     "total_plays": total_plays,
                     "total_ms": total_ms,
                     "total_hours": total_hours,
@@ -127,25 +200,15 @@ def _longest_streak_days(frame, group_col, name_col, artist_col, entity_type="tr
     return df
 
 
-def _longest_span(frame, group_col, name_col, artist_col, entity_type="track"):
+def _longest_span(frame, group_col, name_col, artist_col, entity_type="track", *, facts=None):
     """最長陪伴跨度。"""
     if frame.empty:
         return pd.DataFrame()
 
-    gb_cols = safe_groupby_cols([], group_col, name_col, artist_col)
-    span = (
-        frame.groupby(gb_cols)
-        .agg(
-            first_date=("ts_date", "min"),
-            last_date=("ts_date", "max"),
-            total_plays=("play_id", "count"),
-        )
-        .reset_index()
-    )
-    span = span.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
-    span["total_ms"] = span["total_ms"].fillna(0)
-    span["first_date"] = pd.to_datetime(span["first_date"])
-    span["last_date"] = pd.to_datetime(span["last_date"])
+    facts = facts or _build_longevity_facts(frame, group_col, name_col, artist_col)
+    span = facts.named_totals[
+        [*facts.group_cols, "first_date", "last_date", "total_plays", "total_ms"]
+    ].copy()
     span["span_days"] = (span["last_date"] - span["first_date"]).dt.days + 1
     span["entity_id"] = span[group_col].astype(str)
     span = sort_and_limit(
@@ -165,28 +228,18 @@ def _longest_span(frame, group_col, name_col, artist_col, entity_type="track"):
     return span
 
 
-def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="track"):
+def _comeback_after_sleep(
+    frame, group_col, name_col, artist_col, entity_type="track", *, facts=None
+):
     """沉睡後回歸。"""
     if frame.empty:
         return pd.DataFrame()
 
-    cols = unique_cols(group_col, name_col, artist_col, "ts_date")
-    presence = frame[cols].drop_duplicates()
-    sort_cols = unique_cols(group_col, "ts_date")
-    presence = presence.sort_values(sort_cols)
-    presence["ts_date"] = pd.to_datetime(presence["ts_date"])
-    duration_totals = _duration_totals(frame, group_col)
-    event_totals = _event_totals(frame, group_col)
+    facts = facts or _build_longevity_facts(frame, group_col, name_col, artist_col)
 
     results = []
-    for entity_id, grp in presence.groupby(group_col):
-        dates = (
-            pd.to_datetime(grp["ts_date"], errors="coerce")
-            .dropna()
-            .dt.date.drop_duplicates()
-            .sort_values()
-            .tolist()
-        )
+    for item in facts.presence:
+        entity_id, dates = item.entity_id, item.dates
         if len(dates) < 2:
             continue
         max_gap = 0
@@ -200,14 +253,8 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
                 gap_after = dates[i]
 
         if max_gap >= 7:
-            name = str(grp[name_col].iloc[0]) if name_col in grp.columns else str(entity_id)
-            artist = str(grp[artist_col].iloc[0]) if artist_col in grp.columns else ""
-            totals = event_totals.loc[entity_id]
-            total_plays = int(totals["total_plays"])
-            total_ms = duration_totals.get(entity_id)
-            if total_ms is None:
-                total_ms = float(totals["event_total_ms"])
-            total_hours = round(total_ms / 3_600_000, 1)
+            name, artist = item.name, item.artist
+            total_plays, total_ms, total_hours = item.total_plays, item.total_ms, item.total_hours
             results.append(
                 {
                     "entity_id": str(entity_id),
@@ -241,23 +288,14 @@ def _comeback_after_sleep(frame, group_col, name_col, artist_col, entity_type="t
     return df
 
 
-def _most_active_months(frame, group_col, name_col, artist_col, entity_type="track"):
+def _most_active_months(frame, group_col, name_col, artist_col, entity_type="track", *, facts=None):
     """最活躍月份。"""
     if frame.empty:
         return pd.DataFrame()
-    fm = frame.copy()
-    fm["_ym"] = fm["ts_date"].astype(str).str[:7]
-    gb_cols = safe_groupby_cols([], group_col, name_col, artist_col)
-    active = (
-        fm.groupby(gb_cols)
-        .agg(
-            active_months=("_ym", "nunique"),
-            total_plays=("play_id", "count"),
-        )
-        .reset_index()
-    )
-    active = active.merge(grouped_records_duration(frame, gb_cols), on=gb_cols, how="left")
-    active["total_ms"] = active["total_ms"].fillna(0)
+    facts = facts or _build_longevity_facts(frame, group_col, name_col, artist_col)
+    active = facts.named_totals[
+        [*facts.group_cols, "active_months", "total_plays", "total_ms"]
+    ].copy()
     active["entity_id"] = active[group_col].astype(str)
     active = sort_and_limit(
         active,
@@ -277,9 +315,7 @@ def _user_active_streak(event_frame):
     """用戶連續活躍天數。"""
     if event_frame.empty:
         return pd.DataFrame()
-    dates = sorted(
-        event_frame["ts_date"].drop_duplicates().apply(lambda x: pd.to_datetime(x).date()).tolist()
-    )
+    dates = sorted(pd.to_datetime(event_frame["ts_date"].drop_duplicates()).dt.date.tolist())
     if not dates:
         return pd.DataFrame()
 
@@ -330,16 +366,19 @@ def _entity_longevity_records(frame, group_col, name_col, artist_col, entity_typ
             "comeback_after_sleep": pd.DataFrame(),
             "most_active_months": pd.DataFrame(),
         }
+    facts = _build_longevity_facts(frame, group_col, name_col, artist_col)
     return {
         "longest_streak_days": _longest_streak_days(
-            frame, group_col, name_col, artist_col, entity_type
+            frame, group_col, name_col, artist_col, entity_type, facts=facts
         ),
-        "longest_span": _longest_span(frame, group_col, name_col, artist_col, entity_type),
+        "longest_span": _longest_span(
+            frame, group_col, name_col, artist_col, entity_type, facts=facts
+        ),
         "comeback_after_sleep": _comeback_after_sleep(
-            frame, group_col, name_col, artist_col, entity_type
+            frame, group_col, name_col, artist_col, entity_type, facts=facts
         ),
         "most_active_months": _most_active_months(
-            frame, group_col, name_col, artist_col, entity_type
+            frame, group_col, name_col, artist_col, entity_type, facts=facts
         ),
     }
 

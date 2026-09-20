@@ -142,3 +142,76 @@ def pytest_sessionfinish(session, exitstatus):
             reporter.write_sep("!", "Blocked backend test access to formal data")
             for violation in sorted(set(VIOLATIONS)):
                 reporter.write_line(violation)
+
+
+@pytest.fixture
+def published_community_snapshot(client):
+    """Read-only smoke probes consume a privately prepared Community publication."""
+    from backend.core.db import get_db
+    from backend.services.community_snapshot_service import ensure
+
+    conn = get_db(readonly=True)
+    try:
+        ensure(conn)
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def published_analysis_snapshot(client):
+    """Prepare real default publications through the private maintenance path."""
+    import json
+
+    from backend.core.db import get_db
+    from backend.services import analysis_snapshot_service as service
+
+    conn = get_db(readonly=True)
+    try:
+        for family in service.VERSIONS:
+            params, key, revision, _ = service.request_context(conn, family, {})
+            service.rebuild(family, json.dumps(params, sort_keys=True), key, revision)
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def published_archive_snapshot(client):
+    """Publish fixture facts before whole-API read probes; never builds on GET."""
+    from backend.core.db import get_db
+    from backend.domains.account_archive.snapshot_revision import install_revision_tracking
+    from backend.services.account_archive_snapshot_service import ensure
+
+    conn = get_db(readonly=False)
+    try:
+        with conn:
+            install_revision_tracking(conn)
+        ensure(conn)
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def published_governance_snapshot():
+    from backend.core.db import get_db
+    from backend.domains.metadata.governance_revision import install_revision_tracking
+    from backend.services.governance_snapshot_service import ensure
+
+    conn = get_db(readonly=False)
+    try:
+        with conn:
+            install_revision_tracking(conn)
+        ensure(conn)
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def published_artist_rank_context(client):
+    from backend.core.db import get_db
+    from backend.services.entity_rank_context_service import ensure
+
+    conn = get_db(readonly=True)
+    try:
+        ensure(conn)
+    finally:
+        conn.close()

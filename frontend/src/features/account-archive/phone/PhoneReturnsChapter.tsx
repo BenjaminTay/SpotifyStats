@@ -12,7 +12,7 @@ export function PhoneReturnsChapter() {
     <section ref={ref} id="archive-returns" className="phone-archive-chapter" data-archive-section="returns">
       <PhoneChapterHeading number="04" title="找回音乐" />
       {!enabled || query.isLoading ? <PhoneArchiveLoading /> : null}
-      {query.isError ? <PhoneArchiveError onRetry={() => void query.refetch()} /> : null}
+      {query.isError ? <PhoneArchiveError error={query.error} onRetry={() => void query.refetch()} /> : null}
       {query.data?.status === 'unavailable' ? <PhoneArchiveUnavailable>当前观察期不足以识别回归，继续导入播放记录后这里会自然形成。</PhoneArchiveUnavailable> : null}
       {query.data && query.data.status !== 'unavailable' ? (
         <>

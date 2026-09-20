@@ -17,6 +17,7 @@ from backend.domains.playback.records import (
     _serialize_records,
     compute_playback_records,
 )
+from backend.domains.playback.records_duration_facts import RecordsDurationFacts
 from backend.domains.playback.records_helpers import (
     attach_scoped_records_duration,
     records_duration_frame,
@@ -66,6 +67,7 @@ def _build_entity_frames(
     max_merge_gap_minutes: int | None = 5,
     period_start: str | None = None,
     period_end: str | None = None,
+    duration_facts: RecordsDurationFacts | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build track, album, and artist entity frames with canonicalization.
 
@@ -74,7 +76,7 @@ def _build_entity_frames(
         album_frame: event_frame with album_project_id/name columns added
         artist_frame: fan-out frame with one row per contributing artist
     """
-    duration_frame = records_duration_frame(event_frame)
+    duration_frame = records_duration_frame(event_frame, copy=False)
     track_frame = event_frame.copy()
     track_duration = duration_frame.copy()
     album_frame = event_frame.copy()
@@ -117,6 +119,8 @@ def _build_entity_frames(
         track_duration["canonical_track_name"] = track_duration["track_name"]
     attach_listening_duration_frame(track_frame, track_duration)
 
+    # One read-only membership projection for the event and duration tracks.
+    membership = None
     # ── Album canonicalization via album project membership ──
     if not album_frame.empty and merge_level >= 2:
         try:
@@ -173,7 +177,8 @@ def _build_entity_frames(
             )
 
             duration_with_keys = apply_canonical_song_keys(album_duration, conn, merge_level)
-            membership = load_album_project_membership(conn, merge_level, include_compilations)
+            if membership is None:
+                membership = load_album_project_membership(conn, merge_level, include_compilations)
             if not membership.empty and "canonical_song_key" in duration_with_keys.columns:
                 membership_join = membership[
                     ["canonical_song_key", "project_id", "album_project_name", "release_date"]
@@ -243,6 +248,7 @@ def _build_entity_frames(
             artist_frame,
             start_date=period_start,
             end_date=period_end,
+            duration_facts=duration_facts,
         )
         if not artist_frame.empty and (period_start or period_end):
             dates = artist_frame["ts_date"].astype(str)
@@ -300,14 +306,17 @@ def _get_analysis_records_uncached(
     # unchanged and it does not opt into this standalone lifetime snapshot.
     lifetime_event_frame = None if preloaded_event_frame is not None else event_frame.copy()
 
+    duration_facts = RecordsDurationFacts()
+
     # Period filtering
     period_start, period_end = resolve_period_dates(period, start_date, end_date)
     event_frame = attach_scoped_records_duration(
         event_frame,
         start_date=period_start,
         end_date=period_end,
+        duration_facts=duration_facts,
     )
-    scoped_duration = records_duration_frame(event_frame)
+    scoped_duration = records_duration_frame(event_frame, copy=False)
     if period_start or period_end:
         if period_start:
             event_frame = event_frame[event_frame["ts_date"].astype(str) >= period_start]
@@ -316,7 +325,7 @@ def _get_analysis_records_uncached(
         event_frame = event_frame.copy()
         attach_listening_duration_frame(event_frame, scoped_duration)
 
-    duration_frame = records_duration_frame(event_frame)
+    duration_frame = records_duration_frame(event_frame, copy=False)
 
     # Resolved period for response
     if period == "lifetime":
@@ -378,6 +387,7 @@ def _get_analysis_records_uncached(
             max_merge_gap_minutes=max_merge_gap_minutes,
             period_start=period_start,
             period_end=period_end,
+            duration_facts=duration_facts,
         )
     else:
         track_frame, album_frame, artist_frame = tuple(
@@ -385,9 +395,13 @@ def _get_analysis_records_uncached(
                 frame.copy(),
                 start_date=period_start,
                 end_date=period_end,
+                duration_facts=duration_facts,
             )
             for frame in preloaded_entity_frames
         )
+
+    # Geometry is no longer needed once every entity owns its scoped slices.
+    del duration_facts
 
     # Compute records
     raw_records = compute_playback_records(
@@ -490,6 +504,7 @@ def _assemble_nested_records(flat: dict) -> dict:
     }
 
 
+@singleflight
 @lru_cache(maxsize=64)
 def _get_analysis_records_cached(
     min_ms: int,
@@ -524,7 +539,6 @@ def _get_analysis_records_cached(
         conn.close()
 
 
-@singleflight
 def get_analysis_records(
     conn: sqlite3.Connection,
     min_ms: int,

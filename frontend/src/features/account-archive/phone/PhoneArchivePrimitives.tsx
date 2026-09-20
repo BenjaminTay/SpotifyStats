@@ -1,3 +1,4 @@
+import { archiveReadErrorMessage } from '@/features/account-archive/model/archiveModel'
 import { Disc3, LoaderCircle, RotateCcw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useDisplayName } from '@/lib/chinese'
@@ -23,10 +24,10 @@ export function PhoneArchiveLoading({ label = '正在整理这一章' }: { label
   return <div className="phone-archive-loading"><LoaderCircle className="animate-spin" />{label}</div>
 }
 
-export function PhoneArchiveError({ onRetry }: { onRetry: () => void }) {
+export function PhoneArchiveError({ onRetry, error }: { onRetry: () => void; error?: unknown }) {
   return (
     <div className="phone-archive-loading phone-archive-error">
-      <span>这一章暂时没有打开。</span>
+      <span>{archiveReadErrorMessage(error)}</span>
       <button type="button" onClick={onRetry}><RotateCcw />重试</button>
     </div>
   )

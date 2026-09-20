@@ -679,7 +679,7 @@
 .mobile-yearly-v2-appendix-controls .mobile-yearly-v2-appendix-tabs { margin: 0; border: 0; background: transparent; }
 .mobile-yearly-v2-appendix-filter { display: flex; gap: 4px; margin: 0; padding-top: 8px; border-top: 1px solid var(--annual-mobile-rule); }
 .mobile-yearly-v2-appendix-filter button {
-  min-height: 40px;
+  min-height: 44px;
   flex: 1;
   border: 0;
   border-radius: 999px;

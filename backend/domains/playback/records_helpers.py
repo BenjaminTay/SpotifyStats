@@ -9,6 +9,7 @@ from backend.domains.playback.logical_timeline import (
     explode_listening_slices,
     get_listening_duration_frame,
 )
+from backend.domains.playback.records_duration_facts import RecordsDurationFacts
 
 TOP_RECORD_LIMIT = 50
 
@@ -18,6 +19,8 @@ def records_duration_frame(
     *,
     start_date: str | None = None,
     end_date: str | None = None,
+    copy: bool = True,
+    duration_facts: RecordsDurationFacts | None = None,
 ) -> pd.DataFrame:
     """Return the attached all-listening duration rows scoped for Records.
 
@@ -27,15 +30,22 @@ def records_duration_frame(
     record functions call this helper without bounds and cannot see rows from
     another period.
 
+    ``copy=False`` is reserved for read-only aggregations; callers that mutate
+    or attach the result retain the default independent copy.
+
     Frames created directly by tests or legacy callers have no attached
     duration track; those retain the previous event-duration fallback.
     """
     attached = get_listening_duration_frame(event_frame)
     source = attached if attached is not None else event_frame
     if attached is not None and "slice_start_at" not in source.columns:
-        source = explode_listening_slices(source, granularity="hour")
+        source = (
+            duration_facts.hour_slices(source)
+            if duration_facts is not None
+            else explode_listening_slices(source, granularity="hour")
+        )
     if source.empty:
-        return source.copy()
+        return source.copy() if copy else source
 
     scoped = source
     if (start_date or end_date) and "ts_date" in scoped.columns:
@@ -46,7 +56,7 @@ def records_duration_frame(
         if end_date:
             mask &= dates <= end_date
         scoped = scoped.loc[mask]
-    return scoped.copy()
+    return scoped.copy() if copy else scoped
 
 
 def attach_scoped_records_duration(
@@ -54,12 +64,14 @@ def attach_scoped_records_duration(
     *,
     start_date: str | None = None,
     end_date: str | None = None,
+    duration_facts: RecordsDurationFacts | None = None,
 ) -> pd.DataFrame:
     """Attach a period-scoped duration track to an event frame in place."""
     duration = records_duration_frame(
         event_frame,
         start_date=start_date,
         end_date=end_date,
+        duration_facts=duration_facts,
     )
     # Yearly Review attaches already-scoped slices as a bare DataFrame for its
     # report builders.  Pandas deep-copies DataFrame attrs while materialising
@@ -78,7 +90,7 @@ def grouped_records_duration(
     value_name: str = "total_ms",
 ) -> pd.DataFrame:
     """Aggregate the Records duration track without changing event counts."""
-    duration = records_duration_frame(event_frame)
+    duration = records_duration_frame(event_frame, copy=False)
     if duration.empty or any(column not in duration.columns for column in group_cols):
         duration = event_frame
     if duration.empty or "ms_played" not in duration.columns:

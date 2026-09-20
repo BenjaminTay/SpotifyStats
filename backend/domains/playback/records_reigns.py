@@ -63,7 +63,7 @@ def _monthly_reign(frame, group_col, name_col, artist_col, entity_type="track"):
     """月度統治。"""
     if frame.empty:
         return pd.DataFrame()
-    fm = frame.copy()
+    fm = frame.copy(deep=False)
     fm["_ym"] = fm["ts_date"].astype(str).str[:7]
     gb_cols = safe_groupby_cols(["_ym"], group_col, name_col, artist_col)
     monthly = fm.groupby(gb_cols).agg(plays=("play_id", "count")).reset_index()
@@ -182,7 +182,12 @@ def _fastest_milestone(frame, group_col, name_col, artist_col, entity_type="trac
         sequence_columns.append("ts")
     if "play_id" in frame.columns:
         sequence_columns.append("play_id")
-    ordered = frame.sort_values(sequence_columns, kind="stable").copy()
+    milestone_columns = list(dict.fromkeys([*sequence_columns, group_col, "album_release_date"]))
+    ordered = (
+        frame[[column for column in milestone_columns if column in frame.columns]]
+        .sort_values(sequence_columns, kind="stable")
+        .copy()
+    )
     ordered["_milestone_event_date"] = pd.to_datetime(ordered["ts_date"], errors="coerce")
     ordered = ordered[ordered["_milestone_event_date"].notna()]
 

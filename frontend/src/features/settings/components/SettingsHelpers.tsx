@@ -54,6 +54,7 @@ export function CollapsibleSection({
   children,
   summary,
   tone,
+  onOpenChange,
 }: {
   num: number
   title: string
@@ -62,6 +63,7 @@ export function CollapsibleSection({
   children: React.ReactNode
   summary?: React.ReactNode
   tone?: 'default' | 'advanced'
+  onOpenChange?: (open: boolean) => void
 }) {
   const [open, setOpen] = useState(defaultOpen)
 
@@ -69,7 +71,8 @@ export function CollapsibleSection({
     <div>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        onClick={() => { setOpen(!open); onOpenChange?.(!open) }}
         className="group mb-6 w-full text-left focus-visible:outline-none"
       >
         <div className="flex items-center justify-between gap-2">

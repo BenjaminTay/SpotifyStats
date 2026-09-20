@@ -11,7 +11,8 @@ export function CommunityAccountExperience() {
   const { handle } = useParams<{ handle: string }>()
   const decodedHandle = decodeURIComponent(handle ?? '')
   const account = ACCOUNT_CONFIG[decodedHandle]
-  const chartParams = useCommunityChartParams()
+  const chart = useCommunityChartParams()
+  const chartParams = chart.params
 
   const filters = useMemo(() => {
     const f: Record<string, string | number | boolean> = { ...chartParams, limit: 50, offset: 0 }
@@ -19,9 +20,12 @@ export function CommunityAccountExperience() {
     return f
   }, [chartParams, decodedHandle])
 
-  const { posts, meta, loading, loadingMore, error, refetch, hasMore, loadMore } = useCommunityFeed(filters)
+  const { posts, meta, loading: feedLoading, loadingMore, error: feedError, refetch: feedRefetch, hasMore, loadMore } = useCommunityFeed(filters, chart.ready)
 
-  const { trending } = useCommunityTrending(chartParams)
+  const { trending } = useCommunityTrending(chartParams, chart.ready)
+  const loading = chart.loading || (!chart.ready && !chart.error) || feedLoading
+  const error = chart.error || feedError
+  const refetch = chart.error ? chart.refetch : feedRefetch
 
   if (!account) {
     return (
@@ -36,7 +40,7 @@ export function CommunityAccountExperience() {
         </section>
         <div className="max-w-[720px] mx-auto text-center py-20">
           <p className="text-muted-foreground">This account does not exist.</p>
-          <Link to="/community" className="mt-3 inline-block text-[15px] text-accent-foreground hover:underline">
+          <Link to="/community" className="community-touch-action mt-3 inline-block text-[15px] text-accent-foreground hover:underline">
             Back to community
           </Link>
         </div>
@@ -183,10 +187,10 @@ export function CommunityAccountExperience() {
           if (error) {
             return (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-2">
-                <p className="text-[15px] font-medium">Failed to load</p>
+                <p className="text-[15px] font-medium">{error}</p>
                 <button
                   type="button"
-                  className="mt-3 px-5 py-1.5 text-[14px] font-medium rounded-full bg-accent-foreground text-primary-foreground transition-opacity hover:opacity-85"
+                  className="community-touch-action mt-3 px-5 py-1.5 text-[14px] font-medium rounded-full bg-accent-foreground text-primary-foreground transition-opacity hover:opacity-85"
                   onClick={() => refetch()}
                 >
                   Retry

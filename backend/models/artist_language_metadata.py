@@ -93,6 +93,9 @@ class ArtistLanguageMissingItem(BaseModel):
 
 
 class ArtistLanguageCoverageResponse(BaseModel):
+    snapshot: dict | None = None
+    checked_at: str | None = None
+
     eligible_hours: float
     excluded_unattributed_hours: float
     classified_hours: float

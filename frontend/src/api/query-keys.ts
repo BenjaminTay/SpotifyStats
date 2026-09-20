@@ -1,5 +1,19 @@
 /** Canonical query keys for TanStack Query, organized by domain. */
 
+/** Feed pagination is owned by pageParam. Omit only equivalent API filter defaults. */
+export function normalizeCommunityParams(params: Record<string, unknown>) {
+  const result: Record<string, string | number | boolean> = {}
+  for (const [key, value] of Object.entries(params)) {
+    if (value == null || value === '' || key === 'limit' || key === 'offset') continue
+    if ((key === 'highlights_only' && value === false) || (key === 'significance_min' && value === 0)) continue
+    result[key] = ['accounts', 'tags', 'post_types'].includes(key)
+      ? [...new Set(String(value).split(',').map(v => v.trim()).filter(Boolean))].sort().join(',')
+      : key === 'search' ? String(value).toLowerCase() : value as string | number | boolean
+    if (result[key] === '') delete result[key]
+  }
+  return result
+}
+
 export const queryKeys = {
   home: {
     all: ["home"] as const,
@@ -172,6 +186,12 @@ export const queryKeys = {
       ] as const,
   },
 
+  recentPlays: {
+    page: (context: Record<string, unknown>, page: number, limit: number, search: string, date: string | null) =>
+      ['recent-plays', context, { page, limit, search, date }] as const,
+    dates: (context: Record<string, unknown>) => ['play-dates', context] as const,
+  },
+
   music: {
     all: ["music"] as const,
     search: (params: Record<string, unknown>) =>
@@ -271,11 +291,11 @@ export const queryKeys = {
   community: {
     all: ["community"] as const,
     feed: (filters: Record<string, unknown> = {}) =>
-      ["community", "feed", filters] as const,
+      ["community", "feed", normalizeCommunityParams(filters)] as const,
     trending: (filters: Record<string, unknown> = {}) =>
-      ["community", "trending", filters] as const,
+      ["community", "trending", normalizeCommunityParams(filters)] as const,
     post: (postId: string, filters: Record<string, unknown> = {}) =>
-      ["community", "post", postId, filters] as const,
+      ["community", "post", postId, normalizeCommunityParams(filters)] as const,
   },
 
   aiInsights: {

@@ -28,7 +28,7 @@ const QUERY_OPTIONS = {
 export function useArchiveOverview() {
   return useQuery({
     queryKey: queryKeys.account.archiveOverview(),
-    queryFn: () => api.get<ArchiveOverview>('/account/archive-overview'),
+    queryFn: ({ signal }) => api.get<ArchiveOverview>('/account/archive-overview', undefined, undefined, signal),
     ...QUERY_OPTIONS,
   })
 }
@@ -36,7 +36,7 @@ export function useArchiveOverview() {
 export function useArchiveJourney(enabled = true) {
   return useQuery({
     queryKey: queryKeys.account.archiveJourney(ARCHIVE_FILTERS),
-    queryFn: () => api.get<ArchiveJourney>('/account/collection-journey', ARCHIVE_FILTERS),
+    queryFn: ({ signal }) => api.get<ArchiveJourney>('/account/collection-journey', ARCHIVE_FILTERS, undefined, signal),
     enabled,
     ...QUERY_OPTIONS,
   })
@@ -45,7 +45,7 @@ export function useArchiveJourney(enabled = true) {
 export function useArchiveCohorts(enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.account.archiveCohorts(ARCHIVE_FILTERS),
-    queryFn: () => api.get<ArchiveCohorts>('/account/collection-cohorts', ARCHIVE_FILTERS),
+    queryFn: ({ signal }) => api.get<ArchiveCohorts>('/account/collection-cohorts', ARCHIVE_FILTERS, undefined, signal),
     enabled,
     ...QUERY_OPTIONS,
   })
@@ -54,7 +54,7 @@ export function useArchiveCohorts(enabled: boolean) {
 export function useArchiveReturns(enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.account.archiveReturns(ARCHIVE_FILTERS),
-    queryFn: () => api.get<ArchiveReturns>('/account/returns', ARCHIVE_FILTERS),
+    queryFn: ({ signal }) => api.get<ArchiveReturns>('/account/returns', ARCHIVE_FILTERS, undefined, signal),
     enabled,
     ...QUERY_OPTIONS,
   })
@@ -63,7 +63,7 @@ export function useArchiveReturns(enabled: boolean) {
 export function useArchiveDiscovery(enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.account.archiveDiscovery(ARCHIVE_FILTERS),
-    queryFn: () => api.get<ArchiveDiscovery>('/account/discovery', ARCHIVE_FILTERS),
+    queryFn: ({ signal }) => api.get<ArchiveDiscovery>('/account/discovery', ARCHIVE_FILTERS, undefined, signal),
     enabled,
     ...QUERY_OPTIONS,
   })
@@ -72,7 +72,7 @@ export function useArchiveDiscovery(enabled: boolean) {
 export function useArchiveOtherMedia(enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.account.archiveOtherMedia(ARCHIVE_FILTERS),
-    queryFn: () => api.get<ArchiveOtherMedia>('/account/other-media', ARCHIVE_FILTERS),
+    queryFn: ({ signal }) => api.get<ArchiveOtherMedia>('/account/other-media', ARCHIVE_FILTERS, undefined, signal),
     enabled,
     ...QUERY_OPTIONS,
   })

@@ -24,12 +24,15 @@ def test_community_feed_uses_saved_billboard_settings_when_query_params_omitted(
         "bb_week_start_hour": 12,
     }
 
-    def fake_generate_all_posts(**kwargs):
-        captured.update(kwargs)
-        return []
+    def fake_read(conn, view, params, **kwargs):
+        captured.update(params)
+        return {
+            "meta": {"total": 0, "total_all": 0, "returned": 0, "offset": 0, "limit": 1},
+            "posts": [],
+        }
 
     monkeypatch.setattr(dependencies, "_load_filter_settings", lambda: saved_settings)
-    monkeypatch.setattr(community_api, "generate_all_posts", fake_generate_all_posts)
+    monkeypatch.setattr(community_api, "read_community_snapshot", fake_read)
 
     response = client.get("/api/community/feed", params={"limit": 1})
 
@@ -48,11 +51,14 @@ def test_community_feed_forwards_explicit_billboard_and_merge_query_params(clien
 
     captured = {}
 
-    def fake_generate_all_posts(**kwargs):
-        captured.update(kwargs)
-        return []
+    def fake_read(conn, view, params, **kwargs):
+        captured.update(params)
+        return {
+            "meta": {"total": 0, "total_all": 0, "returned": 0, "offset": 0, "limit": 1},
+            "posts": [],
+        }
 
-    monkeypatch.setattr(community_api, "generate_all_posts", fake_generate_all_posts)
+    monkeypatch.setattr(community_api, "read_community_snapshot", fake_read)
 
     response = client.get(
         "/api/community/feed",

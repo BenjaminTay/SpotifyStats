@@ -63,10 +63,25 @@ async def lifespan(_app: FastAPI):
     # real governance conflict leaves the projection unpublished; the app stays
     # available so Settings can expose the unhealthy state and run remediation.
     from backend.core.db import get_db as get_startup_db
+
+    # Repair tracking before any maintenance reads it, including databases whose
+    # migrations are current but whose triggers were removed or changed.
+    from backend.domains.account_archive.snapshot_revision import install_revision_tracking
+    from backend.domains.metadata.governance_revision import (
+        install_revision_tracking as install_governance_tracking,
+    )
     from backend.domains.playback.l3_album_attribution import (
         apply_l3_album_attribution_plan,
         reconcile_l3_album_attribution_dependencies,
     )
+
+    startup_conn = get_startup_db(readonly=False)
+    try:
+        with startup_conn:
+            install_revision_tracking(startup_conn)
+            install_governance_tracking(startup_conn)
+    finally:
+        startup_conn.close()
 
     if l3_startup_reconcile_enabled():
         startup_conn = get_startup_db(readonly=False)
@@ -100,6 +115,11 @@ async def lifespan(_app: FastAPI):
         handle_genius_lyrics,
         handle_wikipedia_enrich,
     )
+    from backend.services.analysis_snapshot_service import (
+        JOB_TYPE,
+        enqueue_defaults,
+        handle_rebuild,
+    )
     from backend.services.artist_identity_rebuild_service import handle_artist_identity_rebuild
     from backend.services.billboard_snapshot_service import (
         BILLBOARD_SNAPSHOT_REBUILD_JOB_TYPE,
@@ -121,6 +141,48 @@ async def lifespan(_app: FastAPI):
     )
 
     job_queue = get_job_queue()
+    from backend.services.community_snapshot_service import (
+        JOB_TYPE as COMMUNITY_JOB_TYPE,
+    )
+    from backend.services.community_snapshot_service import (
+        enqueue_defaults as enqueue_community_defaults,
+    )
+    from backend.services.community_snapshot_service import (
+        handle_rebuild as handle_community_rebuild,
+    )
+
+    job_queue.register(COMMUNITY_JOB_TYPE, handle_community_rebuild)
+    from backend.services.account_archive_snapshot_service import (
+        JOB_TYPE as ARCHIVE_JOB_TYPE,
+    )
+    from backend.services.account_archive_snapshot_service import (
+        enqueue_defaults as enqueue_archive_defaults,
+    )
+    from backend.services.account_archive_snapshot_service import (
+        handle_rebuild as handle_archive_rebuild,
+    )
+
+    job_queue.register(ARCHIVE_JOB_TYPE, handle_archive_rebuild)
+    from backend.services.governance_snapshot_service import (
+        JOB_TYPE as GOVERNANCE_JOB_TYPE,
+    )
+    from backend.services.governance_snapshot_service import (
+        enqueue_defaults as enqueue_governance_defaults,
+    )
+    from backend.services.governance_snapshot_service import (
+        handle_rebuild as handle_governance_rebuild,
+    )
+
+    job_queue.register(GOVERNANCE_JOB_TYPE, handle_governance_rebuild)
+    job_queue.register(JOB_TYPE, handle_rebuild)
+    from backend.services.entity_rank_context_service import (
+        JOB_TYPE as RANK_CONTEXT_JOB_TYPE,
+    )
+    from backend.services.entity_rank_context_service import (
+        handle_rebuild as handle_rank_context_rebuild,
+    )
+
+    job_queue.register(RANK_CONTEXT_JOB_TYPE, handle_rank_context_rebuild)
     job_queue.register("cover_download", handle_cover_download)
     job_queue.register("wikipedia_enrich", handle_wikipedia_enrich)
     job_queue.register("genius_lyrics", handle_genius_lyrics)
@@ -151,6 +213,15 @@ async def lifespan(_app: FastAPI):
     outside_pytest = "PYTEST_CURRENT_TEST" not in os.environ
     if outside_pytest:
         enqueue_billboard_snapshot_rebuild("application startup", queue=job_queue)
+        enqueue_defaults("application startup", queue=job_queue)
+        from backend.services.entity_rank_context_service import (
+            enqueue_default as enqueue_rank_context,
+        )
+
+        enqueue_rank_context("application startup", queue=job_queue)
+        enqueue_community_defaults("application startup", queue=job_queue)
+        enqueue_archive_defaults("application startup", queue=job_queue)
+        enqueue_governance_defaults("application startup", queue=job_queue)
     from backend.services.cover_cache_service import enqueue_failed_cover_download_recovery
 
     # Recover only a bounded slice of previously failed covers after the strict
@@ -263,6 +334,72 @@ async def public_readonly_surface_middleware(request: Request, call_next):
                 )
 
         response = await call_next(request)
+        committed_mutation = (
+            not is_public_readonly(request)
+            and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+            and response.status_code < 400
+        )
+        snapshot_mutation = committed_mutation and request.url.path.startswith(
+            (
+                "/api/settings",
+                "/api/import",
+                "/api/version-merge",
+                "/api/metadata/",
+                "/api/music-metadata/",
+                "/api/artist-identities",
+            )
+        )
+        if snapshot_mutation:
+            from starlette.concurrency import run_in_threadpool
+
+            from backend.services.analysis_snapshot_service import enqueue_defaults
+
+            try:
+                await run_in_threadpool(enqueue_defaults, "committed " + request.url.path)
+                from backend.services.entity_rank_context_service import (
+                    enqueue_default as enqueue_rank_context,
+                )
+
+                await run_in_threadpool(enqueue_rank_context, "committed " + request.url.path)
+            except Exception:
+                logger.exception("Analysis maintenance scheduling failed after committed mutation")
+        if snapshot_mutation or (
+            committed_mutation and request.url.path == "/api/spotify/auth/sync"
+        ):
+            from starlette.concurrency import run_in_threadpool
+
+            from backend.services.community_snapshot_service import (
+                enqueue_defaults as enqueue_community_defaults,
+            )
+
+            try:
+                await run_in_threadpool(enqueue_community_defaults, "committed " + request.url.path)
+            except Exception:
+                logger.exception("Community maintenance scheduling failed after committed mutation")
+        if snapshot_mutation or (
+            committed_mutation and request.url.path == "/api/spotify/auth/sync"
+        ):
+            from starlette.concurrency import run_in_threadpool
+
+            from backend.services.account_archive_snapshot_service import (
+                enqueue_defaults as enqueue_archive_defaults,
+            )
+
+            try:
+                await run_in_threadpool(enqueue_archive_defaults, "committed " + request.url.path)
+            except Exception:
+                logger.exception("Archive maintenance scheduling failed after committed mutation")
+        if snapshot_mutation:
+            from starlette.concurrency import run_in_threadpool
+
+            from backend.services.governance_snapshot_service import (
+                enqueue_defaults as enqueue_governance,
+            )
+
+            try:
+                await run_in_threadpool(enqueue_governance, "committed " + request.url.path)
+            except Exception:
+                logger.exception("Governance scheduling failed after committed mutation")
         response.headers[SURFACE_HEADER] = surface
         return response
     finally:

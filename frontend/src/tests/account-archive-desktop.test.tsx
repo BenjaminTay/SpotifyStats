@@ -45,7 +45,7 @@ describe('Account archive Desktop route', () => {
     expect(screen.queryByText(/收藏记录：/)).not.toBeInTheDocument()
     expect(screen.queryByText(/播放数据截至/)).not.toBeInTheDocument()
     expect(screen.queryByText(/数据状态/)).not.toBeInTheDocument()
-    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/account/collection-journey', expect.anything()))
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/account/collection-journey', expect.anything(), undefined, expect.any(AbortSignal)))
     expect(api.get).not.toHaveBeenCalledWith('/account')
     expect(api.get).not.toHaveBeenCalledWith('/profile')
   })

@@ -23,7 +23,7 @@ export function JourneySection() {
         title="收藏旅程"
       />
       {query.isLoading && <ArchiveLoading />}
-      {query.isError && <ArchiveError onRetry={() => void query.refetch()} />}
+      {query.isError && <ArchiveError error={query.error} onRetry={() => void query.refetch()} />}
       {query.data?.status === 'unavailable' && (
         <ArchiveUnavailable>当前导入没有可用的收藏日期，收藏库仍可浏览，但时间旅程暂不可用。</ArchiveUnavailable>
       )}

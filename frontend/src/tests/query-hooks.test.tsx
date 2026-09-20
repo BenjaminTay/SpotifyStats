@@ -411,7 +411,7 @@ describe('Phase 5 query hook migration', () => {
     const { result } = renderHook(() => useArchiveOverview(), { wrapper: wrapperFor(client) })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(api.get).toHaveBeenCalledWith('/account/archive-overview')
+    expect(api.get).toHaveBeenCalledWith('/account/archive-overview', undefined, undefined, expect.any(AbortSignal))
     expect(api.get).not.toHaveBeenCalledWith('/account')
     expect(client.getQueryData(queryKeys.account.archiveOverview())).toBe(overview)
   })

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import sqlite3
 from pathlib import Path
@@ -11,7 +9,6 @@ from typing import Any
 
 from backend.core.cache import ttl_cached
 from backend.core.cache_manager import register_ttl
-from backend.domains.account_archive.revision import get_archive_revisions
 
 ARCHIVE_OVERVIEW_CACHE_TTL_SECONDS = 300
 
@@ -52,68 +49,11 @@ def _period_bounds(
     return (row[0], row[1]) if row else (None, None)
 
 
-def _revision_payload(conn: sqlite3.Connection) -> dict[str, Any]:
-    first_play, latest_play = _period_bounds(conn, "plays", "ts_date")
-    first_saved, latest_saved = _period_bounds(conn, "saved_tracks", "added_date")
-    revisions = get_archive_revisions(conn)
-    payload: dict[str, Any] = {
-        "account_import_revision": revisions["account_import"],
-        "collection_date_revision": revisions["collection_date"],
-        "saved_tracks": _count(conn, "saved_tracks"),
-        "saved_albums": _count(conn, "saved_albums"),
-        "saved_artists": _count(conn, "saved_artists"),
-        "saved_shows": _count(conn, "saved_shows"),
-        "playlists": _count(conn, "playlists"),
-        "playlist_items": _count(conn, "playlist_tracks"),
-        "plays": _count(conn, "plays"),
-        "first_saved": first_saved,
-        "latest_saved": latest_saved,
-        "first_play": first_play,
-        "latest_play": latest_play,
-    }
-    if _table_exists(conn, "plays"):
-        play_columns = _columns(conn, "plays")
-        row = conn.execute(
-            "SELECT "
-            + ", ".join(
-                [
-                    "COALESCE(MAX(play_id), 0)" if "play_id" in play_columns else "0",
-                    "COALESCE(MAX(ts), '')" if "ts" in play_columns else "''",
-                    "COALESCE(SUM(ms_played), 0)" if "ms_played" in play_columns else "0",
-                ]
-            )
-            + " FROM plays"
-        ).fetchone()
-        payload.update(
-            {
-                "max_play_id": int(row[0] or 0),
-                "latest_play_at": row[1] or "",
-                "total_play_ms": int(row[2] or 0),
-            }
-        )
-        if "content_type" in play_columns:
-            payload["play_content_types"] = [
-                [row[0] or "", int(row[1] or 0), int(row[2] or 0)]
-                for row in conn.execute(
-                    "SELECT content_type, COUNT(*), COALESCE(SUM(ms_played), 0) "
-                    "FROM plays GROUP BY content_type ORDER BY content_type"
-                ).fetchall()
-            ]
-    for table in ("artist_identity_state", "track_credit_state"):
-        if _table_exists(conn, table):
-            row = conn.execute(
-                f"SELECT current_revision FROM {table} WHERE state_id = 1"
-            ).fetchone()
-            payload[table] = int(row[0] or 0) if row else 0
-    return payload
-
-
 def archive_data_revision(conn: sqlite3.Connection) -> str:
     """Return an opaque revision that changes when any overview input changes."""
-    encoded = json.dumps(
-        _revision_payload(conn), sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()[:20]
+    from backend.domains.account_archive.snapshot_revision import FAMILIES, revision_or_legacy
+
+    return revision_or_legacy(conn, FAMILIES["overview"])
 
 
 def load_saved_track_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:

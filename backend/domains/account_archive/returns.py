@@ -203,11 +203,15 @@ def _build_return_metrics(
 
 
 def build_archive_returns(
-    conn: sqlite3.Connection, context: ArchiveFilterContext
+    conn: sqlite3.Connection, context: ArchiveFilterContext, *, facts=None
 ) -> dict[str, Any]:
-    entities, source_coverage = load_saved_track_entities(conn, context)
-    play_frame = load_effective_archive_plays(conn, context)
-    times_by_track = _play_times(play_frame)
+    if facts is not None:
+        facts.check(context)
+    entities, source_coverage = (
+        facts.saved if facts is not None else load_saved_track_entities(conn, context)
+    )
+    play_frame = facts.frame if facts is not None else load_effective_archive_plays(conn, context)
+    times_by_track = facts.times if facts is not None else _play_times(play_frame)
     latest_observation = _timestamp(context.latest_play_at)
     dated = sum(1 for entity in entities if _timestamp(entity.get("added_date")) is not None)
     invalid_dates = sum(

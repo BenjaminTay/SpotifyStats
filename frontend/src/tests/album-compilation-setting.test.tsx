@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   charts: vi.fn(),
   useApiData: vi.fn(),
-  useBillboardWeekly: vi.fn(),
+  useWeeklyProjection: vi.fn(),
   useSettings: vi.fn(),
 }))
 
@@ -22,7 +22,7 @@ vi.mock('@/components/shared/AnalysisControls', () => ({
 
 vi.mock('@/hooks/useAnalysis', () => ({
   useAnalysisFilters: () => ({
-    loading: false,
+    loading: mocks.useSettings().loading,
     filters: {
       min_ms: 30000,
       music_only: true,
@@ -39,7 +39,7 @@ vi.mock('@/hooks/useAnalysis', () => ({
 }))
 
 vi.mock('@/hooks/useBillboard', () => ({
-  useBillboardWeekly: (...args: unknown[]) => mocks.useBillboardWeekly(...args),
+  useWeeklyProjection: (...args: unknown[]) => mocks.useWeeklyProjection(...args),
 }))
 
 vi.mock('@/hooks/useSettings', () => ({
@@ -70,9 +70,11 @@ describe('album compilation global setting', () => {
       loading: false,
       error: null,
     })
-    mocks.useBillboardWeekly.mockReturnValue({
+    mocks.useWeeklyProjection.mockReturnValue({
       data: {
         meta: { all_weeks_desc: ['2026-06-19'] },
+        selected_week: '2026-06-19',
+        current: [], previous: [], historical: [],
         weekly: [],
         weekly_album: [],
         weekly_artist: [],
@@ -111,7 +113,7 @@ describe('album compilation global setting', () => {
     )
 
     expect(screen.queryByLabelText('含精选集')).not.toBeInTheDocument()
-    expect(mocks.useBillboardWeekly).toHaveBeenCalledWith(null, 2, true, true)
+    expect(mocks.useWeeklyProjection).toHaveBeenCalledWith(expect.objectContaining({ merge_level: 2, include_compilations: true }), null, 'tracks', true)
   })
 
   it('waits for settings before enabling the Billboard weekly request', () => {
@@ -127,6 +129,6 @@ describe('album compilation global setting', () => {
       </MemoryRouter>,
     )
 
-    expect(mocks.useBillboardWeekly).toHaveBeenCalledWith(null, 2, false, false)
+    expect(mocks.useWeeklyProjection).toHaveBeenCalledWith(expect.objectContaining({ merge_level: 2 }), null, 'tracks', false)
   })
 })

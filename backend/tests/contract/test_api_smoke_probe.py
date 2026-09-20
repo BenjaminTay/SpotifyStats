@@ -7,7 +7,13 @@ from scripts.api_smoke_probe import DEFAULT_SAFE_GET_CASES, assert_results, run_
 pytestmark = pytest.mark.contract
 
 
-def test_safe_readonly_api_smoke_probe(client):
+def test_safe_readonly_api_smoke_probe(
+    client,
+    published_community_snapshot,
+    published_archive_snapshot,
+    published_governance_snapshot,
+    published_analysis_snapshot,
+):
     results = run_cases(client)
 
     assert len(DEFAULT_SAFE_GET_CASES) >= 50

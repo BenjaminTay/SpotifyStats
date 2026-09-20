@@ -1,3 +1,4 @@
+import { GovernanceSnapshotNotice } from './GovernanceSnapshotNotice'
 import { useMemo, useState } from 'react'
 
 import {
@@ -78,6 +79,15 @@ export function DataHealthSummary({
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const summary = health ? (health.summary ?? fallbackSummary(health)) : null
+  const previousResult = health?.snapshot?.freshness === 'last_known_good'
+  const currentHealthy = Boolean(summary?.safe_to_use && !previousResult && !error)
+  const headline = error
+    ? '健康检查暂不可用'
+    : previousResult
+      ? health?.snapshot?.build_status === 'failed'
+        ? '本次检查失败，以下为上次检查结果'
+        : '以下为上次检查结果，当前数据待核对'
+      : summary?.headline ?? '正在读取数据状态'
   const groupedIssues = useMemo(() => {
     const result = {
       current: [] as ImportHealthIssue[],
@@ -102,37 +112,38 @@ export function DataHealthSummary({
     <section className="overflow-hidden rounded-[18px] border border-border/70 bg-card" aria-label="数据健康治理">
       <div className={cn(
         'relative border-b px-5 py-5 sm:px-6',
-        summary?.safe_to_use
+        currentHealthy
           ? 'border-emerald-500/20 bg-emerald-500/[0.055]'
           : 'border-red-500/20 bg-red-500/[0.055]',
       )}>
-        <div className={cn('absolute inset-y-0 left-0 w-1', summary?.safe_to_use ? 'bg-emerald-500' : 'bg-red-500')} aria-hidden="true" />
+        <div className={cn('absolute inset-y-0 left-0 w-1', currentHealthy ? 'bg-emerald-500' : 'bg-red-500')} aria-hidden="true" />
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 gap-3">
             <div className={cn(
               'mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full border bg-background/80',
-              summary?.safe_to_use ? 'border-emerald-500/25 text-emerald-600' : 'border-red-500/25 text-red-600',
+              currentHealthy ? 'border-emerald-500/25 text-emerald-600' : 'border-red-500/25 text-red-600',
             )}>
-              {summary?.safe_to_use ? <ShieldCheck className="size-4.5" /> : <AlertTriangle className="size-4.5" />}
+              {currentHealthy ? <ShieldCheck className="size-4.5" /> : <AlertTriangle className="size-4.5" />}
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[1.65px] text-muted-foreground">Data readiness</p>
               <h3 className="mt-1 font-serif text-[20px] font-semibold leading-tight tracking-[-0.2px]">
-                {summary?.headline ?? '正在读取数据状态'}
+                {headline}
               </h3>
-              {summary && <p className="mt-1.5 max-w-[620px] text-[12.5px] leading-relaxed text-muted-foreground">{summary.recommended_action}</p>}
+              {summary && <p className="mt-1.5 max-w-[620px] text-[12.5px] leading-relaxed text-muted-foreground">{previousResult ? `上次结论：${summary.headline}。请完成本地检查后重新读取。` : summary.recommended_action}</p>}
             </div>
           </div>
           <Button type="button" variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="gap-1.5">
             <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
-            重新检查
+            重新读取
           </Button>
         </div>
       </div>
 
       <div className="px-5 py-5 sm:px-6">
-        {loading && <p className="text-[12.5px] text-muted-foreground">正在核对数据库完整性、当前播放影响和派生数据状态…</p>}
+        {loading && <p className="text-[12.5px] text-muted-foreground">正在读取已发布的健康检查和当前任务状态…</p>}
         {!loading && error && <p className="text-[12.5px] text-red-600 dark:text-red-400">无法读取健康状态：{error}</p>}
+        <GovernanceSnapshotNotice snapshot={health?.snapshot} />
         {!loading && !error && health && summary && (
           <>
             <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/70 bg-border/70 lg:grid-cols-4">

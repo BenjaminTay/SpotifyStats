@@ -7,17 +7,10 @@ from sqlite3 import Connection
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.dependencies import get_conn
-from backend.domains.account_archive.cohorts import get_collection_cohorts
-from backend.domains.account_archive.context import build_archive_filter_context
-from backend.domains.account_archive.discovery import get_archive_discovery
-from backend.domains.account_archive.journey import get_collection_journey
 from backend.domains.account_archive.library import (
     ALLOWED_SORTS,
     build_archive_library_page,
 )
-from backend.domains.account_archive.other_media import get_archive_other_media
-from backend.domains.account_archive.overview import get_archive_overview
-from backend.domains.account_archive.returns import get_archive_returns
 from backend.models.account_archive import (
     ArchiveCohortsResponse,
     ArchiveDiscoveryResponse,
@@ -29,6 +22,7 @@ from backend.models.account_archive import (
     ArchiveOverviewResponse,
     ArchiveReturnsResponse,
 )
+from backend.services.account_archive_snapshot_service import read as read_archive_snapshot
 
 router = APIRouter(prefix="/account", tags=["Account"])
 
@@ -59,7 +53,7 @@ class AccountArchiveFilters:
 @router.get("/archive-overview", response_model=ArchiveOverviewResponse)
 def archive_overview(conn: Connection = Depends(get_conn)):
     """返回音乐档案首屏所需的本地事实，不触发 Spotify 在线请求。"""
-    return get_archive_overview(conn)
+    return read_archive_snapshot(conn, "overview")
 
 
 @router.get("/collection-journey", response_model=ArchiveJourneyResponse)
@@ -68,8 +62,7 @@ def collection_journey(
     conn: Connection = Depends(get_conn),
 ):
     """返回当前收藏快照的增长时间线与准确档案事实。"""
-    context = build_archive_filter_context(conn, filters)
-    return get_collection_journey(conn, context)
+    return read_archive_snapshot(conn, "journey", filters)
 
 
 @router.get("/collection-cohorts", response_model=ArchiveCohortsResponse)
@@ -78,8 +71,7 @@ def collection_cohorts(
     conn: Connection = Depends(get_conn),
 ):
     """返回有完整观察窗的收藏前后关系与固定窗回访。"""
-    context = build_archive_filter_context(conn, filters)
-    return get_collection_cohorts(conn, context)
+    return read_archive_snapshot(conn, "cohorts", filters)
 
 
 @router.get("/returns", response_model=ArchiveReturnsResponse)
@@ -88,8 +80,7 @@ def archive_returns(
     conn: Connection = Depends(get_conn),
 ):
     """返回至少沉睡 90 天后的回归事件和当前沉睡收藏。"""
-    context = build_archive_filter_context(conn, filters)
-    return get_archive_returns(conn, context)
+    return read_archive_snapshot(conn, "returns", filters)
 
 
 @router.get("/discovery", response_model=ArchiveDiscoveryResponse)
@@ -98,8 +89,7 @@ def archive_discovery(
     conn: Connection = Depends(get_conn),
 ):
     """返回隐私安全的搜索 burst、时段分布和有限曲目发现漏斗。"""
-    context = build_archive_filter_context(conn, filters)
-    return get_archive_discovery(conn, context)
+    return read_archive_snapshot(conn, "discovery", filters)
 
 
 @router.get("/library/{entity_type}", response_model=ArchiveLibraryPageResponse)
@@ -140,5 +130,4 @@ def archive_other_media(
     conn: Connection = Depends(get_conn),
 ):
     """返回播客与视频的最小档案事实和同口径音视频时长。"""
-    context = build_archive_filter_context(conn, filters)
-    return get_archive_other_media(conn, context)
+    return read_archive_snapshot(conn, "other_media", filters)

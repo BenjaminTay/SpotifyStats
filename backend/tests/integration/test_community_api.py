@@ -7,6 +7,18 @@ import pytest
 pytestmark = pytest.mark.integration
 
 
+@pytest.fixture(autouse=True)
+def published_community(client):
+    from backend.core.db import get_db
+    from backend.services.community_snapshot_service import ensure
+
+    conn = get_db(readonly=True)
+    try:
+        ensure(conn)
+    finally:
+        conn.close()
+
+
 class TestCommunityFeedIntegration:
     def test_feed_returns_posts(self, client, default_params):
         r = client.get("/api/community/feed", params={"limit": 10})

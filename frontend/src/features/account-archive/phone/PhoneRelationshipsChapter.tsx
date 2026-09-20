@@ -25,7 +25,7 @@ export function PhoneRelationshipsChapter() {
     <section ref={ref} id="archive-cohorts" className="phone-archive-chapter phone-archive-cohorts" data-archive-section="cohorts">
       <PhoneChapterHeading number="02" title="播放多久后收藏" />
       {!enabled || query.isLoading ? <PhoneArchiveLoading /> : null}
-      {query.isError ? <PhoneArchiveError onRetry={() => void query.refetch()} /> : null}
+      {query.isError ? <PhoneArchiveError error={query.error} onRetry={() => void query.refetch()} /> : null}
       {query.data?.status === 'unavailable' ? <PhoneArchiveUnavailable>暂时没有可展示的收藏与播放关联数据。</PhoneArchiveUnavailable> : null}
       {query.data && query.data.status !== 'unavailable' ? (
         <>

@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 
+from backend.core.cache import singleflight
 from backend.core.db import get_db, get_track_artist_names_map, load_plays, load_plays_for_artists
 from backend.domains.metadata.genre_display_taxonomy import build_consumer_taste_profile
 from backend.services.play_service import (
@@ -622,6 +623,7 @@ def get_analysis_stats(
         )
 
 
+@singleflight
 @lru_cache(maxsize=64)
 def _get_analysis_stats_cached(
     min_ms: int,

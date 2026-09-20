@@ -1,3 +1,4 @@
+import { GovernanceSnapshotNotice } from './GovernanceSnapshotNotice'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -713,6 +714,7 @@ export function GenreDataHealthSection({ embedded = false }: { embedded?: boolea
 
   return (
     <GenreDataHealthFrame embedded={embedded} summary={summary}>
+      <GovernanceSnapshotNotice snapshot={coverage?.snapshot} />
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <p className="text-[12.5px] leading-relaxed text-muted-foreground">

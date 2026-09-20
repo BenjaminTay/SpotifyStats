@@ -33,9 +33,13 @@ function parsePost(apiPost: Record<string, unknown>): CommunityPost {
 export function PostDetailExperience() {
   useChineseTextVersion()
   const { postId } = useParams<{ postId: string }>()
-  const chartParams = useCommunityChartParams()
-  const { detail, loading, error, refetch } = useCommunityPost(postId ?? '', chartParams)
-  const { trending } = useCommunityTrending(chartParams)
+  const chart = useCommunityChartParams()
+  const chartParams = chart.params
+  const { detail, loading: postLoading, error: postError, refetch: postRefetch } = useCommunityPost(postId ?? '', chartParams, chart.ready)
+  const { trending } = useCommunityTrending(chartParams, chart.ready)
+  const loading = chart.loading || (!chart.ready && !chart.error) || postLoading
+  const error = chart.error || postError
+  const refetch = chart.error ? chart.refetch : postRefetch
 
   if (loading) {
     return (
@@ -64,18 +68,18 @@ export function PostDetailExperience() {
         </section>
         <div className="max-w-[720px] mx-auto text-center py-20">
           <p className="text-[15px] font-medium text-muted-foreground">
-            {error ? 'Failed to load' : 'Post not found'}
+            {error || 'Post not found'}
           </p>
           {error && (
             <button
               type="button"
-              className="mt-3 px-5 py-1.5 text-[14px] font-medium rounded-full bg-accent-foreground text-primary-foreground hover:opacity-85"
+              className="community-touch-action mt-3 px-5 py-1.5 text-[14px] font-medium rounded-full bg-accent-foreground text-primary-foreground hover:opacity-85"
               onClick={() => refetch()}
             >
               Retry
             </button>
           )}
-          <Link to="/community" className="mt-3 inline-block text-[15px] text-accent-foreground hover:underline">
+          <Link to="/community" className="community-touch-action mt-3 inline-block text-[15px] text-accent-foreground hover:underline">
             Back to community
           </Link>
         </div>

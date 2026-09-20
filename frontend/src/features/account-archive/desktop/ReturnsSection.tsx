@@ -23,7 +23,7 @@ export function ReturnsSection() {
         title="找回音乐"
       />
       {!enabled || query.isLoading ? <ArchiveLoading /> : null}
-      {query.isError && <ArchiveError onRetry={() => void query.refetch()} />}
+      {query.isError && <ArchiveError error={query.error} onRetry={() => void query.refetch()} />}
       {query.data?.status === 'unavailable' && (
         <ArchiveUnavailable>当前观察期不足以识别回归，继续导入播放记录后这里会自然形成。</ArchiveUnavailable>
       )}

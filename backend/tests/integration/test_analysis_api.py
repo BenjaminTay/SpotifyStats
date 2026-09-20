@@ -99,7 +99,7 @@ class TestAnalysisOverview:
 
 
 class TestAnalysisStats:
-    def test_stats_lifetime_structure(self, client, default_params):
+    def test_stats_lifetime_structure(self, client, default_params, published_analysis_snapshot):
         r = client.get("/api/analysis/stats", params={**default_params, "period": "lifetime"})
         assert r.status_code == 200
         data = r.json()
@@ -133,18 +133,34 @@ class TestAnalysisStats:
         assert data["taste_profile"]["regional_pop"]["axis"] == "scene"
 
     def test_stats_custom_empty_range_returns_zero_shape(self, client, default_params):
-        r = client.get(
-            "/api/analysis/stats",
-            params={
-                **default_params,
-                "period": "custom",
-                "start_date": "1900-01-01",
-                "end_date": "1900-01-02",
-            },
-        )
-        assert r.status_code == 200
-        data = r.json()
+        # Unpublished custom facts are unavailable; only the private builder can
+        # distinguish a real empty range from a missing publication.
+        from unittest.mock import patch
 
+        from backend.services import analysis_snapshot_service as service
+
+        with patch.object(service, "rebuild", side_effect=AssertionError("GET must not build")):
+            r = client.get(
+                "/api/analysis/stats",
+                params={
+                    **default_params,
+                    "period": "custom",
+                    "start_date": "1900-01-01",
+                    "end_date": "1900-01-02",
+                },
+            )
+        assert r.status_code == 503
+        assert r.json()["detail"]["status"] == "unavailable"
+        from backend.core.db import get_db
+        from backend.services.analysis_stats_service import _build_analysis_stats
+
+        conn = get_db(readonly=True)
+        try:
+            params = service.default_params(conn, "analysis_stats")
+            params.update(period="custom", start_date="1900-01-01", end_date="1900-01-02")
+            data = _build_analysis_stats(conn, **params)
+        finally:
+            conn.close()
         assert data["summary"]["total_plays"] == 0
         assert data["daily_trend"] == []
         assert data["recent_plays"] == []
@@ -183,7 +199,9 @@ class TestAnalysisCharts:
 
 
 class TestMusicStats:
-    def test_track_album_artist_stats_structure(self, client, default_params):
+    def test_track_album_artist_stats_structure(
+        self, client, default_params, published_artist_rank_context
+    ):
         charts = client.get(
             "/api/analysis/charts",
             params={**default_params, "entity": "track", "limit": 1},

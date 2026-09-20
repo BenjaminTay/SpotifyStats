@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 import { GlassCard } from '@/components/shared/GlassCard'
 import { Badge } from '@/components/ui/badge'
@@ -26,14 +26,15 @@ export function DataImportSection({
   onAccountImport: () => void
 }) {
   const imported = dbRecordCount > 0 && accountImported
-  const dataHealth = useDataImportHealth()
+  const [open, setOpen] = useState(!imported)
+  const dataHealth = useDataImportHealth(open)
   const { refetchHealth } = dataHealth
 
   useEffect(() => {
-    if (streamingJob?.status === 'done' || accountJob?.status === 'done') {
+    if (open && (streamingJob?.status === 'done' || accountJob?.status === 'done')) {
       void refetchHealth()
     }
-  }, [accountJob?.status, refetchHealth, streamingJob?.status])
+  }, [open, accountJob?.status, refetchHealth, streamingJob?.status])
 
   return (
     <div id="data-import" className="scroll-mt-24">
@@ -43,6 +44,7 @@ export function DataImportSection({
           title="数据导入"
           desc="先确认数据是否可用，再检查本地数据包并按建议导入。正式写入在后台进行。"
           defaultOpen={!imported}
+          onOpenChange={setOpen}
           summary={
             imported ? (
               <span className="inline-flex items-center gap-1.5">

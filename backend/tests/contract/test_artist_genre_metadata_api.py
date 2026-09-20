@@ -75,6 +75,9 @@ def artist_genre_metadata_db(tmp_path) -> Generator[sqlite3.Connection, None, No
         ("Review Artist", 2.0, "llm_artist_genre_suggestion", source_id),
     )
     conn.commit()
+    from backend.services.governance_snapshot_service import ensure
+
+    ensure(conn, families=["genre_coverage", "genre_taxonomy", "genre_axis_gaps"])
     yield conn
     conn.close()
     db_mod.DB_PATH = original
@@ -157,6 +160,9 @@ def test_artist_genre_axis_gaps_returns_play_weighted_style_queue(client, artist
         ("sp-scene", "Scene Artist", json.dumps(["mandopop"])),
     )
     artist_genre_metadata_db.commit()
+    from backend.services.governance_snapshot_service import ensure
+
+    ensure(artist_genre_metadata_db, families=["genre_axis_gaps"])
     db_mod._load_plays_cached.cache_clear()
 
     response = client.get("/api/metadata/artist-genres/axis-gaps?axis=style&limit=10")

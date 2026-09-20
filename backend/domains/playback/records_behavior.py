@@ -36,10 +36,11 @@ def _skip_storm(frame, group_col, name_col, artist_col, entity_type):
         return pd.DataFrame()
     gb_cols = safe_groupby_cols([], group_col, name_col, artist_col)
     agg = (
-        frame.groupby(gb_cols)
+        frame.assign(_forward=frame["reason_end"].eq("fwdbtn"))
+        .groupby(gb_cols)
         .agg(
             total_plays=("play_id", "count"),
-            fwd_plays=("reason_end", lambda x: (x == "fwdbtn").sum()),
+            fwd_plays=("_forward", "sum"),
             total_ms=("ms_played", "sum"),
         )
         .reset_index()

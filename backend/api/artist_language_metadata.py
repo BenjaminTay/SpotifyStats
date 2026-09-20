@@ -20,7 +20,6 @@ from backend.domains.metadata.artist_language_review import (
 from backend.domains.metadata.artist_languages import (
     ArtistLanguageValidationError,
     build_primary_artist_ms,
-    compute_artist_language_distribution,
 )
 from backend.models.artist_language_metadata import (
     ArtistLanguageCoverageResponse,
@@ -34,6 +33,7 @@ from backend.models.artist_language_metadata import (
     ArtistLanguageSourceItem,
     ReviewStatus,
 )
+from backend.services.governance_snapshot_service import read as read_governance
 
 router = APIRouter(
     prefix="/metadata/artist-languages",
@@ -81,13 +81,7 @@ def get_artist_language_coverage(
     filters: PlayFilters = Depends(),
     conn: Connection = Depends(get_conn),
 ):
-    plays_df = _filtered_plays(conn, filters)
-    artist_ms, excluded_ms = build_primary_artist_ms(conn, plays_df)
-    return compute_artist_language_distribution(
-        conn,
-        artist_ms,
-        excluded_ms=excluded_ms,
-    )
+    return read_governance(conn, "language_coverage", filters)
 
 
 @router.get("/reviews", response_model=ArtistLanguageReviewListResponse)
