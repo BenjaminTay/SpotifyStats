@@ -342,6 +342,19 @@ def test_fact_edits_and_taste_only_invalidation(isolated):
             "UPDATE artist_genre_sources SET evidence_summary='note only' WHERE source_key='stage3a-test'"
         )
     assert revisions() == before
+    with sqlite3.connect(isolated[0]) as conn:
+        conn.execute(
+            "UPDATE artist_genre_sources SET status='pending' WHERE source_key='stage3a-test'"
+        )
+    after = revisions()
+    assert after["analysis_stats"] != before["analysis_stats"]
+    assert after["analysis_records"] == before["analysis_records"]
+    with sqlite3.connect(isolated[0]) as conn:
+        conn.execute(
+            "UPDATE artist_genre_sources SET primary_genre='rock' WHERE source_key='stage3a-test'"
+        )
+        conn.execute("DELETE FROM artist_genre_sources WHERE source_key='stage3a-test'")
+    assert revisions() == after
 
 
 @pytest.mark.parametrize("family", service.VERSIONS)
@@ -429,19 +442,74 @@ def test_concurrent_maintenance_has_only_one_pending_job_per_key(isolated):
 def test_revision_collection_retries_concurrent_commit(isolated, monkeypatch):
     from backend.services import analysis_snapshot_revision as revision
 
-    original = revision._table_digest
+    original = revision._revision_vector
     changed = []
 
-    def commit_once(conn, table):
+    def commit_once(conn, tables):
         if not changed:
             changed.append(True)
             with sqlite3.connect(isolated[0]) as writer:
                 writer.execute(
                     "UPDATE plays SET ms_played=ms_played+1 WHERE play_id=(SELECT MIN(play_id) FROM plays)"
                 )
-        return original(conn, table)
+        return original(conn, tables)
 
-    monkeypatch.setattr(revision, "_table_digest", commit_once)
+    monkeypatch.setattr(revision, "_revision_vector", commit_once)
     first = context("analysis_stats")[2]
     assert changed
     assert context("analysis_stats")[2] == first
+
+
+def test_revision_reads_no_fact_rows_and_invalid_tracking_fails_closed(isolated, monkeypatch):
+    from backend.services import analysis_snapshot_revision as revision
+
+    build("analysis_stats")
+    monkeypatch.setattr(revision, "_table_digest", forbid)
+    conn = db.get_db(readonly=True)
+    queries = []
+    conn.set_trace_callback(queries.append)
+    try:
+        before = revision.source_revision(conn, "analysis_stats")
+        assert service.read_snapshot(conn, "analysis_stats")["snapshot"]["status"] == "ready"
+        assert not any('FROM "plays"' in q or 'FROM "tracks"' in q for q in queries)
+        with sqlite3.connect(isolated[0]) as writer:
+            writer.execute("DROP TRIGGER analysis_rev_plays_update")
+        with pytest.raises(ValueError, match="private migration or repair"):
+            revision.source_revision(conn, "analysis_stats")
+        with sqlite3.connect(isolated[0]) as writer:
+            revision.install_revision_tracking(writer)
+        assert revision.source_revision(conn, "analysis_stats") != before
+        assert (
+            service.read_snapshot(conn, "analysis_stats")["snapshot"]["freshness"]
+            == "last_known_good"
+        )
+    finally:
+        conn.close()
+
+
+def test_revision_semantic_updates_rollback_and_tracking_repair(isolated):
+    from backend.services import analysis_snapshot_revision as revision
+
+    before = context("analysis_stats")[2]
+    with sqlite3.connect(isolated[0]) as writer:
+        writer.execute("UPDATE plays SET ms_played=ms_played")
+    assert context("analysis_stats")[2] == before
+    writer = sqlite3.connect(isolated[0])
+    try:
+        writer.execute("UPDATE plays SET ms_played=ms_played+1")
+        writer.rollback()
+        assert context("analysis_stats")[2] == before
+        writer.execute("BEGIN")
+        writer.execute("DROP TRIGGER analysis_rev_plays_update")
+        revision.install_revision_tracking(writer)
+        writer.rollback()
+        assert context("analysis_stats")[2] == before
+        writer.execute("DELETE FROM analysis_source_revisions WHERE source_table='plays'")
+        writer.commit()
+        with pytest.raises(ValueError):
+            context("analysis_stats")
+        with writer:
+            revision.install_revision_tracking(writer)
+        assert context("analysis_stats")[2] != before
+    finally:
+        writer.close()

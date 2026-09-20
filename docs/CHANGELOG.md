@@ -1,5 +1,12 @@
 # 变更日志
 
+## 2026-09-20：阶段 7C 检查点与 Analysis revision（Partial）
+
+- 已完成阶段整理为四个本地检查点提交，保留原阶段边界与对应测试、生成类型和文档。
+- migration 78 为 Analysis 安装持久语义版本向量与事务触发器，公开 LKG/missing 读取不再重扫事实表；seed、启动修复与合同测试同步。
+- Records median、Analysis LKG、艺人排名和 unavailable 定向门槛通过；故障 UI 和同 key 四并发补齐，最终验收状态见 [7C 报告](reports/2026-09-20-stage7c-checkpoints-performance-acceptance.md)。
+- 标准门禁全部通过；唯一一次默认完整 fullstack 因 import preflight hot P95 5175.24 ms 超过 500 ms 而失败，后续浏览器阶段未执行。按停止条件保留四个检查点提交和 7C 未提交改动。
+
 ## 2026-09-20：阶段 7B 验收阻塞修复（Partial）
 
 - 修复 Archive 自身 revision 合同、migration 77 / seed 和 Analysis 私有发布测试；Home 重启复用稳定 exact key。

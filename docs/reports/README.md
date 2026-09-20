@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [阶段 7C：Git 检查点与剩余性能收口（Partial）](2026-09-20-stage7c-checkpoints-performance-acceptance.md)
+
 - [阶段 7B：验收阻塞修复与本地收口（Partial）](2026-09-20-stage7b-performance-closeout.md)
 
 - [阶段 7：全路由性能验收与本地收口（Partial）](2026-09-20-stage7-local-performance-acceptance.md)

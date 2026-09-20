@@ -24,7 +24,7 @@
 
 ## 来源 revision 与失效
 
-`analysis_snapshot_revision.py` 列出实际表依赖，按稳定主键顺序摘要完整语义列。不是 MAX(ts)、mtime 或“缺失则 0”。
+`analysis_snapshot_revision.py` 列出实际表依赖。migration 78 为这些依赖安装持久 epoch、逐表 revision 和事务内触发器；语义列发生实际 INSERT/DELETE/UPDATE 时同步递增。GET 校验触发器与列合同并读取 revision 向量，不扫描或 repr 全部事实行。不是 MAX(ts)、mtime、进程内计数或“缺失则 0”。
 
 | 依赖 | stats | records |
 |---|---|---|
@@ -34,11 +34,11 @@
 | Album Project membership、L3 attribution、可靠发行日期 | 未调用这些投影 | 是 |
 | approved 流派/语言、taxonomy/语言 registry version | 是 | 否 |
 
-旧库没有 generation/dataset digest 时仍摘要真实 plays；不把 null 冒充已知 revision。身份和项目的管理事件计数也会因显示名称变化递增，故这些依赖使用完整语义投影摘要作为 revision，而非只使用管理计数。封面、显示名称、审计时间/说明、流行度与 follower 等非统计列排除；原始曲目/专辑/艺人名称属于不可变来源，仍参与。快照内展示字段保留发布时值，单纯更新封面/显示名称不会重建统计事实。
+旧库首次安装 tracking 时分配新的 epoch，将既有事实纳入新的来源代际；没有 tracking 时公开读取明确 unavailable，私有迁移或启动修复后才可读取。触发器、列合同或计数器缺失时拒绝读取；修复重新分配 epoch，避免遗漏写入后复用旧 exact。身份和项目的管理计数也会因显示名称变化递增，故触发器继续排除这些管理列。封面、显示名称、审计时间/说明、流行度与 follower 等非统计列排除；原始曲目/专辑/艺人名称仍参与。快照内展示字段保留发布时值，单纯更新封面/显示名称不会重建统计事实。流派与语言仅跟踪 approved 行；同值 UPDATE 和事务回滚不改变 revision。
 
 数据身份为文件 device/inode lineage，不是绝对路径，也不声称是账号身份。同文件重启可以命中；Online Backup、替换主库或复制 sidecar 到其他数据库，不允许借用原库 LKG。
 
-每个进程持有最多四个只读 `PRAGMA data_version` observer：仅在没有新 commit 时复用来源摘要；任意 commit 后重新检查语义列。无关 settings/任务状态提交会重新校验，但相同语义不产生新 key 或构建任务。旧库首次完整来源校验计入 GET 耗时，不隐藏在启动等待中。
+`PRAGMA data_version` 仅作为读取向量前后的并发提交 fence，不作为语义 revision。遇到并发提交有界重读；无关 settings/任务状态提交不改变语义向量。数据库身份、配置、builder version 和 taxonomy/语言 registry version 继续独立参与精确失效。公开 GET 不安装 tracking、不写入、不排队。
 
 ## 维护与并发
 
@@ -54,7 +54,7 @@
 
 ## 阶段 3B：Records 局部实现约束
 
-Records 来源摘要按512行批量读取 tuple 并更新哈希；使用与旧逐行实现相同的 `repr(tuple(row)) + "\n"` 字节流、列顺序和行排序，不改变 request key/source revision/builder version。Stats 继续原摘要分支。完整来源扫描仍计入首次 GET，没有放到启动 warmup。
+阶段 3B 曾将 Records 来源摘要改为每 512 行批量读取，保留旧字节流和排序。阶段 7C 已将 Stats/Records 的公开 revision 读取统一改为上述事务触发器向量；旧摘要函数只保留给历史等价测试，不在 GET 使用。
 
 Records 单次 builder 内批量读取可信原版 Album Project 成员和 Spotify 候选，canonical song key 一次生成；event/duration 共用 membership。映射随调用结束释放，不形成持久或全局中间缓存。原版可信条件和 L2/L3/compilation 参数不变，fallback 总曲目查询保留原 LIMIT 1 选择。
 

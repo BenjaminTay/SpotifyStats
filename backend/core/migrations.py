@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 77
+LATEST_SCHEMA_VERSION = 78
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -3988,6 +3988,17 @@ def migrate_077(conn: sqlite3.Connection):
     from backend.domains.metadata.governance_revision import (
         install_revision_tracking as install_governance,
     )
+
+    install_revision_tracking(conn)
+    install_governance(conn)
+
+
+@migration(78, "analysis_semantic_source_revisions")
+def migrate_078(conn: sqlite3.Connection):
+    from backend.domains.metadata.governance_revision import (
+        install_revision_tracking as install_governance,
+    )
+    from backend.services.analysis_snapshot_revision import install_revision_tracking
 
     install_revision_tracking(conn)
     install_governance(conn)

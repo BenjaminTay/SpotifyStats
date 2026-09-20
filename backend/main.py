@@ -74,10 +74,14 @@ async def lifespan(_app: FastAPI):
         apply_l3_album_attribution_plan,
         reconcile_l3_album_attribution_dependencies,
     )
+    from backend.services.analysis_snapshot_revision import (
+        install_revision_tracking as install_analysis_tracking,
+    )
 
     startup_conn = get_startup_db(readonly=False)
     try:
         with startup_conn:
+            install_analysis_tracking(startup_conn)
             install_revision_tracking(startup_conn)
             install_governance_tracking(startup_conn)
     finally:
