@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlite3 import Connection
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
@@ -15,9 +16,9 @@ from backend.models.analysis import (
     AnalysisStatsResponse,
     PlaybackRecordsResponse,
 )
-from backend.models.snapshot import SnapshotUnavailableResponse
+from backend.models.snapshot import SnapshotPrepareResponse, SnapshotUnavailableResponse
 from backend.services.analysis_service import get_analysis_overview
-from backend.services.analysis_snapshot_service import read_snapshot
+from backend.services.analysis_snapshot_service import prepare_snapshot, read_snapshot
 from backend.services.analysis_stats_service import (
     get_analysis_charts,
     get_global_play_dates,
@@ -25,6 +26,35 @@ from backend.services.analysis_stats_service import (
 )
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
+
+
+@router.post("/snapshots/prepare", response_model=SnapshotPrepareResponse)
+def prepare_analysis_snapshot(
+    family: Literal["analysis_stats", "analysis_records"] = Query(),
+    filters: PlayFilters = Depends(),
+    merge_cfg: MergeConfig = Depends(),
+    period: str = Query(default="lifetime"),
+    start_date: str | None = Query(default=None),
+    end_date: str | None = Query(default=None),
+    include_compilations: bool = Query(False),
+):
+    """Queue one explicit analysis range on the private maintenance surface."""
+    params = {
+        "min_ms": filters.min_ms,
+        "music_only": filters.music_only,
+        "merge_enabled": filters.merge_enabled,
+        "period": period,
+        "start_date": start_date,
+        "end_date": end_date,
+        "dynamic_threshold": filters.dynamic_threshold,
+        "max_merge_gap_minutes": filters.max_merge_gap_minutes,
+    }
+    if family == "analysis_records":
+        params.update(
+            merge_level=merge_cfg.merge_level,
+            include_compilations=include_compilations,
+        )
+    return prepare_snapshot(family, params)
 
 
 @router.get("/overview", response_model=AnalysisOverviewResponse)

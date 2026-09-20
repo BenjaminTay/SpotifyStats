@@ -38,7 +38,7 @@ export class SnapshotUnavailableError extends ApiError {
   readonly snapshot: components['schemas']['SnapshotUnavailableDetail']
 
   constructor(snapshot: components['schemas']['SnapshotUnavailableDetail']) {
-    super(503, snapshot.message ?? '当前筛选的数据尚未发布，请稍后重试。')
+    super(503, snapshot.message ?? '当前范围的数据暂时不可用。')
     this.name = 'SnapshotUnavailableError'
     this.message = this.detail
     this.snapshot = snapshot

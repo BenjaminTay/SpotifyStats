@@ -5,6 +5,7 @@ import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { useHomeOverview, useHomeRediscovery } from '@/hooks/useHome'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { SnapshotUnavailableError } from '@/api/errors'
+import { SnapshotStatusNotice } from '@/components/shared/SnapshotStatusNotice'
 
 import '@/features/home/home.css'
 
@@ -19,7 +20,12 @@ export function DashboardPage() {
   if (query.data.state === 'empty') return <HomeEmpty phone={isPhone} />
 
   const presentationData = { ...query.data, rediscovery: selectedRediscovery }
-  return isPhone
-    ? <HomePhoneExperience data={presentationData} />
-    : <HomeDesktopExperience data={presentationData} />
+  return (
+    <>
+      <SnapshotStatusNotice snapshot={query.data.snapshot} />
+      {isPhone
+        ? <HomePhoneExperience data={presentationData} />
+        : <HomeDesktopExperience data={presentationData} />}
+    </>
+  )
 }

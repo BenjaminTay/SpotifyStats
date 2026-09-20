@@ -1,12 +1,14 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { DependencyList } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { queryClient } from '@/api/query-client'
 import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
+import { SnapshotUnavailableError } from '@/api/errors'
 import { useSettings } from '@/hooks/useSettings'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 import type {
   AnalysisFilters,
   AnalysisChartsResponse,
@@ -151,6 +153,65 @@ export function useApiData<T>(loader: () => Promise<T>, deps: DependencyList, en
   }
 }
 
+type AnalysisSnapshotPayload = {
+  snapshot?: { freshness?: 'current' | 'last_known_good' } | null
+}
+
+/**
+ * Reads a published analysis result. On the private surface only, a missing
+ * range is explicitly queued and polled; public GET remains strictly read-only.
+ */
+export function usePreparedAnalysisData<T extends AnalysisSnapshotPayload>(
+  family: 'analysis_stats' | 'analysis_records',
+  loader: () => Promise<T>,
+  prepare: () => Promise<unknown>,
+  deps: DependencyList,
+  enabled = true,
+) {
+  const { capabilities } = useRuntimeCapabilities()
+  const privateSurface = capabilities.surface === 'private-admin'
+  const prepareKey = JSON.stringify([family, ...deps])
+  const prepared = useRef(new Set<string>())
+  const query = useQuery({
+    queryKey: ['prepared-analysis-data', family, ...deps],
+    queryFn: loader,
+    enabled,
+    retry: false,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchInterval: (state) => {
+      if (!privateSurface) return false
+      if (state.state.error instanceof SnapshotUnavailableError) return 2000
+      const payload = state.state.data as AnalysisSnapshotPayload | undefined
+      return payload?.snapshot?.freshness === 'last_known_good' ? 3000 : false
+    },
+  })
+  const needsPreparation = query.error instanceof SnapshotUnavailableError
+    || query.data?.snapshot?.freshness === 'last_known_good'
+
+  useEffect(() => {
+    if (!needsPreparation) {
+      prepared.current.delete(prepareKey)
+      return
+    }
+    if (!enabled || !privateSurface || !needsPreparation || prepared.current.has(prepareKey)) return
+    prepared.current.add(prepareKey)
+    void prepare().then(() => query.refetch()).catch(() => {
+      prepared.current.delete(prepareKey)
+    })
+  }, [enabled, needsPreparation, prepareKey, privateSurface]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return {
+    data: query.data ?? null,
+    loading: enabled ? query.isLoading : true,
+    switching: query.isPlaceholderData || (privateSurface && needsPreparation),
+    error: errorMessage(query.error),
+    errorObject: query.error,
+    refetch: () => void query.refetch(),
+  }
+}
+
 function fetchQuery<T>(key: readonly unknown[], queryFn: () => Promise<T>): Promise<T> {
   return queryClient.fetchQuery({ queryKey: key, queryFn })
 }
@@ -169,6 +230,18 @@ function analysisParams(
 }
 
 export const analysisApi = {
+  prepareSnapshot: (
+    family: 'analysis_stats' | 'analysis_records',
+    filters: AnalysisFilters,
+    params: { period: AnalysisPeriod; start_date?: string; end_date?: string; merge_level?: number; include_compilations?: boolean },
+  ) => api.postWithParams('/analysis/snapshots/prepare', {}, analysisParams(filters, {
+    family,
+    period: params.period,
+    start_date: params.start_date,
+    end_date: params.end_date,
+    merge_level: params.merge_level,
+    include_compilations: params.include_compilations,
+  })),
   stats: (
     filters: AnalysisFilters,
     params: { period: AnalysisPeriod; start_date?: string; end_date?: string },

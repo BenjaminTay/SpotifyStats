@@ -58,8 +58,12 @@ def context(family):
         conn.close()
 
 
-def build(family):
-    params, key, revision, version = context(family)
+def build(family, overrides=None):
+    conn = db.get_db(readonly=True)
+    try:
+        params, key, revision, version = service.request_context(conn, family, overrides or {})
+    finally:
+        conn.close()
     service.rebuild(family, json.dumps(params, sort_keys=True), key, revision)
     return params, key, revision, version
 
@@ -239,7 +243,8 @@ def test_default_enqueue_exact_and_semantic_invalidation(isolated):
 
     q = Queue()
     for family in service.VERSIONS:
-        build(family)
+        for period in service.AUTOMATIC_PERIODS:
+            build(family, {"period": period})
     assert service.enqueue_defaults("startup", queue=q) == []
     from backend.domains.settings.repository import SettingsRepository
 
@@ -266,8 +271,56 @@ def test_default_enqueue_exact_and_semantic_invalidation(isolated):
     assert before == {f: context(f)[2] for f in service.VERSIONS}
     with sqlite3.connect(isolated[0]) as c:
         c.execute("update playback_import_state set playback_revision=playback_revision+1")
-    assert len(service.enqueue_defaults("import", queue=q)) == 2
+    assert len(service.enqueue_defaults("import", queue=q)) == 6
     assert service.enqueue_defaults("again", queue=q) == []
+
+
+@pytest.mark.parametrize("family", service.VERSIONS)
+@pytest.mark.parametrize("period", ("last_4_weeks", "last_6_months"))
+def test_named_range_publication_roundtrip(isolated, family, period):
+    params, _, _, _ = build(family, {"period": period})
+    conn = db.get_db(readonly=True)
+    try:
+        result = service.read_snapshot(conn, family, **params)
+    finally:
+        conn.close()
+    assert result["period"]["period"] == period
+    assert result["snapshot"]["freshness"] == "current"
+
+
+def test_explicit_prepare_is_deduplicated_and_public_post_is_denied(isolated):
+    class Queue:
+        database_path = str(isolated[0])
+
+        def __init__(self):
+            self.jobs = []
+
+        def enqueue_if_not_pending(self, job):
+            if any(j.entity_id == job.entity_id for j in self.jobs):
+                return None
+            self.jobs.append(job)
+            return job.job_id
+
+    q = Queue()
+    params = {
+        "period": "custom",
+        "start_date": "2025-12-31",
+        "end_date": "2026-01-02",
+    }
+    first = service.prepare_snapshot("analysis_stats", params, queue=q)
+    second = service.prepare_snapshot("analysis_stats", params, queue=q)
+    assert first["status"] == second["status"] == "queued"
+    assert first["request_key"] == second["request_key"]
+    assert first["job_id"] is not None
+    assert second["job_id"] is None
+    assert len(q.jobs) == 1
+
+    response = TestClient(app).post(
+        "/api/analysis/snapshots/prepare",
+        params={"family": "analysis_stats", **params},
+        headers={SURFACE_HEADER: "public-readonly"},
+    )
+    assert response.status_code in {403, 405}
 
 
 def test_key_canonical_defaults_and_variants(isolated):
@@ -451,7 +504,7 @@ def test_concurrent_maintenance_has_only_one_pending_job_per_key(isolated):
             "SELECT entity_type,entity_id,COUNT(*) FROM background_jobs WHERE job_type=? AND status IN ('pending','running') GROUP BY entity_type,entity_id",
             (service.JOB_TYPE,),
         ).fetchall()
-    assert len(counts) == 2
+    assert len(counts) == 6
     assert all(row[2] == 1 for row in counts)
 
 

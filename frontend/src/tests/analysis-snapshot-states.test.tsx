@@ -14,8 +14,8 @@ vi.mock('@/components/shared/AnalysisControls', () => ({
 }))
 vi.mock('@/hooks/useAnalysis', () => ({
   useAnalysisFilters: () => ({ filters: { min_ms: 30000, merge_level: 2 }, loading: false }),
-  useApiData: () => ({ data: null, loading: false, error: state.error?.message, errorObject: state.error }),
-  analysisApi: { records: () => Promise.reject(state.error) },
+  usePreparedAnalysisData: () => ({ data: null, loading: false, switching: false, error: state.error?.message, errorObject: state.error, refetch: vi.fn() }),
+  analysisApi: { stats: vi.fn(), records: vi.fn(), prepareSnapshot: vi.fn() },
 }))
 
 describe('analysis publication errors', () => {

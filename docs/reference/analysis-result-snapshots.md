@@ -10,23 +10,23 @@
 - 单事务插入与淘汰，每 key 最多两代，全文件最多 16 个 request key；保留上次成功结果。JSON 上限 32 MiB/行；不是 DataFrame 对象缓存。SQLite 文件保留可复用空闲页，不在请求中 VACUUM。
 - exact 返回 `snapshot.status=ready`、`freshness=current`；同 key 的旧发布返回 `warming/last_known_good`。`warming` 表示目标事实尚未发布，不能据此断言后台任务一定仍在运行。
 - 无兼容发布、key 异常、来源依赖缺失返回结构化 503 `snapshot_unavailable`。不返回假零，不跨参数借 LKG。两种 surface 的 GET 都不构建、不写、不排队。
-- 前端复用 `SnapshotStatusNotice` 展示旧发布；两个页面区分暂不可用与一般错误，不再把错误留在 skeleton。
+- 前端在具体消费页面内展示数据更新状态，不再由全局布局扫描 Query Cache，也不向普通用户暴露“发布”等后台术语。
 
 ## Request key
 
-规范 JSON 摘要包含 family、数据文件 lineage、builder version、规范化过滤参数、解析后的范围。本期允许发布的范围仅 lifetime：start/end 均为 null，表示无边界，而非最新一条播放的日期；无效的 lifetime 日期参数统一忽略。
+规范 JSON 摘要包含 family、数据文件 lineage、builder version、规范化过滤参数及范围。`lifetime` 和命名范围的 start/end 为 null；命名范围仍由既有 builder 按原统计合同解析。`custom` 必须同时提供有效的 ISO 起止日，且起始日不得晚于终止日。无效的 lifetime 日期参数统一忽略。
 
-公共字段：`min_ms`、`music_only`、`merge_enabled`、`dynamic_threshold`、`max_merge_gap_minutes`。缺省最大合并间隔从 settings 读取。Records 额外包括 `merge_level`、`include_compilations`、`PLAYBACK_RECORDS_SORT_CONTRACT_VERSION`。自动维护只使用实际 settings 的过滤参数、dynamic=true，以及 lifetime L2 / compilation=false。
+公共字段：`min_ms`、`music_only`、`merge_enabled`、`dynamic_threshold`、`max_merge_gap_minutes`。缺省最大合并间隔从 settings 读取。Records 额外包括 `merge_level`、`include_compilations`、`PLAYBACK_RECORDS_SORT_CONTRACT_VERSION`。自动维护只使用实际 settings 的过滤参数、dynamic=true，以及 lifetime / last_4_weeks / last_6_months 的 L2 / compilation=false。
 
-已知的非 lifetime 范围 GET 明确 unavailable；空或未知 period 沿用原 builder 的 lifetime 回退语义，在构造 key 前统一规范化。本期不为任意日期提供持久构建入口。已由受控维护显式发布的其他 lifetime 过滤/L3 变体可以读取，但不会由 GET 自动生成。历史 key 受上述 16-key 上限约束。
+空或未知 period 沿用原 builder 的 lifetime 回退语义，在构造 key 前统一规范化。已由受控维护生成的其他命名、custom、过滤或 L3 变体均可读取，但 GET 永远不会自动生成。历史 key 受上述 16-key 上限约束。
 
 完整只读 smoke / boundary 契约通过私有 fixture 真实发布两个默认 family 后再请求 GET；不得通过改成预期 503、返回假零或在 GET 中构建来消除测试失败。
 
-## 非 lifetime 的用户可见边界
+## 时间范围的用户可见边界
 
-时间选择器保留近 4 周、近 6 个月、year/month/week/day/custom 等选项，但自动维护仅保证默认 lifetime。未发布范围返回结构化 unavailable，页面显示“播放统计暂不可用”及“此时间范围尚未提供已发布快照，请切换为全部时间。”，退出 skeleton，不呈现假零。`SnapshotStatusNotice` 用于有旧发布的 LKG；无发布使用明确的 alert 错误状态。
+私有端自动维护全部时间、近 4 周和近 6 个月。year/month/week/day/custom 会规范化为 custom 日期范围；首次缺失时由显式私有 POST 排队，页面轮询读取并显示“正在准备这个时间范围的数据”，完成后自动切换。任意范围都不在 GET 内同步计算，也不呈现假零。
 
-移动端真实选择 last_4_weeks 的 unavailable 消费继续纳入[全栈交互验收](fullstack-verification.md)。是否让这些范围立即可用、如何发布任意范围，以及错误态下筛选入口的可达性，属于后续产品决策；本轮不新增任意日期缓存或公开 GET 维护行为。
+公开端不开放维护 POST，时间选择器只暴露自动维护的三个常用范围；若直接访问尚无结果的深链，返回结构化 unavailable。已有 LKG 时保留旧事实并在页面内说明“数据正在更新，当前显示上一次计算结果”。
 
 ## 来源 revision 与失效
 
@@ -48,7 +48,8 @@
 
 ## 维护与并发
 
-- private 启动注册 `analysis_snapshot_rebuild`，只维护两个默认 lifetime；exact 已存在时不排队。
+- private 启动注册 `analysis_snapshot_rebuild`，为两个 family 各维护 lifetime / last_4_weeks / last_6_months；exact 已存在时不排队。
+- `POST /api/analysis/snapshots/prepare` 是私有显式维护入口：按完整 request key 去重，只排队不等待 builder；public-readonly 返回只读拒绝。
 - 已有 settings/import/version-merge/metadata/music-metadata/artist-identities 成功写请求完成后检查默认 key。import maintenance、artist identity、track credit 后台任务成功后再次检查，覆盖异步提交。
 - 只给缺少 exact 的 family 排队；pending/running 按 job type + family + request key 去重。CPU-heavy gate 与其他重型维护共享单个执行槽。
 - 构建锁使用 primitive request key + source revision，锁内再次检查 exact；四个同 key 构建请求只执行一次 builder。不同 key 不共用构建锁。

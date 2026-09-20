@@ -29,6 +29,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/snapshots/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prepare Analysis Snapshot
+         * @description Queue one explicit analysis range on the private maintenance surface.
+         */
+        post: operations["prepare_analysis_snapshot_api_analysis_snapshots_prepare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis/overview": {
         parameters: {
             query?: never;
@@ -7829,7 +7849,7 @@ export interface components {
              */
             entity_type: "track" | "album" | "artist";
             /** Entity Id */
-            entity_id?: string | number | null;
+            entity_id?: number | string | null;
             /** Name */
             name: string;
             /** Artist Name */
@@ -10738,6 +10758,22 @@ export interface components {
             /** Rate */
             rate: number;
         };
+        /** SnapshotPrepareResponse */
+        SnapshotPrepareResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "queued";
+            /** Family */
+            family: string;
+            /** Request Key */
+            request_key: string;
+            /** Target Revision */
+            target_revision: string;
+            /** Job Id */
+            job_id?: string | null;
+        };
         /** SnapshotReadState */
         SnapshotReadState: {
             /**
@@ -10775,7 +10811,7 @@ export interface components {
             target_revision?: string | null;
             /**
              * Message
-             * @default 当前筛选的数据尚未发布，请稍后重试。
+             * @default 当前范围的数据暂时不可用。
              */
             message: string;
         };
@@ -12101,7 +12137,7 @@ export interface components {
              */
             entity_type: "track" | "album" | "artist";
             /** Entity Id */
-            entity_id?: string | number | null;
+            entity_id?: number | string | null;
             /** Name */
             name: string;
             /** Artist Name */
@@ -12848,6 +12884,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_analysis_snapshot_api_analysis_snapshots_prepare_post: {
+        parameters: {
+            query: {
+                family: "analysis_stats" | "analysis_records";
+                period?: string;
+                start_date?: string | null;
+                end_date?: string | null;
+                include_compilations?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本归并级别（L2/L3） */
+                merge_level?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotPrepareResponse"];
                 };
             };
             /** @description Validation Error */

@@ -20,8 +20,8 @@ export function HomeError({ phone = false, onRetry, unavailable = false }: { pho
     <section className={phone ? 'home-state home-state-phone' : 'home-state'}>
       <AlertCircle aria-hidden="true" />
       <p>Personal music archive</p>
-      <h1>{unavailable ? '音乐头版数据尚未发布' : '音乐头版暂时无法打开'}</h1>
-      <span>{unavailable ? '当前筛选暂时没有已发布的数据，请稍后重试。' : '个人播放数据没有丢失，可以稍后再试或直接进入其他页面。'}</span>
+      <h1>{unavailable ? '音乐头版数据正在准备' : '音乐头版暂时无法打开'}</h1>
+      <span>{unavailable ? '当前筛选暂时没有可用结果，请稍后重试。' : '个人播放数据没有丢失，可以稍后再试或直接进入其他页面。'}</span>
       <div><button type="button" onClick={onRetry}>重新加载</button><Link to="/analysis/stats">进入播放分析</Link></div>
     </section>
   )

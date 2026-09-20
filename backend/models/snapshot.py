@@ -19,8 +19,16 @@ class SnapshotUnavailableDetail(BaseModel):
     status: Literal["unavailable"] = "unavailable"
     family: str
     target_revision: str | None = None
-    message: str = "当前筛选的数据尚未发布，请稍后重试。"
+    message: str = "当前范围的数据暂时不可用。"
 
 
 class SnapshotUnavailableResponse(BaseModel):
     detail: SnapshotUnavailableDetail
+
+
+class SnapshotPrepareResponse(BaseModel):
+    status: Literal["ready", "queued"]
+    family: str
+    request_key: str
+    target_revision: str
+    job_id: str | None = None

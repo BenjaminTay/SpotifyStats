@@ -5,8 +5,9 @@ import { GlassCard } from '@/components/shared/GlassCard'
 import { KpiCard } from '@/components/shared/KpiCard'
 import { RecentPlaysSection } from '@/components/shared/RecentPlaysSection'
 import { SnapshotUnavailableError } from '@/api/errors'
+import { SnapshotStatusNotice } from '@/components/shared/SnapshotStatusNotice'
 import { Skeleton } from '@/components/ui/skeleton'
-import { analysisApi, useAnalysisFilters, useApiData } from '@/hooks/useAnalysis'
+import { analysisApi, useAnalysisFilters, usePreparedAnalysisData } from '@/hooks/useAnalysis'
 import { MobileAnalysisStats } from '@/features/mobile/analysis/MobileAnalysisStats'
 import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
 import { MobileStatePanel } from '@/components/mobile'
@@ -24,12 +25,22 @@ export function AnalysisStatsPage() {
   const isPhone = useViewportMode() === 'phone'
   const { filters, loading: filtersLoading } = useAnalysisFilters()
   const { metric, period, periodValue, startDate, endDate, setQuery, apiParams } = useAnalysisQueryState()
-  const { data, loading, error, errorObject } = useApiData(() => analysisApi.stats(filters, apiParams), [filters, apiParams], !filtersLoading)
+  const { data, loading, switching, error, errorObject } = usePreparedAnalysisData(
+    'analysis_stats',
+    () => analysisApi.stats(filters, apiParams),
+    () => analysisApi.prepareSnapshot('analysis_stats', filters, apiParams),
+    [filters, apiParams],
+    !filtersLoading,
+  )
 
-  if (error) return <div role="alert" className="py-16 text-center">
-    <p>{errorObject instanceof SnapshotUnavailableError ? '播放统计暂不可用' : '加载播放统计失败'}</p>
-    <p className="mt-2 text-sm text-muted-foreground">{error}</p>
-  </div>
+  if (error) return (
+    <div role={switching ? 'status' : 'alert'} className="py-16 text-center">
+      <p>{switching ? '正在准备这个时间范围的数据' : errorObject instanceof SnapshotUnavailableError ? '当前时间范围暂不可用' : '加载播放统计失败'}</p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        {switching ? '可以停留在当前页面，准备完成后会自动显示。' : error}
+      </p>
+    </div>
+  )
 
   if (loading || !data) return isPhone ? <MobileStatePanel variant="loading" /> : <Skeleton className="h-[640px] rounded-[16px]" />
 
@@ -38,6 +49,9 @@ export function AnalysisStatsPage() {
 
   if (isPhone) {
     return (
+      <>
+        <SnapshotStatusNotice snapshot={data.snapshot} />
+        {switching && <p role="status" className="mb-3 text-sm text-muted-foreground">正在切换时间范围…</p>}
         <MobileAnalysisStats
           data={data}
           metric={metric}
@@ -59,11 +73,14 @@ export function AnalysisStatsPage() {
         }
         fetchPlayDates={() => analysisApi.playDates(filters, apiParams)}
       />
+      </>
     )
   }
 
   return (
     <div className="space-y-8">
+      <SnapshotStatusNotice snapshot={data.snapshot} />
+      {switching && <p role="status" className="text-sm text-muted-foreground">正在切换时间范围…</p>}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Playback Stats</p>

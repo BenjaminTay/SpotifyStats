@@ -114,6 +114,7 @@ export interface HomeRediscoveryTrack {
 }
 
 export interface HomeOverviewResponse {
+  snapshot?: import('@/api/generated/api-types').components['schemas']['SnapshotReadState'] | null
   schema_version: 'home_overview_v2' | string
   generated_at: string
   cache_state?: 'fresh' | 'warming' | 'stale'

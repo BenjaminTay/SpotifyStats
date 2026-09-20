@@ -4,6 +4,7 @@ import { CalendarRange, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MobileTimeRangeSheet, type MobileTimeRangeValue } from '@/components/mobile'
 import type { AnalysisMetric, AnalysisPeriod } from '@/types/analysis'
+import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 const PERIOD_LABELS: Record<AnalysisPeriod, string> = {
   lifetime: '全部时间',
@@ -35,6 +36,7 @@ export function MobileAnalysisTimeControl({
   metric,
   compact = false,
 }: MobileAnalysisTimeControlProps) {
+  const { capabilities } = useRuntimeCapabilities()
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const detail = period === 'custom'
@@ -88,6 +90,9 @@ export function MobileAnalysisTimeControl({
           ...(metric ? { metric } : {}),
         }}
         onApply={apply}
+        allowedPeriods={capabilities.surface === 'public-readonly'
+          ? ['lifetime', 'last_6_months', 'last_4_weeks']
+          : undefined}
       />
     </>
   )

@@ -31,6 +31,7 @@ interface MobileTimeRangeSheetProps {
   value: MobileTimeRangeValue
   onApply: (value: MobileTimeRangeValue) => void
   triggerRef?: RefObject<HTMLElement | null>
+  allowedPeriods?: AnalysisPeriod[]
 }
 
 const PERIOD_OPTIONS: Array<{ value: AnalysisPeriod; label: string; hint: string }> = [
@@ -99,7 +100,7 @@ function formatPeriodLabel(period: AnalysisPeriod, value?: string): string {
 
 type MobileTimeRangeSessionProps = Omit<MobileTimeRangeSheetProps, 'open'>
 
-function MobileTimeRangeSession({ onOpenChange, value, onApply, triggerRef }: MobileTimeRangeSessionProps) {
+function MobileTimeRangeSession({ onOpenChange, value, onApply, triggerRef, allowedPeriods }: MobileTimeRangeSessionProps) {
   const [draft, setDraft] = useState<MobileTimeRangeValue>(() => ({ ...value }))
   const [calendarOpen, setCalendarOpen] = useState(false)
   const inputType = periodInputType(draft.period)
@@ -257,7 +258,7 @@ function MobileTimeRangeSession({ onOpenChange, value, onApply, triggerRef }: Mo
       )}
     >
       <div className="mobile-time-grid" role="radiogroup" aria-label="时间范围类型">
-        {PERIOD_OPTIONS.map((option) => {
+        {PERIOD_OPTIONS.filter((option) => !allowedPeriods || allowedPeriods.includes(option.value)).map((option) => {
           const selected = option.value === draft.period
           return (
             <button

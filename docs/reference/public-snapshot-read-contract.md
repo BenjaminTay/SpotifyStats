@@ -1,6 +1,6 @@
 # Home / Billboard 公开快照读取合同
 
-> 最近修订：2026-09-20
+> 最近修订：2026-09-21
 > 状态：CURRENT；实现及局部验证见 [阶段 1 交付报告](../reports/2026-09-19-public-snapshot-boundary.md)
 
 ## 公开专辑项目详情
@@ -47,7 +47,9 @@ Home target_revision 为现有 exact 文件名摘要，覆盖过滤 context、da
 
 ## 前端与验证口径
 
-前端将 snapshot_unavailable 解析为独立错误，展示“当前筛选的数据尚未发布”，不自动重试该错误；用户可以手动刷新。其他错误原有重试次数不变。有观察者的 Home/Billboard Query 命中 LKG 时展示上次发布提示并保留事实，不转为空态。
+前端将 snapshot_unavailable 解析为独立错误，但用户文案使用“数据正在准备 / 暂时不可用”，不暴露发布管线。LKG 提示由 Home、播放分析和 Billboard 等具体页面根据自己消费的数据渲染，不再由全局布局扫描所有 Query；旧事实保留，不转为空态。
+
+播放分析的 GET 继续严格只读。private-admin 可通过独立 POST 显式排队缺失范围并轮询 GET；public-readonly 不开放该 POST，只能读取已维护的 lifetime / last_4_weeks / last_6_months 等结果。任何 surface 的 GET 都不得同步构建或写入。
 
 零写入验证包括 builder/writer/排队 sentinel、主数据库及 Billboard DB/WAL 字节、Home JSON 内容/mtime、相关表和队列对比。SQLite WAL 的 `-shm` read-mark 可能由只读连接更新，这是锁协调，**不宣称操作系统层完全没有共享内存写入**。保留正常只读 WAL 可见性；不能用 immutable 连接忽略已提交 WAL 来伪造零变化。
 

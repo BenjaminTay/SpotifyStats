@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
 
 from backend.core.access_surface import public_readonly_db_guard_active, snapshot_unavailable
 from backend.core.cache import singleflight
@@ -16,6 +17,7 @@ from backend.services.analysis_snapshot_revision import database_identity, sourc
 logger = logging.getLogger(__name__)
 JOB_TYPE = "analysis_snapshot_rebuild"
 VERSIONS = {"analysis_stats": "analysis_stats_taste_v1", "analysis_records": "analysis_records_v1"}
+AUTOMATIC_PERIODS = ("lifetime", "last_4_weeks", "last_6_months")
 
 
 def default_params(conn, family):
@@ -40,11 +42,18 @@ def request_context(conn, family, params):
         resolved["period"] = "lifetime"
     if resolved["max_merge_gap_minutes"] is None:
         resolved["max_merge_gap_minutes"] = default_params(conn, family)["max_merge_gap_minutes"]
-    # Non-default filters may read an already-published compatible lifetime
-    # result. This phase never queues arbitrary scopes from GET.
-    if resolved["period"] != "lifetime":
-        raise ValueError("Only lifetime analysis publications are supported")
-    resolved["start_date"] = resolved["end_date"] = None
+    if resolved["period"] == "lifetime":
+        resolved["start_date"] = resolved["end_date"] = None
+    elif resolved["period"] == "custom":
+        if not resolved.get("start_date") or not resolved.get("end_date"):
+            raise ValueError("Custom analysis publications require both dates")
+        start = date.fromisoformat(str(resolved["start_date"]))
+        end = date.fromisoformat(str(resolved["end_date"]))
+        if start > end:
+            raise ValueError("Custom analysis publication start date is after end date")
+        resolved["start_date"], resolved["end_date"] = start.isoformat(), end.isoformat()
+    else:
+        resolved["start_date"] = resolved["end_date"] = None
     for k in ("min_ms", "max_merge_gap_minutes", "merge_level"):
         if k in resolved:
             resolved[k] = int(resolved[k])
@@ -56,7 +65,11 @@ def request_context(conn, family, params):
             "family": family,
             "identity": database_identity(conn),
             "params": resolved,
-            "scope": {"start": None, "end": None},
+            "scope": {
+                "period": resolved["period"],
+                "start": resolved["start_date"],
+                "end": resolved["end_date"],
+            },
             "builder": version,
             "sort": PLAYBACK_RECORDS_SORT_CONTRACT_VERSION
             if family == "analysis_records"
@@ -71,10 +84,6 @@ def read_snapshot(conn, family, **params):
 
     if params.get("period", "lifetime") not in PERIOD_LABELS:
         params["period"] = "lifetime"
-    if params.get("period", "lifetime") != "lifetime":
-        unavailable = snapshot_unavailable(family)
-        unavailable.detail["message"] = "此时间范围尚未提供已发布快照，请切换为全部时间。"
-        raise unavailable
     if not store.path().is_file():
         raise snapshot_unavailable(family)
     revision = None
@@ -97,7 +106,9 @@ def read_snapshot(conn, family, **params):
             }
     except Exception:
         logger.exception("Analysis publication cannot be read: %s", family)
-    raise snapshot_unavailable(family, revision)
+    unavailable = snapshot_unavailable(family, revision)
+    unavailable.detail["message"] = "当前范围的数据正在准备，请稍后再试。"
+    raise unavailable
 
 
 def rebuild(family: str, params_json: str, request_key: str, target_revision: str):
@@ -147,6 +158,39 @@ def _rebuild_once(family: str, params_json: str, request_key: str, target_revisi
         conn.close()
 
 
+def prepare_snapshot(family: str, params: dict, *, queue=None):
+    """Explicit private maintenance entrypoint for one normalized range."""
+    if public_readonly_db_guard_active():
+        raise PermissionError("Public requests cannot prepare analysis snapshots")
+    if family not in VERSIONS:
+        raise ValueError("Unknown analysis snapshot family")
+    queue = queue or get_job_queue()
+    conn = get_db(readonly=True)
+    try:
+        if not queue_targets_connection(queue, conn):
+            raise ValueError("Analysis queue database does not match the request database")
+        resolved, key, revision, version = request_context(conn, family, params)
+        found = store.read(family, key, revision, version)
+        if found and found[1]["source_revision"] == revision:
+            return {
+                "status": "ready",
+                "family": family,
+                "request_key": key,
+                "target_revision": revision,
+                "job_id": None,
+            }
+        job_id = _enqueue(family, key, json.dumps(resolved, sort_keys=True), queue)
+        return {
+            "status": "queued",
+            "family": family,
+            "request_key": key,
+            "target_revision": revision,
+            "job_id": job_id,
+        }
+    finally:
+        conn.close()
+
+
 def enqueue_defaults(reason: str, *, queue=None):
     if public_readonly_db_guard_active():
         return []
@@ -157,21 +201,27 @@ def enqueue_defaults(reason: str, *, queue=None):
             return []
         jobs = []
         for family in VERSIONS:
-            params, key, revision, version = request_context(conn, family, {})
-            found = store.read(family, key, revision, version)
-            if found and found[1]["source_revision"] == revision:
-                continue
-            job_id = _enqueue_default(family, key, json.dumps(params, sort_keys=True), queue)
-            if job_id:
-                jobs.append(job_id)
-                logger.info("Analysis maintenance queued: family=%s reason=%s", family, reason)
+            for period in AUTOMATIC_PERIODS:
+                params, key, revision, version = request_context(conn, family, {"period": period})
+                found = store.read(family, key, revision, version)
+                if found and found[1]["source_revision"] == revision:
+                    continue
+                job_id = _enqueue(family, key, json.dumps(params, sort_keys=True), queue)
+                if job_id:
+                    jobs.append(job_id)
+                    logger.info(
+                        "Analysis maintenance queued: family=%s period=%s reason=%s",
+                        family,
+                        period,
+                        reason,
+                    )
         return jobs
     finally:
         conn.close()
 
 
 @singleflight
-def _enqueue_default(family, key, params_json, queue):
+def _enqueue(family, key, params_json, queue):
     # The queue check+insert needs serialization among caller threads. The
     # lock covers only this normalized key, never the computation itself.
     return queue.enqueue_if_not_pending(Job.create(JOB_TYPE, family, key, params_json=params_json))

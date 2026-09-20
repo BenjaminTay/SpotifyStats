@@ -202,7 +202,7 @@ function searchStateMessage(
   if (statisticsFreshness === 'last_known_good') {
     return {
       title: '搜索可用，播放统计来自上一版本',
-      detail: '名称和详情入口可正常使用；新统计发布后会自动无缝切换。',
+      detail: '名称和详情入口可正常使用；统计更新完成后会自动无缝切换。',
       canRetry: false,
     }
   }

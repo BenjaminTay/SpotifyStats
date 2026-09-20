@@ -341,6 +341,7 @@ export interface EntityPlaysResponse {
 }
 
 export interface AnalysisStatsResponse {
+  snapshot?: import('@/api/generated/api-types').components['schemas']['AnalysisSnapshotReadState'] | null
   period: AnalysisResolvedPeriod
   summary: AnalysisStatsSummary
   daily_metrics: AnalysisDailyMetrics
@@ -562,6 +563,7 @@ export interface PlaybackRecordsMeta {
 }
 
 export interface PlaybackRecordsResponse {
+  snapshot?: import('@/api/generated/api-types').components['schemas']['AnalysisSnapshotReadState'] | null
   period: AnalysisResolvedPeriod
   meta: PlaybackRecordsMeta
   records: PlaybackRecordsData
