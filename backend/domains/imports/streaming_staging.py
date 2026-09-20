@@ -211,6 +211,13 @@ class StreamingImportStaging:
         self.source_dir = source_dir
         self.manifest = manifest
         self._closed = False
+        self._expiry_timer: threading.Timer | None = None
+        self.confirmation_token: str | None = None
+        self.preflight_key: tuple | None = None
+        self.preflight_report: dict[str, Any] | None = None
+        self.preflight_observer: sqlite3.Connection | None = None
+        self.preflight_data_version: int | None = None
+        self.preflight_staging_digest: str | None = None
 
     @classmethod
     def build(cls, streaming_dir: str | os.PathLike[str]) -> StreamingImportStaging:
@@ -487,10 +494,20 @@ class StreamingImportStaging:
         if self._closed:
             return
         self._closed = True
+        if self._expiry_timer is not None:
+            self._expiry_timer.cancel()
+            self._expiry_timer = None
+        if self.preflight_observer is not None:
+            self.preflight_observer.close()
+            self.preflight_observer = None
+        self.preflight_report = None
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
 
-_cache_lock = threading.Lock()
+# The same lock protects report validation, building, expiry and POST ownership
+# transfer. Single-user preflights are serialized, including identical keys.
+staging_cache_lock = threading.RLock()
+_cache_lock = staging_cache_lock
 _staging_cache: dict[str, tuple[float, StreamingImportStaging]] = {}
 _orphan_cleanup_lock = threading.Lock()
 _orphan_cleanup_done = False
@@ -505,13 +522,13 @@ def _cleanup_orphans_once() -> None:
         _orphan_cleanup_done = True
 
 
-def _prune_cache(now: float) -> None:
+def _prune_cache(now: float, *, reserve: int = 0) -> None:
     expired = [
         token
         for token, (created_at, _) in _staging_cache.items()
         if now - created_at > _CACHE_TTL_SECONDS
     ]
-    while len(_staging_cache) - len(expired) >= _CACHE_MAX_ENTRIES:
+    while len(_staging_cache) - len(expired) + reserve > _CACHE_MAX_ENTRIES:
         oldest = min(
             (item for item in _staging_cache if item not in expired),
             key=lambda token: _staging_cache[token][0],
@@ -522,18 +539,25 @@ def _prune_cache(now: float) -> None:
         staging.close()
 
 
-def cache_staging(token: str, staging: StreamingImportStaging) -> None:
+def cache_staging(
+    token: str, staging: StreamingImportStaging, *, cache_key: str | None = None
+) -> None:
     """Keep a bounded, short-lived preflight staging for confirmed POST reuse."""
 
+    staging.confirmation_token = token
+    token = cache_key or token
     with _cache_lock:
-        _prune_cache(time.monotonic())
         previous = _staging_cache.pop(token, None)
+        _prune_cache(time.monotonic(), reserve=1)
         if previous is not None and previous[1] is not staging:
             previous[1].close()
+        if staging._expiry_timer is not None:
+            staging._expiry_timer.cancel()
         _staging_cache[token] = (time.monotonic(), staging)
-    timer = threading.Timer(_CACHE_TTL_SECONDS, _expire_cached_staging, args=(token, staging))
-    timer.daemon = True
-    timer.start()
+        timer = threading.Timer(_CACHE_TTL_SECONDS, _expire_cached_staging, args=(token, staging))
+        timer.daemon = True
+        staging._expiry_timer = timer
+        timer.start()
 
 
 def _expire_cached_staging(token: str, expected: StreamingImportStaging) -> None:
@@ -545,12 +569,52 @@ def _expire_cached_staging(token: str, expected: StreamingImportStaging) -> None
     expected.close()
 
 
+def cached_preflight_report(key: tuple) -> dict[str, Any] | None:
+    """Validate a retained report under the shared lifetime/ownership lock."""
+    from copy import deepcopy
+
+    with _cache_lock:
+        _prune_cache(time.monotonic())
+        for token, (_, staging) in list(_staging_cache.items()):
+            if staging.preflight_key != key:
+                continue
+            observer = staging.preflight_observer
+            try:
+                valid = (
+                    not staging._closed
+                    and observer is not None
+                    and observer.execute("PRAGMA data_version").fetchone()[0]
+                    == staging.preflight_data_version
+                    and _sha256_file(staging.database_path) == staging.preflight_staging_digest
+                    and observer.execute("PRAGMA data_version").fetchone()[0]
+                    == staging.preflight_data_version
+                )
+            except (OSError, sqlite3.Error):
+                valid = False
+            if valid:
+                return deepcopy(staging.preflight_report)
+            _staging_cache.pop(token)
+            staging.close()
+        return None
+
+
 def take_cached_staging(token: str | None) -> StreamingImportStaging | None:
     if not token:
         return None
     with _cache_lock:
         _prune_cache(time.monotonic())
-        cached = _staging_cache.pop(token, None)
+        key = next(
+            (
+                key
+                for key, (_, staging) in _staging_cache.items()
+                if key == token or staging.confirmation_token == token
+            ),
+            token,
+        )
+        cached = _staging_cache.pop(key, None)
+        if cached is not None and cached[1]._expiry_timer is not None:
+            cached[1]._expiry_timer.cancel()
+            cached[1]._expiry_timer = None
     return cached[1] if cached is not None else None
 
 

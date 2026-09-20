@@ -8,6 +8,7 @@ import os
 import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal
 
 import pandas as pd
@@ -21,8 +22,17 @@ from backend.domains.imports.incremental import (
     build_import_plan,
     dataset_digest,
 )
-from backend.domains.imports.source_inspector import inspect_data_sources_for_planning
-from backend.domains.imports.streaming_staging import StreamingImportStaging, cache_staging
+from backend.domains.imports.source_inspector import (
+    ACCOUNT_SOURCES,
+    inspect_data_sources_for_planning,
+)
+from backend.domains.imports.streaming_staging import (
+    StreamingImportStaging,
+    _sha256_file,
+    cache_staging,
+    cached_preflight_report,
+    staging_cache_lock,
+)
 from backend.domains.playback.logical_timeline import billboard_week_for_timestamps
 from backend.domains.settings.repository import SettingsRepository
 
@@ -416,6 +426,111 @@ def assess_streaming_import(
             active_staging.close()
 
 
+PREFLIGHT_CONTRACT_VERSION = 1
+
+
+def _preflight_key(streaming_dir, account_dir, requested_mode, conn) -> tuple:
+    """Content is authoritative even when size and mtime have been preserved."""
+    source = Path(streaming_dir).resolve()
+    account = Path(account_dir).resolve()
+    paths = sorted(source.glob("Streaming_History_Audio_*.json")) + sorted(
+        source.glob("Streaming_History_Video_*.json")
+    )
+    paths += [
+        account / name for name in sorted({r[1] for r in ACCOUNT_SOURCES} | {"UserAttributes.json"})
+    ]
+    files: list[tuple] = []
+    for path in paths:
+        try:
+            before = path.stat()
+        except FileNotFoundError:
+            files.append((str(path), None))
+            continue
+        content = _sha256_file(path)
+        after = path.stat()
+        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise RuntimeError("source file changed during preflight validation")
+        files.append((str(path), after.st_size, after.st_mtime_ns, content))
+    database = Path(conn.execute("PRAGMA database_list").fetchone()[2]).resolve()
+    stat = database.stat()
+    state = (
+        tuple(
+            conn.execute(
+                "SELECT active_generation_id,account_identity_hash,fingerprint_version,"
+                "dataset_digest,record_count FROM playback_import_state WHERE state_id=1"
+            ).fetchone()
+            or ()
+        )
+        if _table_exists(conn, "playback_import_state")
+        else ()
+    )
+    return (
+        PREFLIGHT_CONTRACT_VERSION,
+        FINGERPRINT_VERSION,
+        requested_mode,
+        str(source),
+        str(account),
+        str(database),
+        stat.st_dev,
+        stat.st_ino,
+        state,
+        tuple(files),
+    )
+
+
+def _cached_streaming_preflight(streaming_dir, account_dir, requested_mode) -> dict[str, Any]:
+    # Sharing the existing staging lock also prevents expiry/POST from closing
+    # resources while a GET validates them. No second cache or lock registry.
+    with staging_cache_lock:
+        observer = get_db(readonly=True)
+        staging = None
+        retained = False
+        try:
+            version = observer.execute("PRAGMA data_version").fetchone()[0]
+            key = _preflight_key(streaming_dir, account_dir, requested_mode, observer)
+            cached = cached_preflight_report(key)
+            if cached is not None:
+                return cached
+            assessment = assess_streaming_import(
+                streaming_dir,
+                account_dir,
+                requested_mode=requested_mode,
+                conn=observer,
+                retain_staging=True,
+            )
+            staging = assessment.staging
+            assert staging is not None
+            staging.verify_source_manifest()
+            if (
+                _preflight_key(streaming_dir, account_dir, requested_mode, observer) != key
+                or observer.execute("PRAGMA data_version").fetchone()[0] != version
+            ):
+                raise RuntimeError("source or active dataset changed during preflight")
+            staging.preflight_key = key
+            from copy import deepcopy
+
+            staging.preflight_report = deepcopy(assessment.report)
+            staging.preflight_observer = observer
+            staging.preflight_data_version = version
+            staging.preflight_staging_digest = _sha256_file(staging.database_path)
+            cache_staging(
+                str(assessment.report["confirmation_token"]),
+                staging,
+                cache_key=hashlib.sha256(repr(key).encode()).hexdigest(),
+            )
+            retained = True
+            return assessment.report
+        finally:
+            if not retained:
+                if staging is not None:
+                    staging.close()
+                observer.close()
+
+
 def build_streaming_import_preflight(
     streaming_dir: str | os.PathLike[str],
     account_dir: str | os.PathLike[str],
@@ -425,6 +540,10 @@ def build_streaming_import_preflight(
     retain_staging_for_confirmation: bool = False,
 ) -> dict[str, Any]:
     """Combine source inspection and the persisted baseline without writes."""
+    if requested_mode not in {"auto", "append", "replace"}:
+        raise ValueError("Unknown import requested mode")
+    if retain_staging_for_confirmation and conn is None:
+        return _cached_streaming_preflight(streaming_dir, account_dir, requested_mode)
     assessment = assess_streaming_import(
         streaming_dir,
         account_dir,

@@ -33,6 +33,9 @@
 - `date_overlaps.classification=duplicate_records` 表示确有共同记录；`boundary_only` 只表示时间边界相交但没有相同记录，应使用中性说明而不是警告。
 - 完全重复文件会进入 `blockers`；文件内重复记录、日期范围重叠和跨文件共同记录进入 `warnings`。导入时只对完全相同的记录自动去重，保留同一内容在稳定文件顺序中的第一次出现；日期重叠不会被当成重复，也不会自动合并。源 JSON 永远不会被修改。
 - 预检把串流记录一次解析到权限受限的系统临时 SQLite staging。GET 返回的确认标识可在 15 分钟、最多 3 份的进程内缓存中复用；POST 无论复用还是新建，都让关系检测、计数和 ETL 共享同一 staging，不再重复解析源 JSON。staging 不进入主库或 Git，并在阻断、过期、完成、异常或进程退出时清理。
+- 相同数据包的 GET 采用 cache-first：规范键包含 `auto/append/replace`、builder/指纹合同版本、源目录与账号目录、每个相关文件的存在状态/大小/mtime/SHA-256、数据库路径/实例身份，以及活动 generation、账号身份、指纹版本、dataset digest 和 record count。每次读取仍散列全部源文件和账号检查文件，保留同大小且恢复 mtime 的内容变化检测。
+- 已验证报告与 staging 共用上述 3 份 / 15 分钟缓存；同 key 并发在同一 staging 生命周期锁下只构建一次，不共享可变响应对象。每份保留只读数据库观察连接，以该连接的 `PRAGMA data_version` 检测任何已提交变更（包括绕过活动状态的事实修改）；这是保守失效栅栏，不把它当持久语义 revision。冷构建前后复查源内容与数据库栅栏，变化时拒绝发布混合报告。
+- GET 命中同时核对 staging 文件完整 SHA-256，丢失、损坏、过期或版本变化均重新预检。淘汰/过期/进程退出关闭观察连接并删除临时目录；POST 转移 staging 所有权并取消过期计时器，执行完成后清理。TTL 只限制资源生命周期，不代替事实校验。显式传入事务连接的内部调用继续完整评估，避免缓存未提交状态。首次计算可耗时数秒；同一事实重复读取仍遵守 500 ms hot P95 合同和 21 个 hot 样本要求。
 - `POST /api/import/streaming` 会在后台任务真正创建快照前再次执行这份预检：有 `blockers` 时任务状态为 `blocked`；只有 `warnings` 且未传 `confirm_warnings=true` 时状态为 `needs_confirmation`；确认后才会进入计划执行。源文件集合与 SHA-256 会在 ETL 前和事实提交边界再次核对，预检后发生任何漂移都回滚并要求重新检查。
 
 增量导入 Phase A–E 使用以下证据与执行规则：

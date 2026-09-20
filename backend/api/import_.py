@@ -211,10 +211,12 @@ def _streaming_execution_gate(
 ) -> tuple[StreamingImportAssessment, ImportExecutionDecision] | None:
     """Resolve source and relationship evidence before any playback write."""
     staging = take_cached_staging(confirmation_token)
+    source_drift = False
     if staging is not None:
         try:
             staging.verify_source_manifest()
         except RuntimeError:
+            source_drift = True
             staging.close()
             staging = None
     try:
@@ -241,8 +243,8 @@ def _streaming_execution_gate(
             assessment.staging.close()
         return None
     confirmation_required = confirm_warnings or confirm_plan
-    confirmation_is_stale = confirmation_token is not None and (
-        confirmation_token != preflight.get("confirmation_token")
+    confirmation_is_stale = source_drift or (
+        confirmation_token is not None and confirmation_token != preflight.get("confirmation_token")
     )
     if (confirmation_required and confirmation_token is None) or confirmation_is_stale:
         _record_plan_outcome(
