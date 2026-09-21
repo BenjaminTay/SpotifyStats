@@ -354,7 +354,11 @@ def test_failed_job_can_requeue_and_handler_uses_latest_defaults(snapshot, monke
             (service.JOB_TYPE, "community", "key", "failed"),
         )
     jobs = []
-    monkeypatch.setattr(queue, "enqueue", lambda job: jobs.append(job) or job.job_id)
+    monkeypatch.setattr(
+        queue,
+        "enqueue_if_not_pending",
+        lambda job: jobs.append(job) or job.job_id,
+    )
     assert len(service.enqueue_defaults("retry", queue=queue)) == 1
     assert jobs[0].payload["default"] is True
     monkeypatch.setattr(service, "configured_billboard_filters", lambda c: {"min_ms": 45000})

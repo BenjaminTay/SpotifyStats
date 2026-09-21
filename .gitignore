@@ -23,6 +23,8 @@ data/*.db.pre-*
 data/yearly_review_cache.db*
 data/covers/
 data/cache/
+data/import_control/
+data/import_sources/
 
 # Claude Code session data
 .claude/

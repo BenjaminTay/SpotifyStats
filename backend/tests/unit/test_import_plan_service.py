@@ -85,7 +85,7 @@ def test_preflight_reports_baseline_required_without_writing(tmp_path):
     assert report["estimated_strategy"] == "full"
     assert report["requires_confirmation"] is True
     assert len(report["confirmation_token"]) == 64
-    assert replace_report["confirmation_token"] == report["confirmation_token"]
+    assert replace_report["confirmation_token"] != report["confirmation_token"]
     assert report["existing_record_count"] == 1
     assert report["incoming_record_count"] == 1
     assert report["comparison_status"] == "baseline_missing"

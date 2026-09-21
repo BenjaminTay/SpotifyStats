@@ -1187,6 +1187,98 @@ def plan_l3_album_attributions(
     )
 
 
+def build_l3_album_attribution_scope_health(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Report played-work and complete active-identity scopes independently."""
+
+    required = (
+        "tracks",
+        "plays",
+        "track_l1_identities",
+        "album_projects",
+        "album_project_tracks",
+        "album_project_albums",
+    )
+    empty_statuses = {
+        "historical_legacy": 0,
+        "explained": 0,
+        "needs_evidence": 0,
+        "repairable": 0,
+    }
+    if not all(_table_exists(conn, table) for table in required):
+        return {
+            "available": False,
+            "played_works": None,
+            "all_identities": None,
+            "problem_ledger": {"status_counts": empty_statuses, "entries": []},
+            "writes_performed": False,
+        }
+
+    played = plan_l3_album_attributions(conn, include_unplayed=False)
+    complete = plan_l3_album_attributions(conn, include_unplayed=True)
+
+    def scope(plan: L3AlbumAttributionPlan) -> dict[str, int]:
+        return {
+            "scanned_work_count": plan.scanned_song_count,
+            "attributed_work_count": len(plan.decisions),
+            "issue_count": len(plan.issues),
+            "uncovered_count": len(plan.uncovered_song_keys),
+            "conflict_count": len(plan.conflict_song_keys),
+            "excluded_count": len(plan.exclusions),
+        }
+
+    played_keys = {item.canonical_song_key for item in played.decisions}
+    played_keys.update(item.canonical_song_key for item in played.issues)
+    played_keys.update(item.canonical_song_key for item in played.exclusions)
+    status_counts = dict(empty_statuses)
+    entries: list[dict[str, Any]] = []
+    for issue in complete.issues:
+        evidence = dict(issue.evidence)
+        is_played = issue.canonical_song_key in played_keys
+        if issue.issue_kind in {"conflict", "invalid_override"}:
+            status = "needs_evidence"
+        elif is_played and evidence.get("source_album_ids"):
+            status = "repairable"
+        elif is_played:
+            status = "needs_evidence"
+        else:
+            status = "historical_legacy"
+        status_counts[status] += 1
+        entries.append(
+            {
+                "canonical_song_key": issue.canonical_song_key,
+                "representative_track_id": issue.representative_track_id,
+                "issue_kind": issue.issue_kind,
+                "scope": "played_works" if is_played else "all_identities",
+                "status": status,
+                "raw_play_count": int(evidence.get("raw_play_count", 0)),
+                "raw_ms": int(evidence.get("raw_ms", 0)),
+                "source_album_ids": list(evidence.get("source_album_ids", ())),
+            }
+        )
+
+    identity_counts = conn.execute(
+        """SELECT COUNT(*),
+                  SUM(CASE WHEN identity_status='active' THEN 1 ELSE 0 END),
+                  SUM(CASE WHEN identity_status='superseded' THEN 1 ELSE 0 END)
+             FROM track_l1_identities"""
+    ).fetchone()
+    all_scope = scope(complete)
+    all_scope.update(
+        {
+            "identity_count": int(identity_counts[0] or 0),
+            "active_identity_count": int(identity_counts[1] or 0),
+            "superseded_identity_count": int(identity_counts[2] or 0),
+        }
+    )
+    return {
+        "available": True,
+        "played_works": scope(played),
+        "all_identities": all_scope,
+        "problem_ledger": {"status_counts": status_counts, "entries": entries},
+        "writes_performed": False,
+    }
+
+
 def reconcile_l3_album_attribution_dependencies(
     conn: sqlite3.Connection,
     *,

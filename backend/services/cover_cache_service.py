@@ -171,12 +171,14 @@ def enqueue_missing_cover_downloads(
     target_queue = queue or get_job_queue()
     jobs_enqueued = 0
     for cover_type, entity_id, image_url in missing:
+        source_hash = hashlib.sha256(image_url.encode()).hexdigest()
         job = Job.create(
             "cover_download",
             cover_type,
             str(entity_id),
             cdn_url=image_url,
-            source_url_hash=hashlib.sha256(image_url.encode()).hexdigest(),
+            source_url_hash=source_hash,
+            target_revision=source_hash,
         )
         if target_queue.enqueue_if_not_pending(job) is not None:
             jobs_enqueued += 1

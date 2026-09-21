@@ -32,6 +32,83 @@ from backend.core.db import connect_sqlite_path
 logger = logging.getLogger(__name__)
 
 _NEXT_ATTEMPT_PAYLOAD_KEY = "__job_queue_next_attempt_at"
+_PRIORITY_PAYLOAD_KEY = "__job_queue_priority"
+_RESOURCE_CLASS_PAYLOAD_KEY = "__job_queue_resource_class"
+_TARGET_KEY_PAYLOAD_KEY = "__job_queue_target_key"
+
+_RESOURCE_CRITICAL = "critical"
+_RESOURCE_DEFAULT = "default"
+_RESOURCE_NETWORK = "network"
+_RESOURCE_CLASSES = {_RESOURCE_CRITICAL, _RESOURCE_DEFAULT, _RESOURCE_NETWORK}
+
+_NETWORK_JOB_TYPES = {"cover_download", "wikipedia_enrich", "genius_lyrics"}
+_CRITICAL_JOB_TYPES = {
+    "playback_import_maintenance",
+    "artist_identity_rebuild",
+    "track_credit_rebuild",
+    "music_search_snapshot_rebuild",
+    "billboard_snapshot_rebuild",
+    "analysis_snapshot_rebuild",
+    "community_snapshot_rebuild",
+    "account_archive_snapshot_rebuild",
+    "governance_snapshot_rebuild",
+    "entity_rank_context_rebuild",
+}
+
+# Capture the primitives before application tests monkeypatch the shared
+# ``threading.Thread`` symbol. ``threading.Timer`` resolves that global at
+# construction time, which made delayed retries fail in unrelated importer tests.
+_THREAD_CLASS = threading.Thread
+_EVENT_CLASS = threading.Event
+
+
+class _DelayedCall:
+    """Minimal cancellable timer built from the captured thread primitive."""
+
+    def __init__(self, delay: float, callback: Callable[[], None], *, name: str):
+        self._delay = max(0.0, delay)
+        self._callback = callback
+        self._cancelled = _EVENT_CLASS()
+        self._thread = _THREAD_CLASS(target=self._run, name=name, daemon=True)
+
+    def _run(self) -> None:
+        if not self._cancelled.wait(self._delay):
+            self._callback()
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def cancel(self) -> None:
+        self._cancelled.set()
+
+
+def _default_resource_class(job_type: str) -> str:
+    if job_type in _CRITICAL_JOB_TYPES:
+        return _RESOURCE_CRITICAL
+    if job_type in _NETWORK_JOB_TYPES:
+        return _RESOURCE_NETWORK
+    return _RESOURCE_DEFAULT
+
+
+def _default_priority(resource_class: str) -> int:
+    return {
+        _RESOURCE_CRITICAL: 10,
+        _RESOURCE_DEFAULT: 50,
+        _RESOURCE_NETWORK: 100,
+    }[resource_class]
+
+
+def _target_key(
+    entity_id: str,
+    payload: dict[str, Any],
+    target_revision: object | None = None,
+) -> str:
+    revision = target_revision
+    if revision is None:
+        revision = payload.get("target_revision", payload.get("revision"))
+    if revision is None or ":revision:" in entity_id:
+        return entity_id
+    return f"{entity_id}:revision:{revision}"
 
 
 def queue_targets_connection(queue_instance: object, conn: sqlite3.Connection) -> bool:
@@ -58,11 +135,27 @@ class Job:
     attempts: int = 0
     max_attempts: int = 3
     next_attempt_at: str = ""
+    priority: int = 50
+    resource_class: str = _RESOURCE_DEFAULT
+    target_key: str = ""
+
+    def __post_init__(self) -> None:
+        if self.resource_class not in _RESOURCE_CLASSES:
+            self.resource_class = _default_resource_class(self.job_type)
+        try:
+            self.priority = int(self.priority)
+        except (TypeError, ValueError):
+            self.priority = _default_priority(self.resource_class)
+        if not self.target_key:
+            self.target_key = _target_key(self.entity_id, self.payload)
 
     def to_row(self) -> dict[str, Any]:
         import json
 
         persisted_payload = dict(self.payload)
+        persisted_payload[_PRIORITY_PAYLOAD_KEY] = self.priority
+        persisted_payload[_RESOURCE_CLASS_PAYLOAD_KEY] = self.resource_class
+        persisted_payload[_TARGET_KEY_PAYLOAD_KEY] = self.target_key
         if self.next_attempt_at:
             persisted_payload[_NEXT_ATTEMPT_PAYLOAD_KEY] = self.next_attempt_at
 
@@ -78,7 +171,23 @@ class Job:
         }
 
     @classmethod
-    def create(cls, job_type: str, entity_type: str, entity_id: str, **payload):
+    def create(
+        cls,
+        job_type: str,
+        entity_type: str,
+        entity_id: str,
+        *,
+        priority: int | None = None,
+        resource_class: str | None = None,
+        target_key: str | None = None,
+        target_revision: object | None = None,
+        **payload: Any,
+    ) -> Job:
+        resolved_resource = resource_class or _default_resource_class(job_type)
+        if resolved_resource not in _RESOURCE_CLASSES:
+            raise ValueError(f"Unsupported job resource class: {resolved_resource}")
+        if target_revision is not None:
+            payload.setdefault("target_revision", target_revision)
         return cls(
             job_id=str(uuid.uuid4())[:12],
             job_type=job_type,
@@ -86,6 +195,9 @@ class Job:
             entity_id=entity_id,
             payload=payload,
             created_at=datetime.now(timezone.utc).isoformat(),
+            priority=(_default_priority(resolved_resource) if priority is None else int(priority)),
+            resource_class=resolved_resource,
+            target_key=target_key or _target_key(entity_id, payload, target_revision),
         )
 
 
@@ -93,7 +205,7 @@ class Job:
 
 
 class JobQueue:
-    """In-process job queue backed by a Python Queue + worker threads."""
+    """In-process priority queue with isolated critical and network lanes."""
 
     def __init__(
         self,
@@ -102,7 +214,11 @@ class JobQueue:
         retry_base_seconds: float = 2.0,
         retry_max_seconds: float = 30.0,
     ):
-        self._q: queue.Queue[Job] = queue.Queue()
+        self._queues: dict[str, queue.PriorityQueue[tuple[int, str, str, Job]]] = {
+            lane: queue.PriorityQueue() for lane in _RESOURCE_CLASSES
+        }
+        # Compatibility for callers that only observed the old default queue.
+        self._q = self._queues[_RESOURCE_DEFAULT]
         self._handlers: dict[str, Callable[[Job], None]] = {}
         self._max_workers = max_workers
         self._workers: list[threading.Thread] = []
@@ -113,8 +229,10 @@ class JobQueue:
         self._db_path: str | None = None
         self._retry_base_seconds = max(0.0, retry_base_seconds)
         self._retry_max_seconds = max(self._retry_base_seconds, retry_max_seconds)
-        self._retry_timers: dict[str, threading.Timer] = {}
+        self._retry_timers: dict[str, _DelayedCall] = {}
         self._cpu_heavy_gate = threading.Semaphore(1)
+        self._wake_workers = _EVENT_CLASS()
+        self._active_targets: set[tuple[str, str, str]] = set()
 
     # ── Registration ───────────────────────────────────────────────────
 
@@ -144,6 +262,7 @@ class JobQueue:
                 return
             self._db_path = db_path
             self._startup_jobs = self._recover_persisted_jobs()
+            self._active_targets.update(self._job_identity(job) for job in self._startup_jobs)
             self._prepared = True
 
     def start(
@@ -163,7 +282,7 @@ class JobQueue:
         with self._lock:
             if self._running:
                 return
-            startup_jobs = self._startup_jobs
+            startup_jobs = sorted(self._startup_jobs, key=self._sort_key)
             self._startup_jobs = []
             self._prepared = False
             self._running = True
@@ -186,9 +305,10 @@ class JobQueue:
             raise RuntimeError(f"Startup-priority jobs failed: {failed_ids}")
 
         with self._lock:
-            for i in range(self._max_workers):
-                t = threading.Thread(
+            for i, lanes in enumerate(self._worker_assignments()):
+                t = _THREAD_CLASS(
                     target=self._worker_loop,
+                    args=(lanes,),
                     name=f"job-worker-{i}",
                     daemon=True,
                 )
@@ -229,6 +349,23 @@ class JobQueue:
                     if not isinstance(payload, dict):
                         raise ValueError("payload_json must contain an object")
                     next_attempt_at = str(payload.pop(_NEXT_ATTEMPT_PAYLOAD_KEY, "") or "")
+                    resource_class = str(
+                        payload.pop(
+                            _RESOURCE_CLASS_PAYLOAD_KEY,
+                            _default_resource_class(str(row["job_type"])),
+                        )
+                    )
+                    if resource_class not in _RESOURCE_CLASSES:
+                        resource_class = _default_resource_class(str(row["job_type"]))
+                    raw_priority = payload.pop(
+                        _PRIORITY_PAYLOAD_KEY,
+                        _default_priority(resource_class),
+                    )
+                    try:
+                        priority = int(raw_priority)
+                    except (TypeError, ValueError):
+                        priority = _default_priority(resource_class)
+                    target_key = str(payload.pop(_TARGET_KEY_PAYLOAD_KEY, "") or "")
                     recovered.append(
                         Job(
                             job_id=str(row["job_id"]),
@@ -239,6 +376,9 @@ class JobQueue:
                             created_at=str(row["created_at"] or ""),
                             attempts=int(row["attempts"] or 0),
                             next_attempt_at=next_attempt_at,
+                            priority=priority,
+                            resource_class=resource_class,
+                            target_key=target_key,
                         )
                     )
                 except (TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -258,6 +398,7 @@ class JobQueue:
             if conn is not None:
                 conn.close()
 
+        recovered.sort(key=self._sort_key)
         if recovered:
             logger.info("Recovered %d persisted background jobs.", len(recovered))
         return recovered
@@ -271,8 +412,7 @@ class JobQueue:
             self._retry_timers.clear()
             for timer in retry_timers:
                 timer.cancel()
-            for _ in workers:
-                self._q.put(Job.create("_sentinel", "_", "_"))
+            self._wake_workers.set()
 
         for worker in workers:
             if worker is threading.current_thread():
@@ -286,7 +426,39 @@ class JobQueue:
 
     def wait_until_idle(self) -> None:
         """Wait until every currently queued job has completed."""
-        self._q.join()
+        while any(work_queue.unfinished_tasks for work_queue in self._queues.values()):
+            time.sleep(0.01)
+
+    @staticmethod
+    def _sort_key(job: Job) -> tuple[int, str, str]:
+        return (job.priority, job.created_at, job.job_id)
+
+    @staticmethod
+    def _job_identity(job: Job) -> tuple[str, str, str]:
+        return (job.job_type, job.entity_type, job.target_key)
+
+    def _worker_assignments(self) -> list[tuple[str, ...]]:
+        if self._max_workers <= 0:
+            return []
+        if self._max_workers == 1:
+            return [(_RESOURCE_CRITICAL, _RESOURCE_DEFAULT, _RESOURCE_NETWORK)]
+        if self._max_workers == 2:
+            return [
+                (_RESOURCE_CRITICAL,),
+                (_RESOURCE_DEFAULT, _RESOURCE_NETWORK),
+            ]
+        return [
+            (_RESOURCE_CRITICAL,),
+            (_RESOURCE_NETWORK,),
+            *[(_RESOURCE_DEFAULT,) for _ in range(self._max_workers - 2)],
+        ]
+
+    def _put_job(self, job: Job) -> None:
+        lane = job.resource_class
+        if lane not in self._queues:
+            lane = _RESOURCE_DEFAULT
+        self._queues[lane].put((*self._sort_key(job), job))
+        self._wake_workers.set()
 
     # ── Enqueue ────────────────────────────────────────────────────────
 
@@ -294,18 +466,29 @@ class JobQueue:
         """Submit a job and return its ID. Non-blocking."""
         self._insert_db_job(job)
         with self._lock:
+            self._active_targets.add(self._job_identity(job))
             if self._prepared and not self._running:
                 self._startup_jobs.append(job)
             else:
-                self._q.put(job)
+                self._put_job(job)
         logger.debug("Job %s (%s) enqueued.", job.job_id, job.job_type)
         return job.job_id
 
     def enqueue_if_not_pending(self, job: Job) -> str | None:
-        """Enqueue only if no pending/running job for the same entity+type exists."""
-        if self._has_pending_job(job.job_type, job.entity_type, job.entity_id):
-            return None
-        return self.enqueue(job)
+        """Atomically enqueue one pending/running job for an exact target."""
+        identity = self._job_identity(job)
+        with self._lock:
+            if identity in self._active_targets:
+                return None
+            if not self._insert_db_job_if_target_available(job):
+                return None
+            self._active_targets.add(identity)
+            if self._prepared and not self._running:
+                self._startup_jobs.append(job)
+            else:
+                self._put_job(job)
+        logger.debug("Job %s (%s) enqueued.", job.job_id, job.job_type)
+        return job.job_id
 
     def _has_pending_job(self, job_type: str, entity_type: str, entity_id: str) -> bool:
         """Check if a job for this entity+type is already pending or running."""
@@ -326,29 +509,102 @@ class JobQueue:
         except sqlite3.OperationalError:
             return False
 
+    @staticmethod
+    def _persisted_target_key(entity_id: str, payload_json: str | None) -> str:
+        try:
+            payload = json.loads(payload_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            return entity_id
+        if not isinstance(payload, dict):
+            return entity_id
+        return str(payload.get(_TARGET_KEY_PAYLOAD_KEY) or _target_key(entity_id, payload))
+
+    def _insert_db_job_if_target_available(self, job: Job) -> bool:
+        """Claim a target and insert its job in one SQLite write transaction."""
+        if not self._db_path:
+            return True
+        conn: sqlite3.Connection | None = None
+        try:
+            conn = connect_sqlite_path(self._db_path, timeout=5)
+            conn.row_factory = sqlite3.Row
+            conn.execute("BEGIN IMMEDIATE")
+            rows = conn.execute(
+                """SELECT entity_id, payload_json FROM background_jobs
+                   WHERE job_type=? AND entity_type=?
+                     AND status IN ('pending','running')""",
+                (job.job_type, job.entity_type),
+            ).fetchall()
+            if any(
+                self._persisted_target_key(str(row["entity_id"] or ""), row["payload_json"])
+                == job.target_key
+                for row in rows
+            ):
+                conn.rollback()
+                return False
+            row = job.to_row()
+            cursor = conn.execute(
+                """INSERT OR IGNORE INTO background_jobs
+                   (job_id, job_type, entity_type, entity_id, payload_json,
+                    status, created_at, attempts)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    row["job_id"],
+                    row["job_type"],
+                    row["entity_type"],
+                    row["entity_id"],
+                    row["payload_json"],
+                    row["status"],
+                    row["created_at"],
+                    row["attempts"],
+                ),
+            )
+            conn.commit()
+            return cursor.rowcount == 1
+        except sqlite3.OperationalError:
+            if conn is not None:
+                conn.rollback()
+            logger.debug("background_jobs table unavailable; job will run in-memory only.")
+            return True
+        finally:
+            if conn is not None:
+                conn.close()
+
     # ── Worker ─────────────────────────────────────────────────────────
 
-    def _worker_loop(self):
+    def _worker_loop(self, lanes: tuple[str, ...]):
+        lane_offset = 0
         while self._running:
-            try:
-                job = self._q.get(timeout=2)
-            except queue.Empty:
-                continue
-            try:
-                if job.job_type == "_sentinel":
+            selected_queue: queue.PriorityQueue[tuple[int, str, str, Job]] | None = None
+            item: tuple[int, str, str, Job] | None = None
+            for index in range(len(lanes)):
+                lane = lanes[(lane_offset + index) % len(lanes)]
+                work_queue = self._queues[lane]
+                try:
+                    item = work_queue.get_nowait()
+                    selected_queue = work_queue
+                    lane_offset = (lane_offset + index + 1) % len(lanes)
                     break
+                except queue.Empty:
+                    continue
+            if item is None or selected_queue is None:
+                self._wake_workers.clear()
+                self._wake_workers.wait(0.05)
+                continue
+            job = item[3]
+            try:
                 self._process_job(job)
             finally:
-                self._q.task_done()
+                selected_queue.task_done()
 
     def _drain_queue(self):
-        """Drop queued sentinel/pending jobs after workers have stopped."""
-        while True:
-            try:
-                self._q.get_nowait()
-            except queue.Empty:
-                break
-            self._q.task_done()
+        """Drop queued jobs after workers have stopped."""
+        for work_queue in self._queues.values():
+            while True:
+                try:
+                    work_queue.get_nowait()
+                except queue.Empty:
+                    break
+                work_queue.task_done()
 
     @staticmethod
     def _seconds_until(iso_timestamp: str) -> float:
@@ -365,7 +621,7 @@ class JobQueue:
     def _enqueue_ready_or_delayed(self, job: Job) -> None:
         delay = self._seconds_until(job.next_attempt_at)
         if delay <= 0:
-            self._q.put(job)
+            self._put_job(job)
             return
         self._schedule_delayed(job, delay)
 
@@ -377,11 +633,13 @@ class JobQueue:
                 self._retry_timers.pop(job.job_id, None)
                 running = self._running
             if running:
-                self._q.put(job)
+                self._put_job(job)
 
-        timer = threading.Timer(max(0.0, delay), release)
-        timer.name = f"job-retry-{job.job_id}"
-        timer.daemon = True
+        timer = _DelayedCall(
+            max(0.0, delay),
+            release,
+            name=f"job-retry-{job.job_id}",
+        )
         with self._lock:
             if not self._running:
                 return
@@ -395,6 +653,10 @@ class JobQueue:
         exponent = max(0, attempts - 1)
         return min(self._retry_max_seconds, self._retry_base_seconds * (2**exponent))
 
+    def _release_target(self, job: Job) -> None:
+        with self._lock:
+            self._active_targets.discard(self._job_identity(job))
+
     def _process_job(
         self,
         job: Job,
@@ -405,6 +667,7 @@ class JobQueue:
         if handler is None:
             logger.warning("No handler registered for job type: %s", job.job_type)
             self._update_db_status(job.job_id, "failed", f"No handler for {job.job_type}")
+            self._release_target(job)
             return False
         job.attempts += 1
         self._update_db_status(job.job_id, "running", attempts=job.attempts)
@@ -479,6 +742,7 @@ class JobQueue:
                     enqueue_governance(job.job_type, queue=self)
                 except Exception:
                     logger.exception("Governance scheduling failed after %s", job.job_type)
+            self._release_target(job)
             return True
         except Exception as exc:
             logger.exception("Job %s (%s) failed.", job.job_id, job.job_type)
@@ -505,6 +769,7 @@ class JobQueue:
                     str(exc)[:500],
                     attempts=job.attempts,
                 )
+                self._release_target(job)
                 return False
 
     def _persist_pending_retry(self, job: Job, error: str) -> None:

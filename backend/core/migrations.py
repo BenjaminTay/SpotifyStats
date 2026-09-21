@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 78
+LATEST_SCHEMA_VERSION = 79
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4004,6 +4004,42 @@ def migrate_078(conn: sqlite3.Connection):
     install_governance(conn)
 
 
+@migration(79, "import_publication_provenance")
+def migrate_079(conn: sqlite3.Connection):
+    """Bind active facts to the durable publication and immutable source version.
+
+    The complete operational history intentionally lives in the external import
+    control database so a main-database restore cannot erase failure evidence.
+    These columns are the transactional half of that two-store protocol.
+    """
+
+    state_columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(playback_import_state)")
+    }
+    for column, declaration in (
+        ("active_source_version_id", "TEXT"),
+        ("active_publication_id", "TEXT"),
+        ("publication_state", "TEXT NOT NULL DEFAULT 'legacy'"),
+    ):
+        if column not in state_columns:
+            conn.execute(f"ALTER TABLE playback_import_state ADD COLUMN {column} {declaration}")
+
+    run_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(playback_import_runs)")}
+    for column, declaration in (
+        ("batch_id", "TEXT"),
+        ("source_version_id", "TEXT"),
+        ("publication_id", "TEXT"),
+        ("baseline_reason_code", "TEXT"),
+        ("superseded_by_run_id", "TEXT"),
+    ):
+        if column not in run_columns:
+            conn.execute(f"ALTER TABLE playback_import_runs ADD COLUMN {column} {declaration}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_playback_import_runs_publication "
+        "ON playback_import_runs(publication_id)"
+    )
+
+
 def _ensure_migrations_table(conn: sqlite3.Connection):
     conn.execute(
         """CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -4032,6 +4068,7 @@ def run_migrations() -> None:
         applied = _applied_versions(conn)
 
         sorted_migrations = sorted(MIGRATIONS, key=lambda m: m[0])
+        applied_any = False
         for version, name, fn in sorted_migrations:
             if version in applied:
                 continue
@@ -4042,6 +4079,7 @@ def run_migrations() -> None:
                     (version, name),
                 )
                 conn.commit()
+                applied_any = True
                 logger.info("Migration %d (%s) applied.", version, name)
             except sqlite3.OperationalError as e:
                 message = str(e).lower()
@@ -4054,5 +4092,22 @@ def run_migrations() -> None:
                     (version, name),
                 )
                 conn.commit()
+                applied_any = True
+        if applied_any:
+            # Later migrations may add tracked columns or advance SQLite's
+            # schema version after the revision systems were first installed.
+            # Refresh the semantic trigger contract first, then write the
+            # governance schema marker last so public readers do not reject a
+            # freshly migrated database as requiring another local backfill.
+            from backend.domains.metadata.governance_revision import (
+                install_revision_tracking as install_governance_revisions,
+            )
+            from backend.services.analysis_snapshot_revision import (
+                install_revision_tracking as install_analysis_revisions,
+            )
+
+            install_analysis_revisions(conn)
+            install_governance_revisions(conn)
+            conn.commit()
     finally:
         conn.close()

@@ -14,27 +14,29 @@
 """
 
 import argparse
+import base64
+import json
 import os
 import sqlite3
 import sys
 import time
-import urllib.request
-import urllib.parse
 import urllib.error
-import json
-import base64
+import urllib.parse
+import urllib.request
 from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db import DB_PATH, ensure_schema
+from backend.core.db import DB_PATH, ensure_schema
+from backend.domains.imports.write_coordinator import coordinated_sqlite_connect
 
-TRACK_BATCH = 50   # /v1/tracks 单次最多 50
-ALBUM_BATCH = 20   # /v1/albums 单次最多 20
+TRACK_BATCH = 50  # /v1/tracks 单次最多 50
+ALBUM_BATCH = 20  # /v1/albums 单次最多 20
 ARTIST_BATCH = 50  # /v1/artists 单次最多 50
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
+
 
 def load_dotenv(path: str = ".env") -> None:
     env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path)
@@ -102,6 +104,7 @@ def api_get(url: str, token: str) -> Optional[dict]:
 
 # ── Phase 1: Tracks ────────────────────────────────────────────────────────
 
+
 def fetch_tracks(db: sqlite3.Connection, token: str, client_id: str, client_secret: str):
     """批量获取所有歌曲的元数据。"""
     rows = db.execute(
@@ -159,7 +162,9 @@ def fetch_tracks(db: sqlite3.Connection, token: str, client_id: str, client_secr
 
     # 写入 spotify_album_id → internal album_id 映射到临时表（供 album phase 使用）
     db.commit()
-    print(f"\n曲目完成：{updated} 已更新, {not_found} 未找到, 收集到 {len(spotify_album_ids)} 个专辑 ID\n")
+    print(
+        f"\n曲目完成：{updated} 已更新, {not_found} 未找到, 收集到 {len(spotify_album_ids)} 个专辑 ID\n"
+    )
     return spotify_album_ids, set()
 
 
@@ -218,15 +223,17 @@ def _fetch_track_batch(db, token, batch, batch_ids):
 
 # ── Phase 2: Albums ────────────────────────────────────────────────────────
 
-def fetch_albums(db: sqlite3.Connection, token: str, client_id: str, client_secret: str,
-                 track_album_ids: set):
+
+def fetch_albums(
+    db: sqlite3.Connection, token: str, client_id: str, client_secret: str, track_album_ids: set
+):
     """批量获取专辑详情（label, genres, popularity, copyrights）。"""
     # 从 spotify_track_meta 收集专辑 ID（独立元数据表，不依赖主维度表）
     if track_album_ids:
         # 从 track phase 收集到的专辑 ID，排除已抓取的
-        already = {r[0] for r in db.execute(
-            "SELECT spotify_album_id FROM spotify_album_meta"
-        ).fetchall()}
+        already = {
+            r[0] for r in db.execute("SELECT spotify_album_id FROM spotify_album_meta").fetchall()
+        }
         pending_ids = [aid for aid in track_album_ids if aid not in already]
         album_rows = [{"spotify_album_id": aid, "album_name": None} for aid in pending_ids]
     else:
@@ -267,7 +274,11 @@ def fetch_albums(db: sqlite3.Connection, token: str, client_id: str, client_secr
                     failed_ids.add(None)
                     continue
                 img_url = alb["images"][0]["url"] if alb.get("images") else None
-                genres = json.dumps(alb.get("genres", []), ensure_ascii=False) if alb.get("genres") else None
+                genres = (
+                    json.dumps(alb.get("genres", []), ensure_ascii=False)
+                    if alb.get("genres")
+                    else None
+                )
                 db.execute(
                     """INSERT OR REPLACE INTO spotify_album_meta(
                            spotify_album_id, album_name, album_type, release_date,
@@ -299,6 +310,7 @@ def fetch_albums(db: sqlite3.Connection, token: str, client_id: str, client_secr
 
 # ── Phase 3: Artists ───────────────────────────────────────────────────────
 
+
 def fetch_artists(db: sqlite3.Connection, token: str, client_id: str, client_secret: str):
     """通过搜索匹配艺人名，获取 Spotify 艺人详情。"""
     # 找出尚未获取 Spotify 元数据的艺人（不在 spotify_artist_meta 中的）
@@ -317,9 +329,8 @@ def fetch_artists(db: sqlite3.Connection, token: str, client_id: str, client_sec
     not_found = 0
 
     for idx, row in enumerate(artist_rows):
-        aid = row["artist_id"]
         name = row["artist_name"]
-        print(f"[艺人 {idx+1}/{len(artist_rows)}] {name[:40]}...", end=" ", flush=True)
+        print(f"[艺人 {idx + 1}/{len(artist_rows)}] {name[:40]}...", end=" ", flush=True)
 
         # 搜索艺人
         q = urllib.parse.quote(name)
@@ -339,7 +350,11 @@ def fetch_artists(db: sqlite3.Connection, token: str, client_id: str, client_sec
                     break
 
             if matched:
-                genres = json.dumps(matched.get("genres", []), ensure_ascii=False) if matched.get("genres") else None
+                genres = (
+                    json.dumps(matched.get("genres", []), ensure_ascii=False)
+                    if matched.get("genres")
+                    else None
+                )
                 img_url = matched["images"][0]["url"] if matched.get("images") else None
                 db.execute(
                     """INSERT OR REPLACE INTO spotify_artist_meta(
@@ -356,10 +371,12 @@ def fetch_artists(db: sqlite3.Connection, token: str, client_id: str, client_sec
                     ),
                 )
                 updated += 1
-                print(f"✓ popularity={matched.get('popularity')} genres={matched.get('genres', [])}")
+                print(
+                    f"✓ popularity={matched.get('popularity')} genres={matched.get('genres', [])}"
+                )
             else:
                 not_found += 1
-                print(f"✗ 搜索无精确匹配")
+                print("✗ 搜索无精确匹配")
         else:
             not_found += 1
             print("✗ 搜索失败")
@@ -375,13 +392,18 @@ def fetch_artists(db: sqlite3.Connection, token: str, client_id: str, client_sec
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="从 Spotify API 获取全量元数据")
     parser.add_argument("--client-id", help="Spotify Client ID")
     parser.add_argument("--client-secret", help="Spotify Client Secret")
     parser.add_argument("--db", default=DB_PATH, help="数据库路径")
-    parser.add_argument("--phase", choices=["tracks", "albums", "artists", "all"],
-                        default="all", help="只执行指定阶段 (默认 all)")
+    parser.add_argument(
+        "--phase",
+        choices=["tracks", "albums", "artists", "all"],
+        default="all",
+        help="只执行指定阶段 (默认 all)",
+    )
     args = parser.parse_args()
 
     load_dotenv()
@@ -398,7 +420,7 @@ def main():
     # 确保 schema 包含新列
     ensure_schema()
 
-    db = sqlite3.connect(args.db)
+    db = coordinated_sqlite_connect(args.db)
     db.row_factory = sqlite3.Row
 
     print("获取 access token...")

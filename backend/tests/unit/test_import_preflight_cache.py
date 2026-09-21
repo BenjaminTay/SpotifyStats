@@ -146,7 +146,14 @@ def test_staging_damage_expiry_and_builder_version_rebuild(packet, monkeypatch, 
         monkeypatch.setattr(cache, "_CACHE_TTL_SECONDS", -1)
     else:
         monkeypatch.setattr(service, "PREFLIGHT_CONTRACT_VERSION", 2)
-    assert read(packet) == report
+    rebuilt = read(packet)
+    if damage == "version":
+        assert rebuilt["confirmation_token"] != report["confirmation_token"]
+        assert {key: value for key, value in rebuilt.items() if key != "confirmation_token"} == {
+            key: value for key, value in report.items() if key != "confirmation_token"
+        }
+    else:
+        assert rebuilt == report
     assert len(packet[3]) == 2
     if damage != "version":
         assert not staging.temp_dir.exists()

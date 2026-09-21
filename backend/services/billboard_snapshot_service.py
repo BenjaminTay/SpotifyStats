@@ -73,7 +73,7 @@ def _year_end_snapshot_params(filters: dict, year: int | None) -> dict:
     }
 
 
-def billboard_default_snapshots_ready() -> bool:
+def _billboard_default_snapshots_available(*, allow_lkg: bool) -> bool:
     """Return whether every default Billboard response has an exact snapshot.
 
     Startup should only enqueue a rebuild for a missing, corrupt, or stale
@@ -88,14 +88,14 @@ def billboard_default_snapshots_ready() -> bool:
     filters = configured_billboard_filters()
     for family in ("weekly", "all_time", "full_data", "records", "power_scores", "summaries"):
         context = build_cache_context(family, filters)
-        if load_persisted_snapshot(context, allow_lkg=False) is None:
+        if load_persisted_snapshot(context, allow_lkg=allow_lkg) is None:
             return False
 
     latest_context = build_cache_context(
         "year_end",
         _year_end_snapshot_params(filters, year=None),
     )
-    latest = load_persisted_snapshot(latest_context, allow_lkg=False)
+    latest = load_persisted_snapshot(latest_context, allow_lkg=allow_lkg)
     if latest is None:
         return False
     available_years = latest.get("meta", {}).get("available_years", [])
@@ -106,9 +106,17 @@ def billboard_default_snapshots_ready() -> bool:
             "year_end",
             _year_end_snapshot_params(filters, year=int(year)),
         )
-        if load_persisted_snapshot(context, allow_lkg=False) is None:
+        if load_persisted_snapshot(context, allow_lkg=allow_lkg) is None:
             return False
     return True
+
+
+def billboard_default_snapshots_ready() -> bool:
+    return _billboard_default_snapshots_available(allow_lkg=False)
+
+
+def billboard_default_snapshots_have_lkg() -> bool:
+    return _billboard_default_snapshots_available(allow_lkg=True)
 
 
 def enqueue_billboard_snapshot_rebuild(

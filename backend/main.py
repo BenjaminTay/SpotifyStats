@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import uuid
@@ -55,6 +56,13 @@ def _music_search_startup_rebuild_enabled() -> bool:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # Resolve cross-file publication crash windows before migrations or any
+    # other startup writer can change the database generation.
+    from backend.domains.imports.write_coordinator import exclusive_publication
+    from backend.services.import_publication_service import recover_interrupted_publications
+
+    with exclusive_publication(blocking=True):
+        recover_interrupted_publications()
     run_migrations()
 
     # L3 album attribution is a small deterministic relationship projection,
@@ -108,6 +116,13 @@ async def lifespan(_app: FastAPI):
                 )
         finally:
             startup_conn.close()
+
+    # Source-published facts are never rolled back because a later derived
+    # stage failed. Resume their fixed stage runner after revision tracking and
+    # L3 prerequisites are repaired, but before any generic worker can start.
+    from backend.services.import_stage_service import resume_pending_import_stages
+
+    resume_pending_import_stages()
 
     # Agent tools are read-only and every completed call is recorded before
     # another model step. Resume interrupted turns only after deterministic
@@ -347,14 +362,24 @@ async def public_readonly_surface_middleware(request: Request, call_next):
             and request.method in {"POST", "PUT", "PATCH", "DELETE"}
             and response.status_code < 400
         )
-        snapshot_mutation = committed_mutation and request.url.path.startswith(
-            (
-                "/api/settings",
-                "/api/import",
-                "/api/version-merge",
-                "/api/metadata/",
-                "/api/music-metadata/",
-                "/api/artist-identities",
+        import_pipeline_owned = (
+            request.url.path == "/api/import/streaming"
+            or request.url.path == "/api/import/governance/cleanup-preview"
+            or request.url.path.startswith("/api/import/batches")
+            or request.url.path.startswith("/api/import/runs")
+        )
+        snapshot_mutation = (
+            committed_mutation
+            and not import_pipeline_owned
+            and request.url.path.startswith(
+                (
+                    "/api/settings",
+                    "/api/import",
+                    "/api/version-merge",
+                    "/api/metadata/",
+                    "/api/music-metadata/",
+                    "/api/artist-identities",
+                )
             )
         )
         if snapshot_mutation:
@@ -701,7 +726,15 @@ async def get_cover(request: Request, cover_type: str, entity_id: int):
             from backend.core.job_queue import Job, get_job_queue
 
             # 后台静默下载到本地，下次请求直接走缓存
-            job = Job.create("cover_download", cover_type, str(entity_id), cdn_url=cdn_url)
+            source_hash = hashlib.sha256(cdn_url.encode()).hexdigest()
+            job = Job.create(
+                "cover_download",
+                cover_type,
+                str(entity_id),
+                cdn_url=cdn_url,
+                source_url_hash=source_hash,
+                target_revision=source_hash,
+            )
             get_job_queue().enqueue_if_not_pending(job)
         return RedirectResponse(url=cdn_url)
 

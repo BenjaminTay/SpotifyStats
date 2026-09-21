@@ -1241,7 +1241,27 @@ def get_db(readonly: bool = True) -> sqlite3.Connection:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only = ON")
     else:
-        conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False)
+        from backend.domains.imports.write_coordinator import (
+            CoordinatedConnection,
+            acquire_writer_lease,
+        )
+
+        lease = acquire_writer_lease(db_path=DB_PATH)
+        try:
+            conn = sqlite3.connect(
+                DB_PATH,
+                timeout=30,
+                check_same_thread=False,
+                factory=CoordinatedConnection,
+            )
+            conn.attach_writer_lease(lease)
+        except Exception:
+            if lease is not None:
+                import fcntl
+
+                fcntl.flock(lease, fcntl.LOCK_UN)
+                os.close(lease)
+            raise
         enforce_sqlite_foreign_keys(conn)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode = WAL")
@@ -1273,7 +1293,27 @@ def connect_sqlite_path(
         enforce_sqlite_foreign_keys(conn)
         conn.execute("PRAGMA query_only = ON")
         return conn
-    conn = sqlite3.connect(path, timeout=timeout, check_same_thread=check_same_thread)
+    from backend.domains.imports.write_coordinator import (
+        CoordinatedConnection,
+        acquire_writer_lease,
+    )
+
+    lease = acquire_writer_lease(db_path=str(path))
+    try:
+        conn = sqlite3.connect(
+            path,
+            timeout=timeout,
+            check_same_thread=check_same_thread,
+            factory=CoordinatedConnection,
+        )
+        conn.attach_writer_lease(lease)
+    except Exception:
+        if lease is not None:
+            import fcntl
+
+            fcntl.flock(lease, fcntl.LOCK_UN)
+            os.close(lease)
+        raise
     return enforce_sqlite_foreign_keys(conn)
 
 

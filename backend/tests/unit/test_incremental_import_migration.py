@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from backend.core.migrations import migrate_037, migrate_041
+from backend.core.migrations import migrate_037, migrate_041, migrate_079
 
 
 def _minimal_connection() -> sqlite3.Connection:
@@ -181,5 +181,34 @@ def test_migrate_041_upgrades_initial_year_partition_schema() -> None:
         }
         assert {"digest_version", "impact_revision"} <= columns
         assert conn.execute("SELECT COUNT(*) FROM playback_year_partition_state").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_migrate_079_adds_import_publication_provenance_idempotently() -> None:
+    conn = _minimal_connection()
+    try:
+        migrate_037(conn)
+        migrate_079(conn)
+        migrate_079(conn)
+
+        state_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(playback_import_state)")
+        }
+        assert {
+            "active_source_version_id",
+            "active_publication_id",
+            "publication_state",
+        } <= state_columns
+        run_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(playback_import_runs)")
+        }
+        assert {
+            "batch_id",
+            "source_version_id",
+            "publication_id",
+            "baseline_reason_code",
+            "superseded_by_run_id",
+        } <= run_columns
     finally:
         conn.close()

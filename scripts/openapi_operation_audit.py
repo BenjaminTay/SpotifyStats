@@ -386,6 +386,26 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_import_api_jobs.py + backend/tests/unit/test_import_health.py",
         "Read-only database, relationship, metadata, and derived-data health response is covered.",
     ),
+    **{
+        (method, path): OperationEvidence(
+            "targeted_contract",
+            "backend/tests/contract/test_import_api_jobs.py + backend/tests/unit/test_import_control_and_sources.py",
+            "Immutable intake, durable execution history, stage recovery, retry, recheck, and private reports are covered against isolated databases.",
+        )
+        for method, path in (
+            ("POST", "/api/import/batches"),
+            ("PUT", "/api/import/batches/{batch_id}/files/{file_name}"),
+            ("POST", "/api/import/batches/{batch_id}/finalize"),
+            ("GET", "/api/import/batches/{batch_id}/preflight"),
+            ("POST", "/api/import/batches/{batch_id}/runs"),
+            ("GET", "/api/import/runs"),
+            ("GET", "/api/import/runs/latest"),
+            ("GET", "/api/import/runs/{run_id}"),
+            ("GET", "/api/import/runs/{run_id}/report"),
+            ("POST", "/api/import/runs/{run_id}/recheck"),
+            ("POST", "/api/import/runs/{run_id}/retry"),
+        )
+    },
     ("POST", "/api/import/governance/cleanup-preview"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_import_api_jobs.py + backend/tests/unit/test_import_health.py",

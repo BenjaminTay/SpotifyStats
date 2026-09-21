@@ -191,6 +191,23 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
     SmokeCase("profile", "/api/profile"),
     SmokeCase("profile_inferences", "/api/profile/inferences"),
     SmokeCase("sound_capsule", "/api/profile/sound-capsule"),
+    SmokeCase(
+        "import_batch_missing_preflight",
+        "/api/import/batches/nonexistent-smoke-batch/preflight",
+        expected_statuses=(409,),
+    ),
+    SmokeCase("import_runs", "/api/import/runs", {"limit": 1, "offset": 0}),
+    SmokeCase("import_latest_run", "/api/import/runs/latest"),
+    SmokeCase(
+        "import_run_missing",
+        "/api/import/runs/nonexistent-smoke-run",
+        expected_statuses=(404,),
+    ),
+    SmokeCase(
+        "import_run_missing_report",
+        "/api/import/runs/nonexistent-smoke-run/report",
+        expected_statuses=(404,),
+    ),
     SmokeCase("wrapped_hub_years", "/api/wrapped-hub/available-years"),
     SmokeCase("wrapped_hub", "/api/wrapped-hub"),
     SmokeCase("settings", "/api/settings"),

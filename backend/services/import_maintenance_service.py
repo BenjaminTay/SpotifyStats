@@ -33,6 +33,7 @@ from backend.domains.playback.l3_album_attribution import (
 )
 from backend.domains.settings.repository import SettingsRepository
 from backend.providers.spotify.client import SpotifyProvider
+from backend.services.billboard_snapshot_service import enqueue_billboard_snapshot_rebuild
 from backend.services.cover_cache_service import enqueue_missing_cover_downloads
 from backend.services.music_search_maintenance_service import (
     build_shared_full_music_search_plan,
@@ -409,3 +410,247 @@ def _auto_group_tracks_by_spotify_id(
         int(l2_report.get("groups_created", 0)) + int(l3_report.get("groups_created", 0)),
         int(l2_report.get("members_added", 0)) + int(l3_report.get("members_added", 0)),
     )
+
+
+def run_import_maintenance_stage(
+    stage: str,
+    change_set: PlaybackChangeSet,
+    prior_outputs: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Run one durable import-maintenance stage with its own connection."""
+
+    conn = get_db(readonly=False)
+    try:
+        targeted = change_set.strategy in {"incremental", "reconcile"}
+        metadata = prior_outputs.get("metadata") or {}
+        if stage == "metadata":
+            provider = SpotifyProvider()
+            metadata_report = refresh_missing_spotify_metadata(
+                conn,
+                provider=provider,
+                access_token=provider.get_cc_token(),
+                scope=(
+                    MetadataRefreshScope(
+                        generation_id=change_set.generation_id,
+                        track_ids=change_set.track_ids,
+                        album_ids=change_set.album_ids,
+                        artist_ids=change_set.artist_ids,
+                        spotify_track_ids=change_set.spotify_track_ids,
+                        spotify_album_ids=change_set.spotify_album_ids,
+                    )
+                    if targeted
+                    else None
+                ),
+            )
+            conn.commit()
+            return {
+                "status": (
+                    "partial"
+                    if metadata_report.errors or not metadata_report.provider_available
+                    else "ready"
+                ),
+                "provider_available": metadata_report.provider_available,
+                "errors": list(metadata_report.errors),
+                "tracks_updated": metadata_report.tracks_updated,
+                "albums_updated": metadata_report.albums_updated,
+                "artists_updated": metadata_report.artists_updated,
+                "artist_searches_updated": metadata_report.artist_searches_updated,
+                "album_links_backfilled": metadata_report.album_links_backfilled,
+                "spotify_track_ids_updated": sorted(metadata_report.spotify_track_ids_updated),
+                "spotify_album_ids_updated": sorted(metadata_report.spotify_album_ids_updated),
+                "local_album_ids_relinked": sorted(metadata_report.local_album_ids_relinked),
+                "local_album_ids_updated": sorted(metadata_report.local_album_ids_updated),
+                "local_artist_ids_updated": sorted(metadata_report.local_artist_ids_updated),
+                "impact_scope_exact": metadata_report.impact_scope_exact,
+            }
+        if stage == "identity_merge":
+            from backend.domains.metadata.track_identity import (
+                synchronize_track_identity_projection,
+            )
+
+            synchronize_track_identity_projection(conn, played_only=True)
+            groups, members = _auto_group_tracks_by_spotify_id(
+                conn,
+                track_ids=change_set.track_ids,
+                spotify_track_ids=change_set.spotify_track_ids,
+            )
+            conn.commit()
+            return {"status": "ready", "groups_created": groups, "members_added": members}
+        if stage == "album_project_l3":
+            album_ids = change_set.album_ids | frozenset(
+                int(value)
+                for value in (
+                    list(metadata.get("local_album_ids_relinked") or [])
+                    + list(metadata.get("local_album_ids_updated") or [])
+                )
+            )
+            project = rebuild_album_projects_for_impact(
+                conn,
+                local_album_ids=album_ids if targeted else (),
+                spotify_album_ids=frozenset(metadata.get("spotify_album_ids_updated") or []),
+                spotify_track_ids=frozenset(metadata.get("spotify_track_ids_updated") or []),
+                impact_scope_exact=targeted and bool(metadata.get("impact_scope_exact")),
+                has_deletions=bool(change_set.removed_count),
+            )
+            merged = apply_album_project_auto_merge_plan(
+                conn, plan_album_project_auto_merges(conn), commit=True
+            )
+            composition = apply_album_composition_plan(
+                conn, plan_album_composition_merges(conn), commit=True
+            )
+            plan = reconcile_l3_album_attribution_dependencies(conn, include_unplayed=False)
+            if plan.issues:
+                raise RuntimeError(
+                    f"post-import L3 album attribution unresolved: {len(plan.issues)}"
+                )
+            attribution = apply_l3_album_attribution_plan(
+                conn, plan, commit=True, include_unplayed=False
+            )
+            conn.commit()
+            return {
+                "status": "ready",
+                "strategy": project.strategy,
+                "fallback_reason": project.fallback_reason,
+                "affected_albums": project.affected_album_count,
+                "affected_projects": project.affected_project_count,
+                "projects_merged": merged.projects_merged,
+                "composition_groups_created": composition.groups_created,
+                "l3_attributions": attribution.decision_count,
+                "l3_revision": attribution.attribution_revision,
+            }
+        if stage == "billboard_aggregates":
+            settings = SettingsRepository(conn).load_all()
+            min_ms = int(settings.get("min_ms", 30_000))
+            music_only = bool(settings.get("music_only", True))
+            week_start_dow = int(settings.get("bb_week_start_dow", 4))
+            week_start_hour = int(settings.get("bb_week_start_hour", 0))
+            max_merge_gap_minutes = int(settings.get("max_merge_gap_minutes", 5))
+            if change_set.strategy == "incremental":
+                aggregation_report = build_aggregations_for_weeks(
+                    set(change_set.billboard_weeks),
+                    change_generation_id=change_set.generation_id,
+                    previous_dataset_digest=change_set.previous_dataset_digest,
+                    billboard_scope_exact=change_set.billboard_scope_exact,
+                    min_ms=min_ms,
+                    music_only=music_only,
+                    week_start_dow=week_start_dow,
+                    week_start_hour=week_start_hour,
+                    dynamic_threshold=True,
+                    max_merge_gap_minutes=max_merge_gap_minutes,
+                    expected_generation_id=change_set.generation_id,
+                )
+            elif change_set.strategy == "reconcile":
+                state = conn.execute(
+                    "SELECT dataset_digest FROM playback_import_state WHERE state_id=1"
+                ).fetchone()
+                if state is None or not state[0]:
+                    raise RuntimeError("active reconcile facts are missing")
+                aggregation_report = build_aggregations_for_replaced_weeks(
+                    set(change_set.billboard_weeks),
+                    replacement_scope_exact=change_set.billboard_scope_exact,
+                    expected_generation_id=change_set.generation_id,
+                    expected_dataset_digest=str(state[0]),
+                    previous_dataset_digest=change_set.previous_dataset_digest,
+                    min_ms=min_ms,
+                    music_only=music_only,
+                    week_start_dow=week_start_dow,
+                    week_start_hour=week_start_hour,
+                    dynamic_threshold=True,
+                    max_merge_gap_minutes=max_merge_gap_minutes,
+                )
+            else:
+                aggregation_report = build_aggregations(
+                    min_ms=min_ms,
+                    music_only=music_only,
+                    week_start_dow=week_start_dow,
+                    week_start_hour=week_start_hour,
+                    dynamic_threshold=True,
+                    max_merge_gap_minutes=max_merge_gap_minutes,
+                    expected_generation_id=change_set.generation_id,
+                )
+            conn.commit()
+            return {
+                "status": "ready",
+                "tracks": aggregation_report.get("tracks", 0),
+                "albums": aggregation_report.get("albums", 0),
+                "artists": aggregation_report.get("artists", 0),
+                "strategy": aggregation_report.get("build_strategy", "full"),
+                "fallback_reason": aggregation_report.get("fallback_reason"),
+            }
+        if stage == "candidate_index":
+            revision_kinds: list[MusicSearchRevisionKind] = ["playback", "billboard", "candidate"]
+            if any(
+                int(metadata.get(key) or 0)
+                for key in (
+                    "tracks_updated",
+                    "albums_updated",
+                    "artists_updated",
+                    "artist_searches_updated",
+                    "album_links_backfilled",
+                )
+            ):
+                revision_kinds.append("metadata")
+            mark_music_search_for_rebuild(
+                reason="streaming import maintenance published",
+                documents=True,
+                revision_kinds=tuple(revision_kinds),
+                conn=conn,
+            )
+            shared_plan = build_shared_full_music_search_plan(conn, change_set=change_set)
+            search_report = schedule_current_music_search_derived_data_rebuild(
+                conn,
+                rebuild_documents=True,
+                prewarm_yearly_review=True,
+                shared_full_snapshot_plan=shared_plan,
+            )
+            billboard_job = enqueue_billboard_snapshot_rebuild(
+                "streaming import maintenance published", conn=conn
+            )
+            conn.commit()
+            return {
+                "status": search_report["status"],
+                "index": search_report.get("index"),
+                "candidate_index": search_report.get("candidate_index"),
+                "search_job_id": search_report.get("job_id"),
+                "billboard_job_id": billboard_job,
+            }
+        if stage == "critical_prewarm":
+            health = build_import_health_report(conn)
+            if health["blockers"]:
+                raise RuntimeError(
+                    "post-import core health blocked: " + "; ".join(health["blockers"])
+                )
+            from backend.core.warmup import prewarm_import_critical_caches
+
+            prewarm_import_critical_caches()
+            return {
+                "status": health["status"],
+                "warning_count": len(health["warnings"]),
+                "blocker_count": 0,
+            }
+        if stage == "cover_supplemental":
+            cover_report = enqueue_missing_cover_downloads(
+                conn,
+                album_ids=change_set.album_ids
+                | frozenset(
+                    int(value)
+                    for value in (
+                        list(metadata.get("local_album_ids_relinked") or [])
+                        + list(metadata.get("local_album_ids_updated") or [])
+                    )
+                ),
+                artist_ids=change_set.artist_ids
+                | frozenset(
+                    int(value) for value in (metadata.get("local_artist_ids_updated") or [])
+                ),
+            )
+            conn.commit()
+            return {
+                "status": "ready",
+                "jobs_enqueued": cover_report.jobs_enqueued,
+                "missing_albums": cover_report.missing_albums,
+                "missing_artists": cover_report.missing_artists,
+            }
+        raise ValueError(f"unsupported import maintenance stage: {stage}")
+    finally:
+        conn.close()

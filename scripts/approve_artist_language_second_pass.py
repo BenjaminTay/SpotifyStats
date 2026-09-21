@@ -10,6 +10,7 @@ import sqlite3
 import sys
 import tempfile
 from collections.abc import Sequence
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.core.db import DB_PATH
+from backend.domains.imports.write_coordinator import coordinated_sqlite_connect
 from backend.domains.metadata.artist_language_review import (
     decide_review,
     get_review,
@@ -110,7 +112,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def _connect(path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+    conn = coordinated_sqlite_connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -120,7 +122,7 @@ def _backup_database(source_path: Path, target_path: Path) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
     if target_path.exists() and target_path.stat().st_size > 0:
         raise FileExistsError(f"refusing to overwrite database backup: {target_path}")
-    with _connect(source_path) as source, _connect(target_path) as target:
+    with closing(_connect(source_path)) as source, closing(_connect(target_path)) as target:
         source.backup(target)
 
 

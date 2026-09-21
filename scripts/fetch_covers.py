@@ -12,21 +12,22 @@
 幂等：已有 image_path 的记录自动跳过，可重复运行做增量更新。
 """
 
+import base64
+import json
 import os
 import sqlite3
 import sys
 import time
 import unicodedata
-import urllib.request
-import urllib.parse
 import urllib.error
-import json
-import base64
+import urllib.parse
+import urllib.request
 from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db import DB_PATH, ensure_schema
+from backend.core.db import DB_PATH, ensure_schema
+from backend.domains.imports.write_coordinator import coordinated_sqlite_connect
 
 ALBUM_BATCH = 20
 ARTIST_BATCH = 50
@@ -35,6 +36,7 @@ COVERS_DIR = os.path.join(os.path.dirname(DB_PATH), "covers")
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
+
 
 def load_dotenv(path: str = ".env") -> None:
     env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), path)
@@ -114,6 +116,7 @@ def extract_spotify_id(uri: str) -> Optional[str]:
 
 # ── Resolve Spotify IDs ────────────────────────────────────────────────────
 
+
 def resolve_album_spotify_ids(db: sqlite3.Connection):
     """为每个本地 album_id 找到对应的 Spotify album_id。
 
@@ -173,20 +176,21 @@ def resolve_album_via_track_api(db, token, client_id, client_secret, unresolved)
     从响应中取 album.id。批量 50 个 track ID 一组。
     """
     # 有 track URI 的走 API，没有的走搜索
-    with_uri = [(r, extract_spotify_id(r["_spotify_track_uri"]))
-                for r in unresolved if r.get("_spotify_track_uri")]
-    no_uri = [r for r in unresolved if not r.get("_spotify_track_uri")]
-
+    with_uri = [
+        (r, extract_spotify_id(r["_spotify_track_uri"]))
+        for r in unresolved
+        if r.get("_spotify_track_uri")
+    ]
     album_to_spotify = {}
 
     if with_uri:
         print(f"\n  通过 Track API 反查 {len(with_uri)} 张专辑的 album_id...")
-        TRACK_BATCH = 50
-        for i in range(0, len(with_uri), TRACK_BATCH):
-            batch = with_uri[i:i + TRACK_BATCH]
+        track_batch = 50
+        for i in range(0, len(with_uri), track_batch):
+            batch = with_uri[i : i + track_batch]
             batch_ids = [bid for _, bid in batch]
-            bn = i // TRACK_BATCH + 1
-            total = (len(with_uri) - 1) // TRACK_BATCH + 1
+            bn = i // track_batch + 1
+            total = (len(with_uri) - 1) // track_batch + 1
             print(f"    [Track API {bn}/{total}] {len(batch)} 首...", end=" ", flush=True)
 
             url = f"https://api.spotify.com/v1/tracks?ids={','.join(batch_ids)}"
@@ -221,9 +225,12 @@ def resolve_album_via_track_api(db, token, client_id, client_secret, unresolved)
                                 """INSERT OR IGNORE INTO spotify_album_meta(
                                        spotify_album_id, album_name, album_type, release_date)
                                    VALUES (?, ?, ?, ?)""",
-                                (album_id, album_name,
-                                 track["album"].get("album_type"),
-                                 track["album"].get("release_date")),
+                                (
+                                    album_id,
+                                    album_name,
+                                    track["album"].get("album_type"),
+                                    track["album"].get("release_date"),
+                                ),
                             )
                             resolved += 1
                             break
@@ -232,7 +239,7 @@ def resolve_album_via_track_api(db, token, client_id, client_secret, unresolved)
             else:
                 print("✗ 失败")
 
-            if i + TRACK_BATCH < len(with_uri):
+            if i + track_batch < len(with_uri):
                 time.sleep(0.3)
 
     # 分离出已解析和仍未解析的
@@ -308,20 +315,23 @@ def resolve_artist_via_track_api(db, token, client_id, client_secret, unresolved
     对每位未解析艺人，用其下任意一条 track 的 Spotify URI 反查，
     从 track 响应中取 artists[0].id 作为该艺人的 Spotify ID。
     """
-    with_uri = [(r, extract_spotify_id(r["_spotify_track_uri"]))
-                for r in unresolved if r.get("_spotify_track_uri")]
+    with_uri = [
+        (r, extract_spotify_id(r["_spotify_track_uri"]))
+        for r in unresolved
+        if r.get("_spotify_track_uri")
+    ]
     no_uri = [r for r in unresolved if not r.get("_spotify_track_uri")]
 
     if not with_uri:
         return {}, no_uri, token
 
     print(f"\n  通过 Track API 反查 {len(with_uri)} 位艺人的 Spotify ID...")
-    TRACK_BATCH = 50
-    for i in range(0, len(with_uri), TRACK_BATCH):
-        batch = with_uri[i:i + TRACK_BATCH]
+    track_batch = 50
+    for i in range(0, len(with_uri), track_batch):
+        batch = with_uri[i : i + track_batch]
         batch_ids = [bid for _, bid in batch]
-        bn = i // TRACK_BATCH + 1
-        total = (len(with_uri) - 1) // TRACK_BATCH + 1
+        bn = i // track_batch + 1
+        total = (len(with_uri) - 1) // track_batch + 1
         print(f"    [Track API {bn}/{total}] {len(batch)} 首...", end=" ", flush=True)
 
         url = f"https://api.spotify.com/v1/tracks?ids={','.join(batch_ids)}"
@@ -350,9 +360,15 @@ def resolve_artist_via_track_api(db, token, client_id, client_secret, unresolved
                                 break
                         # ② 去掉重音和特殊字符后匹配
                         if not matched_artist:
+
                             def _norm(s):
-                                n = unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
-                                return ''.join(c.lower() for c in n if c.isalnum())
+                                n = (
+                                    unicodedata.normalize("NFKD", s)
+                                    .encode("ascii", "ignore")
+                                    .decode("ascii")
+                                )
+                                return "".join(c.lower() for c in n if c.isalnum())
+
                             name_norm = _norm(r["artist_name"])
                             for art in artists:
                                 if _norm(art["name"]) == name_norm:
@@ -369,7 +385,7 @@ def resolve_artist_via_track_api(db, token, client_id, client_secret, unresolved
         else:
             print("✗ 失败")
 
-        if i + TRACK_BATCH < len(with_uri):
+        if i + track_batch < len(with_uri):
             time.sleep(0.3)
 
     # 分离出已解析和仍未解析的
@@ -388,9 +404,15 @@ def resolve_artist_via_track_api(db, token, client_id, client_secret, unresolved
 
 # ── Fetch & Store ──────────────────────────────────────────────────────────
 
-def fetch_album_covers(db: sqlite3.Connection, token: str,
-                       client_id: str, client_secret: str,
-                       album_to_spotify: dict, unresolved: list):
+
+def fetch_album_covers(
+    db: sqlite3.Connection,
+    token: str,
+    client_id: str,
+    client_secret: str,
+    album_to_spotify: dict,
+    unresolved: list,
+):
     """批量拉取专辑封面并下载到本地。"""
     # 先处理已解析 Spotify ID 的专辑
     all_albums = [(aid, sid) for aid, sid in album_to_spotify.items()]
@@ -406,8 +428,8 @@ def fetch_album_covers(db: sqlite3.Connection, token: str,
             matched = None
             # 依次尝试不同的搜索策略
             queries = [
-                f"album:{name} artist:{artist}",   # ① 字段精确搜索
-                f"{name} artist:{artist}",          # ② 去掉 album: 前缀
+                f"album:{name} artist:{artist}",  # ① 字段精确搜索
+                f"{name} artist:{artist}",  # ② 去掉 album: 前缀
             ]
             for qi, q in enumerate(queries):
                 data = api_get(
@@ -430,9 +452,15 @@ def fetch_album_covers(db: sqlite3.Connection, token: str,
                             break
                     # 宽松匹配：去除重音和特殊字符
                     if not matched:
+
                         def _normalize(s):
-                            n = unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
-                            return ''.join(c.lower() for c in n if c.isalnum())
+                            n = (
+                                unicodedata.normalize("NFKD", s)
+                                .encode("ascii", "ignore")
+                                .decode("ascii")
+                            )
+                            return "".join(c.lower() for c in n if c.isalnum())
+
                         name_norm = _normalize(name)
                         for item in items:
                             if _normalize(item["name"]) == name_norm:
@@ -445,15 +473,24 @@ def fetch_album_covers(db: sqlite3.Connection, token: str,
                 sid = matched["id"]
                 all_albums.append((aid, sid))
                 img_url = matched["images"][0]["url"] if matched.get("images") else None
-                _upsert_album_meta(db, matched["id"], matched["name"],
-                                   matched.get("album_type"), matched.get("release_date"),
-                                   matched.get("popularity"), matched.get("label"),
-                                   matched.get("genres"), img_url,
-                                   matched.get("artists"))
+                _upsert_album_meta(
+                    db,
+                    matched["id"],
+                    matched["name"],
+                    matched.get("album_type"),
+                    matched.get("release_date"),
+                    matched.get("popularity"),
+                    matched.get("label"),
+                    matched.get("genres"),
+                    img_url,
+                    matched.get("artists"),
+                )
                 marker = "~" if matched["name"].lower() != name.lower() else ""
-                print(f"    [{idx+1}/{len(unresolved)}] {name[:40]} → {sid} {marker}{matched['name']}{marker}")
+                print(
+                    f"    [{idx + 1}/{len(unresolved)}] {name[:40]} → {sid} {marker}{matched['name']}{marker}"
+                )
             else:
-                print(f"    [{idx+1}/{len(unresolved)}] {name[:40]} ✗ 未找到")
+                print(f"    [{idx + 1}/{len(unresolved)}] {name[:40]} ✗ 未找到")
 
             if (idx + 1) % 30 == 0:
                 time.sleep(1.0)
@@ -470,7 +507,7 @@ def fetch_album_covers(db: sqlite3.Connection, token: str,
 
     downloaded = 0
     for i in range(0, len(spotify_ids), ALBUM_BATCH):
-        batch_ids = spotify_ids[i:i + ALBUM_BATCH]
+        batch_ids = spotify_ids[i : i + ALBUM_BATCH]
         bn = i // ALBUM_BATCH + 1
         total = (len(spotify_ids) - 1) // ALBUM_BATCH + 1
         print(f"  [专辑 {bn}/{total}] {len(batch_ids)} 张...", end=" ", flush=True)
@@ -500,11 +537,18 @@ def fetch_album_covers(db: sqlite3.Connection, token: str,
                         )
                         batch_dl += 1
 
-                _upsert_album_meta(db, alb["id"], alb["name"],
-                                   alb.get("album_type"), alb.get("release_date"),
-                                   alb.get("popularity"), alb.get("label"),
-                                   alb.get("genres"), img_url,
-                                   alb.get("artists"))
+                _upsert_album_meta(
+                    db,
+                    alb["id"],
+                    alb["name"],
+                    alb.get("album_type"),
+                    alb.get("release_date"),
+                    alb.get("popularity"),
+                    alb.get("label"),
+                    alb.get("genres"),
+                    img_url,
+                    alb.get("artists"),
+                )
 
             db.commit()
             downloaded += batch_dl
@@ -519,8 +563,9 @@ def fetch_album_covers(db: sqlite3.Connection, token: str,
     return token
 
 
-def _upsert_album_meta(db, spotify_id, name, album_type, release_date,
-                       popularity, label, genres, img_url, artists):
+def _upsert_album_meta(
+    db, spotify_id, name, album_type, release_date, popularity, label, genres, img_url, artists
+):
     """写入 spotify_album_meta 表。"""
     genres_json = json.dumps(genres, ensure_ascii=False) if genres else None
     artists_json = None
@@ -534,14 +579,28 @@ def _upsert_album_meta(db, spotify_id, name, album_type, release_date,
                spotify_album_id, album_name, album_type, release_date,
                popularity, label, genres, image_url, album_artists)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (spotify_id, name, album_type, release_date,
-         popularity, label, genres_json, img_url, artists_json),
+        (
+            spotify_id,
+            name,
+            album_type,
+            release_date,
+            popularity,
+            label,
+            genres_json,
+            img_url,
+            artists_json,
+        ),
     )
 
 
-def fetch_artist_covers(db: sqlite3.Connection, token: str,
-                        client_id: str, client_secret: str,
-                        artist_to_spotify: dict, unresolved: list):
+def fetch_artist_covers(
+    db: sqlite3.Connection,
+    token: str,
+    client_id: str,
+    client_secret: str,
+    artist_to_spotify: dict,
+    unresolved: list,
+):
     """批量拉取艺人照片并下载到本地。"""
     all_artists = [(aid, sid) for aid, sid in artist_to_spotify.items()]
 
@@ -552,9 +611,7 @@ def fetch_artist_covers(db: sqlite3.Connection, token: str,
             aid = r["artist_id"]
             name = r["artist_name"]
             q = urllib.parse.quote(name)
-            data = api_get(
-                f"https://api.spotify.com/v1/search?q={q}&type=artist&limit=5", token
-            )
+            data = api_get(f"https://api.spotify.com/v1/search?q={q}&type=artist&limit=5", token)
             if data is None:
                 token = get_access_token(client_id, client_secret)
                 data = api_get(
@@ -572,9 +629,15 @@ def fetch_artist_covers(db: sqlite3.Connection, token: str,
                         break
                 # ② 宽松匹配：去除重音符号和特殊字符后比较
                 if not matched:
+
                     def _normalize(s):
-                        n = unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
-                        return ''.join(c.lower() for c in n if c.isalnum())
+                        n = (
+                            unicodedata.normalize("NFKD", s)
+                            .encode("ascii", "ignore")
+                            .decode("ascii")
+                        )
+                        return "".join(c.lower() for c in n if c.isalnum())
+
                     name_norm = _normalize(name)
                     for item in items:
                         if _normalize(item["name"]) == name_norm:
@@ -588,20 +651,31 @@ def fetch_artist_covers(db: sqlite3.Connection, token: str,
                 sid = matched["id"]
                 all_artists.append((aid, sid))
                 img_url = matched["images"][0]["url"] if matched.get("images") else None
-                genres = json.dumps(matched.get("genres", []), ensure_ascii=False) if matched.get("genres") else None
+                genres = (
+                    json.dumps(matched.get("genres", []), ensure_ascii=False)
+                    if matched.get("genres")
+                    else None
+                )
                 db.execute(
                     """INSERT OR REPLACE INTO spotify_artist_meta(
                            spotify_artist_id, artist_name, popularity, followers,
                            genres, image_url)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (sid, name, matched.get("popularity"),
-                     matched.get("followers", {}).get("total"),
-                     genres, img_url),
+                    (
+                        sid,
+                        name,
+                        matched.get("popularity"),
+                        matched.get("followers", {}).get("total"),
+                        genres,
+                        img_url,
+                    ),
                 )
                 marker = "~" if matched["name"].lower() != name_lower else ""
-                print(f"    [{idx+1}/{len(unresolved)}] {name[:40]} → {sid} {marker}{matched['name']}{marker}")
+                print(
+                    f"    [{idx + 1}/{len(unresolved)}] {name[:40]} → {sid} {marker}{matched['name']}{marker}"
+                )
             else:
-                print(f"    [{idx+1}/{len(unresolved)}] {name[:40]} ✗ 搜索失败")
+                print(f"    [{idx + 1}/{len(unresolved)}] {name[:40]} ✗ 搜索失败")
 
             if (idx + 1) % 30 == 0:
                 time.sleep(1.0)
@@ -618,7 +692,7 @@ def fetch_artist_covers(db: sqlite3.Connection, token: str,
 
     downloaded = 0
     for i in range(0, len(spotify_ids), ARTIST_BATCH):
-        batch_ids = spotify_ids[i:i + ARTIST_BATCH]
+        batch_ids = spotify_ids[i : i + ARTIST_BATCH]
         bn = i // ARTIST_BATCH + 1
         total = (len(spotify_ids) - 1) // ARTIST_BATCH + 1
         print(f"  [艺人 {bn}/{total}] {len(batch_ids)} 位...", end=" ", flush=True)
@@ -647,15 +721,24 @@ def fetch_artist_covers(db: sqlite3.Connection, token: str,
                         )
                         batch_dl += 1
 
-                genres = json.dumps(art.get("genres", []), ensure_ascii=False) if art.get("genres") else None
+                genres = (
+                    json.dumps(art.get("genres", []), ensure_ascii=False)
+                    if art.get("genres")
+                    else None
+                )
                 db.execute(
                     """INSERT OR REPLACE INTO spotify_artist_meta(
                            spotify_artist_id, artist_name, popularity, followers,
                            genres, image_url)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (art["id"], art["name"], art.get("popularity"),
-                     art.get("followers", {}).get("total"),
-                     genres, img_url),
+                    (
+                        art["id"],
+                        art["name"],
+                        art.get("popularity"),
+                        art.get("followers", {}).get("total"),
+                        genres,
+                        img_url,
+                    ),
                 )
 
             db.commit()
@@ -673,6 +756,7 @@ def fetch_artist_covers(db: sqlite3.Connection, token: str,
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
+
 def main():
     load_dotenv()
     client_id = os.environ.get("SPOTIFY_CLIENT_ID")
@@ -684,7 +768,7 @@ def main():
         sys.exit(1)
 
     ensure_schema()
-    db = sqlite3.connect(DB_PATH)
+    db = coordinated_sqlite_connect(DB_PATH)
     db.row_factory = sqlite3.Row
 
     # 确保目录存在
@@ -701,7 +785,9 @@ def main():
     print("=" * 60)
     print("查询播放记录中的专辑...")
     album_to_spotify, unresolved_albums = resolve_album_spotify_ids(db)
-    print(f"  ① spotify_track_meta 已解析 {len(album_to_spotify)} 张，待处理 {len(unresolved_albums)} 张")
+    print(
+        f"  ① spotify_track_meta 已解析 {len(album_to_spotify)} 张，待处理 {len(unresolved_albums)} 张"
+    )
 
     # ② 通过 Track API 反查 album_id
     if unresolved_albums:
@@ -709,12 +795,15 @@ def main():
             db, token, client_id, client_secret, unresolved_albums
         )
         album_to_spotify.update(extra_albums)
-        print(f"  ② Track API 反查：+{len(extra_albums)} 张，剩余 {len(unresolved_albums)} 张待搜索")
+        print(
+            f"  ② Track API 反查：+{len(extra_albums)} 张，剩余 {len(unresolved_albums)} 张待搜索"
+        )
     else:
         unresolved_albums = []
 
-    token = fetch_album_covers(db, token, client_id, client_secret,
-                               album_to_spotify, unresolved_albums)
+    token = fetch_album_covers(
+        db, token, client_id, client_secret, album_to_spotify, unresolved_albums
+    )
 
     # 重新认证（可能已过期）
     token = get_access_token(client_id, client_secret)
@@ -725,7 +814,9 @@ def main():
     print("=" * 60)
     print("查询播放记录中的艺人...")
     artist_to_spotify, unresolved_artists = resolve_artist_spotify_ids(db)
-    print(f"  ① spotify_artist_meta 已解析 {len(artist_to_spotify)} 位，待处理 {len(unresolved_artists)} 位")
+    print(
+        f"  ① spotify_artist_meta 已解析 {len(artist_to_spotify)} 位，待处理 {len(unresolved_artists)} 位"
+    )
 
     # ② 通过 Track API 反查 artist_id
     if unresolved_artists:
@@ -733,12 +824,15 @@ def main():
             db, token, client_id, client_secret, unresolved_artists
         )
         artist_to_spotify.update(extra_artists)
-        print(f"  ② Track API 反查：+{len(extra_artists)} 位，剩余 {len(unresolved_artists)} 位待搜索")
+        print(
+            f"  ② Track API 反查：+{len(extra_artists)} 位，剩余 {len(unresolved_artists)} 位待搜索"
+        )
     else:
         unresolved_artists = []
 
-    token = fetch_artist_covers(db, token, client_id, client_secret,
-                                artist_to_spotify, unresolved_artists)
+    token = fetch_artist_covers(
+        db, token, client_id, client_secret, artist_to_spotify, unresolved_artists
+    )
 
     # ── 汇总 ──────────────────────────────────────────────────────────
     album_count = db.execute(

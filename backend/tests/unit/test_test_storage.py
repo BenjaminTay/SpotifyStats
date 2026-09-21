@@ -51,10 +51,12 @@ Path(sys.argv[1]).write_text(json.dumps({'sources':sources,'root':str(root)}))
 
 @pytest.mark.parametrize("fail", [False, True])
 def test_analysis_case_uses_seed_and_cleans_on_success_or_failure(monkeypatch, tmp_path, fail):
+    from backend.domains.imports.write_coordinator import CoordinatedConnection
+
     sources = []
     original = sqlite3.connect
 
-    class Counted(path_safety.TestPathConnection):
+    class Counted(CoordinatedConnection):
         def backup(self, target, *args, **kwargs):
             sources.append(self.execute("pragma database_list").fetchone()[2])
             return super().backup(target, *args, **kwargs)

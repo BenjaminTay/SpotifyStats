@@ -1,10 +1,96 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 import pytest
 
 pytestmark = pytest.mark.unit
+
+
+def test_import_health_classifies_unmatched_audio_without_guessing(tmp_path):
+    from backend.domains.imports.source_inspector import record_fingerprint
+    from backend.domains.metadata.import_health import build_import_health_report
+
+    records = [
+        {"ts": "2026-01-01T00:00:00Z", "episode_name": "Episode", "ms_played": 10},
+        {"ts": "2026-01-02T00:00:00Z", "audiobook_uri": "spotify:audiobook:1"},
+        {
+            "ts": "2026-01-03T00:00:00Z",
+            "spotify_track_uri": "spotify:track:5DpQ7EYvM9aCG90luO9PQW",
+        },
+        {"ts": "2026-01-04T00:00:00Z", "spotify_track_uri": "spotify:track:bad"},
+        {"ts": "2026-01-05T00:00:00Z"},
+    ]
+    (tmp_path / "Streaming_History_Audio_000.json").write_text(
+        json.dumps(records), encoding="utf-8"
+    )
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE plays(
+            play_id INTEGER PRIMARY KEY,
+            ts_date TEXT,
+            content_type TEXT,
+            track_id INTEGER,
+            source_album_id INTEGER,
+            spotify_track_id_at_play TEXT,
+            ms_played INTEGER,
+            source_fingerprint TEXT
+        );
+        CREATE TABLE tracks(track_id INTEGER PRIMARY KEY, spotify_track_id TEXT);
+        CREATE TABLE spotify_track_meta(spotify_track_id TEXT PRIMARY KEY, spotify_album_id TEXT);
+        CREATE TABLE spotify_album_meta(
+            spotify_album_id TEXT PRIMARY KEY,
+            album_type TEXT,
+            total_tracks INTEGER,
+            image_url TEXT
+        );
+        CREATE TABLE album_spotify_links(album_id INTEGER, spotify_album_id TEXT);
+        CREATE TABLE album_project_tracks(track_id INTEGER);
+        CREATE TABLE album_project_albums(album_id INTEGER);
+        """
+    )
+    conn.executemany(
+        """INSERT INTO plays(
+               play_id, ts_date, content_type, track_id, ms_played, source_fingerprint
+           ) VALUES (?, ?, 'audio', NULL, ?, ?)""",
+        [
+            (index, f"2026-01-0{index}", index * 1000, record_fingerprint(record))
+            for index, record in enumerate(records, 1)
+        ],
+    )
+
+    first = build_import_health_report(conn, streaming_dir=tmp_path)
+    second = build_import_health_report(conn, streaming_dir=tmp_path)
+
+    unmatched = first["database"]["unmatched_audio"]
+    assert second["database"]["unmatched_audio"] == unmatched
+    assert unmatched["source_evidence_status"] == "complete"
+    assert unmatched["raw_row_count"] == 5
+    assert unmatched["raw_ms"] == 15_000
+    assert unmatched["first_date"] == "2026-01-01"
+    assert unmatched["last_date"] == "2026-01-05"
+    assert {
+        category: facts["raw_row_count"] for category, facts in unmatched["categories"].items()
+    } == {
+        "podcast": 1,
+        "audiobook": 1,
+        "stable_uri_unmatched": 1,
+        "malformed": 1,
+        "unknown": 1,
+    }
+    assert unmatched["ledger_status_counts"] == {
+        "historical_legacy": 0,
+        "explained": 2,
+        "needs_evidence": 2,
+        "repairable": 1,
+    }
+    assert all(
+        facts["statistics_impact"]["track_entity_event_count"] == 0
+        for facts in unmatched["categories"].values()
+    )
 
 
 def test_import_health_report_handles_database_before_first_import():

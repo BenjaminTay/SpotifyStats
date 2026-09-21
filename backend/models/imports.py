@@ -15,6 +15,16 @@ ImportHealthImpactScope = Literal[
 ImportHealthUserStatus = Literal["blocking", "action_required", "maintenance", "info"]
 ImportAccountIdentityStatus = Literal["unknown", "not_provided", "matched", "mismatched"]
 ImportFingerprintBaselineStatus = Literal["missing", "ready", "incompatible"]
+ImportFingerprintBaselineReason = Literal[
+    "ready",
+    "not_initialized",
+    "active_state_missing",
+    "fingerprints_missing",
+    "fingerprint_version_incompatible",
+    "record_count_mismatch",
+    "dataset_digest_mismatch",
+    "duplicate_fingerprints",
+]
 ImportDetectedRelation = Literal[
     "unknown",
     "baseline_required",
@@ -77,6 +87,7 @@ class ImportPreflightResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     account_identity_status: ImportAccountIdentityStatus = "unknown"
     fingerprint_baseline_status: ImportFingerprintBaselineStatus = "missing"
+    fingerprint_baseline_reason: ImportFingerprintBaselineReason = "not_initialized"
     detected_relation: ImportDetectedRelation = "unknown"
     requested_mode: ImportRequestedMode = "auto"
     requires_confirmation: bool = False
@@ -149,3 +160,67 @@ class ImportCleanupPreviewResponse(BaseModel):
     writes_performed: bool = False
     groups: list[ImportCleanupPreviewGroup] = Field(default_factory=list)
     excluded_issue_codes: list[str] = Field(default_factory=list)
+
+
+class ImportBatchCreateRequest(BaseModel):
+    kind: Literal["snapshot", "delta", "legacy"] = "snapshot"
+    parent_source_version_id: str | None = None
+
+
+class ImportBatchResponse(BaseModel):
+    batch_id: str
+    kind: str
+    status: str
+    parent_source_version_id: str | None = None
+    manifest_digest: str
+    created_at: str
+    frozen_at: str | None = None
+
+
+class ImportBatchUploadResponse(BaseModel):
+    batch_id: str
+    file_name: str
+    source_type: Literal["audio", "video"]
+    size_bytes: int
+    sha256: str
+    status: Literal["received"] = "received"
+
+
+class ImportRunCreateRequest(BaseModel):
+    mode: ImportRequestedMode = "auto"
+    confirmation_token: str
+    confirm_warnings: bool = False
+    confirm_plan: bool = False
+
+
+class ImportRunCreateResponse(BaseModel):
+    run_id: str
+    created: bool = True
+
+
+class ImportRunDetailResponse(BaseModel):
+    run_id: str
+    batch_id: str
+    status: str
+    publication_state: str
+    progress_pct: float = 0
+    message: str = ""
+    error_code: str | None = None
+    retryable: bool = False
+    report_status: str = "pending"
+    report_error_code: str | None = None
+    result: dict[str, Any] | None = None
+    plan: dict[str, Any] | None = None
+    stages: list[dict[str, Any]] = Field(default_factory=list)
+    started_at: str
+    completed_at: str | None = None
+
+
+class ImportRunHistoryResponse(BaseModel):
+    runs: list[ImportRunDetailResponse] = Field(default_factory=list)
+    next_offset: int | None = None
+    has_more: bool = False
+
+
+class ImportStageRetryRequest(BaseModel):
+    stage: str

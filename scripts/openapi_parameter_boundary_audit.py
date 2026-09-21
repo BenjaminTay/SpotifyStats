@@ -177,6 +177,21 @@ BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
         "Cleanup preview contracts cover both invalid bounds and bounded returned samples.",
         ("backend/tests/contract/test_import_api_jobs.py",),
     ),
+    **{
+        signature: ParameterEvidence(
+            "targeted_contract",
+            (),
+            "Immutable import route identifiers and upload/report enums are covered with invalid and missing-target contract cases.",
+            ("backend/tests/contract/test_import_api_jobs.py",),
+        )
+        for signature in (
+            ("path", "batch_id", "string"),
+            ("path", "file_name", "string"),
+            ("path", "run_id", "string"),
+            ("query", "format", "string|enum=json,markdown"),
+            ("query", "source_type", "string|enum=audio,video"),
+        )
+    },
     ("query", "entity", "string|enum=track,album"): ParameterEvidence(
         "targeted_contract",
         (),

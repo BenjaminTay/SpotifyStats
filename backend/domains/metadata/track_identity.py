@@ -513,6 +513,9 @@ def resolve_public_track_l1_ids(conn: sqlite3.Connection, track_id: int) -> list
     representative can become spuriously ambiguous after safe L1 consolidation.
     """
 
+    canonical = resolve_canonical_track_id(conn, int(track_id))
+    if canonical is not None and canonical != int(track_id):
+        return [canonical]
     if _table_exists(conn, "track_l1_identities"):
         direct = conn.execute(
             """SELECT l1_id
@@ -523,6 +526,289 @@ def resolve_public_track_l1_ids(conn: sqlite3.Connection, track_id: int) -> list
         if direct is not None:
             return [int(direct[0])]
     return resolve_source_track_l1_ids(conn, track_id)
+
+
+def _has_compatibility_retirement_protection(
+    conn: sqlite3.Connection,
+    *,
+    shell_l1_id: int,
+    owner_l1_id: int,
+) -> bool:
+    """Keep automatic lifecycle changes away from active manual governance."""
+
+    if _table_exists(conn, "track_id_aliases"):
+        alias = conn.execute(
+            "SELECT canonical_track_id FROM track_id_aliases WHERE alias_track_id=?",
+            (shell_l1_id,),
+        ).fetchone()
+        if alias is not None and int(alias[0]) != owner_l1_id:
+            return True
+    if _table_exists(conn, "track_groups") and _table_exists(conn, "track_group_l1_members"):
+        if conn.execute(
+            """SELECT 1
+                 FROM track_group_l1_members members
+                 JOIN track_groups groups ON groups.group_id=members.group_id
+                WHERE members.l1_id=? AND groups.group_status='active'
+                LIMIT 1""",
+            (shell_l1_id,),
+        ).fetchone():
+            return True
+    if _table_exists(conn, "track_group_candidates"):
+        if conn.execute(
+            """SELECT 1 FROM track_group_candidates
+                WHERE status='pending'
+                  AND (original_l1_id=? OR candidate_l1_id=?)
+                LIMIT 1""",
+            (shell_l1_id, shell_l1_id),
+        ).fetchone():
+            return True
+    if _table_exists(conn, "track_merge_overrides"):
+        if conn.execute(
+            """SELECT 1 FROM track_merge_overrides
+                WHERE left_l1_id=? OR right_l1_id=? LIMIT 1""",
+            (shell_l1_id, shell_l1_id),
+        ).fetchone():
+            return True
+    for table, predicate in (
+        ("l3_song_album_attribution_overrides", "anchor_track_id=? AND active=1"),
+        ("track_credit_overrides", "track_id=? AND active=1"),
+        ("artist_metadata_attribution_overrides", "track_id=?"),
+    ):
+        if (
+            _table_exists(conn, table)
+            and conn.execute(
+                f"SELECT 1 FROM {table} WHERE {predicate} LIMIT 1",
+                (shell_l1_id,),
+            ).fetchone()
+        ):
+            return True
+    return False
+
+
+def _supersede_zero_play_compatibility_shells(conn: sqlite3.Connection) -> int:
+    """Retire proven provider aliases without deleting dimensions or audit history.
+
+    A shell is eligible only when it has no playback facts, its stable Spotify
+    id is already owned by another active identity, and no current manual
+    governance object refers to it. The transition is one-way and therefore
+    idempotent; ordinary projection synchronization never reactivates the shell.
+    """
+
+    required = {"track_l1_identities", "tracks", "plays", "spotify_track_owners"}
+    if not all(_table_exists(conn, table) for table in required):
+        return 0
+    candidates = conn.execute(
+        """SELECT identities.l1_id, owners.track_id, tracks.spotify_track_id
+             FROM track_l1_identities identities
+             JOIN tracks ON tracks.track_id=identities.l1_id
+             JOIN spotify_track_owners owners
+               ON owners.spotify_track_id=tracks.spotify_track_id
+             JOIN track_l1_identities owner_identity
+               ON owner_identity.l1_id=owners.track_id
+            WHERE identities.identity_status='active'
+              AND owner_identity.identity_status='active'
+              AND owners.track_id!=identities.l1_id
+              AND NOT EXISTS (
+                  SELECT 1 FROM plays WHERE plays.track_id=identities.l1_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM spotify_track_owners self_owner
+                   WHERE self_owner.track_id=identities.l1_id
+              )
+            ORDER BY identities.l1_id"""
+    ).fetchall()
+    retired = 0
+    for shell_l1_id, owner_l1_id, spotify_track_id in candidates:
+        shell = int(shell_l1_id)
+        owner = int(owner_l1_id)
+        if _has_compatibility_retirement_protection(
+            conn,
+            shell_l1_id=shell,
+            owner_l1_id=owner,
+        ):
+            continue
+        if (
+            _table_exists(conn, "track_l1_external_ids")
+            and conn.execute(
+                "SELECT 1 FROM track_l1_external_ids WHERE l1_id=? LIMIT 1",
+                (shell,),
+            ).fetchone()
+        ):
+            continue
+        if _table_exists(conn, "track_l1_source_links"):
+            for row in conn.execute(
+                """SELECT track_id, evidence_type, observed_plays,
+                          first_seen_at, last_seen_at
+                     FROM track_l1_source_links WHERE l1_id=?""",
+                (shell,),
+            ).fetchall():
+                existing = conn.execute(
+                    """SELECT observed_plays, first_seen_at, last_seen_at
+                         FROM track_l1_source_links
+                        WHERE l1_id=? AND track_id=? AND evidence_type=?""",
+                    (owner, int(row[0]), str(row[1])),
+                ).fetchone()
+                first_seen = [
+                    value for value in (row[3], existing[1] if existing else None) if value
+                ]
+                last_seen = [
+                    value for value in (row[4], existing[2] if existing else None) if value
+                ]
+                upsert_track_source_link(
+                    conn,
+                    l1_id=owner,
+                    track_id=int(row[0]),
+                    evidence_type=str(row[1]),
+                    observed_plays=max(
+                        int(row[2] or 0),
+                        int(existing[0] or 0) if existing else 0,
+                    ),
+                    first_seen_at=min(first_seen) if first_seen else None,
+                    last_seen_at=max(last_seen) if last_seen else None,
+                )
+            conn.execute("DELETE FROM track_l1_source_links WHERE l1_id=?", (shell,))
+        conn.execute(
+            """UPDATE track_l1_identities
+                  SET identity_status='superseded', updated_at=datetime('now')
+                WHERE l1_id=? AND identity_status='active'""",
+            (shell,),
+        )
+        if _table_exists(conn, "track_id_aliases"):
+            conn.execute(
+                """INSERT OR IGNORE INTO track_id_aliases(
+                       alias_track_id, canonical_track_id, reason
+                   ) VALUES (?, ?, 'spotify_owner_compatibility_shell')""",
+                (shell, owner),
+            )
+        if _table_exists(conn, "track_identity_events"):
+            conn.execute(
+                """INSERT INTO track_identity_events(
+                       action, survivor_l1_id, affected_l1_ids,
+                       before_json, after_json, reason
+                   ) VALUES ('merge', ?, ?, ?, ?, ?)""",
+                (
+                    owner,
+                    json.dumps([shell]),
+                    json.dumps(
+                        {
+                            "identity_status": "active",
+                            "spotify_track_id": str(spotify_track_id),
+                        },
+                        sort_keys=True,
+                    ),
+                    json.dumps(
+                        {
+                            "canonical_l1_id": owner,
+                            "identity_status": "superseded",
+                        },
+                        sort_keys=True,
+                    ),
+                    "automatic compatibility shell retirement",
+                ),
+            )
+        retired += 1
+    return retired
+
+
+def build_track_identity_governance_ledger(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = 200,
+) -> dict[str, object]:
+    """Describe compatibility-identity lifecycle without mutating source facts."""
+
+    statuses = {
+        "historical_legacy": 0,
+        "explained": 0,
+        "needs_evidence": 0,
+        "repairable": 0,
+    }
+    entries: list[dict[str, object]] = []
+    if not all(
+        _table_exists(conn, table)
+        for table in ("track_l1_identities", "tracks", "plays", "spotify_track_owners")
+    ):
+        return {
+            "status_counts": statuses,
+            "total_count": 0,
+            "entries": entries,
+            "truncated": False,
+            "writes_performed": False,
+        }
+
+    if _table_exists(conn, "track_id_aliases"):
+        for row in conn.execute(
+            """SELECT aliases.alias_track_id, aliases.canonical_track_id, aliases.reason
+                 FROM track_id_aliases aliases
+                 JOIN track_l1_identities identities
+                   ON identities.l1_id=aliases.alias_track_id
+                WHERE identities.identity_status='superseded'
+                ORDER BY aliases.alias_track_id"""
+        ).fetchall():
+            statuses["explained"] += 1
+            if len(entries) < limit:
+                entries.append(
+                    {
+                        "l1_id": int(row[0]),
+                        "owner_l1_id": int(row[1]),
+                        "status": "explained",
+                        "reason_code": str(row[2]),
+                    }
+                )
+
+    rows = conn.execute(
+        """SELECT identities.l1_id, owners.track_id, tracks.spotify_track_id
+             FROM track_l1_identities identities
+             JOIN tracks ON tracks.track_id=identities.l1_id
+             JOIN spotify_track_owners owners
+               ON owners.spotify_track_id=tracks.spotify_track_id
+            WHERE identities.identity_status='active'
+              AND owners.track_id!=identities.l1_id
+              AND NOT EXISTS (
+                  SELECT 1 FROM plays WHERE plays.track_id=identities.l1_id
+              )
+            ORDER BY identities.l1_id"""
+    ).fetchall()
+    for shell_l1_id, owner_l1_id, spotify_track_id in rows:
+        shell = int(shell_l1_id)
+        owner = int(owner_l1_id)
+        protected = _has_compatibility_retirement_protection(
+            conn,
+            shell_l1_id=shell,
+            owner_l1_id=owner,
+        ) or (
+            _table_exists(conn, "track_l1_external_ids")
+            and conn.execute(
+                "SELECT 1 FROM track_l1_external_ids WHERE l1_id=? LIMIT 1",
+                (shell,),
+            ).fetchone()
+            is not None
+        )
+        status = "needs_evidence" if protected else "repairable"
+        statuses[status] += 1
+        if len(entries) < limit:
+            entries.append(
+                {
+                    "l1_id": shell,
+                    "owner_l1_id": owner,
+                    "status": status,
+                    "reason_code": (
+                        "active_governance_reference"
+                        if protected
+                        else "zero_play_spotify_owner_compatibility_shell"
+                    ),
+                    "spotify_track_id": str(spotify_track_id),
+                }
+            )
+
+    total = sum(statuses.values())
+    return {
+        "status_counts": statuses,
+        "total_count": total,
+        "entries": entries,
+        "truncated": total > len(entries),
+        "writes_performed": False,
+    }
 
 
 def _identity_semantic_signature(conn: sqlite3.Connection) -> tuple[tuple, ...]:
@@ -598,6 +884,7 @@ def synchronize_track_identity_projection(
             spotify_track_id=spotify_track_id,
             bump_revision=False,
         )
+    _supersede_zero_play_compatibility_shells(conn)
     changed = _identity_semantic_signature(conn) != before
     if changed:
         bump_track_identity_revision(conn)

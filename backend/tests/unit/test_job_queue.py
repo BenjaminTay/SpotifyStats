@@ -11,6 +11,7 @@ import time
 
 import pytest
 
+import backend.core.job_queue as job_queue_module
 from backend.core.job_queue import Job, JobQueue
 
 pytestmark = pytest.mark.unit
@@ -43,6 +44,33 @@ def test_job_create():
     assert job.entity_id == "42"
     assert job.payload["cdn_url"] == "https://example.com/img.jpg"
     assert len(job.job_id) == 12
+
+
+def test_job_priority_lane_and_target_metadata_round_trip(temp_db):
+    job = Job.create(
+        "maintenance",
+        "snapshot",
+        "global",
+        priority=7,
+        resource_class="critical",
+        target_revision=42,
+    )
+    q = JobQueue(max_workers=0)
+    q._db_path = temp_db
+    q._insert_db_job(job)
+
+    recovered = JobQueue(max_workers=0)
+    recovered.prepare(temp_db)
+
+    assert len(recovered._startup_jobs) == 1
+    restored = recovered._startup_jobs[0]
+    assert (restored.priority, restored.resource_class, restored.target_key) == (
+        7,
+        "critical",
+        "global:revision:42",
+    )
+    assert restored.payload["target_revision"] == 42
+    assert not any(key.startswith("__job_queue_") for key in restored.payload)
 
 
 def test_queue_enqueue_and_process(temp_db):
@@ -173,6 +201,39 @@ def test_revision_specific_entity_ids_do_not_drop_later_revision(temp_db):
     ]
 
 
+def test_target_revision_dedupe_is_exact_and_thread_safe(temp_db):
+    q = JobQueue(max_workers=0)
+    q._db_path = temp_db
+    barrier = threading.Barrier(8)
+    results: list[str | None] = []
+    results_lock = threading.Lock()
+
+    def enqueue_same_target() -> None:
+        barrier.wait(timeout=2)
+        result = q.enqueue_if_not_pending(
+            Job.create("rebuild", "snapshot", "global", target_revision=8)
+        )
+        with results_lock:
+            results.append(result)
+
+    callers = [threading.Thread(target=enqueue_same_target) for _ in range(8)]
+    for caller in callers:
+        caller.start()
+    for caller in callers:
+        caller.join(timeout=2)
+
+    assert sum(result is not None for result in results) == 1
+    assert q.enqueue_if_not_pending(Job.create("rebuild", "snapshot", "global", target_revision=9))
+    with sqlite3.connect(temp_db) as conn:
+        payloads = [
+            json.loads(row[0])
+            for row in conn.execute(
+                "SELECT payload_json FROM background_jobs WHERE job_type='rebuild'"
+            )
+        ]
+    assert sorted(payload["target_revision"] for payload in payloads) == [8, 9]
+
+
 def test_pending_dedupe_keeps_album_and_artist_ids_separate(temp_db):
     q = JobQueue(max_workers=1)
     q._db_path = temp_db
@@ -224,7 +285,14 @@ def test_regular_retry_is_delayed_and_persisted_without_sleep(temp_db, monkeypat
         "_schedule_delayed",
         lambda job, delay: scheduled.append((job.job_id, delay)),
     )
-    job = Job.create("flaky", "entity", "delayed")
+    job = Job.create(
+        "flaky",
+        "entity",
+        "delayed",
+        priority=23,
+        resource_class="network",
+        target_revision=6,
+    )
     q._insert_db_job(job)
 
     assert q._process_job(job) is True
@@ -239,12 +307,43 @@ def test_regular_retry_is_delayed_and_persisted_without_sleep(temp_db, monkeypat
     assert scheduled == [(job.job_id, 4)]
     assert row[:3] == ("pending", 1, "rate limited")
     assert payload["__job_queue_next_attempt_at"] == job.next_attempt_at
+    assert payload["__job_queue_priority"] == 23
+    assert payload["__job_queue_resource_class"] == "network"
+    assert payload["__job_queue_target_key"] == "delayed:revision:6"
 
     recovered = JobQueue(max_workers=0)
     recovered.prepare(temp_db)
     assert len(recovered._startup_jobs) == 1
     assert recovered._startup_jobs[0].next_attempt_at == job.next_attempt_at
+    assert recovered._startup_jobs[0].priority == 23
+    assert recovered._startup_jobs[0].resource_class == "network"
+    assert recovered._startup_jobs[0].target_key == "delayed:revision:6"
     assert "__job_queue_next_attempt_at" not in recovered._startup_jobs[0].payload
+
+
+def test_retry_survives_thread_class_monkeypatch(temp_db, monkeypatch):
+    calls: list[int] = []
+    finished = threading.Event()
+
+    def flaky(job):
+        calls.append(job.attempts)
+        if job.attempts == 1:
+            raise RuntimeError("retry")
+        finished.set()
+
+    monkeypatch.setattr(
+        job_queue_module.threading,
+        "Thread",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("patched Thread used")),
+    )
+    q = JobQueue(max_workers=1, retry_base_seconds=0.01, retry_max_seconds=0.01)
+    q.register("flaky", flaky)
+    q.start(temp_db)
+    q.enqueue(Job.create("flaky", "entity", "thread-patch"))
+
+    assert finished.wait(timeout=2)
+    q.stop()
+    assert calls == [1, 2]
 
 
 def test_retry_delay_is_exponential_and_bounded():
@@ -327,6 +426,105 @@ def test_start_recovers_pending_and_orphan_running_jobs(temp_db):
         ("orphan-job", "done", 2, None),
         ("pending-job", "done", 1, None),
     ]
+
+
+def test_recovered_jobs_use_stable_priority_order(temp_db):
+    jobs = [
+        Job.create("ordered", "entity", "later-low", priority=80),
+        Job.create("ordered", "entity", "later-high", priority=10),
+        Job.create("ordered", "entity", "earlier-high", priority=10),
+    ]
+    jobs[0].created_at = "2026-01-01T00:00:00+00:00"
+    jobs[1].created_at = "2026-01-03T00:00:00+00:00"
+    jobs[2].created_at = "2026-01-02T00:00:00+00:00"
+    writer = JobQueue(max_workers=0)
+    writer._db_path = temp_db
+    for job in jobs:
+        writer._insert_db_job(job)
+
+    processed: list[str] = []
+    q = JobQueue(max_workers=1)
+    q.register("ordered", lambda job: processed.append(job.entity_id))
+    q.start(temp_db)
+    q.wait_until_idle()
+    q.stop()
+
+    assert processed == ["earlier-high", "later-high", "later-low"]
+
+
+def test_critical_lane_runs_while_slow_network_lane_is_occupied(temp_db):
+    network_started = threading.Event()
+    release_network = threading.Event()
+    network_finished = threading.Event()
+    critical_finished = threading.Event()
+
+    def slow_network(_job):
+        network_started.set()
+        release_network.wait(timeout=2)
+        network_finished.set()
+
+    q = JobQueue(max_workers=3)
+    q.register("cover_download", slow_network)
+    q.register("playback_import_maintenance", lambda _job: critical_finished.set())
+    q.start(temp_db)
+    q.enqueue(Job.create("cover_download", "album", "slow"))
+    assert network_started.wait(timeout=1)
+
+    q.enqueue(Job.create("playback_import_maintenance", "import", "critical"))
+    assert critical_finished.wait(timeout=1)
+    assert not network_finished.is_set()
+
+    release_network.set()
+    assert network_finished.wait(timeout=1)
+    q.stop()
+
+
+def test_critical_job_bypasses_1204_persisted_cover_jobs(temp_db):
+    created = "2026-09-21T00:00:00+00:00"
+    conn = sqlite3.connect(temp_db)
+    conn.executemany(
+        """INSERT INTO background_jobs(
+               job_id, job_type, entity_type, entity_id, payload_json,
+               status, created_at, attempts
+           ) VALUES (?, 'cover_download', 'album', ?, '{}', 'pending', ?, 0)""",
+        [(f"cover-{index:04d}", str(index), created) for index in range(1204)],
+    )
+    conn.execute(
+        """INSERT INTO background_jobs(
+               job_id, job_type, entity_type, entity_id, payload_json,
+               status, created_at, attempts
+           ) VALUES ('critical-import', 'playback_import_maintenance', 'import',
+                     'generation-2', '{}', 'pending', ?, 0)""",
+        (created,),
+    )
+    conn.commit()
+    conn.close()
+
+    cover_started = threading.Event()
+    release_cover = threading.Event()
+    critical_finished = threading.Event()
+
+    def slow_cover(_job):
+        cover_started.set()
+        release_cover.wait(timeout=3)
+
+    q = JobQueue(max_workers=3)
+    q.register("cover_download", slow_cover)
+    q.register("playback_import_maintenance", lambda _job: critical_finished.set())
+    q.prepare(temp_db)
+    q.start(temp_db)
+    try:
+        assert cover_started.wait(timeout=1)
+        assert critical_finished.wait(timeout=1)
+        with sqlite3.connect(temp_db) as check:
+            remaining = check.execute(
+                "SELECT COUNT(*) FROM background_jobs WHERE job_type='cover_download' "
+                "AND status IN ('pending','running')"
+            ).fetchone()[0]
+        assert remaining > 0
+    finally:
+        release_cover.set()
+        q.stop()
 
 
 def test_startup_priority_job_finishes_before_persisted_generic_workers_start(temp_db):

@@ -13,6 +13,7 @@ from backend.domains.playback.album_projects import (
 )
 from backend.domains.playback.l3_album_attribution import (
     apply_l3_album_attribution_plan,
+    build_l3_album_attribution_scope_health,
     get_l3_album_attribution_state,
     load_l3_song_album_attributions,
     plan_l3_album_attributions,
@@ -398,6 +399,16 @@ def test_work_without_album_membership_is_persisted_as_uncovered() -> None:
             conn.execute("SELECT COUNT(*) FROM l3_song_album_attribution_issues").fetchone()[0] == 1
         )
         assert plan_l3_album_attributions(conn).changed is False
+        health = build_l3_album_attribution_scope_health(conn)
+        assert health["played_works"]["scanned_work_count"] == 0
+        assert health["all_identities"]["scanned_work_count"] == 1
+        assert health["all_identities"]["active_identity_count"] == 1
+        assert health["problem_ledger"]["status_counts"] == {
+            "historical_legacy": 1,
+            "explained": 0,
+            "needs_evidence": 0,
+            "repairable": 0,
+        }
     finally:
         conn.close()
 
@@ -434,6 +445,10 @@ def test_played_work_without_album_membership_remains_a_blocking_issue() -> None
         )
         assert report.uncovered_count == 1
         assert report.scanned_count == 1
+        health = build_l3_album_attribution_scope_health(conn)
+        assert health["played_works"]["uncovered_count"] == 1
+        assert health["all_identities"]["uncovered_count"] == 1
+        assert health["problem_ledger"]["status_counts"]["repairable"] == 1
     finally:
         conn.close()
 

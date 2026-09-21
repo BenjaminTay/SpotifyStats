@@ -6,7 +6,16 @@ import hashlib
 import json
 import sqlite3
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
+
+_UNMATCHED_AUDIO_CATEGORIES = (
+    "podcast",
+    "audiobook",
+    "stable_uri_unmatched",
+    "malformed",
+    "unknown",
+)
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
@@ -82,6 +91,169 @@ def _default_since_date(conn: sqlite3.Connection) -> str:
         return (date.fromisoformat(str(latest)) - timedelta(days=90)).isoformat()
     except ValueError:
         return "1900-01-01"
+
+
+def _classify_unmatched_audio_record(record: dict[str, Any] | None) -> str:
+    """Classify only from explicit export fields; never infer from display names."""
+
+    if record is None:
+        return "unknown"
+    if any(record.get(key) for key in ("spotify_episode_uri", "episode_name", "episode_show_name")):
+        return "podcast"
+    if any(
+        record.get(key)
+        for key in ("audiobook_uri", "audiobook_title", "chapter_uri", "chapter_title")
+    ):
+        return "audiobook"
+
+    from backend.domains.metadata.track_identity import is_valid_spotify_track_id
+
+    track_uri = record.get("spotify_track_uri")
+    if is_valid_spotify_track_id(track_uri):
+        return "stable_uri_unmatched"
+    if track_uri not in (None, ""):
+        return "malformed"
+    track_name = bool(record.get("master_metadata_track_name"))
+    artist_name = bool(record.get("master_metadata_album_artist_name"))
+    if track_name != artist_name:
+        return "malformed"
+    return "unknown"
+
+
+def _empty_unmatched_audio_bucket() -> dict[str, Any]:
+    return {
+        "raw_row_count": 0,
+        "raw_ms": 0,
+        "first_date": None,
+        "last_date": None,
+        "statistics_impact": {
+            "track_entity_event_count": 0,
+            "track_entity_listening_ms": 0,
+            "calculation_status": "not_attributable_without_track_identity",
+        },
+    }
+
+
+def _build_unmatched_audio_health(
+    conn: sqlite3.Connection,
+    *,
+    streaming_dir: str | Path | None,
+) -> dict[str, Any]:
+    categories = {
+        category: _empty_unmatched_audio_bucket() for category in _UNMATCHED_AUDIO_CATEGORIES
+    }
+    empty: dict[str, Any] = {
+        "source_evidence_status": "not_required",
+        "raw_row_count": 0,
+        "raw_ms": 0,
+        "first_date": None,
+        "last_date": None,
+        "matched_source_row_count": 0,
+        "unmatched_source_row_count": 0,
+        "categories": categories,
+        "ledger_status_counts": {
+            "historical_legacy": 0,
+            "explained": 0,
+            "needs_evidence": 0,
+            "repairable": 0,
+        },
+        "writes_performed": False,
+    }
+    if not _table_exists(conn, "plays"):
+        return empty
+    play_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(plays)").fetchall()}
+    if not {"content_type", "track_id"}.issubset(play_columns):
+        return empty
+
+    fingerprint_expr = "source_fingerprint" if "source_fingerprint" in play_columns else "NULL"
+    ms_expr = "ms_played" if "ms_played" in play_columns else "0"
+    date_expr = "ts_date" if "ts_date" in play_columns else "NULL"
+    rows = conn.execute(
+        f"""SELECT {fingerprint_expr}, COALESCE({ms_expr}, 0), {date_expr}
+               FROM plays
+              WHERE content_type='audio' AND track_id IS NULL
+              ORDER BY play_id"""
+    ).fetchall()
+    if not rows:
+        return empty
+
+    fingerprints = {str(row[0]) for row in rows if row[0]}
+    evidence: dict[str, dict[str, Any]] = {}
+    source_errors = 0
+    source_files: list[Path] = []
+    if fingerprints:
+        if streaming_dir is None:
+            from backend.core.import_data import DATA_DIR
+
+            source_root = Path(DATA_DIR)
+        else:
+            source_root = Path(streaming_dir)
+        source_files = sorted(source_root.glob("Streaming_History_Audio_*.json"))
+        if source_files:
+            from backend.domains.imports.source_inspector import record_fingerprint
+            from backend.domains.imports.streaming_staging import _iter_json_array
+
+            for path in source_files:
+                try:
+                    for item in _iter_json_array(path):
+                        if not isinstance(item, dict):
+                            continue
+                        fingerprint = record_fingerprint(item)
+                        if fingerprint in fingerprints and fingerprint not in evidence:
+                            evidence[fingerprint] = item
+                except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+                    source_errors += 1
+
+    matched = 0
+    dates: list[str] = []
+    for fingerprint, raw_ms, raw_date in rows:
+        record = evidence.get(str(fingerprint)) if fingerprint else None
+        if record is not None:
+            matched += 1
+        category = _classify_unmatched_audio_record(record)
+        bucket = categories[category]
+        bucket["raw_row_count"] += 1
+        bucket["raw_ms"] += max(int(raw_ms or 0), 0)
+        if raw_date:
+            rendered_date = str(raw_date)
+            dates.append(rendered_date)
+            bucket["first_date"] = min(
+                value for value in (bucket["first_date"], rendered_date) if value
+            )
+            bucket["last_date"] = max(
+                value for value in (bucket["last_date"], rendered_date) if value
+            )
+
+    if not fingerprints or not source_files:
+        evidence_status = "unavailable"
+    elif source_errors or matched < len(rows):
+        evidence_status = "partial"
+    else:
+        evidence_status = "complete"
+    status_for_category = {
+        "podcast": "explained",
+        "audiobook": "explained",
+        "stable_uri_unmatched": "repairable",
+        "malformed": "needs_evidence",
+        "unknown": "needs_evidence" if evidence_status != "unavailable" else "historical_legacy",
+    }
+    status_counts = dict(empty["ledger_status_counts"])
+    for category, bucket in categories.items():
+        status_counts[status_for_category[category]] += int(bucket["raw_row_count"])
+        bucket["ledger_status"] = status_for_category[category]
+
+    return {
+        "source_evidence_status": evidence_status,
+        "raw_row_count": len(rows),
+        "raw_ms": sum(max(int(row[1] or 0), 0) for row in rows),
+        "first_date": min(dates) if dates else None,
+        "last_date": max(dates) if dates else None,
+        "matched_source_row_count": matched,
+        "unmatched_source_row_count": len(rows) - matched,
+        "categories": categories,
+        "ledger_status_counts": status_counts,
+        "writes_performed": False,
+    }
 
 
 def _recent_album_project_health(
@@ -371,6 +543,7 @@ def _build_derived_health(conn: sqlite3.Connection) -> dict[str, Any]:
     derived["track_credits"] = _state_snapshot(conn, "track_credit_state")
     from backend.domains.playback.l3_album_attribution import (
         L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
+        build_l3_album_attribution_scope_health,
         get_l3_album_attribution_state,
     )
 
@@ -393,6 +566,7 @@ def _build_derived_health(conn: sqlite3.Connection) -> dict[str, Any]:
             and int(attribution_state["uncovered_count"]) == 0
         ),
     }
+    derived["l3_album_attribution_scopes"] = build_l3_album_attribution_scope_health(conn)
     identity_tables_ready = all(
         _table_exists(conn, table)
         for table in (
@@ -413,6 +587,7 @@ def _build_derived_health(conn: sqlite3.Connection) -> dict[str, Any]:
     )
     if identity_tables_ready:
         from backend.domains.metadata.track_identity import (
+            build_track_identity_governance_ledger,
             validate_track_identity_invariants,
         )
 
@@ -457,6 +632,7 @@ def _build_derived_health(conn: sqlite3.Connection) -> dict[str, Any]:
                 identity_health.pending_candidate_noncanonical_reference_count
             ),
             "active_group_scope_overlap_count": active_group_scope_overlap_count,
+            "governance_ledger": build_track_identity_governance_ledger(conn),
         }
     else:
         derived["canonical_track_identity"] = {
@@ -474,6 +650,18 @@ def _build_derived_health(conn: sqlite3.Connection) -> dict[str, Any]:
             "active_group_invalid_primary_count": 0,
             "pending_candidate_noncanonical_reference_count": 0,
             "active_group_scope_overlap_count": 0,
+            "governance_ledger": {
+                "status_counts": {
+                    "historical_legacy": 0,
+                    "explained": 0,
+                    "needs_evidence": 0,
+                    "repairable": 0,
+                },
+                "total_count": 0,
+                "entries": [],
+                "truncated": False,
+                "writes_performed": False,
+            },
         }
     derived["album_projects_ready"] = derived["album_project_count"] > 0
     derived["billboard_aggregates_ready"] = bool(
@@ -728,6 +916,7 @@ def _build_health_issues(
             recommended_action="保留原始记录，后续在有效播放过滤层明确排除并保留审计数量。",
         )
     if database["null_track_audio_count"]:
+        unmatched_audio = database.get("unmatched_audio", {})
         add(
             code="audio_without_track",
             category="database",
@@ -737,6 +926,11 @@ def _build_health_issues(
             affected_play_count=database["null_track_audio_count"],
             impact="这些记录无法进入曲目、艺人或专辑排行；其中一部分可能是 Spotify 无曲目元数据的记录。",
             recommended_action="先按原始字段和 content_type 分层确认，不要仅凭数量自动删除。",
+            evidence={
+                "source_evidence_status": unmatched_audio.get("source_evidence_status"),
+                "ledger_status_counts": unmatched_audio.get("ledger_status_counts", {}),
+                "categories": unmatched_audio.get("categories", {}),
+            },
         )
 
     if metadata.get("unresolved_recent_tracks"):
@@ -833,6 +1027,8 @@ def _build_health_issues(
 def build_import_health_report(
     conn: sqlite3.Connection,
     since_date: str | None = None,
+    *,
+    streaming_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build a compact, read-only report while keeping legacy flat keys."""
 
@@ -840,6 +1036,10 @@ def build_import_health_report(
         _default_since_date(conn) if _table_exists(conn, "plays") else "1900-01-01"
     )
     database = _build_database_health(conn)
+    database["unmatched_audio"] = _build_unmatched_audio_health(
+        conn,
+        streaming_dir=streaming_dir,
+    )
     relationships = _build_relationship_health(conn)
     derived = _build_derived_health(conn)
 

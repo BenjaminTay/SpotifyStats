@@ -10,6 +10,7 @@ import sqlite3
 import sys
 import tempfile
 from collections.abc import Sequence
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.core.db import DB_PATH
+from backend.domains.imports.write_coordinator import coordinated_sqlite_connect
 from backend.domains.metadata.artist_genre_review import review_suggestion
 from backend.domains.metadata.artist_language_review import (
     decide_review,
@@ -29,7 +31,7 @@ from backend.domains.metadata.artist_language_review import (
 REVIEWER = "codex_evidence_audit_2026_07_16"
 LANGUAGE_BATCH_REASON = "codex_language_pre_review_2026_07_15"
 
-GENRE_DECISIONS = {
+GENRE_DECISIONS: dict[str, dict[str, Any]] = {
     "Michael Wong": {
         "genres": ["pop"],
         "confidence": 0.92,
@@ -93,7 +95,7 @@ GENRE_DECISIONS = {
     },
 }
 
-LANGUAGE_DECISIONS = {
+LANGUAGE_DECISIONS: dict[str, str] = {
     "Fiona Sit": "approve",
     "Wicked Movie Cast": "approve",
     "FIFTY FIFTY": "approve",
@@ -113,7 +115,7 @@ LANGUAGE_DECISIONS = {
 
 # Claims here supplement the original Spotify artist-repertoire evidence. They
 # use official artist, label, studio, or established editorial sources.
-LANGUAGE_SUPPORT = {
+LANGUAGE_SUPPORT: dict[str, dict[str, Any]] = {
     "Fiona Sit": {
         "url": "https://music.apple.com/us/artist/fiona-sit/201542612",
         "title": "Fiona Sit catalogue and Mandarin-version releases",
@@ -256,7 +258,7 @@ LANGUAGE_SUPPORT = {
     },
 }
 
-TRACK_EVIDENCE = {
+TRACK_EVIDENCE: dict[str, list[tuple[str, str | None, str | None]]] = {
     "Fiona Sit": [
         ("蘇州河 - 慕容雪 - Mandarin Version", "zh", "mandarin"),
         ("奇洛李維斯回信", "zh", "cantonese"),
@@ -293,7 +295,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def _connect(path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+    conn = coordinated_sqlite_connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -303,7 +305,7 @@ def _backup_database(source_path: Path, target_path: Path) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
     if target_path.exists() and target_path.stat().st_size > 0:
         raise FileExistsError(f"refusing to overwrite database backup: {target_path}")
-    with _connect(source_path) as source, _connect(target_path) as target:
+    with closing(_connect(source_path)) as source, closing(_connect(target_path)) as target:
         source.backup(target)
 
 

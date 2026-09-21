@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
 from backend.domains.metadata.track_identity import (
     TRACK_IDENTITY_POLICY_VERSION,
+    build_track_identity_governance_ledger,
     ensure_l1_identities,
     ensure_spotify_track_owner,
     ensure_track_projection_identity,
@@ -16,6 +18,7 @@ from backend.domains.metadata.track_identity import (
     l1_ids_for_track,
     refresh_play_source_links,
     resolve_canonical_track_id,
+    resolve_public_track_l1_ids,
     synchronize_track_identity_projection,
     validate_track_identity_invariants,
 )
@@ -91,6 +94,11 @@ def _schema(conn: sqlite3.Connection) -> None:
             reason TEXT NOT NULL,
             created_at TEXT DEFAULT (datetime('now'))
         );
+        CREATE TABLE track_id_aliases(
+            alias_track_id INTEGER PRIMARY KEY,
+            canonical_track_id INTEGER NOT NULL,
+            reason TEXT NOT NULL
+        );
         INSERT INTO track_identity_state VALUES (1, 0, 'spotify_owner_track_v1', datetime('now'));
         """
     )
@@ -161,7 +169,92 @@ def test_governance_reference_resolves_alias_but_preserves_existing_owner() -> N
     assert resolve_canonical_track_id(conn, 1) == 1
     assert resolve_canonical_track_id(conn, 2) == 1
     assert resolve_canonical_track_id(conn, 3) == 3
+    assert resolve_public_track_l1_ids(conn, 2) == [1]
     assert resolve_canonical_track_id(conn, 999) is None
+
+
+def test_projection_supersedes_zero_play_compatibility_shell_once() -> None:
+    conn = sqlite3.connect(":memory:")
+    _schema(conn)
+    conn.executemany(
+        "INSERT INTO tracks VALUES (?, ?, ?, ?, ?)",
+        [
+            (1, "Owner", 1, 10, "spotify-a"),
+            (2, "Historical shell", 1, 10, "spotify-a"),
+        ],
+    )
+    ensure_track_projection_identity(conn, track_id=1, spotify_track_id="spotify-a")
+    conn.execute(
+        """INSERT INTO track_l1_identities(
+               l1_id, fallback_track_id, identity_status, representative_track_id
+           ) VALUES (2, 2, 'active', 2)"""
+    )
+    conn.execute(
+        """INSERT INTO track_l1_source_links(
+               l1_id, track_id, evidence_type, observed_plays
+           ) VALUES (2, 2, 'track_projection', 0)"""
+    )
+
+    synchronize_track_identity_projection(conn, played_only=True)
+    first_revision = get_track_identity_revision(conn)
+
+    assert conn.execute(
+        "SELECT identity_status FROM track_l1_identities WHERE l1_id=2"
+    ).fetchone() == ("superseded",)
+    assert conn.execute(
+        "SELECT canonical_track_id, reason FROM track_id_aliases WHERE alias_track_id=2"
+    ).fetchone() == (1, "spotify_owner_compatibility_shell")
+    assert resolve_public_track_l1_ids(conn, 2) == [1]
+    assert conn.execute("SELECT COUNT(*) FROM track_identity_events").fetchone() == (1,)
+    ledger = cast(dict[str, Any], build_track_identity_governance_ledger(conn))
+    assert ledger["status_counts"] == {
+        "historical_legacy": 0,
+        "explained": 1,
+        "needs_evidence": 0,
+        "repairable": 0,
+    }
+    assert ledger["entries"][0]["owner_l1_id"] == 1
+
+    ensure_track_projection_identity(conn, track_id=2, spotify_track_id="spotify-a")
+    synchronize_track_identity_projection(conn, played_only=True)
+
+    assert conn.execute(
+        "SELECT identity_status FROM track_l1_identities WHERE l1_id=2"
+    ).fetchone() == ("superseded",)
+    assert conn.execute("SELECT COUNT(*) FROM track_identity_events").fetchone() == (1,)
+    assert get_track_identity_revision(conn) == first_revision
+
+
+def test_projection_keeps_played_or_manually_governed_alias_active() -> None:
+    conn = sqlite3.connect(":memory:")
+    _schema(conn)
+    conn.executescript(
+        """
+        CREATE TABLE track_credit_overrides(
+            track_id INTEGER NOT NULL,
+            active INTEGER NOT NULL
+        );
+        INSERT INTO tracks VALUES (1, 'Owner', 1, 10, 'spotify-a');
+        INSERT INTO tracks VALUES (2, 'Played alias', 1, 10, 'spotify-a');
+        INSERT INTO tracks VALUES (3, 'Governed alias', 1, 10, 'spotify-a');
+        INSERT INTO plays VALUES (1, '2026-01-01T00:00:00Z', 2, 'spotify-a');
+        INSERT INTO track_credit_overrides VALUES (3, 1);
+        """
+    )
+    ensure_track_projection_identity(conn, track_id=1, spotify_track_id="spotify-a")
+    conn.executemany(
+        """INSERT INTO track_l1_identities(
+               l1_id, fallback_track_id, identity_status, representative_track_id
+           ) VALUES (?, ?, 'active', ?)""",
+        [(2, 2, 2), (3, 3, 3)],
+    )
+
+    synchronize_track_identity_projection(conn, played_only=True)
+
+    assert conn.execute(
+        "SELECT l1_id, identity_status FROM track_l1_identities WHERE l1_id IN (2, 3)"
+    ).fetchall() == [(2, "active"), (3, "active")]
+    assert conn.execute("SELECT COUNT(*) FROM track_identity_events").fetchone() == (0,)
 
 
 def test_retired_track_alias_resolves_after_source_row_is_deleted() -> None:
@@ -169,11 +262,6 @@ def test_retired_track_alias_resolves_after_source_row_is_deleted() -> None:
     _schema(conn)
     conn.executescript(
         """
-        CREATE TABLE track_id_aliases(
-            alias_track_id INTEGER PRIMARY KEY,
-            canonical_track_id INTEGER NOT NULL REFERENCES tracks(track_id),
-            reason TEXT NOT NULL
-        );
         INSERT INTO tracks VALUES (1, 'Owner', 1, 10, 'spotify-a');
         INSERT INTO track_id_aliases VALUES (99, 1, 'historical_cleanup');
         """

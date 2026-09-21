@@ -109,6 +109,9 @@ def publish_playback_import_state(
     relation: str,
     strategy: str,
     summary: PlaybackDatasetSummary | None = None,
+    source_version_id: str | None = None,
+    publication_id: str | None = None,
+    publication_state: str = "facts_committed",
     updated_at: datetime | None = None,
 ) -> PlaybackDatasetSummary:
     """Publish the singleton active playback generation in the caller transaction."""
@@ -153,6 +156,17 @@ def publish_playback_import_state(
             _isoformat(updated_at or datetime.now(timezone.utc)),
         ),
     )
+    if {
+        "active_source_version_id",
+        "active_publication_id",
+        "publication_state",
+    }.issubset(columns):
+        conn.execute(
+            """UPDATE playback_import_state
+               SET active_source_version_id=?, active_publication_id=?, publication_state=?
+               WHERE state_id=1""",
+            (source_version_id, publication_id, publication_state),
+        )
     return active_summary
 
 
@@ -169,6 +183,10 @@ def record_playback_import_run(
     completed_at: datetime | None = None,
     error_code: str | None = None,
     change_set: PlaybackChangeSet | None = None,
+    batch_id: str | None = None,
+    source_version_id: str | None = None,
+    publication_id: str | None = None,
+    baseline_reason_code: str | None = None,
 ) -> None:
     """Record one planning/import outcome without committing it.
 
@@ -245,6 +263,15 @@ def record_playback_import_run(
             if change_set is not None
             else None
         )
+    for name, value in (
+        ("batch_id", batch_id),
+        ("source_version_id", source_version_id),
+        ("publication_id", publication_id),
+        ("baseline_reason_code", baseline_reason_code),
+    ):
+        if name in columns:
+            names.append(name)
+            values.append(value)
     placeholders = ", ".join("?" for _ in names)
     conn.execute(
         f"INSERT INTO playback_import_runs({', '.join(names)}) VALUES ({placeholders})",

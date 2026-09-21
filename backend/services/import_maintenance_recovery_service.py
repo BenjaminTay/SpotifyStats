@@ -44,13 +44,19 @@ def _load_and_fence_pending_run(
     *,
     expected_generation_id: str | None = None,
 ) -> PendingImportMaintenance:
+    columns = {str(item[1]) for item in conn.execute("PRAGMA table_info(playback_import_runs)")}
+    publication_projection = (
+        ", publication_id" if "publication_id" in columns else ", NULL AS publication_id"
+    )
     row = conn.execute(
-        """SELECT status, change_set_json
-           FROM playback_import_runs WHERE run_id=?""",
+        f"""SELECT status, change_set_json{publication_projection}
+            FROM playback_import_runs WHERE run_id=?""",
         (run_id,),
     ).fetchone()
     if row is None:
         raise ImportMaintenanceRecoveryEvidenceError("recovery_run_missing")
+    if row["publication_id"]:
+        raise ImportMaintenanceAlreadyTerminalError("modern_stage_runner")
     status = str(row["status"])
     if status in {"success", "recovery_blocked"}:
         raise ImportMaintenanceAlreadyTerminalError(status)
@@ -119,12 +125,14 @@ def enqueue_pending_import_maintenance(
     already_pending = 0
     blocked = 0
     try:
+        columns = {str(item[1]) for item in conn.execute("PRAGMA table_info(playback_import_runs)")}
+        modern_filter = " AND publication_id IS NULL" if "publication_id" in columns else ""
         run_ids = [
             str(row[0])
             for row in conn.execute(
-                """SELECT run_id FROM playback_import_runs
-                   WHERE status='maintenance_pending'
-                   ORDER BY started_at, run_id"""
+                f"""SELECT run_id FROM playback_import_runs
+                    WHERE status='maintenance_pending'{modern_filter}
+                    ORDER BY started_at, run_id"""
             ).fetchall()
         ]
         for run_id in run_ids:

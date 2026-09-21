@@ -157,6 +157,27 @@ def test_startup_scan_validates_and_idempotently_enqueues_pending_run(recovery_d
     assert _run_row(recovery_db) == ("maintenance_pending", None, None)
 
 
+def test_legacy_recovery_skips_runs_owned_by_modern_stage_runner(recovery_db) -> None:
+    from backend.services.import_maintenance_recovery_service import (
+        enqueue_pending_import_maintenance,
+    )
+
+    conn = sqlite3.connect(recovery_db)
+    conn.execute("ALTER TABLE playback_import_runs ADD COLUMN publication_id TEXT")
+    conn.execute(
+        "UPDATE playback_import_runs SET publication_id='run-pending' WHERE run_id='run-pending'"
+    )
+    conn.commit()
+    conn.close()
+    queue = _FakeQueue()
+
+    report = enqueue_pending_import_maintenance(queue)  # type: ignore[arg-type]
+
+    assert report == {"pending_runs": 0, "enqueued": 0, "already_pending": 0, "blocked": 0}
+    assert queue.jobs == {}
+    assert _run_row(recovery_db) == ("maintenance_pending", None, None)
+
+
 @pytest.mark.parametrize(
     ("mutation", "error_code"),
     [

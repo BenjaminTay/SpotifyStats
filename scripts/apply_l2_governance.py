@@ -27,6 +27,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from backend.core import db as db_mod  # noqa: E402
 from backend.core.cache_manager import invalidate  # noqa: E402
 from backend.core.migrations import LATEST_SCHEMA_VERSION, run_migrations  # noqa: E402
+from backend.domains.imports.write_coordinator import (  # noqa: E402
+    coordinated_sqlite_connect,
+)
 from backend.domains.metadata.l2_track_auto_merge import (  # noqa: E402
     L2_AUTO_MERGE_POLICY_VERSION,
     apply_l2_track_merge_plan,
@@ -102,17 +105,27 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _connect(path: Path, *, readonly: bool) -> sqlite3.Connection:
+def _connect(
+    path: Path,
+    *,
+    readonly: bool,
+    active_db_path: str | Path | None = None,
+) -> sqlite3.Connection:
     if readonly:
         conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
     else:
-        conn = sqlite3.connect(path)
+        conn = coordinated_sqlite_connect(path, active_db_path=active_db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
-def _online_backup(source_path: Path, backup_dir: Path) -> Path:
+def _online_backup(
+    source_path: Path,
+    backup_dir: Path,
+    *,
+    active_db_path: str | Path | None = None,
+) -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     target = backup_dir / f"spotify_stats_{timestamp}_before-version-governance.db"
@@ -124,8 +137,8 @@ def _online_backup(source_path: Path, backup_dir: Path) -> Path:
     # Open through SQLite (not a file copy) so committed WAL pages are included.
     # Read-write mode is required for WAL databases that need sidecar creation;
     # the backup API itself does not mutate source rows.
-    source = _connect(source_path, readonly=False)
-    destination = sqlite3.connect(target)
+    source = _connect(source_path, readonly=False, active_db_path=active_db_path)
+    destination = coordinated_sqlite_connect(target, active_db_path=active_db_path)
     try:
         source.backup(destination)
         destination.commit()
@@ -135,7 +148,7 @@ def _online_backup(source_path: Path, backup_dir: Path) -> Path:
     # A backup inherits WAL journal mode. Opening it writable for this check
     # lets SQLite create/remove the empty WAL sidecars before the file is later
     # used as a standalone restore point.
-    check = _connect(target, readonly=False)
+    check = _connect(target, readonly=False, active_db_path=active_db_path)
     try:
         if str(check.execute("PRAGMA integrity_check").fetchone()[0]) != "ok":
             raise RuntimeError("online backup failed integrity_check")
@@ -1391,18 +1404,22 @@ def _apply(args: argparse.Namespace) -> dict[str, Any]:
 
     original_db_path = db_mod.DB_PATH
     try:
-        return _apply_with_db_path(args)
+        return _apply_with_db_path(args, active_db_path=original_db_path)
     finally:
         db_mod.DB_PATH = original_db_path
 
 
-def _apply_with_db_path(args: argparse.Namespace) -> dict[str, Any]:
+def _apply_with_db_path(
+    args: argparse.Namespace,
+    *,
+    active_db_path: str | Path,
+) -> dict[str, Any]:
     db_path = args.db_path.resolve()
     backup_dir = (args.backup_dir or (PROJECT_ROOT / "data" / "backups")).resolve()
-    backup_path = _online_backup(db_path, backup_dir)
+    backup_path = _online_backup(db_path, backup_dir, active_db_path=active_db_path)
     db_mod.DB_PATH = str(db_path)
     run_migrations()
-    conn = _connect(db_path, readonly=False)
+    conn = _connect(db_path, readonly=False, active_db_path=active_db_path)
     # Legacy test/staging fixtures can declare a schema revision without
     # containing every table from that revision.  Ensure this additive schema
     # before opening the governed transaction; executescript must not run

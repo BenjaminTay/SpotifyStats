@@ -49,6 +49,8 @@ class StreamingImportAssessment:
     existing_account_identity_hash: str | None
     incoming_account_identity_hash: str | None
     staging: StreamingImportStaging | None = None
+    baseline_reason_code: str = "not_initialized"
+    existing_generation_id: str | None = None
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
@@ -108,8 +110,8 @@ def _existing_date_range(conn: sqlite3.Connection) -> tuple[str | None, str | No
 
 def _load_existing_baseline(
     conn: sqlite3.Connection,
-) -> tuple[list[FingerprintRecord] | None, str, str | None]:
-    """Return records, baseline status, and the persisted account hash."""
+) -> tuple[list[FingerprintRecord] | None, str, str, str | None, str | None]:
+    """Return records, status, stable reason, account hash and generation."""
     columns = _play_columns(conn)
     required = {
         "content_type",
@@ -118,8 +120,10 @@ def _load_existing_baseline(
         "import_generation_id",
         "ts",
     }
-    if not required.issubset(columns) or not _table_exists(conn, "playback_import_state"):
-        return None, "missing", None
+    if not required.issubset(columns):
+        return None, "missing", "fingerprints_missing", None, None
+    if not _table_exists(conn, "playback_import_state"):
+        return None, "missing", "active_state_missing", None, None
 
     state = conn.execute(
         """SELECT active_generation_id, account_identity_hash,
@@ -127,30 +131,31 @@ def _load_existing_baseline(
            FROM playback_import_state WHERE state_id=1"""
     ).fetchone()
     if state is None:
-        return None, "missing", None
+        return None, "missing", "active_state_missing", None, None
     account_hash = str(state[1]) if state[1] else None
+    generation_id = str(state[0]) if state[0] else None
     state_version = int(state[2]) if state[2] is not None else None
     if state_version is not None and state_version != FINGERPRINT_VERSION:
-        return None, "incompatible", account_hash
+        return None, "incompatible", "fingerprint_version_incompatible", account_hash, generation_id
 
     first_ts, latest_ts, play_count = _existing_date_range(conn)
     del first_ts, latest_ts
     if play_count == 0:
         if state_version == FINGERPRINT_VERSION and state[3]:
-            return [], "ready", account_hash
-        return None, "missing", account_hash
+            return [], "ready", "ready", account_hash, generation_id
+        return None, "missing", "not_initialized", account_hash, generation_id
 
     if not state[0] or state_version != FINGERPRINT_VERSION or not state[3]:
-        return None, "missing", account_hash
+        return None, "missing", "active_state_missing", account_hash, generation_id
     if int(state[4] or 0) != play_count:
-        return None, "incompatible", account_hash
+        return None, "incompatible", "record_count_mismatch", account_hash, generation_id
 
     rows = conn.execute(
         """SELECT content_type, source_fingerprint, source_fingerprint_version, ts
            FROM plays ORDER BY play_id"""
     ).fetchall()
     if any(row[1] is None or row[2] is None or int(row[2]) != FINGERPRINT_VERSION for row in rows):
-        return None, "missing", account_hash
+        return None, "missing", "fingerprints_missing", account_hash, generation_id
     records = [
         FingerprintRecord(
             source_type=str(row[0]),
@@ -160,10 +165,10 @@ def _load_existing_baseline(
         for row in rows
     ]
     if len({record.identity for record in records}) != play_count:
-        return None, "incompatible", account_hash
+        return None, "incompatible", "duplicate_fingerprints", account_hash, generation_id
     if dataset_digest(records) != str(state[3]):
-        return None, "incompatible", account_hash
-    return records, "ready", account_hash
+        return None, "incompatible", "dataset_digest_mismatch", account_hash, generation_id
+    return records, "ready", "ready", account_hash, generation_id
 
 
 def _date_range(first: datetime | None, latest: datetime | None) -> dict[str, str | None] | None:
@@ -260,10 +265,16 @@ def _confirmation_token(
     *,
     existing_account_hash: str | None,
     incoming_account_hash: str | None,
+    existing_generation_id: str | None,
+    requested_mode: str,
 ) -> str:
     """Bind a confirmation to the exact source and active-dataset evidence."""
     payload = {
         "schema_version": "streaming-import-confirmation-v1",
+        "preflight_contract_version": PREFLIGHT_CONTRACT_VERSION,
+        "fingerprint_version": FINGERPRINT_VERSION,
+        "requested_mode": requested_mode,
+        "existing_generation_id": existing_generation_id,
         "source_report": report,
         "incoming_digest": plan.incoming_digest,
         "previous_digest": plan.previous_digest,
@@ -308,9 +319,13 @@ def _assess_streaming_import_with_staging(
     owns_connection = conn is None
     active_conn = conn or get_db(readonly=True)
     try:
-        existing_records, baseline_status, existing_account_hash = _load_existing_baseline(
-            active_conn
-        )
+        (
+            existing_records,
+            baseline_status,
+            baseline_reason_code,
+            existing_account_hash,
+            existing_generation_id,
+        ) = _load_existing_baseline(active_conn)
         incoming_account_hash = _account_identity_hash(account_dir)
         existing_first, existing_latest, existing_count = _existing_date_range(active_conn)
         coverage = {
@@ -345,6 +360,8 @@ def _assess_streaming_import_with_staging(
         plan,
         existing_account_hash=existing_account_hash,
         incoming_account_hash=incoming_account_hash,
+        existing_generation_id=existing_generation_id,
+        requested_mode=requested_mode,
     )
     report.update(
         account_identity_status=_account_identity_status(
@@ -352,6 +369,7 @@ def _assess_streaming_import_with_staging(
             incoming_account_hash,
         ),
         fingerprint_baseline_status=baseline_status,
+        fingerprint_baseline_reason=baseline_reason_code,
         detected_relation=plan.relation.value,
         requested_mode=requested_mode,
         requires_confirmation=plan.requires_confirmation or legacy_replace_confirmation,
@@ -389,8 +407,10 @@ def _assess_streaming_import_with_staging(
         report=report,
         plan=plan,
         baseline_status=baseline_status,
+        baseline_reason_code=baseline_reason_code,
         existing_account_identity_hash=existing_account_hash,
         incoming_account_identity_hash=incoming_account_hash,
+        existing_generation_id=existing_generation_id,
         staging=staging,
     )
 

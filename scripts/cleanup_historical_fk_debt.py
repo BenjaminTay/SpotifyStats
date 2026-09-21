@@ -12,6 +12,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.core.db import DB_PATH, enforce_sqlite_foreign_keys  # noqa: E402
+from backend.domains.imports.write_coordinator import (  # noqa: E402
+    coordinated_sqlite_connect,
+)
 from backend.domains.metadata.historical_fk_cleanup import (  # noqa: E402
     HistoricalForeignKeyCleanupError,
     apply_cleanup,
@@ -46,7 +49,7 @@ def main() -> int:
                 )
             )
             return 2
-        conn = sqlite3.connect(path, timeout=30)
+        conn = coordinated_sqlite_connect(path, timeout=30)
     try:
         enforce_sqlite_foreign_keys(conn)
         result = (

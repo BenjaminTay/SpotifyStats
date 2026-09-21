@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from backend.core.job_queue import Job
+from backend.core.job_queue import Job, JobQueue
 
 pytestmark = pytest.mark.unit
 
@@ -110,6 +110,12 @@ def test_cover_backfill_requeues_valid_file_when_source_url_changes(tmp_path, mo
         CREATE TABLE spotify_artist_meta(
             spotify_artist_id TEXT PRIMARY KEY, artist_name TEXT, image_url TEXT
         );
+        CREATE TABLE background_jobs(
+            job_id TEXT PRIMARY KEY, job_type TEXT NOT NULL,
+            entity_type TEXT, entity_id TEXT, payload_json TEXT,
+            status TEXT NOT NULL DEFAULT 'pending', created_at TEXT,
+            updated_at TEXT, attempts INTEGER DEFAULT 0, error TEXT
+        );
         INSERT INTO artists VALUES (7, 'Artist', 'artist-7', 'old.jpg', NULL);
         INSERT INTO tracks VALUES (1, 7, NULL);
         INSERT INTO plays VALUES (1, 1, NULL);
@@ -120,7 +126,8 @@ def test_cover_backfill_requeues_valid_file_when_source_url_changes(tmp_path, mo
     cover_path = tmp_path / "covers" / "artists" / "7.jpg"
     cover_path.parent.mkdir(parents=True)
     cover_path.write_bytes(b"x" * 2048)
-    queue = _Queue()
+    queue = JobQueue(max_workers=0)
+    queue.prepare(str(db_path))
 
     initial = enqueue_missing_cover_downloads(conn, queue=queue, album_ids=set(), artist_ids={7})
     assert initial.jobs_enqueued == 1
@@ -131,15 +138,25 @@ def test_cover_backfill_requeues_valid_file_when_source_url_changes(tmp_path, mo
         """UPDATE cover_cache_state
            SET cached_source_url_hash=source_url_hash, status='ready'"""
     )
+    conn.execute("UPDATE background_jobs SET status='running'")
     conn.commit()
-    queue.jobs.clear()
 
     conn.execute("UPDATE artists SET image_url='new.jpg' WHERE artist_id=7")
     changed = enqueue_missing_cover_downloads(conn, queue=queue, album_ids=set(), artist_ids={7})
+    duplicate = enqueue_missing_cover_downloads(
+        conn,
+        queue=queue,
+        album_ids=set(),
+        artist_ids={7},
+    )
 
     assert changed.stale_sources == 1
     assert changed.jobs_enqueued == 1
-    assert queue.jobs[-1].payload["cdn_url"] == "new.jpg"
+    assert duplicate.jobs_enqueued == 0
+    jobs = queue._startup_jobs
+    assert [job.payload["cdn_url"] for job in jobs] == ["old.jpg", "new.jpg"]
+    assert jobs[0].target_key != jobs[1].target_key
+    assert jobs[1].payload["source_url_hash"] == jobs[1].payload["target_revision"]
 
 
 def test_cover_backfill_observes_provider_url_change_without_overwriting_local_url(
