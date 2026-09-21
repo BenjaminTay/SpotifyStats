@@ -8,6 +8,8 @@ import sys
 import uuid
 from pathlib import Path
 
+import pytest
+
 
 def _record(day: int) -> dict:
     return {
@@ -101,6 +103,261 @@ def _execute(api, planned, *, mode="auto"):
         confirm_plan=True,
         confirmation_digest=token,
     )
+
+
+def _establish_legacy_baseline(api, source: Path):
+    from backend.core.import_data import import_data
+
+    assessment = api.assess_streaming_import(
+        source,
+        api.ACCOUNT_DATA_DIR,
+        requested_mode="replace",
+        retain_staging=False,
+    )
+    result = import_data(
+        data_dir=str(source),
+        build_preaggregations=False,
+        mode="replace",
+    )
+    api._publish_import_state(assessment, result, executed_strategy="full")
+    return assessment
+
+
+def test_legacy_identical_noop_preserves_unregistered_source_and_facts(tmp_path, monkeypatch):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import active_source_state, get_run
+
+    api, database, _account = _setup(tmp_path, monkeypatch)
+    legacy_source = _source(tmp_path, "legacy-identical-baseline", [1, 2])
+    _establish_legacy_baseline(api, legacy_source)
+    planned = _plan_run(api, legacy_source)
+    assert planned[3].plan.relation.value == "identical"
+
+    _execute(api, planned)
+
+    run = get_run(planned[0])
+    assert run["status"] == "succeeded"
+    assert run["publication_state"] == "legacy_source_unregistered"
+    assert run["result"] == {
+        "executed_strategy": "noop",
+        "noop": True,
+        "source_registration_status": "not_registered",
+        "next_action": "replace_with_complete_snapshot",
+    }
+    conn = db_module.get_db(readonly=True)
+    try:
+        state = conn.execute(
+            """SELECT record_count,active_source_version_id,active_publication_id,
+                      publication_state FROM playback_import_state WHERE state_id=1"""
+        ).fetchone()
+    finally:
+        conn.close()
+    assert tuple(state) == (2, None, None, "legacy")
+    assert active_source_state()["active_source_version_id"] is None
+    backup_dir = database.parent / "import_backups"
+    assert not backup_dir.exists() or not tuple(backup_dir.iterdir())
+
+
+@pytest.mark.parametrize(
+    ("days", "mode", "relation", "expected_inserted"),
+    [
+        ([1, 2, 3], "auto", "snapshot_superset", 1),
+        ([1, 2], "replace", "identical", 2),
+        ([1, 2, 3], "replace", "snapshot_superset", 3),
+    ],
+)
+def test_legacy_complete_snapshot_registers_replayable_source(
+    tmp_path, monkeypatch, days, mode, relation, expected_inserted
+):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import active_source_state, get_run
+    from backend.domains.imports.source_registry import source_dataset_summary
+
+    api, _database, _account = _setup(tmp_path, monkeypatch)
+    _establish_legacy_baseline(api, _source(tmp_path, "legacy-register-baseline", [1, 2]))
+    planned = _plan_run(api, _source(tmp_path, "legacy-register-input", days), mode=mode)
+    assert planned[3].plan.relation.value == relation
+
+    _execute(api, planned, mode=mode)
+
+    run = get_run(planned[0])
+    assert run["status"] == "succeeded"
+    assert run["publication_state"] == "sources_published"
+    assert run["result"]["inserted_records"] == expected_inserted
+    source_summary = source_dataset_summary(run["source_version_id"])
+    conn = db_module.get_db(readonly=True)
+    try:
+        state = conn.execute(
+            """SELECT active_generation_id,dataset_digest,record_count,
+                      active_source_version_id,publication_state
+               FROM playback_import_state WHERE state_id=1"""
+        ).fetchone()
+    finally:
+        conn.close()
+    control = active_source_state()
+    assert source_summary == {"record_count": len(days), "dataset_digest": state[1]}
+    assert tuple(state[2:]) == (len(days), run["source_version_id"], "sources_published")
+    assert control["active_source_version_id"] == run["source_version_id"]
+    assert control["active_generation_id"] == state[0]
+    assert control["active_dataset_digest"] == state[1]
+
+
+def test_legacy_tail_without_complete_history_is_blocked(tmp_path, monkeypatch):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import active_source_state, get_run
+
+    api, _database, _account = _setup(tmp_path, monkeypatch)
+    _establish_legacy_baseline(api, _source(tmp_path, "legacy-tail-baseline", [1, 2]))
+    planned = _plan_run(api, _source(tmp_path, "legacy-tail-input", [2, 3]))
+    assert planned[3].plan.relation.value == "delta_tail"
+
+    _execute(api, planned)
+
+    run = get_run(planned[0])
+    assert run["status"] == "blocked"
+    assert run["publication_state"] == "failed_before_facts"
+    assert run["error_code"] == "legacy_source_baseline_requires_full_snapshot"
+    assert "完整导出" in run["message"]
+    conn = db_module.get_db(readonly=True)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0] == 2
+        assert (
+            conn.execute("SELECT active_source_version_id FROM playback_import_state").fetchone()[0]
+            is None
+        )
+    finally:
+        conn.close()
+    assert active_source_state()["active_source_version_id"] is None
+
+
+def test_legacy_pending_main_publication_state_is_not_treated_as_unregistered(
+    tmp_path, monkeypatch
+):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import get_run
+
+    api, _database, _account = _setup(tmp_path, monkeypatch)
+    legacy_source = _source(tmp_path, "legacy-pending-baseline", [1, 2])
+    _establish_legacy_baseline(api, legacy_source)
+    planned = _plan_run(api, legacy_source)
+    conn = db_module.get_db(readonly=False)
+    try:
+        conn.execute(
+            """UPDATE playback_import_state
+               SET publication_state='facts_committed', active_publication_id='interrupted-run'
+               WHERE state_id=1"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    _execute(api, planned)
+
+    run = get_run(planned[0])
+    assert run["status"] == "blocked"
+    assert run["error_code"] == "confirmed_plan_drift"
+    assert run["publication_state"] == "failed_before_facts"
+
+
+def test_published_control_source_mismatch_is_blocked_before_facts(tmp_path, monkeypatch):
+    from backend.domains.imports.control_store import connect_control, get_run
+
+    api, _database, _account = _setup(tmp_path, monkeypatch)
+    source = _source(tmp_path, "published-mismatch", [1, 2])
+    baseline = _plan_run(api, source, mode="replace")
+    _execute(api, baseline, mode="replace")
+    planned = _plan_run(api, source)
+    conn = connect_control()
+    try:
+        conn.execute(
+            "UPDATE import_source_state SET active_dataset_digest='mismatched-digest' WHERE state_id=1"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    _execute(api, planned)
+
+    run = get_run(planned[0])
+    assert run["status"] == "blocked"
+    assert run["error_code"] == "confirmed_plan_drift"
+    assert run["publication_state"] == "failed_before_facts"
+
+
+def test_stale_legacy_registration_is_blocked_after_competing_first_registration(
+    tmp_path, monkeypatch
+):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import get_run
+
+    api, _database, _account = _setup(tmp_path, monkeypatch)
+    _establish_legacy_baseline(api, _source(tmp_path, "legacy-race-baseline", [1, 2]))
+    stale = _plan_run(api, _source(tmp_path, "legacy-race-stale", [1, 2, 3]), mode="replace")
+    winner = _plan_run(api, _source(tmp_path, "legacy-race-winner", [1, 2, 3, 4]), mode="replace")
+    _execute(api, winner, mode="replace")
+    assert get_run(winner[0])["status"] == "succeeded"
+
+    _execute(api, stale, mode="replace")
+
+    run = get_run(stale[0])
+    assert run["status"] == "blocked"
+    assert run["error_code"] == "confirmed_plan_drift"
+    conn = db_module.get_db(readonly=True)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0] == 4
+    finally:
+        conn.close()
+
+
+def test_interrupted_legacy_first_registration_recovers_source_and_control_state(
+    tmp_path, monkeypatch
+):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import (
+        active_source_state,
+        get_run,
+        import_write_gate_state,
+    )
+    from backend.services.import_publication_service import recover_interrupted_publications
+
+    api, _database, _account = _setup(tmp_path, monkeypatch)
+    _establish_legacy_baseline(api, _source(tmp_path, "legacy-crash-baseline", [1, 2]))
+    crashed = _plan_run(
+        api, _source(tmp_path, "legacy-crash-replacement", [1, 2, 3]), mode="replace"
+    )
+
+    def hard_stop(*_args, **_kwargs):
+        raise KeyboardInterrupt("simulated hard stop during first source registration")
+
+    with monkeypatch.context() as crash_patch:
+        crash_patch.setattr(api, "mark_facts_committed", hard_stop)
+        with pytest.raises(KeyboardInterrupt):
+            _execute(api, crashed, mode="replace")
+
+    assert get_run(crashed[0])["publication_state"] == "prepared"
+    assert import_write_gate_state()["blocked"] == 1
+    assert recover_interrupted_publications() == {
+        "completed": 1,
+        "not_committed": 0,
+        "blocked": 0,
+    }
+    recovered = get_run(crashed[0])
+    control = active_source_state()
+    conn = db_module.get_db(readonly=True)
+    try:
+        state = conn.execute(
+            """SELECT active_generation_id,dataset_digest,record_count,
+                      active_source_version_id,publication_state
+               FROM playback_import_state WHERE state_id=1"""
+        ).fetchone()
+    finally:
+        conn.close()
+    assert recovered["publication_state"] == "sources_published"
+    assert tuple(state[2:]) == (3, recovered["source_version_id"], "sources_published")
+    assert control["active_source_version_id"] == recovered["source_version_id"]
+    assert control["active_generation_id"] == state[0]
+    assert control["active_dataset_digest"] == state[1]
+    assert import_write_gate_state()["blocked"] == 0
 
 
 def test_snapshot_tail_materializes_replayable_delta_and_noop_is_side_effect_free(
@@ -362,8 +619,7 @@ def test_replace_transaction_fence_rejects_stale_baseline_before_delete(tmp_path
 
 
 def test_prepared_after_fact_commit_recovers_control_evidence_and_source(tmp_path, monkeypatch):
-    import pytest
-
+    from backend.core import db as db_module
     from backend.domains.imports.control_store import get_run, import_write_gate_state
     from backend.services.import_publication_service import recover_interrupted_publications
 
@@ -375,20 +631,18 @@ def test_prepared_after_fact_commit_recovers_control_evidence_and_source(tmp_pat
     def hard_stop(*_args, **_kwargs):
         raise KeyboardInterrupt("simulated hard stop after fact commit")
 
-    monkeypatch.setattr(api, "mark_facts_committed", hard_stop)
-    with pytest.raises(KeyboardInterrupt):
-        _execute(api, crashed, mode="replace")
+    original_db_path = db_module.DB_PATH
+    original_account_dir = api.ACCOUNT_DATA_DIR
+    with monkeypatch.context() as crash_patch:
+        crash_patch.setattr(api, "mark_facts_committed", hard_stop)
+        with pytest.raises(KeyboardInterrupt):
+            _execute(api, crashed, mode="replace")
     run = get_run(crashed[0])
     assert run["publication_state"] == "prepared"
     assert run["change_set"] is None
     assert import_write_gate_state()["blocked"] == 1
-    monkeypatch.undo()
-    # Restore only the paths needed after undoing the injected hard stop.
-    from backend.api import import_ as restored_api
-    from backend.core import db as restored_db
-
-    restored_db.DB_PATH = str(_database)
-    restored_api.ACCOUNT_DATA_DIR = str(_account)
+    assert db_module.DB_PATH == original_db_path == str(_database)
+    assert api.ACCOUNT_DATA_DIR == original_account_dir == str(_account)
     assert recover_interrupted_publications() == {
         "completed": 1,
         "not_committed": 0,
@@ -399,3 +653,5 @@ def test_prepared_after_fact_commit_recovers_control_evidence_and_source(tmp_pat
     assert recovered["change_set"] is not None
     assert recovered["new_generation_id"] == recovered["change_set"]["generation_id"]
     assert import_write_gate_state()["blocked"] == 0
+    assert db_module.DB_PATH == original_db_path
+    assert api.ACCOUNT_DATA_DIR == original_account_dir

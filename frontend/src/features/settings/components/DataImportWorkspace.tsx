@@ -105,6 +105,7 @@ function ImportResult({
   const result = run.result ?? {}
   const qualityCount = Number(result.quality_issue_count ?? result.warning_count ?? 0)
   const noop = result.noop === true || result.executed_strategy === 'noop'
+  const sourceUnregistered = result.source_registration_status === 'not_registered'
   const factsPublished = ['facts_committed', 'sources_published', 'core_ready', 'ready'].includes(run.publication_state)
 
   return (
@@ -114,7 +115,11 @@ function ImportResult({
           title={noop ? '数据未变化' : '数据已更新'}
           icon={Database}
           state={noop ? '播放事实保持不变' : factsPublished ? '播放事实已提交' : run.status === 'failed' ? '播放事实未更新' : '等待事实发布'}
-          detail={noop ? '输入包与活动基线一致；没有重写播放事实或创建恢复备份。' : factsPublished ? `发布状态：${run.publication_state}` : run.message || '输入仍在检查或执行中'}
+          detail={noop
+            ? sourceUnregistered
+              ? '输入包与活动基线一致，播放事实未重写；活动原始来源尚未登记，请使用覆盖全部历史的完整导出并选择完整替换。'
+              : '输入包与活动基线一致；没有重写播放事实或创建恢复备份。'
+            : factsPublished ? `发布状态：${run.publication_state}` : run.message || '输入仍在检查或执行中'}
         />
         <ResultDimension
           title="统计准备情况"

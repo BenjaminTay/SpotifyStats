@@ -115,6 +115,32 @@ describe('data import workspace', () => {
     expect(screen.queryByText('播放事实已提交')).not.toBeInTheDocument()
   })
 
+  it('explains how to register a legacy source without claiming facts changed', () => {
+    const value = hookResult()
+    value.run = {
+      ...value.run,
+      status: 'succeeded',
+      publication_state: 'legacy_source_unregistered',
+      message: '输入数据未变化，活动原始来源尚未登记',
+      retryable: false,
+      result: {
+        executed_strategy: 'noop',
+        noop: true,
+        source_registration_status: 'not_registered',
+        next_action: 'replace_with_complete_snapshot',
+      },
+      stages: [],
+      completed_at: '2026-09-21T00:01:00Z',
+    }
+    useDataImportMock.mockReturnValue(value)
+
+    render(<DataImportWorkspace presentation="desktop" dbRecordCount={94760} accountImported />, { wrapper })
+
+    expect(screen.getByText('播放事实保持不变')).toBeVisible()
+    expect(screen.getByText(/活动原始来源尚未登记.*完整导出.*完整替换/)).toBeVisible()
+    expect(screen.queryByText('播放事实已提交')).not.toBeInTheDocument()
+  })
+
   it('clears the previous plan and binds upload/finalize to the newly created batch', async () => {
     const createBatch = vi.fn().mockResolvedValue({ batch_id: 'batch-new' })
     const uploadFile = vi.fn().mockResolvedValue({ batch_id: 'batch-new' })

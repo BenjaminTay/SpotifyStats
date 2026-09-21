@@ -30,7 +30,9 @@ from backend.domains.imports.change_set import (
 from backend.domains.imports.control_store import (
     active_source_state,
     clear_import_write_quarantine,
+    import_write_gate_state,
     latest_stage_attempts,
+    pending_publications,
     quarantine_import_writes,
     record_report_result,
 )
@@ -62,7 +64,11 @@ from backend.domains.imports.execution import (
     ImportExecutionDecision,
     resolve_import_execution,
 )
-from backend.domains.imports.incremental import FingerprintRecord, dataset_digest
+from backend.domains.imports.incremental import (
+    FINGERPRINT_VERSION,
+    FingerprintRecord,
+    dataset_digest,
+)
 from backend.domains.imports.source_registry import (
     ImportSourceError,
     create_receiving_batch,
@@ -266,24 +272,105 @@ def _batch_confirmation_token(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _assert_confirmed_source_alignment(assessment: StreamingImportAssessment) -> None:
-    """Fence the main transactional source pointer against the control store."""
+SourceAlignment = Literal["empty", "legacy_unregistered", "published"]
 
-    source = active_source_state()
-    actual = (
-        source.get("active_source_version_id"),
-        source.get("active_generation_id"),
-        source.get("active_dataset_digest"),
-    )
-    expected = (
-        assessment.existing_source_version_id,
+
+def _assert_confirmed_source_alignment(
+    assessment: StreamingImportAssessment,
+) -> SourceAlignment:
+    """Classify a fenced baseline without mistaking valid legacy state for drift."""
+
+    conn = get_db(readonly=True)
+    try:
+        state = conn.execute(
+            """SELECT active_generation_id,dataset_digest,record_count,
+                      fingerprint_version,active_source_version_id,
+                      active_publication_id,publication_state
+               FROM playback_import_state WHERE state_id=1"""
+        ).fetchone()
+        fact_count = int(conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0])
+    finally:
+        conn.close()
+    if state is None:
+        raise ConfirmedImportPlanDriftError("主库导入状态缺失；请先恢复导入状态")
+
+    generation_id = str(state[0]) if state[0] else None
+    digest = str(state[1]) if state[1] else None
+    state_count = int(state[2] or 0)
+    fingerprint_version = int(state[3]) if state[3] is not None else None
+    source_version_id = str(state[4]) if state[4] else None
+    publication_id = str(state[5]) if state[5] else None
+    publication_state = str(state[6] or "")
+    expected_main = (
         assessment.existing_generation_id,
         assessment.existing_dataset_digest,
+        assessment.existing_state_record_count,
+        assessment.existing_fingerprint_version,
+        assessment.existing_source_version_id,
+        assessment.existing_record_count,
     )
-    if tuple(value or None for value in actual) != tuple(value or None for value in expected):
-        raise ConfirmedImportPlanDriftError(
-            "主库事实与活动原始来源不一致；请先恢复来源发布后再导入"
-        )
+    actual_main = (
+        generation_id,
+        digest,
+        state_count,
+        fingerprint_version,
+        source_version_id,
+        fact_count,
+    )
+    if actual_main != expected_main:
+        raise ConfirmedImportPlanDriftError("主库事实或导入状态已变化；请重新预检后再导入")
+
+    source = active_source_state()
+    control_source = str(source.get("active_source_version_id") or "") or None
+    control_generation = str(source.get("active_generation_id") or "") or None
+    control_digest = str(source.get("active_dataset_digest") or "") or None
+    pending = pending_publications()
+    gate = import_write_gate_state()
+    has_recovery_evidence = bool(pending) or bool(gate.get("blocked"))
+
+    if (
+        fact_count == 0
+        and generation_id is None
+        and digest is None
+        and source_version_id is None
+        and publication_id is None
+        and control_source is None
+        and control_generation is None
+        and control_digest is None
+        and not has_recovery_evidence
+    ):
+        return "empty"
+
+    if (
+        fact_count > 0
+        and assessment.baseline_status == "ready"
+        and generation_id is not None
+        and digest is not None
+        and state_count == fact_count
+        and fingerprint_version == FINGERPRINT_VERSION
+        and source_version_id is None
+        and publication_id is None
+        and publication_state == "legacy"
+        and control_source is None
+        and control_generation is None
+        and control_digest is None
+        and not has_recovery_evidence
+    ):
+        return "legacy_unregistered"
+
+    if (
+        source_version_id is not None
+        and publication_id is not None
+        and publication_state in {"sources_published", "core_ready", "ready"}
+        and (control_source, control_generation, control_digest)
+        == (source_version_id, generation_id, digest)
+        and not has_recovery_evidence
+    ):
+        return "published"
+
+    raise ConfirmedImportPlanDriftError(
+        "主库事实、活动原始来源或恢复状态不一致；请先完成来源恢复后再导入"
+    )
 
 
 def _active_fact_source_target(
@@ -313,6 +400,7 @@ def _prepare_publication_source(
     assessment: StreamingImportAssessment,
     *,
     strategy: Literal["incremental", "reconcile", "full"],
+    source_alignment: SourceAlignment,
 ) -> str:
     """Bind the immutable intake packet to an exact replayable source version."""
 
@@ -321,8 +409,19 @@ def _prepare_publication_source(
         raise ImportSourceError("batch_unavailable")
     if strategy == "incremental":
         expected_count, expected_digest = _active_fact_source_target(assessment)
+        candidate_summary = source_dataset_summary(batch_id)
+        if (
+            int(candidate_summary["record_count"]) == expected_count
+            and str(candidate_summary["dataset_digest"]) == expected_digest
+        ):
+            return batch_id
         parent_id = assessment.existing_source_version_id
         if assessment.existing_record_count and not parent_id:
+            if source_alignment == "legacy_unregistered":
+                raise ImportSourceError(
+                    "legacy_source_baseline_requires_full_snapshot",
+                    "当前旧版基线尚未登记活动来源；请提供覆盖全部历史的完整导出并选择完整替换",
+                )
             raise ImportSourceError("active_source_baseline_missing")
         if parent_id:
             parent_summary = source_dataset_summary(parent_id)
@@ -330,12 +429,6 @@ def _prepare_publication_source(
                 parent_summary["dataset_digest"]
             ) != str(assessment.existing_dataset_digest or ""):
                 raise ImportSourceError("active_source_semantic_drift")
-        candidate_summary = source_dataset_summary(batch_id)
-        if (
-            int(candidate_summary["record_count"]) == expected_count
-            and str(candidate_summary["dataset_digest"]) == expected_digest
-        ):
-            return batch_id
         if not parent_id:
             raise ImportSourceError("delta_parent_missing")
         publication = freeze_local_batch(
@@ -456,11 +549,18 @@ def _execute_control_run(
     rollback = None
     rollback_error: Exception | None = None
 
+    def is_pre_dml_source_block(exc: BaseException) -> bool:
+        return isinstance(exc, ImportSourceError) and exc.error_code in {
+            "legacy_source_baseline_requires_full_snapshot",
+        }
+
     def restore_before_publication_unlock(_exc: BaseException) -> None:
         nonlocal rollback, rollback_error
         if facts_committed:
             return
-        if isinstance(_exc, (ConfirmedImportPlanDriftError, ImportBaselineDriftError)):
+        if isinstance(_exc, (ConfirmedImportPlanDriftError, ImportBaselineDriftError)) or (
+            is_pre_dml_source_block(_exc)
+        ):
             rollback = {"status": "skipped", "reason": "confirmed_plan_drift_before_dml"}
             clear_import_write_quarantine(run_id)
             return
@@ -533,8 +633,27 @@ def _execute_control_run(
                 ImportExecutionAction.NEEDS_CONFIRMATION,
             }:
                 raise ConfirmedImportPlanDriftError(decision.message)
-            _assert_confirmed_source_alignment(assessment)
+            source_alignment = _assert_confirmed_source_alignment(assessment)
             if decision.action is ImportExecutionAction.NOOP:
+                if source_alignment == "legacy_unregistered":
+                    update_control_run(
+                        run_id,
+                        status="succeeded",
+                        publication_state="legacy_source_unregistered",
+                        progress_pct=1.0,
+                        message=(
+                            "输入数据未变化，播放事实保持不变；活动原始来源尚未登记，"
+                            "请提供覆盖全部历史的完整导出并选择完整替换"
+                        ),
+                        result_json={
+                            "noop": True,
+                            "executed_strategy": "noop",
+                            "source_registration_status": "not_registered",
+                            "next_action": "replace_with_complete_snapshot",
+                        },
+                        completed_at=control_utc_now(),
+                    )
+                    return
                 update_control_run(
                     run_id,
                     status="succeeded",
@@ -559,6 +678,7 @@ def _execute_control_run(
                 batch_id,
                 assessment,
                 strategy=strategy,
+                source_alignment=source_alignment,
             )
             update_control_run(run_id, source_version_id=source_version_id)
             state_conn = get_db(readonly=True)
@@ -688,8 +808,8 @@ def _execute_control_run(
                 and any(marker in str(exc).lower() for marker in ("locked", "busy"))
             )
         )
-        before_facts_blocked = not facts_committed and isinstance(
-            exc, ConfirmedImportPlanDriftError
+        before_facts_blocked = not facts_committed and (
+            isinstance(exc, ConfirmedImportPlanDriftError) or is_pre_dml_source_block(exc)
         )
         update_control_run(
             run_id,
