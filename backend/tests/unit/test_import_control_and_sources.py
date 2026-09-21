@@ -111,7 +111,7 @@ def test_publication_recovery_completes_source_pointer_from_main_fact_provenance
         get_run,
         update_run,
     )
-    from backend.domains.imports.source_registry import freeze_local_batch
+    from backend.domains.imports.source_registry import freeze_local_batch, source_dataset_summary
     from backend.services.import_publication_service import recover_interrupted_publications
 
     database = tmp_path / "state" / "app.db"
@@ -132,6 +132,7 @@ def test_publication_recovery_completes_source_pointer_from_main_fact_provenance
             [{"ts": "2025-01-01T00:00:00Z", "ms_played": 1000}],
         )
     )
+    source_summary = source_dataset_summary(batch["batch_id"])
     create_run(
         run_id="run-recover",
         execution_key="recover-key",
@@ -148,14 +149,20 @@ def test_publication_recovery_completes_source_pointer_from_main_fact_provenance
         status="running",
         publication_state="facts_committed",
         new_generation_id="generation-1",
-        new_dataset_digest="digest-1",
+        new_dataset_digest=source_summary["dataset_digest"],
     )
     conn = sqlite3.connect(database)
     conn.execute(
         """UPDATE playback_import_state
-           SET active_generation_id='generation-1', dataset_digest='digest-1',
-               active_publication_id='run-recover', publication_state='facts_committed'
-           WHERE state_id=1"""
+           SET active_generation_id='generation-1', dataset_digest=?, record_count=?,
+               active_source_version_id=?, active_publication_id='run-recover',
+               publication_state='facts_committed'
+           WHERE state_id=1""",
+        (
+            source_summary["dataset_digest"],
+            source_summary["record_count"],
+            batch["batch_id"],
+        ),
     )
     conn.commit()
     conn.close()
@@ -1328,7 +1335,7 @@ def test_source_pointer_is_restored_if_main_provenance_update_fails(tmp_path, mo
         set_active_source,
         update_run,
     )
-    from backend.domains.imports.source_registry import freeze_local_batch
+    from backend.domains.imports.source_registry import freeze_local_batch, source_dataset_summary
     from backend.services import import_publication_service as service
 
     database = tmp_path / "state" / "app.db"
@@ -1344,6 +1351,7 @@ def test_source_pointer_is_restored_if_main_provenance_update_fails(tmp_path, mo
     monkeypatch.setattr(db_module, "DB_PATH", str(database))
     old = freeze_local_batch(_packet(tmp_path / "old-source", "0", [{"ts": "old"}]))
     new = freeze_local_batch(_packet(tmp_path / "new-source", "0", [{"ts": "new"}]))
+    new_summary = source_dataset_summary(new["batch_id"])
     set_active_source(old["batch_id"], "generation-old", "digest-old")
     create_run(
         run_id="run-source-rollback",
@@ -1364,14 +1372,20 @@ def test_source_pointer_is_restored_if_main_provenance_update_fails(tmp_path, mo
         old_dataset_digest="digest-old",
         old_source_version_id=old["batch_id"],
         new_generation_id="generation-new",
-        new_dataset_digest="digest-new",
+        new_dataset_digest=new_summary["dataset_digest"],
     )
     setup = sqlite3.connect(database)
     setup.execute(
         """UPDATE playback_import_state
-           SET active_generation_id='generation-new',dataset_digest='digest-new',
-               active_publication_id='run-source-rollback',publication_state='facts_committed'
-           WHERE state_id=1"""
+           SET active_generation_id='generation-new',dataset_digest=?,record_count=?,
+               active_source_version_id=?,active_publication_id='run-source-rollback',
+               publication_state='facts_committed'
+           WHERE state_id=1""",
+        (
+            new_summary["dataset_digest"],
+            new_summary["record_count"],
+            new["batch_id"],
+        ),
     )
     setup.commit()
     setup.close()
@@ -1398,6 +1412,6 @@ def test_source_pointer_is_restored_if_main_provenance_update_fails(tmp_path, mo
             "run-source-rollback",
             new["batch_id"],
             generation_id="generation-new",
-            dataset_digest="digest-new",
+            dataset_digest=new_summary["dataset_digest"],
         )
     assert active_source_state()["active_source_version_id"] == old["batch_id"]

@@ -242,6 +242,7 @@ def update_run(run_id: str, *, db_path: str | None = None, **fields: Any) -> Non
         "message",
         "result_json",
         "change_set_json",
+        "source_version_id",
         "old_generation_id",
         "old_dataset_digest",
         "old_source_version_id",
@@ -430,6 +431,42 @@ def mark_sources_published_and_clear_quarantine(
                WHERE state_id=1""",
             (now,),
         )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def recover_prepared_facts(
+    run_id: str,
+    *,
+    generation_id: str,
+    dataset_digest: str,
+    change_set: dict[str, Any],
+    db_path: str | None = None,
+) -> None:
+    """CAS a prepared run forward using evidence committed in the main DB."""
+
+    conn = connect_control(db_path)
+    now = utc_now()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.execute(
+            """UPDATE import_runs
+               SET status='running', publication_state='facts_committed',
+                   new_generation_id=?, new_dataset_digest=?, change_set_json=?,
+                   progress_pct=0.6,
+                   message='已从主库恢复事实提交证据，正在发布活动原始来源',
+                   recovery_status='facts_evidence_recovered',
+                   error_code=NULL, error_detail=NULL, retryable=0,
+                   completed_at=NULL, updated_at=?
+               WHERE run_id=? AND publication_state='prepared'""",
+            (generation_id, dataset_digest, json_text(change_set), now, run_id),
+        )
+        if cursor.rowcount != 1:
+            raise RuntimeError("prepared_fact_recovery_compare_and_swap_failed")
         conn.commit()
     except Exception:
         conn.rollback()

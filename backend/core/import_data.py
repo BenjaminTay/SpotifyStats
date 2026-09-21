@@ -8,6 +8,7 @@ import os
 import re
 import sqlite3
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
@@ -38,6 +39,22 @@ _PLAY_INSERT_SQL = """INSERT INTO plays(
    source_fingerprint, source_fingerprint_version, import_generation_id)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 _PLAY_BATCH_SIZE = 5000
+
+
+class ImportBaselineDriftError(RuntimeError):
+    """The active playback baseline no longer matches the confirmed plan."""
+
+    error_code = "confirmed_plan_drift"
+
+
+@dataclass(frozen=True)
+class ImportBaselineFence:
+    generation_id: str | None
+    dataset_digest: str | None
+    source_version_id: str | None
+    state_record_count: int
+    play_count: int
+    fingerprint_version: int | None
 
 
 def _replace_schema_is_transaction_ready(conn: sqlite3.Connection) -> bool:
@@ -484,6 +501,7 @@ def import_data(
     mode: Literal["replace", "append", "reconcile"] = "replace",
     generation_id: str | None = None,
     expected_previous_digest: str | None = None,
+    expected_baseline: ImportBaselineFence | None = None,
     removed_identities: frozenset[RecordIdentity] | None = None,
     before_final_commit: Callable[[sqlite3.Connection, dict[str, Any]], None] | None = None,
     staging: StreamingImportStaging | None = None,
@@ -504,6 +522,7 @@ def import_data(
             mode=mode,
             generation_id=generation_id,
             expected_previous_digest=expected_previous_digest,
+            expected_baseline=expected_baseline,
             removed_identities=removed_identities,
             before_final_commit=before_final_commit,
             staging=staging,
@@ -531,6 +550,7 @@ def _import_data_impl(
     mode: Literal["replace", "append", "reconcile"] = "replace",
     generation_id: str | None = None,
     expected_previous_digest: str | None = None,
+    expected_baseline: ImportBaselineFence | None = None,
     removed_identities: frozenset[RecordIdentity] | None = None,
     before_final_commit: Callable[[sqlite3.Connection, dict[str, Any]], None] | None = None,
     staging: StreamingImportStaging | None = None,
@@ -617,15 +637,35 @@ def _import_data_impl(
     conn = get_db(readonly=False)
     if connection_holder is not None:
         connection_holder.append(conn)
-    if mode in {"append", "reconcile"}:
-        # Acquire the write reservation before reading the active fingerprint
-        # baseline so an external writer cannot swap facts between validation
-        # and the first append DML statement.
-        conn.execute("BEGIN IMMEDIATE")
-    else:
-        # Keep clearing, every inserted batch, the transactional finalizer, and
-        # the active fact publication under one rollback boundary.
-        conn.execute("BEGIN IMMEDIATE")
+    # Acquire the write reservation before checking the confirmed baseline.
+    # Every strategy, including replace and first initialization, must cross
+    # this transaction-local fence before its first fact DML statement.
+    conn.execute("BEGIN IMMEDIATE")
+    if expected_baseline is not None:
+        state = conn.execute(
+            """SELECT active_generation_id,dataset_digest,active_source_version_id,
+                      record_count,fingerprint_version
+               FROM playback_import_state WHERE state_id=1"""
+        ).fetchone()
+        actual = ImportBaselineFence(
+            generation_id=(str(state[0]) if state and state[0] else None),
+            dataset_digest=(str(state[1]) if state and state[1] else None),
+            source_version_id=(str(state[2]) if state and state[2] else None),
+            state_record_count=(int(state[3] or 0) if state else 0),
+            play_count=int(conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0]),
+            fingerprint_version=(int(state[4]) if state and state[4] is not None else None),
+        )
+        if actual != expected_baseline:
+            raise ImportBaselineDriftError("active playback baseline changed after import planning")
+        if expected_baseline.dataset_digest is not None:
+            summary_count, _first, _latest, summary_digest = _active_dataset_summary(conn)
+            if (
+                summary_count != expected_baseline.play_count
+                or summary_digest != expected_baseline.dataset_digest
+            ):
+                raise ImportBaselineDriftError(
+                    "active playback facts no longer match the published baseline"
+                )
     if mode == "replace":
         conn.execute("DELETE FROM plays")
         conn.execute("DELETE FROM agg_weekly_tracks")

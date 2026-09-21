@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from backend.core import db as db_module
 from backend.core.db import get_db
+from backend.domains.imports.change_set import PlaybackChangeSet
 from backend.domains.imports.control_store import (
     active_source_state,
     get_run,
@@ -15,12 +17,16 @@ from backend.domains.imports.control_store import (
     mark_sources_published_and_clear_quarantine,
     pending_publications,
     quarantine_import_writes,
+    recover_prepared_facts,
     restore_active_source,
     set_active_source,
     update_run,
     utc_now,
 )
-from backend.domains.imports.source_registry import resolve_batch_directory
+from backend.domains.imports.source_registry import (
+    resolve_batch_directory,
+    source_dataset_summary,
+)
 
 
 class PublicationRecoveryError(RuntimeError):
@@ -70,22 +76,32 @@ def mark_facts_committed(
 
 def publish_sources(
     run_id: str,
-    batch_id: str,
+    batch_id: str | None = None,
     *,
     generation_id: str,
     dataset_digest: str,
+    db_path: str | None = None,
 ) -> None:
     """Publish an already-frozen source and mark the main provenance visible."""
 
-    resolve_batch_directory(batch_id, active=True)
-    run = get_run(run_id)
+    run = get_run(run_id, db_path=db_path)
     if run is None:
         raise PublicationRecoveryError("publication_run_missing")
-    conn = get_db(readonly=False)
+    source_version_id = str(run.get("source_version_id") or "")
+    if not source_version_id or (batch_id is not None and batch_id != source_version_id):
+        raise PublicationRecoveryError("publication_source_binding_drift")
+    resolve_batch_directory(source_version_id, active=True, db_path=db_path)
+    source_summary = source_dataset_summary(source_version_id, db_path=db_path)
+    conn = (
+        get_db(readonly=False)
+        if db_path is None or Path(db_path).resolve() == Path(db_module.DB_PATH).resolve()
+        else sqlite3.connect(db_path)
+    )
     try:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            """SELECT active_generation_id, dataset_digest, active_publication_id
+            """SELECT active_generation_id, dataset_digest, active_publication_id,
+                      record_count,active_source_version_id
                FROM playback_import_state WHERE state_id=1"""
         ).fetchone()
         if (
@@ -93,31 +109,39 @@ def publish_sources(
             or str(row[0] or "") != generation_id
             or str(row[1] or "") != dataset_digest
             or str(row[2] or "") != run_id
+            or int(row[3] or 0) != int(source_summary["record_count"])
+            or str(row[4] or "") != source_version_id
+            or str(source_summary["dataset_digest"]) != dataset_digest
         ):
             raise PublicationRecoveryError("publication_main_state_drift")
         conn.rollback()
     finally:
         conn.close()
 
-    source_state = active_source_state()
+    source_state = active_source_state(db_path=db_path)
     current_source = source_state.get("active_source_version_id")
     if str(current_source or "") == str(run.get("old_source_version_id") or ""):
         set_active_source(
-            batch_id,
+            source_version_id,
             generation_id,
             dataset_digest,
             expected_source_version_id=run.get("old_source_version_id"),
+            db_path=db_path,
         )
-    elif str(current_source or "") != batch_id:
+    elif str(current_source or "") != source_version_id:
         raise PublicationRecoveryError("publication_source_state_drift")
-    conn = get_db(readonly=False)
+    conn = (
+        get_db(readonly=False)
+        if db_path is None or Path(db_path).resolve() == Path(db_module.DB_PATH).resolve()
+        else sqlite3.connect(db_path)
+    )
     try:
         conn.execute("BEGIN IMMEDIATE")
         conn.execute(
             """UPDATE playback_import_state
                SET active_source_version_id=?, publication_state='sources_published'
                WHERE state_id=1 AND active_publication_id=?""",
-            (batch_id, run_id),
+            (source_version_id, run_id),
         )
         conn.commit()
     except Exception:
@@ -126,7 +150,8 @@ def publish_sources(
             run.get("old_source_version_id"),
             run.get("old_generation_id"),
             run.get("old_dataset_digest"),
-            expected_source_version_id=batch_id,
+            expected_source_version_id=source_version_id,
+            db_path=db_path,
         )
         raise
     finally:
@@ -135,7 +160,72 @@ def publish_sources(
         run_id,
         progress_pct=0.65,
         message="播放事实与活动原始来源已发布",
+        db_path=db_path,
     )
+
+
+def _recover_prepared_fact_evidence(
+    run: dict[str, Any],
+    *,
+    database: Path,
+) -> tuple[str, str]:
+    """Promote prepared only from the provenance atomically committed with facts."""
+
+    run_id = str(run["run_id"])
+    conn = sqlite3.connect(database)
+    conn.row_factory = sqlite3.Row
+    try:
+        state = conn.execute(
+            """SELECT active_generation_id,dataset_digest,active_publication_id,
+                      active_source_version_id
+               FROM playback_import_state WHERE state_id=1"""
+        ).fetchone()
+        main_run = conn.execute(
+            """SELECT run_id,status,incoming_digest,previous_digest,change_set_json,
+                      batch_id,source_version_id,publication_id
+               FROM playback_import_runs WHERE run_id=?""",
+            (run_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if state is None or main_run is None:
+        raise PublicationRecoveryError("recovery_fact_evidence_invalid")
+    generation_id = str(state[0] or "")
+    digest = str(state[1] or "")
+    source_version_id = str(run.get("source_version_id") or "")
+    if (
+        not generation_id
+        or not digest
+        or str(state[2] or "") != run_id
+        or str(state[3] or "") != source_version_id
+        or str(main_run[0] or "") != run_id
+        or str(main_run[1] or "") != "maintenance_pending"
+        or str(main_run[5] or "") != str(run.get("batch_id") or "")
+        or str(main_run[6] or "") != source_version_id
+        or str(main_run[7] or "") != run_id
+    ):
+        raise PublicationRecoveryError("recovery_fact_evidence_invalid")
+    try:
+        change_set_payload = json.loads(str(main_run[4] or ""))
+        change_set = PlaybackChangeSet.from_dict(change_set_payload)
+        control_plan = json.loads(str(run.get("plan_json") or "{}"))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise PublicationRecoveryError("recovery_fact_evidence_invalid") from exc
+    if (
+        change_set.generation_id != generation_id
+        or str(main_run[2] or "") != str(control_plan.get("incoming_digest") or "")
+        or (main_run[3] or None) != control_plan.get("previous_digest")
+        or change_set.previous_dataset_digest != (run.get("old_dataset_digest") or None)
+    ):
+        raise PublicationRecoveryError("recovery_fact_evidence_invalid")
+    recover_prepared_facts(
+        run_id,
+        generation_id=generation_id,
+        dataset_digest=digest,
+        change_set=change_set.to_dict(),
+        db_path=str(database),
+    )
+    return generation_id, digest
 
 
 def recover_interrupted_publications(*, db_path: str | None = None) -> dict[str, int]:
@@ -187,11 +277,18 @@ def _recover_interrupted_publications_locked(*, db_path: str | None = None) -> d
             conn.close()
         if state is not None and str(state[2] or "") == run_id:
             try:
+                generation_id = str(state[0])
+                dataset_digest = str(state[1])
+                if run["publication_state"] == "prepared":
+                    generation_id, dataset_digest = _recover_prepared_fact_evidence(
+                        run,
+                        database=database,
+                    )
                 publish_sources(
                     run_id,
-                    str(run["batch_id"]),
-                    generation_id=str(state[0]),
-                    dataset_digest=str(state[1]),
+                    generation_id=generation_id,
+                    dataset_digest=dataset_digest,
+                    db_path=str(database),
                 )
                 update_run(run_id, db_path=str(database), recovery_status="completed_forward")
                 report["completed"] += 1

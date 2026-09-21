@@ -29,6 +29,7 @@ def build_import_run_report(run_id: str, *, db_path: str | None = None) -> dict[
     if run is None:
         raise KeyError(run_id)
     batch = get_batch(str(run["batch_id"]), db_path=db_path)
+    source_version = get_batch(str(run["source_version_id"]), db_path=db_path)
     stages = latest_stage_attempts(run_id, db_path=db_path)
     stage_reports = []
     errors: list[dict[str, Any]] = []
@@ -96,6 +97,14 @@ def build_import_run_report(run_id: str, *, db_path: str | None = None) -> dict[
             "parent_source_version_id": (batch.get("parent_source_version_id") if batch else None),
             "detected_relation": run.get("detected_relation"),
             "baseline_reason_code": run.get("baseline_reason_code"),
+        },
+        "publication_source": {
+            "source_version_id": run.get("source_version_id"),
+            "kind": source_version.get("kind") if source_version else None,
+            "manifest_digest": source_version.get("manifest_digest") if source_version else None,
+            "parent_source_version_id": (
+                source_version.get("parent_source_version_id") if source_version else None
+            ),
         },
         "execution": {
             "requested_mode": run.get("requested_mode"),

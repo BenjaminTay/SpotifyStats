@@ -15,7 +15,12 @@ from backend.core.auth import require_auth
 from backend.core.cache_manager import invalidate_all
 from backend.core.db import get_db
 from backend.core.import_account_data import ACCOUNT_DATA_DIR, import_all
-from backend.core.import_data import DATA_DIR, import_data
+from backend.core.import_data import (
+    DATA_DIR,
+    ImportBaselineDriftError,
+    ImportBaselineFence,
+    import_data,
+)
 from backend.dependencies import get_conn
 from backend.domains.imports.change_set import (
     PlaybackChangeSet,
@@ -23,6 +28,7 @@ from backend.domains.imports.change_set import (
     publish_year_partition_state,
 )
 from backend.domains.imports.control_store import (
+    active_source_state,
     clear_import_write_quarantine,
     latest_stage_attempts,
     quarantine_import_writes,
@@ -64,6 +70,7 @@ from backend.domains.imports.source_registry import (
     freeze_local_batch,
     receive_batch_file,
     resolve_batch_directory,
+    source_dataset_summary,
     validate_batch_lineage,
 )
 from backend.domains.imports.state import (
@@ -259,6 +266,101 @@ def _batch_confirmation_token(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _assert_confirmed_source_alignment(assessment: StreamingImportAssessment) -> None:
+    """Fence the main transactional source pointer against the control store."""
+
+    source = active_source_state()
+    actual = (
+        source.get("active_source_version_id"),
+        source.get("active_generation_id"),
+        source.get("active_dataset_digest"),
+    )
+    expected = (
+        assessment.existing_source_version_id,
+        assessment.existing_generation_id,
+        assessment.existing_dataset_digest,
+    )
+    if tuple(value or None for value in actual) != tuple(value or None for value in expected):
+        raise ConfirmedImportPlanDriftError(
+            "主库事实与活动原始来源不一致；请先恢复来源发布后再导入"
+        )
+
+
+def _active_fact_source_target(
+    assessment: StreamingImportAssessment,
+) -> tuple[int, str]:
+    conn = get_db(readonly=True)
+    try:
+        rows = conn.execute(
+            """SELECT content_type,source_fingerprint
+               FROM plays
+               WHERE source_fingerprint IS NOT NULL
+               ORDER BY content_type,source_fingerprint"""
+        ).fetchall()
+    finally:
+        conn.close()
+    records = [FingerprintRecord(source_type=str(row[0]), fingerprint=str(row[1])) for row in rows]
+    records.extend(
+        FingerprintRecord(source_type=item.source_type, fingerprint=item.fingerprint)
+        for item in assessment.plan.added
+    )
+    identities = {record.identity for record in records}
+    return len(identities), dataset_digest(records)
+
+
+def _prepare_publication_source(
+    batch_id: str,
+    assessment: StreamingImportAssessment,
+    *,
+    strategy: Literal["incremental", "reconcile", "full"],
+) -> str:
+    """Bind the immutable intake packet to an exact replayable source version."""
+
+    batch = get_control_batch(batch_id)
+    if batch is None:
+        raise ImportSourceError("batch_unavailable")
+    if strategy == "incremental":
+        expected_count, expected_digest = _active_fact_source_target(assessment)
+        parent_id = assessment.existing_source_version_id
+        if assessment.existing_record_count and not parent_id:
+            raise ImportSourceError("active_source_baseline_missing")
+        if parent_id:
+            parent_summary = source_dataset_summary(parent_id)
+            if int(parent_summary["record_count"]) != assessment.existing_record_count or str(
+                parent_summary["dataset_digest"]
+            ) != str(assessment.existing_dataset_digest or ""):
+                raise ImportSourceError("active_source_semantic_drift")
+        candidate_summary = source_dataset_summary(batch_id)
+        if (
+            int(candidate_summary["record_count"]) == expected_count
+            and str(candidate_summary["dataset_digest"]) == expected_digest
+        ):
+            return batch_id
+        if not parent_id:
+            raise ImportSourceError("delta_parent_missing")
+        publication = freeze_local_batch(
+            resolve_batch_directory(batch_id),
+            kind="delta",
+            parent_source_version_id=parent_id,
+        )
+    else:
+        expected_count = assessment.plan.incoming_count
+        expected_digest = assessment.plan.incoming_digest
+        if batch.get("kind") in {"snapshot", "legacy"}:
+            publication = batch
+        else:
+            publication = freeze_local_batch(resolve_batch_directory(batch_id), kind="snapshot")
+
+    publication_id = str(publication["batch_id"])
+    summary = source_dataset_summary(publication_id)
+    if (
+        int(summary["record_count"]) != expected_count
+        or str(summary["dataset_digest"]) != expected_digest
+    ):
+        raise ImportSourceError("publication_source_semantic_mismatch")
+    return publication_id
+
+
 @router.post("/batches", response_model=ImportBatchResponse)
 def create_import_batch(
     request: ImportBatchCreateRequest,
@@ -358,6 +460,10 @@ def _execute_control_run(
         nonlocal rollback, rollback_error
         if facts_committed:
             return
+        if isinstance(_exc, (ConfirmedImportPlanDriftError, ImportBaselineDriftError)):
+            rollback = {"status": "skipped", "reason": "confirmed_plan_drift_before_dml"}
+            clear_import_write_quarantine(run_id)
+            return
         try:
             rollback = _restore_after_import_failure(snapshot)
             clear_import_write_quarantine(run_id)
@@ -395,31 +501,66 @@ def _execute_control_run(
             ImportExecutionAction.NEEDS_CONFIRMATION,
         }:
             raise RuntimeError(decision.message)
-        if decision.action is ImportExecutionAction.NOOP:
-            update_control_run(
-                run_id,
-                status="succeeded",
-                publication_state="ready",
-                progress_pct=1.0,
-                message="输入数据未变化，跳过导入",
-                result_json={"noop": True, "executed_strategy": "noop"},
-                completed_at=control_utc_now(),
-            )
-            return
-
-        import_mode: Literal["append", "reconcile", "replace"]
-        strategy: Literal["incremental", "reconcile", "full"]
-        if decision.action is ImportExecutionAction.APPEND:
-            import_mode, strategy = "append", "incremental"
-        elif decision.action is ImportExecutionAction.RECONCILE:
-            import_mode, strategy = "reconcile", "reconcile"
-        else:
-            import_mode, strategy = "replace", "full"
-
         with exclusive_publication(
             on_error=restore_before_publication_unlock,
             owner_run_id=run_id,
         ):
+            validate_batch_lineage(batch_id)
+            fresh_assessment = assess_streaming_import(
+                packet_dir,
+                ACCOUNT_DATA_DIR,
+                requested_mode=mode,
+                staging=assessment.staging,
+                retain_staging=True,
+            )
+            locked_confirmation = _batch_confirmation_token(
+                batch_id,
+                str(fresh_assessment.report.get("confirmation_token") or ""),
+                mode=mode,
+            )
+            if locked_confirmation != confirmation_digest:
+                raise ConfirmedImportPlanDriftError(
+                    "活动基线或来源谱系已变化；本次执行未开始，请重新预检"
+                )
+            assessment = fresh_assessment
+            decision = resolve_import_execution(
+                assessment.plan,
+                requested_mode=mode,
+                confirm_plan=confirm_plan,
+            )
+            if decision.action in {
+                ImportExecutionAction.BLOCKED,
+                ImportExecutionAction.NEEDS_CONFIRMATION,
+            }:
+                raise ConfirmedImportPlanDriftError(decision.message)
+            _assert_confirmed_source_alignment(assessment)
+            if decision.action is ImportExecutionAction.NOOP:
+                update_control_run(
+                    run_id,
+                    status="succeeded",
+                    publication_state="ready",
+                    progress_pct=1.0,
+                    message="输入数据未变化，跳过导入",
+                    result_json={"noop": True, "executed_strategy": "noop"},
+                    completed_at=control_utc_now(),
+                )
+                return
+
+            import_mode: Literal["append", "reconcile", "replace"]
+            strategy: Literal["incremental", "reconcile", "full"]
+            if decision.action is ImportExecutionAction.APPEND:
+                import_mode, strategy = "append", "incremental"
+            elif decision.action is ImportExecutionAction.RECONCILE:
+                import_mode, strategy = "reconcile", "reconcile"
+            else:
+                import_mode, strategy = "replace", "full"
+
+            source_version_id = _prepare_publication_source(
+                batch_id,
+                assessment,
+                strategy=strategy,
+            )
+            update_control_run(run_id, source_version_id=source_version_id)
             state_conn = get_db(readonly=True)
             try:
                 state = state_conn.execute(
@@ -445,7 +586,7 @@ def _execute_control_run(
                     executed_strategy=strategy,
                     conn=conn,
                     publication_id=run_id,
-                    source_version_id=batch_id,
+                    source_version_id=source_version_id,
                 )
                 change_set = build_playback_change_set(
                     conn,
@@ -464,7 +605,7 @@ def _execute_control_run(
                     plan=assessment.plan,
                     change_set=change_set,
                     batch_id=batch_id,
-                    source_version_id=batch_id,
+                    source_version_id=source_version_id,
                     publication_id=run_id,
                     baseline_reason_code=assessment.baseline_reason_code,
                 )
@@ -492,6 +633,14 @@ def _execute_control_run(
                     assessment.plan.previous_digest
                     if import_mode in {"append", "reconcile"}
                     else None
+                ),
+                expected_baseline=ImportBaselineFence(
+                    generation_id=assessment.existing_generation_id,
+                    dataset_digest=assessment.existing_dataset_digest,
+                    source_version_id=assessment.existing_source_version_id,
+                    state_record_count=assessment.existing_state_record_count,
+                    play_count=assessment.existing_record_count,
+                    fingerprint_version=assessment.existing_fingerprint_version,
                 ),
                 removed_identities=(
                     assessment.plan.removed if import_mode == "reconcile" else None
@@ -525,7 +674,6 @@ def _execute_control_run(
             )
             publish_sources(
                 run_id,
-                batch_id,
                 generation_id=str(result["generation_id"]),
                 dataset_digest=str(result["dataset_digest"]),
             )

@@ -51,6 +51,11 @@ class StreamingImportAssessment:
     staging: StreamingImportStaging | None = None
     baseline_reason_code: str = "not_initialized"
     existing_generation_id: str | None = None
+    existing_source_version_id: str | None = None
+    existing_dataset_digest: str | None = None
+    existing_record_count: int = 0
+    existing_state_record_count: int = 0
+    existing_fingerprint_version: int | None = None
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
@@ -266,15 +271,19 @@ def _confirmation_token(
     existing_account_hash: str | None,
     incoming_account_hash: str | None,
     existing_generation_id: str | None,
+    existing_source_version_id: str | None,
+    existing_dataset_digest: str | None,
     requested_mode: str,
 ) -> str:
     """Bind a confirmation to the exact source and active-dataset evidence."""
     payload = {
-        "schema_version": "streaming-import-confirmation-v1",
+        "schema_version": "streaming-import-confirmation-v2",
         "preflight_contract_version": PREFLIGHT_CONTRACT_VERSION,
         "fingerprint_version": FINGERPRINT_VERSION,
         "requested_mode": requested_mode,
         "existing_generation_id": existing_generation_id,
+        "existing_source_version_id": existing_source_version_id,
+        "existing_dataset_digest": existing_dataset_digest,
         "source_report": report,
         "incoming_digest": plan.incoming_digest,
         "previous_digest": plan.previous_digest,
@@ -326,6 +335,20 @@ def _assess_streaming_import_with_staging(
             existing_account_hash,
             existing_generation_id,
         ) = _load_existing_baseline(active_conn)
+        state_columns = {
+            str(row[1]) for row in active_conn.execute("PRAGMA table_info(playback_import_state)")
+        }
+        source_projection = (
+            "active_source_version_id" if "active_source_version_id" in state_columns else "NULL"
+        )
+        state = active_conn.execute(
+            f"""SELECT {source_projection},record_count,fingerprint_version,dataset_digest
+                FROM playback_import_state WHERE state_id=1"""
+        ).fetchone()
+        existing_source_version_id = str(state[0]) if state and state[0] else None
+        existing_state_record_count = int(state[1] or 0) if state else 0
+        existing_fingerprint_version = int(state[2]) if state and state[2] is not None else None
+        existing_dataset_digest = str(state[3]) if state and state[3] else None
         incoming_account_hash = _account_identity_hash(account_dir)
         existing_first, existing_latest, existing_count = _existing_date_range(active_conn)
         coverage = {
@@ -361,6 +384,8 @@ def _assess_streaming_import_with_staging(
         existing_account_hash=existing_account_hash,
         incoming_account_hash=incoming_account_hash,
         existing_generation_id=existing_generation_id,
+        existing_source_version_id=existing_source_version_id,
+        existing_dataset_digest=existing_dataset_digest,
         requested_mode=requested_mode,
     )
     report.update(
@@ -411,6 +436,11 @@ def _assess_streaming_import_with_staging(
         existing_account_identity_hash=existing_account_hash,
         incoming_account_identity_hash=incoming_account_hash,
         existing_generation_id=existing_generation_id,
+        existing_source_version_id=existing_source_version_id,
+        existing_dataset_digest=existing_dataset_digest,
+        existing_record_count=existing_count,
+        existing_state_record_count=existing_state_record_count,
+        existing_fingerprint_version=existing_fingerprint_version,
         staging=staging,
     )
 

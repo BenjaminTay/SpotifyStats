@@ -25,8 +25,13 @@ from backend.domains.imports.control_store import (
     update_batch,
     utc_now,
 )
-from backend.domains.imports.incremental import FINGERPRINT_VERSION
-from backend.domains.imports.streaming_staging import _sha256_file
+from backend.domains.imports.incremental import (
+    FINGERPRINT_VERSION,
+    FingerprintRecord,
+    dataset_digest,
+)
+from backend.domains.imports.source_inspector import record_fingerprint
+from backend.domains.imports.streaming_staging import StreamingImportStaging, _sha256_file
 
 BatchKind = Literal["snapshot", "delta", "legacy"]
 _SOURCE_PATTERNS = (
@@ -108,7 +113,11 @@ def _resolved_name(source_type: str, ordinal: int, original: str, *, inherited: 
     marker = "parent" if inherited else "batch"
     safe_original = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in original)
     prefix = "Streaming_History_Audio_" if source_type == "audio" else "Streaming_History_Video_"
-    return f"{prefix}{marker}_{ordinal:04d}_{safe_original}"
+    suffix = hashlib.sha256(original.encode("utf-8")).hexdigest()[:12]
+    # Repeated flattened delta generations must not grow names past filesystem
+    # limits. The digest keeps truncated inherited names deterministic.
+    stem = safe_original[:-5] if safe_original.lower().endswith(".json") else safe_original
+    return f"{prefix}{marker}_{ordinal:04d}_{stem[:120]}_{suffix}.json"
 
 
 def _link_or_copy(source: Path, target: Path) -> None:
@@ -571,6 +580,35 @@ def resolve_active_source(*, db_path: str | None = None) -> Path | None:
     if not source_id:
         return None
     return resolve_batch_directory(str(source_id), active=True, db_path=db_path)
+
+
+def source_dataset_summary(
+    batch_id: str,
+    *,
+    db_path: str | None = None,
+) -> dict[str, Any]:
+    """Return the exact deduplicated fingerprint set represented by a source."""
+
+    source = resolve_batch_directory(batch_id, active=True, db_path=db_path)
+    staging = StreamingImportStaging.build(source)
+    try:
+        records: list[FingerprintRecord] = []
+        for source_type in ("audio", "video"):
+            for file_name in staging.file_names(source_type):
+                records.extend(
+                    FingerprintRecord(
+                        source_type=source_type,
+                        fingerprint=record_fingerprint(record),
+                    )
+                    for record in staging.records_for_file(file_name)
+                )
+        identities = {record.identity for record in records}
+        return {
+            "record_count": len(identities),
+            "dataset_digest": dataset_digest(records),
+        }
+    finally:
+        staging.close()
 
 
 def validate_batch_lineage(batch_id: str, *, db_path: str | None = None) -> None:

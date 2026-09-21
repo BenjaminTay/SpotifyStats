@@ -91,7 +91,7 @@ def _install_successful_durable_pipeline(monkeypatch, import_api, *, import_impl
 
     monkeypatch.setattr(import_api, "import_data", import_impl or default_import_data)
 
-    def publish_sources(run_id, batch_id, *, generation_id, dataset_digest):
+    def publish_sources(run_id, batch_id=None, *, generation_id, dataset_digest):
         del batch_id, generation_id, dataset_digest
         update_run(run_id, publication_state="sources_published")
         clear_import_write_quarantine(run_id)
@@ -145,6 +145,12 @@ def reset_import_jobs(monkeypatch, client, tmp_path):
         import_api, "assess_streaming_import", lambda *args, **kwargs: _assessment()
     )
     monkeypatch.setattr(import_api, "_publish_import_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        import_api,
+        "_prepare_publication_source",
+        lambda batch_id, assessment, **kwargs: batch_id,
+    )
+    monkeypatch.setattr(import_api, "_assert_confirmed_source_alignment", lambda assessment: None)
     monkeypatch.setattr(
         import_api,
         "create_database_snapshot",
@@ -424,7 +430,7 @@ def test_streaming_import_job_runs_derived_maintenance_before_done(client, monke
             "change_set": _change_set(kwargs["generation_id"]),
         }
 
-    def fake_publish(run_id, batch_id, **kwargs):
+    def fake_publish(run_id, batch_id=None, **kwargs):
         del batch_id, kwargs
         events.append(("publish_sources",))
         update_run(run_id, publication_state="sources_published")
@@ -972,7 +978,7 @@ def test_streaming_import_keeps_committed_facts_when_maintenance_fails(client, m
     )
     _install_successful_durable_pipeline(monkeypatch, import_api, import_impl=fake_import_data)
 
-    def published_sources(run_id, batch_id, **kwargs):
+    def published_sources(run_id, batch_id=None, **kwargs):
         del batch_id, kwargs
         update_run(run_id, publication_state="sources_published")
 
