@@ -4,7 +4,7 @@
 > 规划：S0–S6 全部实施
 > 实现状态：IMPLEMENTED
 > 验证状态：PASS（真实隔离副本 + 故障恢复 + 性能 + API + 浏览器 + 默认完整 fullstack）
-> Git：S0–S6 已提交 `ae6febc`、`d37c9af`、`37c8431`、`8102f47`；独立复核追加修复 `031075a`；UNPUSHED
+> Git：S0–S6 已提交 `ae6febc`、`d37c9af`、`37c8431`、`8102f47`；独立复核与追加验收提交 `031075a`、`17002f0`、`7d3d079`；UNPUSHED
 > 部署：NOT_DEPLOYED
 
 ## 结论
@@ -71,11 +71,13 @@
 
 追加修复后的本地结果：定向编排 5/5、相关导入组 85/85、完整 unit 1,980 passed / 2 skipped、完整 contract 441 passed、前端 86 files passed / 1 skipped（669 tests passed / 4 skipped）、production build PASS。提交钩子的 ruff、format、mypy 与 secrets 全部 PASS。
 
+最终完整门禁还发现 Community revision 在逐表摘要期间把封面下载、后台任务状态等数据库级并发写入误判为事实漂移，可能让正常 GET 瞬时返回 503。`7d3d079` 将语义摘要固定在一个 SQLite 一致性读快照内；并发提交时本次完整摘要仍可返回但不绑定到较新的 `data_version` 缓存，下次请求重算。新增 WAL 并发回归已通过；真实隔离副本在 80 次封面展示字段提交干扰下连续完成 36 个 Community 请求，全部 200。
+
 ## 性能、API 与浏览器
 
 - ready 基线冷预检三次：5,666.722 / 5,300.994 / 5,539.753 ms，median 5,539.753 ms。
 - 独立 21 个 hot 样本：median 69.662 ms、P95 71.258 ms、max 75.725 ms，满足 P95 ≤500 ms。
-- 最终默认 fullstack 的 22 轮热 API：Import Preflight median 69.443 ms、P95 70.113 ms；所有监测端点 hot P95 均低于 500 ms。
+- 最终默认 fullstack 的 22 轮热 API：Import Preflight median 10.880 ms、P95 12.141 ms；最慢的 `/api/billboard/data` P95 为 345.295 ms，所有监测端点 hot P95 均低于 500 ms。
 - API smoke 153/153；OpenAPI 234 operations、0 unaccounted；GET 149/162 覆盖、13 个明确排除、0 unaccounted。
 - 独立真实浏览器检查覆盖 Desktop、Compact、Phone：导入 noop 流程、状态/历史、44×44 主要触控目标、无横向溢出、无本机绝对路径泄漏。
 - P1 追加修复后再次用真实 Playwright CLI 检查 Desktop 与 390×844 Phone 导入工作台：运行历史与数据健康请求均为 200，Phone `scrollWidth == innerWidth == 390`，可见按钮无小于 44×44 的目标，控制台 0 error；会话验收后已关闭。
@@ -102,7 +104,20 @@
 
 warning 未被虚写为零：seed 有 1 个 LibreSSL/urllib3 环境 warning 与 3 个 AnyIO HTTP 422 弃用 warning；integration 有同一 LibreSSL warning；Vite 保留大 chunk 建议。它们没有改变本次导入合同或门禁结果。
 
-追加修复后的默认完整 fullstack：待本报告提交后在 clean HEAD 上执行并回填；在此之前不把上面的历史 run 冒充为当前 HEAD 证据。
+追加修复后的默认完整 fullstack：`20260921T160828.009214Z-b57c14810266`，mode=`full`，HEAD=`7d3d0795ec978864750d9c63622818d941591758`，启动时 `dirty=false`，数据集=`online_backup`、播放事实 94,760 条，总耗时 1,675,434 ms。八个必需阶段全部 PASS；optional 未选择，不影响默认完整结论。
+
+| 必需阶段 | 状态 | 耗时 ms |
+| --- | --- | ---: |
+| preflight | PASS | 8,279 |
+| quality | PASS | 51,553 |
+| backend | PASS | 612,150 |
+| api | PASS | 197,506 |
+| browser-routes | PASS | 402,254 |
+| browser-interactions | PASS | 81,029 |
+| browser-inventory | PASS | 47,575 |
+| browser-compat | PASS | 274,907 |
+
+该代码 HEAD 门禁明细：Backend seed 2,927 passed / 2 skipped / 4 warnings；真实 integration 186 passed / 1 skipped / 1 warning；Frontend 86 files passed / 1 skipped（669 tests passed / 4 skipped）；API smoke 153/153、boundary 113/113；40 组控件 inventory 共 1,979 个控件、307 个主要触控目标、0 个尺寸违规；Chromium、Firefox、WebKit 全部 PASS。warning 仍是既有 LibreSSL/urllib3、AnyIO HTTP 422 弃用及 Vite 大 chunk 建议，没有被虚写为零。
 
 ## 数据与交付边界
 

@@ -12,7 +12,7 @@
 
 完成证据见 [S0 基线报告](../../reports/2026-09-21-import-remediation-s0-baseline.md)、[S1–S5 实施报告](../../reports/2026-09-21-import-remediation-s1-s5.md)与 [S6 最终验收报告](../../reports/2026-09-21-import-governance-final-acceptance.md)。本文保留原规划内容用于回溯，不再作为待执行计划。
 
-初次 S6 收口后的独立复核曾发现三个 P1，并已在 `031075a` 追加修复：尾包活动来源父链、replace 确认与跨进程发布竞态、prepared/主库已提交崩溃窗口。规划只有在追加的真实编排、来源重放、浏览器和新默认完整 fullstack 全部通过后才维持 ARCHIVED/PASS；具体证据以 S6 最终报告的追加章节为准。
+初次 S6 收口后的独立复核曾发现三个 P1，并已在 `031075a` 追加修复：尾包活动来源父链、replace 确认与跨进程发布竞态、prepared/主库已提交崩溃窗口。最终门禁又在 `7d3d079` 修复 Community 语义 revision 受封面后台并发写入干扰而瞬时 503 的问题。追加的真实编排、来源重放、浏览器和新默认完整 fullstack 均已通过，规划维持 ARCHIVED/PASS；具体证据以 S6 最终报告的追加章节为准。
 
 ## 1. 目标与依据
 
