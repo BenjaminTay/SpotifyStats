@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from threading import Event
+from threading import Event, Thread
 
 import pytest
 
@@ -326,6 +326,64 @@ def test_exact_revision_reacts_to_facts_but_not_cover(monkeypatch, tmp_path):
         conn.commit()
         if conn.execute("SELECT count(*) FROM saved_tracks").fetchone()[0]:
             assert source_revision(conn) != second
+
+
+def test_exact_revision_uses_one_snapshot_during_concurrent_cover_writes(monkeypatch, tmp_path):
+    from backend.core import db
+    from backend.domains.community import snapshot_revision as revision
+
+    target = tmp_path / "source.db"
+    with db.get_db(readonly=True) as source, store.sqlite3.connect(target) as destination:
+        source.backup(destination)
+    with (
+        store.sqlite3.connect(target) as wal_keeper,
+        store.sqlite3.connect(target, timeout=5) as conn,
+    ):
+        assert wal_keeper.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+        initial = revision.source_revision(conn)
+        album_id = conn.execute(
+            "SELECT spotify_album_id FROM spotify_album_meta LIMIT 1"
+        ).fetchone()[0]
+        with store.sqlite3.connect(target) as invalidator:
+            invalidator.execute(
+                "UPDATE spotify_album_meta SET image_url='display-before-scan' "
+                "WHERE spotify_album_id=?",
+                (album_id,),
+            )
+            invalidator.commit()
+
+        scan_started, writer_done = Event(), Event()
+        original = revision._rows_digest
+        first_scan = True
+
+        def pause_first_scan(*args, **kwargs):
+            nonlocal first_scan
+            if first_scan:
+                first_scan = False
+                scan_started.set()
+                assert writer_done.wait(5)
+            return original(*args, **kwargs)
+
+        def update_cover_during_scan():
+            assert scan_started.wait(5)
+            with store.sqlite3.connect(target, timeout=5) as writer:
+                writer.execute(
+                    "UPDATE spotify_album_meta SET image_url='display-during-scan' "
+                    "WHERE spotify_album_id=?",
+                    (album_id,),
+                )
+                writer.commit()
+            writer_done.set()
+
+        monkeypatch.setattr(revision, "_rows_digest", pause_first_scan)
+        writer = Thread(target=update_cover_during_scan)
+        writer.start()
+        assert revision.source_revision(conn) == initial
+        writer.join(timeout=5)
+        assert not writer.is_alive()
+        assert not conn.in_transaction
+        assert revision.source_revision(conn) == initial
 
 
 def test_late_week_boundary_never_posts_before_completion():

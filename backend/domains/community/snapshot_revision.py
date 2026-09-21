@@ -39,37 +39,51 @@ def source_revision(conn):
         token = observer.execute("PRAGMA data_version").fetchone()[0]
         if token == previous:
             return cached
-        deps = {
-            table: _semantic_table_digest(conn, table)
-            for table in (*COMMON, *RECORDS, "saved_tracks", "agg_config")
-            if table != "plays"
-        }
-        # Only fields consumed by raw eligibility, logical event identity, duration,
-        # historical date assignment and collection membership enter this projection.
-        available = {r[1] for r in conn.execute("PRAGMA table_info(plays)")}
-        columns = [
-            c
-            for c in (
-                "play_id",
-                "ts",
-                "ts_date",
-                "ts_dow",
-                "ts_hour",
-                "ms_played",
-                "track_id",
-                "track_name",
-                "source_album_id",
-                "spotify_track_id_at_play",
-                "episode_name",
-                "audiobook_title",
-            )
-            if c in available
-        ]
-        deps["plays"] = _rows_digest(conn, "plays", columns, "play_id")
-        if observer.execute("PRAGMA data_version").fetchone()[0] != token:
-            raise ValueError("Community source changed while collecting revision")
-        revision = digest({"namespace": identity, "dependencies": deps})
-        _observers[namespace] = (observer, token, revision)
+        conn.execute("BEGIN")
+        try:
+            # Pin one SQLite read snapshot before the first dependency scan.
+            # Cover downloads and background-job bookkeeping may keep committing
+            # while this full semantic digest is collected; those writes must not
+            # splice multiple database versions into one revision or turn a valid
+            # read into a transient 503.
+            conn.execute("SELECT rootpage FROM sqlite_schema LIMIT 1").fetchone()
+            deps = {
+                table: _semantic_table_digest(conn, table)
+                for table in (*COMMON, *RECORDS, "saved_tracks", "agg_config")
+                if table != "plays"
+            }
+            # Only fields consumed by raw eligibility, logical event identity, duration,
+            # historical date assignment and collection membership enter this projection.
+            available = {r[1] for r in conn.execute("PRAGMA table_info(plays)")}
+            columns = [
+                c
+                for c in (
+                    "play_id",
+                    "ts",
+                    "ts_date",
+                    "ts_dow",
+                    "ts_hour",
+                    "ms_played",
+                    "track_id",
+                    "track_name",
+                    "source_album_id",
+                    "spotify_track_id_at_play",
+                    "episode_name",
+                    "audiobook_title",
+                )
+                if c in available
+            ]
+            deps["plays"] = _rows_digest(conn, "plays", columns, "play_id")
+            revision = digest({"namespace": identity, "dependencies": deps})
+        finally:
+            conn.rollback()
+
+        # The digest above is still an exact revision of one committed snapshot
+        # when a concurrent commit occurred. It is safe to return, but it must not
+        # be cached against a later data_version token; the next request will
+        # recompute and observe the new committed state.
+        if observer.execute("PRAGMA data_version").fetchone()[0] == token:
+            _observers[namespace] = (observer, token, revision)
         return revision
 
 
