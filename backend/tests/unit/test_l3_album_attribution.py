@@ -16,6 +16,7 @@ from backend.domains.playback.l3_album_attribution import (
     get_l3_album_attribution_state,
     load_l3_song_album_attributions,
     plan_l3_album_attributions,
+    reconcile_l3_album_attribution_dependencies,
 )
 
 pytestmark = pytest.mark.unit
@@ -104,6 +105,33 @@ def _composition(conn: sqlite3.Connection, *track_ids: int, name: str) -> int:
         ((group_id, track_id) for track_id in track_ids),
     )
     return group_id
+
+
+def _play(
+    conn: sqlite3.Connection,
+    *,
+    track_id: int,
+    source_album_id: int,
+    ms_played: int = 180_000,
+) -> None:
+    conn.execute(
+        """INSERT INTO plays(
+               ts, ts_year, ts_month, ts_week, ts_dow, ts_hour, ts_date,
+               platform, ms_played, track_id, content_type, source_album_id
+           ) VALUES (
+               '2026-01-01T00:00:00Z', 2026, 1, 1, 4, 8, '2026-01-01',
+               'fixture', ?, ?, 'audio', ?
+           )""",
+        (ms_played, track_id, source_album_id),
+    )
+    conn.execute(
+        """INSERT INTO track_l1_source_links(
+               l1_id, track_id, evidence_type, observed_plays,
+               first_seen_at, last_seen_at
+           ) VALUES (?, ?, 'play_at_time', 1,
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')""",
+        (track_id, track_id),
+    )
 
 
 def test_live_version_returns_to_studio_and_cover_remains_live_residual() -> None:
@@ -357,6 +385,8 @@ def test_work_without_album_membership_is_persisted_as_uncovered() -> None:
         assert plan.decisions == ()
         assert plan.uncovered_song_keys == ("l1:1",)
         assert plan.exclusions == ()
+        # Complete governance keeps zero-play compatibility identities visible.
+        assert plan_l3_album_attributions(conn, include_unplayed=False).scanned_song_count == 0
         report = apply_l3_album_attribution_plan(conn, plan)
         assert report.scanned_count == 1
         assert report.uncovered_count == 1
@@ -368,6 +398,122 @@ def test_work_without_album_membership_is_persisted_as_uncovered() -> None:
             conn.execute("SELECT COUNT(*) FROM l3_song_album_attribution_issues").fetchone()[0] == 1
         )
         assert plan_l3_album_attributions(conn).changed is False
+    finally:
+        conn.close()
+
+
+def test_played_work_without_album_membership_remains_a_blocking_issue() -> None:
+    conn = _connection()
+    try:
+        conn.execute(
+            "INSERT INTO albums(album_id, album_name, artist_id) VALUES (100, 'Missing Album', 1)"
+        )
+        conn.execute(
+            """INSERT INTO tracks(track_id, track_name, artist_id, album_id)
+               VALUES (1, 'Missing Song', 1, 100)"""
+        )
+        conn.execute(
+            """INSERT INTO track_l1_identities(
+                   l1_id, fallback_track_id, representative_track_id, identity_status
+               ) VALUES (1, 1, 1, 'active')"""
+        )
+        _play(conn, track_id=1, source_album_id=100)
+
+        plan = plan_l3_album_attributions(conn, include_unplayed=False)
+
+        assert plan.scanned_song_count == 1
+        assert plan.decisions == ()
+        assert [(issue.issue_kind, issue.evidence_codes) for issue in plan.issues] == [
+            ("uncovered", ("no_album_project_membership",))
+        ]
+        assert dict(plan.issues[0].evidence)["raw_play_count"] == 1
+        report = apply_l3_album_attribution_plan(
+            conn,
+            plan,
+            include_unplayed=False,
+        )
+        assert report.uncovered_count == 1
+        assert report.scanned_count == 1
+    finally:
+        conn.close()
+
+
+def test_played_conflict_and_invalid_override_are_not_filtered_out() -> None:
+    conn = _connection()
+    try:
+        _project(conn, project_id=10, album_id=100, name="Album A", source_bucket="original")
+        _project(conn, project_id=20, album_id=200, name="Album B", source_bucket="original")
+        _track(conn, track_id=1, album_id=100, project_id=10, name="Conflict Song")
+        _track(conn, track_id=2, album_id=200, project_id=20, name="Conflict Song")
+        _composition(conn, 1, 2, name="Conflict Song")
+        _play(conn, track_id=1, source_album_id=100)
+        conn.executemany(
+            """INSERT INTO l3_song_album_attribution_overrides(
+                   anchor_track_id, target_project_id, action, reason
+               ) VALUES (?, ?, 'force_target', 'fixture')""",
+            [(1, 10), (2, 20)],
+        )
+
+        _project(conn, project_id=30, album_id=300, name="Album C", source_bucket="original")
+        _track(conn, track_id=3, album_id=300, project_id=30, name="Invalid Song")
+        _play(conn, track_id=3, source_album_id=300)
+        conn.execute(
+            """INSERT INTO l3_song_album_attribution_overrides(
+                   anchor_track_id, target_project_id, action, reason
+               ) VALUES (3, NULL, 'force_keep_source', 'fixture')"""
+        )
+
+        plan = plan_l3_album_attributions(conn, include_unplayed=False)
+
+        assert plan.scanned_song_count == 2
+        assert [(issue.canonical_song_name, issue.issue_kind) for issue in plan.issues] == [
+            ("Conflict Song", "conflict"),
+            ("Invalid Song", "invalid_override"),
+        ]
+        report = apply_l3_album_attribution_plan(
+            conn,
+            plan,
+            include_unplayed=False,
+        )
+        assert report.conflict_count == 2
+        assert (
+            conn.execute("SELECT COUNT(*) FROM l3_song_album_attribution_issues").fetchone()[0] == 2
+        )
+    finally:
+        conn.close()
+
+
+def test_played_reconcile_and_apply_are_idempotent() -> None:
+    conn = _connection()
+    try:
+        _project(conn, project_id=10, album_id=100, name="Album", source_bucket="original")
+        _track(conn, track_id=1, album_id=100, project_id=10, name="Song")
+        _play(conn, track_id=1, source_album_id=100)
+
+        first_plan = reconcile_l3_album_attribution_dependencies(
+            conn,
+            include_unplayed=False,
+        )
+        first_report = apply_l3_album_attribution_plan(
+            conn,
+            first_plan,
+            include_unplayed=False,
+        )
+        second_plan = reconcile_l3_album_attribution_dependencies(
+            conn,
+            include_unplayed=False,
+        )
+        second_report = apply_l3_album_attribution_plan(
+            conn,
+            second_plan,
+            include_unplayed=False,
+        )
+
+        assert first_report.changed is True
+        assert second_plan.issues == ()
+        assert second_plan.changed is False
+        assert second_report.changed is False
+        assert second_report.attribution_revision == first_report.attribution_revision
     finally:
         conn.close()
 

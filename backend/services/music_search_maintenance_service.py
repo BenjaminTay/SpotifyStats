@@ -527,6 +527,7 @@ def _rebuild_current_music_search_derived_data(
                 attribution_plan,
                 commit=False,
                 ensure_schema=False,
+                include_unplayed=False,
             )
     if not _search_metadata_dependencies_ready(conn):
         raise RuntimeError("music-search metadata aggregate dependency is not ready")

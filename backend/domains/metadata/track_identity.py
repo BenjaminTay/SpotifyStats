@@ -562,16 +562,36 @@ def _identity_semantic_signature(conn: sqlite3.Connection) -> tuple[tuple, ...]:
     return identities, external, sources, owners
 
 
-def synchronize_track_identity_projection(conn: sqlite3.Connection) -> bool:
+def synchronize_track_identity_projection(
+    conn: sqlite3.Connection, *, played_only: bool = False
+) -> bool:
+    """Synchronize local track identity projections.
+
+    Import maintenance only needs identities that can be reached from a
+    playback row. Keeping that scope explicit prevents stale, zero-play
+    dimension tracks from entering the import-time L3 attribution universe;
+    callers that maintain the full governance projection retain the default
+    all-track behavior.
+    """
     if not _table_exists(conn, "track_l1_external_ids"):
         return False
     before = _identity_semantic_signature(conn)
-    for (track_id,) in conn.execute("SELECT track_id FROM tracks ORDER BY track_id").fetchall():
+    track_query = (
+        "SELECT DISTINCT t.track_id FROM tracks t "
+        "JOIN plays p ON p.track_id=t.track_id ORDER BY t.track_id"
+        if played_only
+        else "SELECT track_id FROM tracks ORDER BY track_id"
+    )
+    for (track_id,) in conn.execute(track_query).fetchall():
         _ensure_compat_track_identity(conn, int(track_id))
     refresh_play_source_links(conn, bump_revision=False)
-    for track_id, spotify_track_id in conn.execute(
-        "SELECT track_id, spotify_track_id FROM tracks ORDER BY track_id"
-    ).fetchall():
+    projection_query = (
+        "SELECT DISTINCT t.track_id, t.spotify_track_id FROM tracks t "
+        "JOIN plays p ON p.track_id=t.track_id ORDER BY t.track_id"
+        if played_only
+        else "SELECT track_id, spotify_track_id FROM tracks ORDER BY track_id"
+    )
+    for track_id, spotify_track_id in conn.execute(projection_query).fetchall():
         ensure_track_projection_identity(
             conn,
             track_id=int(track_id),
@@ -599,26 +619,30 @@ def _refresh_representatives(conn: sqlite3.Connection) -> None:
 def refresh_play_source_links(conn: sqlite3.Connection, *, bump_revision: bool = True) -> int:
     _ensure_owner_schema(conn)
     before_semantics = _identity_semantic_signature(conn)
+    play_identity = play_identity_sql("p", "t")
     spotify_ids = [
         row[0]
         for row in conn.execute(
-            """SELECT spotify_track_id_at_play FROM plays
-                WHERE spotify_track_id_at_play IS NOT NULL
-                  AND spotify_track_id_at_play!=''
-                GROUP BY spotify_track_id_at_play"""
+            f"""SELECT {play_identity} AS spotify_track_id
+                 FROM plays p
+                 LEFT JOIN tracks t ON t.track_id=p.track_id
+                WHERE {play_identity} IS NOT NULL
+                  AND {play_identity}!=''
+                GROUP BY {play_identity}"""
         ).fetchall()
     ]
     ensure_l1_identities(conn, spotify_track_ids=spotify_ids, bump_revision=False)
     desired = [
         (int(row[0]), int(row[1]), int(row[2]), row[3], row[4])
         for row in conn.execute(
-            """SELECT owners.track_id, p.track_id, COUNT(*), MIN(p.ts), MAX(p.ts)
+            f"""SELECT owners.track_id, p.track_id, COUNT(*), MIN(p.ts), MAX(p.ts)
                  FROM plays p
+                 JOIN tracks t ON t.track_id=p.track_id
                  JOIN spotify_track_owners owners
-                   ON owners.spotify_track_id=p.spotify_track_id_at_play
+                   ON owners.spotify_track_id={play_identity}
                 WHERE p.track_id IS NOT NULL
-                  AND p.spotify_track_id_at_play IS NOT NULL
-                  AND p.spotify_track_id_at_play!=''
+                  AND {play_identity} IS NOT NULL
+                  AND {play_identity}!=''
                 GROUP BY owners.track_id, p.track_id
                 ORDER BY owners.track_id, p.track_id"""
         ).fetchall()

@@ -90,7 +90,10 @@ async def lifespan(_app: FastAPI):
     if l3_startup_reconcile_enabled():
         startup_conn = get_startup_db(readonly=False)
         try:
-            attribution_plan = reconcile_l3_album_attribution_dependencies(startup_conn)
+            attribution_plan = reconcile_l3_album_attribution_dependencies(
+                startup_conn,
+                include_unplayed=False,
+            )
             if attribution_plan.issues:
                 logger.error(
                     "L3 album attribution remains unpublished: unresolved_issues=%s",
@@ -101,6 +104,7 @@ async def lifespan(_app: FastAPI):
                     startup_conn,
                     attribution_plan,
                     ensure_schema=False,
+                    include_unplayed=False,
                 )
         finally:
             startup_conn.close()

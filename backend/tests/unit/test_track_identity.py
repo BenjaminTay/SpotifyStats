@@ -16,6 +16,7 @@ from backend.domains.metadata.track_identity import (
     l1_ids_for_track,
     refresh_play_source_links,
     resolve_canonical_track_id,
+    synchronize_track_identity_projection,
     validate_track_identity_invariants,
 )
 
@@ -270,6 +271,51 @@ def test_new_play_evidence_updates_counts_without_changing_identity_revision() -
             WHERE l1_id=1 AND track_id=1 AND evidence_type='play_at_time'"""
         ).fetchone()[0]
         == 2
+    )
+
+
+def test_play_source_links_fall_back_to_track_spotify_id_after_replace() -> None:
+    conn = sqlite3.connect(":memory:")
+    _schema(conn)
+    conn.execute("INSERT INTO tracks VALUES (1, 'Song', 1, 1, 'spotify-a')")
+    conn.execute("INSERT INTO plays VALUES (1, '2026-01-01T00:00:00Z', 1, NULL)")
+    ensure_track_projection_identity(conn, track_id=1, spotify_track_id="spotify-a")
+
+    refresh_play_source_links(conn)
+
+    link = conn.execute(
+        """SELECT l1_id, track_id, observed_plays
+             FROM track_l1_source_links
+            WHERE track_id=1 AND evidence_type='play_at_time'"""
+    ).fetchone()
+    assert tuple(link) == (1, 1, 1)
+
+
+def test_played_only_projection_does_not_create_stale_dimension_identity() -> None:
+    conn = sqlite3.connect(":memory:")
+    _schema(conn)
+    conn.executemany(
+        "INSERT INTO tracks VALUES (?, ?, ?, ?, ?)",
+        [
+            (1, "有播放", 1, 1, "spotify-played"),
+            (2, "仅维度", 1, 1, "spotify-dimension-only"),
+        ],
+    )
+    conn.execute("INSERT INTO plays VALUES (1, '2026-01-01T00:00:00Z', 1, NULL)")
+
+    synchronize_track_identity_projection(conn, played_only=True)
+
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM track_l1_identities WHERE fallback_track_id=1"
+        ).fetchone()[0]
+        == 1
+    )
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM track_l1_identities WHERE fallback_track_id=2"
+        ).fetchone()[0]
+        == 0
     )
 
 

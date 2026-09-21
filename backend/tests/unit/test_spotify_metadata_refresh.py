@@ -110,6 +110,29 @@ def _conn():
     return conn
 
 
+def _conn_with_album_link_foreign_keys():
+    conn = _conn()
+    conn.execute("DROP TABLE album_spotify_links")
+    conn.execute(
+        """CREATE TABLE album_spotify_links(
+               album_id INTEGER NOT NULL,
+               spotify_album_id TEXT NOT NULL,
+               evidence TEXT NOT NULL,
+               confidence REAL NOT NULL DEFAULT 0.0,
+               play_count INTEGER NOT NULL DEFAULT 0,
+               track_count INTEGER NOT NULL DEFAULT 0,
+               first_seen TEXT,
+               last_seen TEXT,
+               updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+               PRIMARY KEY(album_id, spotify_album_id, evidence),
+               FOREIGN KEY(album_id) REFERENCES albums(album_id),
+               FOREIGN KEY(spotify_album_id) REFERENCES spotify_album_meta(spotify_album_id)
+           )"""
+    )
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
+
+
 def test_select_missing_play_track_ids_prefers_play_time_ids():
     from backend.domains.metadata.spotify_refresh import select_missing_track_ids
 
@@ -131,6 +154,9 @@ def test_upsert_track_batch_updates_play_album_ids_and_album_links():
     conn.execute(
         "INSERT INTO plays(play_id, track_id, source_album_id, ts_date, spotify_track_id_at_play) "
         "VALUES (1, 1, 10, '2026-06-01', 'track-a')"
+    )
+    conn.execute(
+        "INSERT INTO spotify_album_meta(spotify_album_id, album_name) VALUES ('album-a', 'Album A')"
     )
 
     updated = upsert_track_batch(
@@ -160,6 +186,218 @@ def test_upsert_track_batch_updates_play_album_ids_and_album_links():
     assert link["spotify_album_id"] == "album-a"
     assert link["evidence"] == "play_track_api"
     assert link["play_count"] == 1
+
+
+def test_refresh_defers_new_album_links_until_album_metadata_exists():
+    from backend.domains.metadata.spotify_refresh import refresh_missing_spotify_metadata
+
+    conn = _conn_with_album_link_foreign_keys()
+    conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (7, 'Artist A')")
+    conn.execute("INSERT INTO albums(album_id, album_name, artist_id) VALUES (10, 'Album A', 7)")
+    conn.execute(
+        "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (1, 7, 'track-a')"
+    )
+    conn.execute(
+        "INSERT INTO plays(play_id, track_id, source_album_id, ts_date, spotify_track_id_at_play) "
+        "VALUES (1, 1, 10, '2026-06-01', 'track-a')"
+    )
+
+    class Provider:
+        def get_tracks(self, ids, token):
+            return {
+                "tracks": [
+                    {
+                        "id": "track-a",
+                        "name": "Track A",
+                        "artists": [{"id": "artist-a", "name": "Artist A"}],
+                        "album": {"id": "album-a"},
+                    }
+                ]
+            }
+
+        def get_albums(self, ids, token):
+            return {
+                "albums": [
+                    {
+                        "id": "album-a",
+                        "name": "Album A",
+                        "images": [],
+                        "artists": [],
+                        "tracks": {"items": []},
+                        "total_tracks": 1,
+                    }
+                ]
+            }
+
+        def get_artists_by_ids(self, ids, token):
+            return {"artists": []}
+
+    provider = Provider()
+    refresh_missing_spotify_metadata(conn, provider=provider, access_token="token")
+
+    link = conn.execute(
+        "SELECT album_id, spotify_album_id, evidence FROM album_spotify_links"
+    ).fetchone()
+    assert tuple(link) == (10, "album-a", "play_track_meta")
+
+    before = [
+        tuple(row)
+        for row in conn.execute(
+            """SELECT album_id, spotify_album_id, evidence, play_count, track_count
+                 FROM album_spotify_links ORDER BY album_id, spotify_album_id, evidence"""
+        )
+    ]
+    refresh_missing_spotify_metadata(conn, provider=provider, access_token="token")
+    after = [
+        tuple(row)
+        for row in conn.execute(
+            """SELECT album_id, spotify_album_id, evidence, play_count, track_count
+                 FROM album_spotify_links ORDER BY album_id, spotify_album_id, evidence"""
+        )
+    ]
+    assert after == before
+
+
+def test_refresh_album_provider_failure_keeps_existing_link_without_invalid_child():
+    from backend.domains.metadata.spotify_refresh import refresh_missing_spotify_metadata
+
+    conn = _conn_with_album_link_foreign_keys()
+    conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (7, 'Artist A')")
+    conn.execute("INSERT INTO albums(album_id, album_name, artist_id) VALUES (10, 'Album A', 7)")
+    conn.execute(
+        "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (1, 7, 'track-a')"
+    )
+    conn.execute(
+        "INSERT INTO spotify_album_meta(spotify_album_id, album_name) "
+        "VALUES ('album-existing', 'Existing Album')"
+    )
+    conn.execute(
+        """INSERT INTO album_spotify_links(
+               album_id, spotify_album_id, evidence, confidence, play_count, track_count
+           ) VALUES (10, 'album-existing', 'play_track_meta', 0.9, 1, 1)"""
+    )
+    conn.execute(
+        "INSERT INTO plays(play_id, track_id, source_album_id, ts_date, "
+        "spotify_track_id_at_play, import_generation_id) "
+        "VALUES (1, 1, 10, '2026-06-01', 'track-a', 'generation-new')"
+    )
+
+    class Provider:
+        def get_tracks(self, ids, token):
+            return {
+                "tracks": [
+                    {
+                        "id": "track-a",
+                        "name": "Track A",
+                        "artists": [],
+                        "album": {"id": "album-new"},
+                    }
+                ]
+            }
+
+        def get_albums(self, ids, token):
+            return None
+
+        def get_artists_by_ids(self, ids, token):
+            return {"artists": []}
+
+    report = refresh_missing_spotify_metadata(
+        conn,
+        provider=Provider(),
+        access_token="token",
+    )
+
+    assert "albums_batch_failed" in report.errors
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM spotify_album_meta WHERE spotify_album_id='album-new'"
+        ).fetchone()[0]
+        == 0
+    )
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM album_spotify_links WHERE spotify_album_id='album-new'"
+        ).fetchone()[0]
+        == 0
+    )
+    assert tuple(
+        conn.execute(
+            """SELECT album_id, spotify_album_id, evidence
+                 FROM album_spotify_links ORDER BY spotify_album_id"""
+        ).fetchone()
+    ) == (10, "album-existing", "play_track_meta")
+
+
+def test_album_link_backfill_spans_generations_and_is_idempotent():
+    from backend.domains.metadata.spotify_refresh import (
+        backfill_album_links_for_spotify_ids,
+    )
+
+    conn = _conn_with_album_link_foreign_keys()
+    conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (7, 'Artist A')")
+    conn.executemany(
+        "INSERT INTO albums(album_id, album_name, artist_id) VALUES (?, ?, 7)",
+        [(10, "Old Source"), (20, "New Source")],
+    )
+    conn.execute(
+        "INSERT INTO tracks(track_id, artist_id, spotify_track_id) VALUES (1, 7, 'track-a')"
+    )
+    conn.execute(
+        """INSERT INTO spotify_track_meta(
+               spotify_track_id, track_name, spotify_album_id
+           ) VALUES ('track-a', 'Track A', 'album-a')"""
+    )
+    conn.execute(
+        "INSERT INTO spotify_album_meta(spotify_album_id, album_name) VALUES ('album-a', 'Album A')"
+    )
+    conn.executemany(
+        """INSERT INTO plays(
+               play_id, track_id, source_album_id, ts_date,
+               spotify_track_id_at_play, import_generation_id
+           ) VALUES (?, 1, ?, ?, 'track-a', ?)""",
+        [
+            (1, 10, "2025-06-01", "generation-old"),
+            (2, 20, "2026-06-01", "generation-new"),
+        ],
+    )
+    relinked: set[int] = set()
+
+    first = backfill_album_links_for_spotify_ids(
+        conn,
+        {"album-a"},
+        local_album_ids_relinked=relinked,
+    )
+    before = [
+        tuple(row)
+        for row in conn.execute(
+            """SELECT album_id, spotify_album_id, evidence, play_count, track_count
+                 FROM album_spotify_links ORDER BY album_id, evidence"""
+        )
+    ]
+    second = backfill_album_links_for_spotify_ids(
+        conn,
+        {"album-a"},
+        local_album_ids_relinked=relinked,
+    )
+    after = [
+        tuple(row)
+        for row in conn.execute(
+            """SELECT album_id, spotify_album_id, evidence, play_count, track_count
+                 FROM album_spotify_links ORDER BY album_id, evidence"""
+        )
+    ]
+
+    assert first == 2
+    assert second == 2
+    assert relinked == {10, 20}
+    assert (
+        before
+        == after
+        == [
+            (10, "album-a", "play_track_meta", 1, 1),
+            (20, "album-a", "play_track_meta", 1, 1),
+        ]
+    )
 
 
 def test_upsert_track_batch_links_exact_local_artist():

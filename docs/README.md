@@ -1,5 +1,9 @@
 # SpotifyStats 文档地图
 
+- [阶段 S0：导入事故修复与测量基线](reports/2026-09-21-import-remediation-s0-baseline.md)
+
+- [2026-09-21 串流导入事故复盘与优化建议](reports/2026-09-21-streaming-import-incident-and-optimization.md)
+
 - [阶段 8：快照可用性与 Billboard 交互连续性收口](reports/2026-09-21-stage8-snapshot-and-billboard-ux-closeout.md)
 
 - [全应用性能优化成果与最终验收报告](reports/2026-09-21-full-application-performance-optimization-outcome.md)
@@ -114,6 +118,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
+- [`plans/2026-09-21-import-processing-governance-remediation-plan.md`](plans/2026-09-21-import-processing-governance-remediation-plan.md)：基于 9 月 21 日导入事故的 S0–S6 修复优化规划，覆盖批次一致性、基线生命周期、阶段恢复、任务优先级、身份治理与完整本地验收；待实施
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
 

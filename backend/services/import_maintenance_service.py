@@ -29,7 +29,7 @@ from backend.domains.playback.album_project_auto_merge import (
 from backend.domains.playback.album_projects import rebuild_album_projects_for_impact
 from backend.domains.playback.l3_album_attribution import (
     apply_l3_album_attribution_plan,
-    plan_l3_album_attributions,
+    reconcile_l3_album_attribution_dependencies,
 )
 from backend.domains.settings.repository import SettingsRepository
 from backend.providers.spotify.client import SpotifyProvider
@@ -111,7 +111,11 @@ def run_post_streaming_import_maintenance(
             synchronize_track_identity_projection,
         )
 
-        synchronize_track_identity_projection(conn)
+        # Import-time L3 attribution is based on played works. Do not expand
+        # the active identity universe with stale dimension-only tracks that
+        # have no playback evidence; full governance callers keep the default
+        # all-track projection behavior.
+        synchronize_track_identity_projection(conn, played_only=True)
         groups_created, members_added = _auto_group_tracks_by_spotify_id(
             conn,
             track_ids=(change_set.track_ids if change_set is not None else None),
@@ -145,7 +149,14 @@ def run_post_streaming_import_maintenance(
             plan_album_composition_merges(conn),
             commit=True,
         )
-        attribution_plan = plan_l3_album_attributions(conn)
+        # A fresh Spotify snapshot can introduce albums whose automatic
+        # project membership is not present until the impact-scoped project
+        # repair runs. Resolve only proven ``uncovered`` L3 works here;
+        # conflicts and invalid manual overrides remain hard failures.
+        attribution_plan = reconcile_l3_album_attribution_dependencies(
+            conn,
+            include_unplayed=False,
+        )
         if attribution_plan.issues:
             raise RuntimeError(
                 "post-import L3 album attribution has unresolved issues: "
@@ -155,6 +166,7 @@ def run_post_streaming_import_maintenance(
             conn,
             attribution_plan,
             commit=True,
+            include_unplayed=False,
         )
         album_projects_seconds = time.perf_counter() - album_projects_started
 

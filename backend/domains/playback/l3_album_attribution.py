@@ -389,7 +389,9 @@ def _load_release_memberships(conn: sqlite3.Connection) -> pd.DataFrame:
     return apply_canonical_song_keys(raw, conn, merge_level=3)
 
 
-def _load_work_universe(conn: sqlite3.Connection) -> tuple[pd.DataFrame, dict[int, str]]:
+def _load_work_universe(
+    conn: sqlite3.Connection, *, include_unplayed: bool = True
+) -> tuple[pd.DataFrame, dict[int, str]]:
     """Return every active L3 work before Album Project membership is joined.
 
     The previous attribution planner started from ``album_project_tracks`` and
@@ -484,7 +486,16 @@ def _load_work_universe(conn: sqlite3.Connection) -> tuple[pd.DataFrame, dict[in
                 "source_album_ids": source_album_ids,
             }
         )
-    return pd.DataFrame.from_records(records), track_to_key
+    work_universe = pd.DataFrame.from_records(records)
+    if not include_unplayed and not work_universe.empty:
+        work_universe = work_universe.loc[work_universe["raw_play_count"] > 0].reset_index(
+            drop=True
+        )
+        included_keys = set(work_universe["canonical_song_key"].astype(str))
+        track_to_key = {
+            track_id: key for track_id, key in track_to_key.items() if key in included_keys
+        }
+    return work_universe, track_to_key
 
 
 def _canonical_artist_ids(conn: sqlite3.Connection) -> dict[int, int]:
@@ -776,12 +787,14 @@ def _desired_projection_digest(plan_rows: list[tuple[Any, ...]]) -> str:
     ).hexdigest()
 
 
-def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPlan:
+def plan_l3_album_attributions(
+    conn: sqlite3.Connection, *, include_unplayed: bool = True
+) -> L3AlbumAttributionPlan:
     """Build the complete desired one-owner L3 album projection without writes."""
 
     track_revision = _track_identity_revision(conn)
     album_revision = _album_project_revision(conn)
-    work_universe, track_to_song_key = _load_work_universe(conn)
+    work_universe, track_to_song_key = _load_work_universe(conn, include_unplayed=include_unplayed)
     memberships = _load_release_memberships(conn)
     if work_universe.empty:
         empty_digest = hashlib.sha256(b"[]").hexdigest()
@@ -1176,6 +1189,8 @@ def plan_l3_album_attributions(conn: sqlite3.Connection) -> L3AlbumAttributionPl
 
 def reconcile_l3_album_attribution_dependencies(
     conn: sqlite3.Connection,
+    *,
+    include_unplayed: bool = False,
 ) -> L3AlbumAttributionPlan:
     """Repair only proven missing Album Project closures, then re-plan L3.
 
@@ -1183,11 +1198,13 @@ def reconcile_l3_album_attribution_dependencies(
     rebuild.  It is safe for startup and search maintenance because it touches
     only albums named by an ``uncovered`` attribution issue (plus the
     representative track's own album when playback source metadata is absent).
-    Conflicts and invalid overrides are never auto-resolved here.
+    Conflicts and invalid overrides are never auto-resolved here. Runtime
+    maintenance defaults to played works; complete governance coverage remains
+    available through ``plan_l3_album_attributions`` with its default scope.
     """
 
     ensure_l3_album_attribution_schema(conn)
-    plan = plan_l3_album_attributions(conn)
+    plan = plan_l3_album_attributions(conn, include_unplayed=include_unplayed)
     uncovered_issues = tuple(issue for issue in plan.issues if issue.issue_kind == "uncovered")
     if not uncovered_issues:
         return plan
@@ -1215,7 +1232,7 @@ def reconcile_l3_album_attribution_dependencies(
         local_album_ids=album_ids,
         impact_scope_exact=True,
     )
-    return plan_l3_album_attributions(conn)
+    return plan_l3_album_attributions(conn, include_unplayed=include_unplayed)
 
 
 def apply_l3_album_attribution_plan(
@@ -1224,12 +1241,13 @@ def apply_l3_album_attribution_plan(
     *,
     commit: bool = True,
     ensure_schema: bool = True,
+    include_unplayed: bool = True,
 ) -> L3AlbumAttributionApplyReport:
     """Publish one complete attribution projection atomically."""
 
     if ensure_schema:
         ensure_l3_album_attribution_schema(conn)
-    fresh = plan_l3_album_attributions(conn)
+    fresh = plan_l3_album_attributions(conn, include_unplayed=include_unplayed)
     if plan is None:
         plan = fresh
     elif plan != fresh:

@@ -221,19 +221,27 @@ def upsert_track_batch(
                    WHERE spotify_track_id_at_play = ?""",
                 (album_id, track["id"]),
             )
-            conn.execute(
-                """INSERT OR REPLACE INTO album_spotify_links(
-                       album_id, spotify_album_id, evidence, confidence,
-                       play_count, track_count, first_seen, last_seen, updated_at)
-                   SELECT source_album_id, ?, 'play_track_api', 1.0,
-                          COUNT(*), COUNT(DISTINCT track_id), MIN(ts_date), MAX(ts_date),
-                          CURRENT_TIMESTAMP
-                   FROM plays
-                   WHERE spotify_track_id_at_play = ?
-                     AND source_album_id IS NOT NULL
-                   GROUP BY source_album_id""",
-                (album_id, track["id"]),
-            )
+            # ``album_spotify_links.spotify_album_id`` references
+            # ``spotify_album_meta``. A track response can introduce a new
+            # album before the subsequent album batch has inserted that
+            # parent row, so defer those links to the metadata backfill below.
+            if conn.execute(
+                "SELECT 1 FROM spotify_album_meta WHERE spotify_album_id=?",
+                (album_id,),
+            ).fetchone():
+                conn.execute(
+                    """INSERT OR REPLACE INTO album_spotify_links(
+                           album_id, spotify_album_id, evidence, confidence,
+                           play_count, track_count, first_seen, last_seen, updated_at)
+                       SELECT source_album_id, ?, 'play_track_api', 1.0,
+                              COUNT(*), COUNT(DISTINCT track_id), MIN(ts_date), MAX(ts_date),
+                              CURRENT_TIMESTAMP
+                       FROM plays
+                       WHERE spotify_track_id_at_play = ?
+                         AND source_album_id IS NOT NULL
+                       GROUP BY source_album_id""",
+                    (album_id, track["id"]),
+                )
         _link_local_artist_from_track(
             conn,
             track,
@@ -333,6 +341,54 @@ def backfill_album_links_from_existing_metadata(
     return (
         max(track_cursor.rowcount, 0) + max(album_cursor.rowcount, 0) + max(link_cursor.rowcount, 0)
     )
+
+
+def backfill_album_links_for_spotify_ids(
+    conn: sqlite3.Connection,
+    spotify_album_ids: set[str] | frozenset[str],
+    *,
+    local_album_ids_relinked: set[int] | None = None,
+) -> int:
+    """Create links for fetched albums across all matching playback generations."""
+    ordered_ids = tuple(sorted(str(album_id) for album_id in spotify_album_ids if album_id))
+    if not ordered_ids:
+        return 0
+    placeholders = ",".join("?" for _ in ordered_ids)
+    params = ordered_ids
+    if local_album_ids_relinked is not None:
+        local_album_ids_relinked.update(
+            int(row[0])
+            for row in conn.execute(
+                f"""SELECT DISTINCT p.source_album_id
+                    FROM plays p
+                    JOIN spotify_track_meta stm
+                      ON stm.spotify_track_id=p.spotify_track_id_at_play
+                    JOIN spotify_album_meta sam
+                      ON sam.spotify_album_id=stm.spotify_album_id
+                    WHERE p.source_album_id IS NOT NULL
+                      AND stm.spotify_album_id IN ({placeholders})""",
+                params,
+            ).fetchall()
+        )
+    cursor = conn.execute(
+        f"""INSERT OR REPLACE INTO album_spotify_links(
+               album_id, spotify_album_id, evidence, confidence,
+               play_count, track_count, first_seen, last_seen, updated_at)
+           SELECT p.source_album_id, stm.spotify_album_id, 'play_track_meta', 0.9,
+                  COUNT(*), COUNT(DISTINCT p.track_id), MIN(p.ts_date), MAX(p.ts_date),
+                  CURRENT_TIMESTAMP
+           FROM plays p
+           JOIN spotify_track_meta stm
+             ON stm.spotify_track_id=p.spotify_track_id_at_play
+           JOIN spotify_album_meta sam
+             ON sam.spotify_album_id=stm.spotify_album_id
+           WHERE p.source_album_id IS NOT NULL
+             AND stm.spotify_album_id IN ({placeholders})
+           GROUP BY p.source_album_id, stm.spotify_album_id""",
+        params,
+    )
+    conn.commit()
+    return max(cursor.rowcount, 0)
 
 
 def select_missing_album_ids(conn: sqlite3.Connection, limit: int = 5000) -> list[str]:
@@ -738,6 +794,15 @@ def refresh_missing_spotify_metadata(
         spotify_album_ids_updated.update(
             str(album["id"]) for album in albums if album and album.get("id")
         )
+    # Track responses update ``plays.spotify_album_id_at_play`` before album
+    # metadata is fetched. Once the referenced album parents exist, create
+    # the deferred local album links, including older generations that share
+    # the same Spotify recording.
+    album_links_backfilled += backfill_album_links_for_spotify_ids(
+        conn,
+        spotify_album_ids_updated,
+        local_album_ids_relinked=local_album_ids_relinked,
+    )
     local_album_ids_updated.update(
         _local_album_ids_for_spotify_ids(conn, spotify_album_ids_updated)
     )
