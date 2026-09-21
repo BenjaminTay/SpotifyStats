@@ -14,11 +14,19 @@ interface RequestOptions {
   signal?: AbortSignal
 }
 
+function isRawBody(body: unknown): body is BodyInit {
+  return body instanceof FormData
+    || body instanceof Blob
+    || body instanceof URLSearchParams
+    || body instanceof ArrayBuffer
+    || ArrayBuffer.isView(body)
+}
+
 function buildHeaders(body: unknown): HeadersInit | undefined {
   const headers: Record<string, string> = {}
   const apiToken = import.meta.env.VITE_API_TOKEN
   if (apiToken) headers['Authorization'] = `Bearer ${apiToken}`
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (body !== undefined && !isRawBody(body)) headers['Content-Type'] = 'application/json'
   return Object.keys(headers).length > 0 ? headers : undefined
 }
 
@@ -71,7 +79,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     const res = await fetch(url, {
       method,
       headers: buildHeaders(body),
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isRawBody(body) ? body : JSON.stringify(body),
       signal,
     })
 
@@ -113,6 +121,13 @@ export const apiClient = {
     request<T>(path, { params, timeout, signal }),
   put: <T>(path: string, body?: unknown, timeout?: number) =>
     request<T>(path, { method: 'PUT', body, timeout }),
+  putWithParams: <T>(
+    path: string,
+    body: unknown,
+    params: Record<string, ApiQueryParam>,
+    timeout?: number,
+    signal?: AbortSignal,
+  ) => request<T>(path, { method: 'PUT', body, params, timeout, signal }),
   post: <T>(path: string, body?: unknown, timeout?: number, signal?: AbortSignal) =>
     request<T>(path, { method: 'POST', body, timeout, signal }),
   postWithParams: <T>(

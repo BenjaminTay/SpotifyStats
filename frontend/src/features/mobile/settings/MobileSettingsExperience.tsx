@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sun,
+  Upload,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 
@@ -27,6 +28,7 @@ import { cn } from '@/lib/utils'
 import { PwaInstallCard } from './PwaInstallCard'
 import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 import type { RuntimeCapabilities } from '@/hooks/runtimeCapabilities'
+import { DataImportWorkspace } from '@/features/settings/components/DataImportWorkspace'
 
 const VersionMergeSection = lazy(() =>
   import('@/features/settings/components/VersionMergeSection').then((module) => ({
@@ -34,7 +36,7 @@ const VersionMergeSection = lazy(() =>
   })),
 )
 
-type Panel = 'appearance' | 'playback' | 'billboard' | 'spotify' | 'data' | 'ai' | 'advanced'
+type Panel = 'appearance' | 'playback' | 'billboard' | 'spotify' | 'data' | 'import' | 'ai' | 'advanced'
 
 interface MobileSettingsExperienceProps {
   settings: SettingsData
@@ -63,6 +65,7 @@ function isPanelAllowed(capabilities: RuntimeCapabilities, candidate: Panel | nu
   if (!candidate) return false
   if (candidate === 'playback' || candidate === 'billboard') return capabilities.editing
   if (candidate === 'spotify') return capabilities.spotify_oauth
+  if (candidate === 'import') return capabilities.imports
   if (candidate === 'ai') return capabilities.ai
   if (candidate === 'advanced') {
     return capabilities.imports
@@ -226,6 +229,7 @@ export function MobileSettingsExperience({
     { id: 'billboard', title: '榜单参数', description: 'Top N、周边界与精选集', status: `单曲 Top ${settings.bb_top_n}`, icon: BarChart3 },
     { id: 'spotify', title: 'Spotify 连接', description: '授权状态与收藏时间同步', status: settings.spotify_connected ? '已连接' : '未连接', icon: Link2 },
     { id: 'data', title: '数据状态', description: '播放记录、账号数据与待重建状态', status: `${settings.db_record_count.toLocaleString('zh-CN')} 条`, icon: Database },
+    { id: 'import', title: '数据导入', description: '接收数据包、检查计划与运行历史', status: '可在手机端操作', icon: Upload },
     { id: 'ai', title: 'AI 洞察', description: '启用状态与当前配置档案', status: settings.llm_enabled ? '已启用' : '未启用', icon: Bot },
     { id: 'advanced', title: '高级数据管理', description: '导入、归并、署名、元数据与系统维护', status: rebuildPending ? '有待处理项' : '电脑端管理', icon: ShieldCheck, advanced: true },
   ] as Category[]).filter((category) => isPanelAllowed(capabilities, category.id)), [capabilities, dynamicThreshold, rebuildPending, settings, theme])
@@ -384,6 +388,16 @@ export function MobileSettingsExperience({
           <SettingRow label="统计聚合" description="参数变更后的计算状态"><strong className={rebuildPending ? 'text-amber-500' : 'text-emerald-500'}>{rebuildPending ? '等待重建 · 统计可能不是最新' : '已同步'}</strong></SettingRow>
           <p className="mobile-settings-explanation">{rebuildPending ? '当前页面的聚合统计可能尚未反映最新参数。' : '当前统计已经同步。'}手机端保留状态查看；文件导入、清理预览和聚合重建请在电脑上完成。</p>
         </div>
+      )
+    }
+
+    if (panel === 'import') {
+      return (
+        <DataImportWorkspace
+          presentation="phone"
+          dbRecordCount={settings.db_record_count}
+          accountImported={settings.account_data_imported}
+        />
       )
     }
 

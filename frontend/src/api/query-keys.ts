@@ -125,6 +125,17 @@ export const queryKeys = {
 
   dataImport: {
     all: ["data-import"] as const,
+    batches: () => ["data-import", "batches"] as const,
+    batch: (batchId: string | null) => ["data-import", "batches", batchId] as const,
+    batchPreflight: (batchId: string | null, mode: string) =>
+      ["data-import", "batches", batchId, "preflight", mode] as const,
+    runs: () => ["data-import", "runs"] as const,
+    runHistory: (limit: number) => ["data-import", "runs", "history", limit] as const,
+    latestRun: () => ["data-import", "runs", "latest"] as const,
+    run: (runId: string | null) => ["data-import", "runs", runId] as const,
+    report: (runId: string | null, format: "json" | "markdown" = "json") =>
+      ["data-import", "runs", runId, "report", format] as const,
+    legacyJob: (jobId: string | null) => ["data-import", "legacy-job", jobId] as const,
     health: () => ["data-import", "health"] as const,
     preflight: () => ["data-import", "preflight"] as const,
     cleanupPreview: () => ["data-import", "cleanup-preview"] as const,

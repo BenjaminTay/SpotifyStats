@@ -45,10 +45,10 @@ describe('apiClient error responses', () => {
   })
 
   it('serializes array parameters as repeated query keys', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response('{}', {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    }))
+    })))
     vi.stubGlobal('fetch', fetchMock)
 
     await apiClient.get('/music/search/context', {
@@ -57,6 +57,29 @@ describe('apiClient error responses', () => {
 
     const requestedUrl = new URL(String(fetchMock.mock.calls[0][0]))
     expect(requestedUrl.searchParams.getAll('entity_key')).toEqual(['track:1', 'artist:2'])
+  })
+
+  it('sends File and FormData bodies without forcing a JSON content type', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+    vi.stubGlobal('fetch', fetchMock)
+    const file = new File(['[]'], 'Streaming_History_Audio.json', { type: 'application/json' })
+
+    await apiClient.putWithParams('/import/batches/batch/files/file.json', file, {
+      source_type: 'audio',
+    })
+    const fileRequest = fetchMock.mock.calls[0][1] as RequestInit
+    expect(fileRequest.body).toBe(file)
+    expect(fileRequest.headers).toBeUndefined()
+
+    const formData = new FormData()
+    formData.append('file', file)
+    await apiClient.post('/upload', formData)
+    const formRequest = fetchMock.mock.calls[1][1] as RequestInit
+    expect(formRequest.body).toBe(formData)
+    expect(formRequest.headers).toBeUndefined()
   })
 
   it('rejects a pre-aborted external signal before calling fetch', async () => {

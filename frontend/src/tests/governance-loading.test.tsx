@@ -13,14 +13,14 @@ function wrapper() {
 }
 afterEach(() => vi.restoreAllMocks())
 
-it('does not request health or file preflight until the import panel is opened', async () => {
-  const get = vi.spyOn(api, 'get').mockRejectedValue(new Error('治理检查尚未发布，请在本机重建'))
-  render(<DataImportSection dbRecordCount={100} accountImported streamingJob={null} accountJob={null} onStreamingImport={vi.fn()} onAccountImport={vi.fn()} />, { wrapper: wrapper() })
+it('does not request persistent import state until the import panel is opened', async () => {
+  const get = vi.spyOn(api, 'get').mockRejectedValue(new Error('运行记录尚不可用'))
+  render(<DataImportSection dbRecordCount={100} accountImported />, { wrapper: wrapper() })
   expect(get).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: /02 · 数据导入/ }))
-  await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+  await waitFor(() => expect(get).toHaveBeenCalled())
   expect(get).toHaveBeenCalledWith('/import/health')
-  expect(await screen.findByText(/治理检查尚未发布/)).toBeVisible()
+  expect(get).toHaveBeenCalledWith('/import/runs/latest')
 })
 
 it('enables language coverage only while its panel is open', async () => {

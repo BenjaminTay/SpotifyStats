@@ -40,10 +40,6 @@ export function SettingsPage() {
     clearTranslationCache,
     rebuildAgg,
     markRebuildPending,
-    startStreamingImport,
-    startAccountImport,
-    streamingJob,
-    accountJob,
     spotifyConnect,
     spotifyDisconnect,
     spotifySync,
@@ -197,10 +193,6 @@ export function SettingsPage() {
         <DataImportSection
           dbRecordCount={settings.db_record_count}
           accountImported={settings.account_data_imported}
-          streamingJob={streamingJob}
-          accountJob={accountJob}
-          onStreamingImport={startStreamingImport}
-          onAccountImport={startAccountImport}
         />
       </CapabilityGate>
 

@@ -1,10 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
+import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryKeys } from '@/api/query-keys'
-import { api, type SettingsData, type SettingsUpdatePayload, type ImportJob, type ReleaseGroup, type GroupMember, type TrackGroup, type TrackGroupMember, type UngroupedAlbum, type DetectionResult, type TrackGroupCandidate, type TrackGroupConfirmResult, type TrackCreditTrackCandidate, type AlbumRelationConfirmResult, type CanonicalTrackEvent, type CanonicalTrackMutationResult, type L1IdentityRiskHealth, type L3AlbumAttributionHealth, type L3AlbumAttributionListResponse, type L3AlbumAttributionMutationResult, type TrackComparison, type RebuildResult, type VersionMergeScope, type TrackGroupScope, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
-import type { StreamingImportOptions } from '@/types/data-import'
+import { api, type SettingsData, type SettingsUpdatePayload, type ReleaseGroup, type GroupMember, type TrackGroup, type TrackGroupMember, type UngroupedAlbum, type DetectionResult, type TrackGroupCandidate, type TrackGroupConfirmResult, type TrackCreditTrackCandidate, type AlbumRelationConfirmResult, type CanonicalTrackEvent, type CanonicalTrackMutationResult, type L1IdentityRiskHealth, type L3AlbumAttributionHealth, type L3AlbumAttributionListResponse, type L3AlbumAttributionMutationResult, type TrackComparison, type RebuildResult, type VersionMergeScope, type TrackGroupScope, type LLMProfile, type LLMProfileDetail, type LLMProfileCreatePayload, type LLMProfileUpdatePayload, type LLMProfileCreateResult } from '@/lib/api'
 
 // ── useSettings ─────────────────────────────────────────────
 
@@ -58,10 +56,6 @@ interface UseSettingsResult {
   clearTranslationCache: () => Promise<ClearCacheResult>
   rebuildAgg: () => Promise<RebuildResult>
   markRebuildPending: () => void
-  startStreamingImport: (options?: StreamingImportOptions) => void
-  startAccountImport: () => void
-  streamingJob: ImportJob | null
-  accountJob: ImportJob | null
   // Spotify OAuth
   spotifyConnect: () => Promise<SpotifyAuthUrl>
   spotifyDisconnect: () => Promise<void>
@@ -82,22 +76,10 @@ export function useSettings(): UseSettingsResult {
     queryKey: queryKeys.settings.data(),
     queryFn: () => api.get<SettingsData>('/settings'),
   })
-  const [streamingJob, setStreamingJob] = useState<ImportJob | null>(null)
-  const [accountJob, setAccountJob] = useState<ImportJob | null>(null)
-  const pollRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
 
   const refetch = useCallback(() => {
     void settingsQuery.refetch()
   }, [settingsQuery])
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    const pollingIntervals = pollRef.current
-    return () => {
-      pollingIntervals.forEach((interval) => clearInterval(interval))
-      pollingIntervals.clear()
-    }
-  }, [])
 
   const updateSettings = useCallback(
     async (payload: SettingsUpdatePayload) => {
@@ -242,80 +224,6 @@ export function useSettings(): UseSettingsResult {
     })
   }, [queryClient])
 
-  const pollImport = useCallback(
-    (jobId: string, setter: Dispatch<SetStateAction<ImportJob | null>>) => {
-      // Clear any existing poll for this setter's job
-      const existing = pollRef.current.get('streaming')
-      if (existing) clearInterval(existing)
-
-      const interval = setInterval(() => {
-        api
-          .get<ImportJob>(`/import/status/${jobId}`)
-          .then((status) => {
-            setter(status)
-            if (status.status === 'done' || status.status === 'error' || status.status === 'blocked' || status.status === 'needs_confirmation') {
-              clearInterval(interval)
-              pollRef.current.delete('streaming')
-              if (status.status === 'done') refetch()
-            }
-          })
-          .catch(() => {})
-      }, 1000)
-
-      pollRef.current.set('streaming', interval)
-    },
-    [refetch],
-  )
-
-  const startStreamingImport = useCallback(
-    (options: StreamingImportOptions = {}) => {
-      const params: Record<string, string | boolean> = {
-        mode: options.mode ?? 'auto',
-        confirm_warnings: options.confirmWarnings ?? false,
-        confirm_plan: options.confirmPlan ?? false,
-      }
-      if (options.confirmationToken) params.confirmation_token = options.confirmationToken
-      api.postWithParams<{ job_id: string }>('/import/streaming', undefined, params).then(({ job_id }) => {
-        setStreamingJob({
-          job_id,
-          status: 'running',
-          progress_pct: 0,
-          message: '初始化...',
-          result: null,
-        })
-        pollImport(job_id, setStreamingJob)
-      })
-    },
-    [pollImport],
-  )
-
-  const startAccountImport = useCallback(() => {
-    api.post<{ job_id: string }>('/import/account').then(({ job_id }) => {
-      setAccountJob({
-        job_id,
-        status: 'running',
-        progress_pct: 0,
-        message: '初始化...',
-        result: null,
-      })
-      // Use separate track for account polling
-      const interval = setInterval(() => {
-        api
-          .get<ImportJob>(`/import/status/${job_id}`)
-          .then((status) => {
-            setAccountJob(status)
-            if (status.status === 'done' || status.status === 'error' || status.status === 'blocked' || status.status === 'needs_confirmation') {
-              clearInterval(interval)
-              pollRef.current.delete('account')
-              if (status.status === 'done') refetch()
-            }
-          })
-          .catch(() => {})
-      }, 1000)
-      pollRef.current.set('account', interval)
-    })
-  }, [refetch])
-
   return {
     settings: settingsQuery.data ?? null,
     loading: settingsQuery.isLoading,
@@ -326,10 +234,6 @@ export function useSettings(): UseSettingsResult {
     clearTranslationCache,
     rebuildAgg,
     markRebuildPending,
-    startStreamingImport,
-    startAccountImport,
-    streamingJob,
-    accountJob,
     spotifyConnect,
     spotifyDisconnect,
     spotifySync,

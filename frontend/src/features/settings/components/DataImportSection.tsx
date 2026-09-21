@@ -1,40 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { CheckCircle2 } from 'lucide-react'
 
 import { GlassCard } from '@/components/shared/GlassCard'
-import { Badge } from '@/components/ui/badge'
-import { CheckCircle2 } from 'lucide-react'
-import type { ImportJob } from '@/types/settings'
-import type { StreamingImportOptions } from '@/types/data-import'
-import { CollapsibleSection, ImportProgressCard } from '@/features/settings/components/SettingsHelpers'
+import { CollapsibleSection } from '@/features/settings/components/SettingsHelpers'
+import { DataImportWorkspace } from '@/features/settings/components/DataImportWorkspace'
 import { DataHealthSummary } from '@/features/settings/components/DataHealthSummary'
-import { ImportPreflightPanel } from '@/features/settings/components/ImportPreflightPanel'
 import { useDataImportHealth } from '@/hooks/useDataImportHealth'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 export function DataImportSection({
   dbRecordCount,
   accountImported,
-  streamingJob,
-  accountJob,
-  onStreamingImport,
-  onAccountImport,
 }: {
   dbRecordCount: number
   accountImported: boolean
-  streamingJob: ImportJob | null
-  accountJob: ImportJob | null
-  onStreamingImport: (options?: StreamingImportOptions) => void
-  onAccountImport: () => void
 }) {
-  const imported = dbRecordCount > 0 && accountImported
+  const imported = dbRecordCount > 0
   const [open, setOpen] = useState(!imported)
+  const viewport = useViewportMode()
+  const presentation = viewport === 'compact' ? 'compact' : 'desktop'
   const dataHealth = useDataImportHealth(open)
-  const { refetchHealth } = dataHealth
-
-  useEffect(() => {
-    if (open && (streamingJob?.status === 'done' || accountJob?.status === 'done')) {
-      void refetchHealth()
-    }
-  }, [open, accountJob?.status, refetchHealth, streamingJob?.status])
 
   return (
     <div id="data-import" className="scroll-mt-24">
@@ -42,65 +27,35 @@ export function DataImportSection({
         <CollapsibleSection
           num={2}
           title="数据导入"
-          desc="先确认数据是否可用，再检查本地数据包并按建议导入。正式写入在后台进行。"
+          desc="选择数据包，核对绑定批次与活动基线的计划，再执行并查看持久运行结果。"
           defaultOpen={!imported}
           onOpenChange={setOpen}
-          summary={
-            imported ? (
-              <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="size-3.5 text-green-600 dark:text-green-400" />
-                流媒体数据已导入 ({new Intl.NumberFormat('zh-CN').format(dbRecordCount)} 条) · 账号数据已导入
-              </span>
-            ) : undefined
-          }
+          summary={imported ? (
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5 text-green-600 dark:text-green-400" />
+              已有 {new Intl.NumberFormat('zh-CN').format(dbRecordCount)} 条播放记录 · 运行历史可追踪
+            </span>
+          ) : undefined}
         >
-          <div className="space-y-4">
-            <DataHealthSummary
-              health={dataHealth.health}
-              loading={dataHealth.healthLoading}
-              error={dataHealth.healthError}
-              onRefresh={() => { void refetchHealth() }}
-              preview={dataHealth.cleanupPreview}
-              previewLoading={dataHealth.cleanupPreviewLoading}
-              previewError={dataHealth.cleanupPreviewError}
-              onPreview={() => { void dataHealth.runCleanupPreview() }}
-            />
-            <ImportPreflightPanel
-              preflight={dataHealth.preflight}
-              loading={dataHealth.preflightLoading}
-              error={dataHealth.preflightError}
-              onRun={() => { void dataHealth.runPreflight() }}
-            />
-          </div>
-          <div className="mt-6 grid grid-cols-1 gap-8 md:grid-cols-2">
-            <ImportProgressCard
-              title="串流数据"
-              label={`当前数据库记录数：${new Intl.NumberFormat('zh-CN').format(dbRecordCount)}`}
-              job={streamingJob}
-              onStart={onStreamingImport}
-              preflight={dataHealth.preflight}
-              supportsImportMode
-              onRecheck={() => { void dataHealth.runPreflight() }}
-              reimportLabel="再次检查并导入"
-            />
-            <ImportProgressCard
-              title="账号数据"
-              label="导入 Spotify 账号数据包中的搜索历史、收藏、播客等信息"
-              job={accountJob}
-              onStart={onAccountImport}
-              statusBadge={
-                accountImported ? (
-                  <Badge variant="default" className="text-[11px]">已导入</Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-[11px]">未导入</Badge>
-                )
-              }
-              helpLink={{
-                text: '如何获取 Spotify 数据包？',
-                href: 'https://www.spotify.com/account/privacy/',
-              }}
-            />
-          </div>
+          {open && (
+            <div className="space-y-4">
+              <DataHealthSummary
+                health={dataHealth.health}
+                loading={dataHealth.healthLoading}
+                error={dataHealth.healthError}
+                onRefresh={() => { void dataHealth.refetchHealth() }}
+                preview={dataHealth.cleanupPreview}
+                previewLoading={dataHealth.cleanupPreviewLoading}
+                previewError={dataHealth.cleanupPreviewError}
+                onPreview={() => { void dataHealth.runCleanupPreview() }}
+              />
+              <DataImportWorkspace
+                presentation={presentation}
+                dbRecordCount={dbRecordCount}
+                accountImported={accountImported}
+              />
+            </div>
+          )}
         </CollapsibleSection>
       </GlassCard>
     </div>

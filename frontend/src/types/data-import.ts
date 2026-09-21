@@ -213,3 +213,98 @@ export interface ImportCleanupPreviewResponse {
   groups: ImportCleanupPreviewGroup[]
   excluded_issue_codes: string[]
 }
+
+export type ImportBatchKind = 'snapshot' | 'delta' | 'legacy'
+
+export interface ImportBatch {
+  batch_id: string
+  kind: ImportBatchKind | string
+  status: string
+  parent_source_version_id: string | null
+  manifest_digest: string
+  created_at: string
+  frozen_at: string | null
+}
+
+export interface ImportBatchCreatePayload {
+  kind?: ImportBatchKind
+  parent_source_version_id?: string | null
+}
+
+export interface ImportBatchUploadResult {
+  batch_id: string
+  file_name: string
+  source_type: 'audio' | 'video'
+  size_bytes: number
+  sha256: string
+  status: 'received'
+}
+
+export interface ImportRunCreatePayload {
+  mode: ImportRequestedMode
+  confirmation_token: string
+  confirm_warnings: boolean
+  confirm_plan: boolean
+}
+
+export interface ImportRunCreateResult {
+  run_id: string
+  created: boolean
+}
+
+export type ImportStageFreshness = 'ready' | 'warming' | 'unavailable' | 'failed' | string
+
+export interface ImportRunStage {
+  stage: string
+  attempt?: number
+  status: string
+  freshness?: ImportStageFreshness | null
+  message?: string | null
+  error_code?: string | null
+  retryable?: boolean
+  queued_at?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  duration_ms?: number | null
+  processed_scope?: Record<string, unknown> | null
+  result?: Record<string, unknown> | null
+}
+
+export interface ImportRunDetail {
+  run_id: string
+  batch_id: string
+  status: string
+  publication_state: string
+  progress_pct: number
+  message: string
+  error_code: string | null
+  retryable: boolean
+  report_status: string
+  report_error_code: string | null
+  result: Record<string, unknown> | null
+  plan: Record<string, unknown> | null
+  stages: ImportRunStage[]
+  started_at: string
+  completed_at: string | null
+}
+
+export interface ImportRunHistoryPage {
+  runs: ImportRunDetail[]
+  next_cursor?: string | null
+  next_offset?: number | null
+  has_more?: boolean
+}
+
+export interface ImportRunReport {
+  run_id: string
+  generated_at?: string
+  status?: string
+  input?: Record<string, unknown>
+  execution?: Record<string, unknown>
+  conservation?: Record<string, unknown>
+  stages?: ImportRunStage[]
+  quality?: Record<string, unknown>
+  recovery?: Record<string, unknown>
+  errors?: Array<Record<string, unknown>>
+  [key: string]: unknown
+}

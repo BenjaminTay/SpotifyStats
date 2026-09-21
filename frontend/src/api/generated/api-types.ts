@@ -2208,6 +2208,199 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/import/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Import Batch
+         * @description Create a server-owned receiving batch for browser uploads.
+         */
+        post: operations["create_import_batch_api_import_batches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/batches/{batch_id}/files/{file_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Upload Import Batch File */
+        put: operations["upload_import_batch_file_api_import_batches__batch_id__files__file_name__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/batches/{batch_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize Import Batch */
+        post: operations["finalize_import_batch_api_import_batches__batch_id__finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/batches/{batch_id}/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Batch Preflight */
+        get: operations["get_batch_preflight_api_import_batches__batch_id__preflight_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/batches/{batch_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Import Run */
+        post: operations["create_import_run_api_import_batches__batch_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Import Run History */
+        get: operations["get_import_run_history_api_import_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/runs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Latest Import Run */
+        get: operations["get_latest_import_run_api_import_runs_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Import Run Detail */
+        get: operations["get_import_run_detail_api_import_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/runs/{run_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Import Run Report
+         * @description Return the private local report; ordinary run payloads omit paths and traces.
+         */
+        get: operations["get_import_run_report_api_import_runs__run_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/runs/{run_id}/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recheck Import Run */
+        post: operations["recheck_import_run_api_import_runs__run_id__recheck_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/import/runs/{run_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Import Stage */
+        post: operations["retry_import_stage_api_import_runs__run_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/import/streaming": {
         parameters: {
             query?: never;
@@ -2219,7 +2412,7 @@ export interface paths {
         put?: never;
         /**
          * Start Streaming Import
-         * @description Trigger streaming data import in the background.
+         * @description Compatibility adapter onto immutable batches and durable executions.
          */
         post: operations["start_streaming_import_api_import_streaming_post"];
         delete?: never;
@@ -8106,6 +8299,56 @@ export interface components {
             /** External Ids */
             external_ids?: components["schemas"]["IdentityExternalIdInput"][];
         };
+        /** ImportBatchCreateRequest */
+        ImportBatchCreateRequest: {
+            /**
+             * Kind
+             * @default snapshot
+             * @enum {string}
+             */
+            kind: "snapshot" | "delta" | "legacy";
+            /** Parent Source Version Id */
+            parent_source_version_id?: string | null;
+        };
+        /** ImportBatchResponse */
+        ImportBatchResponse: {
+            /** Batch Id */
+            batch_id: string;
+            /** Kind */
+            kind: string;
+            /** Status */
+            status: string;
+            /** Parent Source Version Id */
+            parent_source_version_id?: string | null;
+            /** Manifest Digest */
+            manifest_digest: string;
+            /** Created At */
+            created_at: string;
+            /** Frozen At */
+            frozen_at?: string | null;
+        };
+        /** ImportBatchUploadResponse */
+        ImportBatchUploadResponse: {
+            /** Batch Id */
+            batch_id: string;
+            /** File Name */
+            file_name: string;
+            /**
+             * Source Type
+             * @enum {string}
+             */
+            source_type: "audio" | "video";
+            /** Size Bytes */
+            size_bytes: number;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Status
+             * @default received
+             * @constant
+             */
+            status: "received";
+        };
         /** ImportCleanupPreviewGroup */
         ImportCleanupPreviewGroup: {
             /** Issue Code */
@@ -8394,6 +8637,12 @@ export interface components {
              */
             fingerprint_baseline_status: "missing" | "ready" | "incompatible";
             /**
+             * Fingerprint Baseline Reason
+             * @default not_initialized
+             * @enum {string}
+             */
+            fingerprint_baseline_reason: "ready" | "not_initialized" | "active_state_missing" | "fingerprints_missing" | "fingerprint_version_incompatible" | "record_count_mismatch" | "dataset_digest_mismatch" | "duplicate_fingerprints";
+            /**
              * Detected Relation
              * @default unknown
              * @enum {string}
@@ -8468,6 +8717,105 @@ export interface components {
              * @default false
              */
             record_delta_comparable: boolean;
+        };
+        /** ImportRunCreateRequest */
+        ImportRunCreateRequest: {
+            /**
+             * Mode
+             * @default auto
+             * @enum {string}
+             */
+            mode: "auto" | "append" | "replace";
+            /** Confirmation Token */
+            confirmation_token: string;
+            /**
+             * Confirm Warnings
+             * @default false
+             */
+            confirm_warnings: boolean;
+            /**
+             * Confirm Plan
+             * @default false
+             */
+            confirm_plan: boolean;
+        };
+        /** ImportRunCreateResponse */
+        ImportRunCreateResponse: {
+            /** Run Id */
+            run_id: string;
+            /**
+             * Created
+             * @default true
+             */
+            created: boolean;
+        };
+        /** ImportRunDetailResponse */
+        ImportRunDetailResponse: {
+            /** Run Id */
+            run_id: string;
+            /** Batch Id */
+            batch_id: string;
+            /** Status */
+            status: string;
+            /** Publication State */
+            publication_state: string;
+            /**
+             * Progress Pct
+             * @default 0
+             */
+            progress_pct: number;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Retryable
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Report Status
+             * @default pending
+             */
+            report_status: string;
+            /** Report Error Code */
+            report_error_code?: string | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Plan */
+            plan?: {
+                [key: string]: unknown;
+            } | null;
+            /** Stages */
+            stages?: {
+                [key: string]: unknown;
+            }[];
+            /** Started At */
+            started_at: string;
+            /** Completed At */
+            completed_at?: string | null;
+        };
+        /** ImportRunHistoryResponse */
+        ImportRunHistoryResponse: {
+            /** Runs */
+            runs?: components["schemas"]["ImportRunDetailResponse"][];
+            /** Next Offset */
+            next_offset?: number | null;
+            /**
+             * Has More
+             * @default false
+             */
+            has_more: boolean;
+        };
+        /** ImportStageRetryRequest */
+        ImportStageRetryRequest: {
+            /** Stage */
+            stage: string;
         };
         /**
          * JobStatusResponse
@@ -18264,6 +18612,354 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportCleanupPreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_import_batch_api_import_batches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportBatchCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_import_batch_file_api_import_batches__batch_id__files__file_name__put: {
+        parameters: {
+            query: {
+                source_type: "audio" | "video";
+            };
+            header?: never;
+            path: {
+                batch_id: string;
+                file_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchUploadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    finalize_import_batch_api_import_batches__batch_id__finalize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportBatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_batch_preflight_api_import_batches__batch_id__preflight_get: {
+        parameters: {
+            query?: {
+                mode?: "auto" | "append" | "replace";
+            };
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportPreflightResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_import_run_api_import_batches__batch_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRunCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunCreateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_import_run_history_api_import_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_latest_import_run_api_import_runs_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunDetailResponse"] | null;
+                };
+            };
+        };
+    };
+    get_import_run_detail_api_import_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_import_run_report_api_import_runs__run_id__report_get: {
+        parameters: {
+            query?: {
+                format?: "json" | "markdown";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recheck_import_run_api_import_runs__run_id__recheck_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_import_stage_api_import_runs__run_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportStageRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportRunCreateResponse"];
                 };
             };
             /** @description Validation Error */
