@@ -6,6 +6,7 @@ __pycache__/
 *.db-journal
 !backend/tests/fixtures/seed.db
 .venv/
+.venv
 .DS_Store
 
 # Personal Spotify data — contains IP addresses and listening history
@@ -17,6 +18,7 @@ data/spotify_stats.db
 data/spotify_stats.db-shm
 data/community_cache.build.lock
 data/account_archive_cache.build.lock
+data/governance_cache.build.lock
 data/spotify_stats.db-wal
 # Timestamped local backups created before derived-data rebuilds
 data/*.db.pre-*

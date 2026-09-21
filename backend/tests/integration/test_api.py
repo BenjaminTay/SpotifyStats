@@ -1247,10 +1247,13 @@ class TestLyrics:
         assert r.status_code == 200
         d = r.json()
         assert "found" in d
-        assert "lyrics" in d
-        assert "genius_url" in d
-        assert "genius_song_id" in d
-        assert "cached" in d
+        if d["found"]:
+            assert "lyrics" in d
+            assert "genius_url" in d
+            assert "genius_song_id" in d
+            assert "cached" in d
+        else:
+            assert d == {"found": False}
 
     def test_lyrics_endpoint_nonexistent(self, client):
         """GET /api/lyrics/{track_id} for non-existent track returns found=False."""

@@ -4,12 +4,14 @@
 > 规划：S0–S6 全部实施
 > 实现状态：IMPLEMENTED
 > 验证状态：PASS（真实隔离副本 + 故障恢复 + 性能 + API + 浏览器 + 默认完整 fullstack）
-> Git：S0–S5 已提交 `ae6febc`、`d37c9af`、`37c8431`；S6 与收口随本报告所在提交交付；UNPUSHED
+> Git：S0–S6 已提交 `ae6febc`、`d37c9af`、`37c8431`、`8102f47`；独立复核追加修复 `031075a`；UNPUSHED
 > 部署：NOT_DEPLOYED
 
 ## 结论
 
 导入事故修复规划的 S0–S6 已全部完成。串流输入、播放事实、指纹基线、活动来源和派生阶段由同一批次与代际证据串联；事实提交后的派生失败不会再默认整库回滚；关键任务不依赖封面队列排空；played 与全量治理范围分别可见；Settings 提供可刷新、可重启恢复的持久导入工作台。
+
+初次收口后又执行了一轮独立破坏性复核。复核在隔离副本中发现并稳定复现三个 P1：默认 snapshot 尾包的活动原始来源缺少历史父链、replace 确认与独占锁之间存在跨进程覆盖窗口、事实事务提交后而控制日志仍为 `prepared` 的硬中止无法向前恢复。三个问题均已重新打开、修复并补入真实编排回归；本报告中的最终结论以追加修复后的证据为准，不再沿用 `8102f47` 时点的旧结论。
 
 最终真实副本从 92,908 条旧事实导入至 94,760 条，新增 1,852、删除 0，保留 2 条迟到记录。三次独立副本运行全部通过 14 项语义对账、四套公开搜索快照、replacement 对照和再次导入 noop。正式 `data` 没有再次导入；本轮没有 push 或部署。
 
@@ -57,6 +59,18 @@
 
 真实 API 使用 `/tmp/spotifystats-s6-api-v2/spotify_stats.db`。无操作执行前后主库状态与 mtime 不变，未创建 import backup。隔离 helper 同步更新 Home 主库身份与 snapshot root，修复了副本被误判为非主库而无法发布公开 Home 快照的问题。
 
+## 独立复核后的 P1 追加修复
+
+追加修复严格限定在独立复核证明的三条失败路径及其必要证据链：
+
+- 上传输入的 `batch_id` 与最终发布的 `source_version_id` 分离。`snapshot_superset` 可直接发布完整 snapshot；`delta_tail` 若输入本身不能重放完整事实，则在独占锁内从当前活动来源派生 delta 子版本。发布前后均对 resolved 来源的去重指纹 count/digest 与目标事实做语义对账。
+- 确认 token 绑定 generation、dataset digest、record count 与活动 source version。取得跨进程独占锁后重新评估并复核 main/control 来源三元组；`import_data` 在 `BEGIN IMMEDIATE` 后、任何 DELETE/INSERT 前再执行事务内 baseline fence，replace 与首次初始化不再绕过旧状态校验。
+- 恢复器遇到“主库已提交、控制库仍为 prepared”时，从同一主库事务写入的 `playback_import_state` 与 `playback_import_runs.change_set_json` 读取并严格校验证据，再用 CAS 将控制 run 补齐为 `facts_committed`，之后才发布来源。最终 CAS 仍不直接接受 prepared，证据不足继续 fail-closed。
+
+新增的非 mock 编排矩阵覆盖：空库 full、snapshot superset、浏览器默认 snapshot 尾包、显式 delta、reconcile、replace、持久 noop、replace 事务栅栏、另一进程在确认后完成新发布，以及 `mark_facts_committed` 前硬中止。活动来源同时通过真实 importer 重放，最终 count/digest 与主库一致；noop 不新增备份、不改事实/主库 run/活动来源，仅保留输入批次与控制审计。
+
+追加修复后的本地结果：定向编排 5/5、相关导入组 85/85、完整 unit 1,980 passed / 2 skipped、完整 contract 441 passed、前端 86 files passed / 1 skipped（669 tests passed / 4 skipped）、production build PASS。提交钩子的 ruff、format、mypy 与 secrets 全部 PASS。
+
 ## 性能、API 与浏览器
 
 - ready 基线冷预检三次：5,666.722 / 5,300.994 / 5,539.753 ms，median 5,539.753 ms。
@@ -64,13 +78,14 @@
 - 最终默认 fullstack 的 22 轮热 API：Import Preflight median 69.443 ms、P95 70.113 ms；所有监测端点 hot P95 均低于 500 ms。
 - API smoke 153/153；OpenAPI 234 operations、0 unaccounted；GET 149/162 覆盖、13 个明确排除、0 unaccounted。
 - 独立真实浏览器检查覆盖 Desktop、Compact、Phone：导入 noop 流程、状态/历史、44×44 主要触控目标、无横向溢出、无本机绝对路径泄漏。
+- P1 追加修复后再次用真实 Playwright CLI 检查 Desktop 与 390×844 Phone 导入工作台：运行历史与数据健康请求均为 200，Phone `scrollWidth == innerWidth == 390`，可见按钮无小于 44×44 的目标，控制台 0 error；会话验收后已关闭。
 - 默认浏览器门禁覆盖完整路由与五档 viewport、桌面/移动交互、图表、长列表、40 组控件 inventory，以及 Chromium、Firefox、WebKit；全部 PASS。
 
 验收中先后发现三处测试合同已落后于新界面/合法状态：导入工作台仍查找旧“串流数据”，移动筛选只接受 unavailable 而不接受 ready，跨浏览器脚本仍使用旧导入文案。三处均改为验证当前非写入合同并补回归测试，随后在同一默认完整 run 中通过。
 
 ## 默认完整本地门禁
 
-最终 run：`20260921T124842.178610Z-150a940588e1`，mode=`full`，总耗时 1,399,250 ms。
+初次 S6 run：`20260921T124842.178610Z-150a940588e1`，mode=`full`，总耗时 1,399,250 ms。该 run 证明初次 S6 时点的完整门禁，但发生在追加修复前；追加修复后的新默认完整 run 见本节末尾更新。
 
 | 必需阶段 | 状态 | 耗时 ms |
 | --- | --- | ---: |
@@ -86,6 +101,8 @@
 门禁明细：Backend seed 2,923 passed；真实 integration 187 passed；Frontend 86 files passed / 1 skipped、669 tests passed / 4 skipped；production build、pre-commit、mypy、ruff、secrets 和文档审计全部通过。
 
 warning 未被虚写为零：seed 有 1 个 LibreSSL/urllib3 环境 warning 与 3 个 AnyIO HTTP 422 弃用 warning；integration 有同一 LibreSSL warning；Vite 保留大 chunk 建议。它们没有改变本次导入合同或门禁结果。
+
+追加修复后的默认完整 fullstack：待本报告提交后在 clean HEAD 上执行并回填；在此之前不把上面的历史 run 冒充为当前 HEAD 证据。
 
 ## 数据与交付边界
 
