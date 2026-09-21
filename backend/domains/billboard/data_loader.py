@@ -184,7 +184,7 @@ def load_billboard_raw(
             LEFT JOIN spotify_track_meta stm
               ON {spotify_id_expr} = stm.spotify_track_id
             {_w}
-            ORDER BY p.ts""",
+            ORDER BY p.ts, COALESCE(p.source_fingerprint, ''), p.play_id""",
         conn,
         params=_fp,
     )
@@ -281,7 +281,7 @@ def load_billboard_raw_for_artists(
             LEFT JOIN spotify_track_meta stm
               ON {spotify_id_expr} = stm.spotify_track_id
             {_w}
-            ORDER BY p.ts""",
+            ORDER BY p.ts, COALESCE(p.source_fingerprint, ''), p.play_id""",
         conn,
         params=_fp,
     )

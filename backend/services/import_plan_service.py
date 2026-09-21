@@ -488,6 +488,16 @@ def _preflight_key(streaming_dir, account_dir, requested_mode, conn) -> tuple:
         if _table_exists(conn, "playback_import_state")
         else ()
     )
+    facts = (
+        tuple(conn.execute("SELECT COUNT(*),MIN(ts),MAX(ts) FROM plays").fetchone() or ())
+        if _table_exists(conn, "plays")
+        else ()
+    )
+    settings = (
+        tuple(conn.execute("SELECT key,value FROM settings ORDER BY key").fetchall())
+        if _table_exists(conn, "settings")
+        else ()
+    )
     return (
         PREFLIGHT_CONTRACT_VERSION,
         FINGERPRINT_VERSION,
@@ -498,6 +508,8 @@ def _preflight_key(streaming_dir, account_dir, requested_mode, conn) -> tuple:
         stat.st_dev,
         stat.st_ino,
         state,
+        facts,
+        settings,
         tuple(files),
     )
 
@@ -510,7 +522,6 @@ def _cached_streaming_preflight(streaming_dir, account_dir, requested_mode) -> d
         staging = None
         retained = False
         try:
-            version = observer.execute("PRAGMA data_version").fetchone()[0]
             key = _preflight_key(streaming_dir, account_dir, requested_mode, observer)
             cached = cached_preflight_report(key)
             if cached is not None:
@@ -525,17 +536,14 @@ def _cached_streaming_preflight(streaming_dir, account_dir, requested_mode) -> d
             staging = assessment.staging
             assert staging is not None
             staging.verify_source_manifest()
-            if (
-                _preflight_key(streaming_dir, account_dir, requested_mode, observer) != key
-                or observer.execute("PRAGMA data_version").fetchone()[0] != version
-            ):
+            if _preflight_key(streaming_dir, account_dir, requested_mode, observer) != key:
                 raise RuntimeError("source or active dataset changed during preflight")
             staging.preflight_key = key
             from copy import deepcopy
 
             staging.preflight_report = deepcopy(assessment.report)
             staging.preflight_observer = observer
-            staging.preflight_data_version = version
+            staging.preflight_data_version = observer.execute("PRAGMA data_version").fetchone()[0]
             staging.preflight_staging_digest = _sha256_file(staging.database_path)
             cache_staging(
                 str(assessment.report["confirmation_token"]),

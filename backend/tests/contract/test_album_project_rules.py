@@ -540,6 +540,10 @@ def test_collaboration_candidate_detector_finds_primary_artist_remix(use_seed_db
         conn.execute("DELETE FROM track_group_members WHERE group_id=921")
         conn.execute("DELETE FROM track_groups WHERE group_id=921")
         conn.execute(
+            """DELETE FROM track_l1_source_links
+                WHERE track_id IN (920, 926) AND evidence_type!='play_at_time'"""
+        )
+        conn.execute(
             """UPDATE track_l1_source_links SET evidence_type='play_at_time'
                 WHERE track_id IN (920, 926)"""
         )

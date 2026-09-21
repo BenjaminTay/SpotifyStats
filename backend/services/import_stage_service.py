@@ -86,6 +86,27 @@ _STAGE_DEPENDENCY_TABLES = {
     ),
 }
 
+_NON_SEMANTIC_DEPENDENCY_COLUMNS = {
+    "updated_at",
+}
+_TABLE_NON_SEMANTIC_DEPENDENCY_COLUMNS = {
+    "playback_import_state": {
+        "active_publication_id",
+        "active_source_version_id",
+        "last_relation",
+        "last_strategy",
+        "publication_state",
+    },
+    "music_search_snapshot_variant_state": {
+        "job_id",
+        "last_error",
+    },
+    "music_search_year_end_projection_state": {
+        "built_at",
+        "last_error",
+    },
+}
+
 
 def _stage_dependency_revision(stage: str) -> dict[str, Any]:
     """Return the declared, compact semantic dependency vector for a stage."""
@@ -101,7 +122,14 @@ def _stage_dependency_revision(stage: str) -> dict[str, Any]:
             if table not in tables:
                 payload["tables"][table] = None
                 continue
-            columns = [str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')]
+            excluded = _NON_SEMANTIC_DEPENDENCY_COLUMNS | set(
+                _TABLE_NON_SEMANTIC_DEPENDENCY_COLUMNS.get(table, ())
+            )
+            columns = [
+                str(row[1])
+                for row in conn.execute(f'PRAGMA table_info("{table}")')
+                if str(row[1]) not in excluded
+            ]
             if not columns:
                 payload["tables"][table] = []
                 continue
@@ -332,7 +360,15 @@ def inspect_import_readiness(run_id: str | None = None) -> dict[str, Any]:
     year_end_failed = any(
         variant.get("status") == "failed" for variant in year_end.get("variants", [])
     )
-    year_end_warming = year_end.get("status") in {"pending", "building"}
+    year_end_warming = year_end.get("status") == "warming"
+    build_in_progress = (
+        search_job_status in {"pending", "running"}
+        or billboard_job_status in {"pending", "running"}
+        or any(
+            variant.get("status") in {"pending", "running"}
+            for variant in year_end.get("variants", [])
+        )
+    )
     status = _classify_readiness(
         search_ready=search_ready,
         search_failed=search_failed,
@@ -353,6 +389,7 @@ def inspect_import_readiness(run_id: str | None = None) -> dict[str, Any]:
         "billboard_ready": billboard_ready,
         "billboard_job_status": billboard_job_status,
         "search_job_status": search_job_status,
+        "build_in_progress": build_in_progress,
         "year_end": year_end,
     }
 
@@ -412,7 +449,9 @@ def reconcile_import_readiness(run_id: str) -> dict[str, Any]:
                 else "导入完成，全部精确快照已发布"
             ),
         )
-    elif readiness["status"] in {"failed", "unavailable"}:
+    elif readiness["status"] == "failed" or (
+        readiness["status"] == "unavailable" and not readiness.get("build_in_progress")
+    ):
         dependency_revision = _stage_dependency_revision("exact_snapshots")
         attempt = start_stage_attempt(
             run_id,
@@ -481,7 +520,9 @@ def _watch_readiness(run_id: str) -> None:
                     message="运行目标已被新一代播放事实取代",
                 )
                 return
-            if result["status"] in {"ready", "failed", "unavailable"}:
+            if result["status"] in {"ready", "failed"} or (
+                result["status"] == "unavailable" and not result.get("build_in_progress")
+            ):
                 return
             time.sleep(2)
     finally:
@@ -602,7 +643,14 @@ def run_import_stages(
                 message=f"阶段 {stage} 失败",
             )
             return {"status": status, "stage": stage, "error_code": str(error_code)}
-        if output.get("status") in {"failed", "unavailable"}:
+        active_unavailable_build = (
+            stage == "exact_snapshots"
+            and output.get("status") == "unavailable"
+            and bool(output.get("build_in_progress"))
+        )
+        if output.get("status") == "failed" or (
+            output.get("status") == "unavailable" and not active_unavailable_build
+        ):
             error_code = str(output.get("error_code") or f"{stage}_failed")
             finish_stage_attempt(
                 run_id,
@@ -648,7 +696,11 @@ def run_import_stages(
             degraded[stage] = output
             prior_outputs[stage] = output
             continue
-        attempt_status = "warming" if output.get("status") == "warming" else "succeeded"
+        attempt_status = (
+            "warming"
+            if output.get("status") == "warming" or active_unavailable_build
+            else "succeeded"
+        )
         finish_stage_attempt(
             run_id,
             stage,

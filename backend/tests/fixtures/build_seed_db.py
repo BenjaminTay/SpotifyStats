@@ -1143,7 +1143,7 @@ def build() -> str:
     # rows too because migration and compatibility tests exercise both
     # projections from this fixture.
     conn.execute(
-        """INSERT INTO track_group_l1_members(group_id, l1_id)
+        """INSERT OR IGNORE INTO track_group_l1_members(group_id, l1_id)
            SELECT members.group_id, links.l1_id
              FROM track_group_members members
              JOIN track_l1_source_links links ON links.track_id=members.track_id"""
@@ -1165,8 +1165,11 @@ def build() -> str:
     conn.execute("INSERT INTO settings(key, value) VALUES ('merge_enabled', '1')")
 
     from backend.domains.playback.album_projects import ensure_album_projects
+    from backend.services.analysis_snapshot_revision import install_revision_tracking
 
     ensure_album_projects(conn)
+    install_revision_tracking(conn)
+    conn.execute("UPDATE analysis_source_revisions SET epoch='tracked-seed-analysis-v1'")
 
     conn.commit()
 

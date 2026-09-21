@@ -1,5 +1,19 @@
 # 变更日志
 
+## 2026-09-21：数据导入处理与治理 S6 最终验收
+
+- 三次独立真实副本从 92,908 条旧事实增量至 94,760 条，新增 1,852、删除 0、保留两条迟到记录；14 项语义对账、四套搜索快照、replacement 对照与再次导入 noop 全部通过。
+- 恢复审计补齐 durable quarantine owner、来源发布/门禁原子事务、migration 前 fail-closed、readiness 自动晋升和可复用阶段依赖 revision；发布后派生失败不重复播放 ETL。
+- ready 基线 hot 预检 P95 71.258 ms；最终默认完整 fullstack 八个必需阶段同一 run 全部 PASS，含 2,923 个 seed 测试、187 个真实 integration、153/153 API smoke、669 个前端测试和 Chromium/Firefox/WebKit。
+- 当前规则与最终证据见 [S6 报告](reports/2026-09-21-import-governance-final-acceptance.md)；已完成规划移入 archive。未再次导入正式数据，未 push 或部署。
+
+## 2026-09-21：导入处理与治理 S1–S5
+
+- Settings 新增服务端持久数据导入工作台：不可变上传批次、绑定活动基线的预检/确认、分页运行历史、阶段证据、报告、重试与 readiness 重新核对；Phone、Compact、Desktop 共用同一后端状态。
+- 导入控制库与活动主库分离，事实、来源指针和发布日志由跨进程 writer lease、批次锁、generation/digest/revision fence 与启动恢复共同保护。事实提交后的派生失败改为阶段恢复，不再默认整库回滚。
+- 后置维护固定为元数据、身份、Album Project/L3、Billboard、候选、关键预热、封面和精确快照；JobQueue 增加优先级、资源 lane、target 去重和有限重试，封面队列不再成为关键统计的前置排空条件。
+- played 与全量治理账本分层，33 个兼容身份样本和 238 条未匹配音频保留分类、影响与证据；原始事实不因治理扫描改写。实现与局部门禁见 [S1–S5 报告](reports/2026-09-21-import-remediation-s1-s5.md)，最终真实副本、浏览器与完整本地门禁另由 S6 报告确认。
+
 ## 2026-09-21：非阻塞更新提示收口
 
 - Billboard 周榜切换、播放分析范围切换和手机收藏库翻页不再插入可见进度条；保留上一帧，并在稳定容器使用 `aria-busy`，避免右上角或正文发生布局跳动。

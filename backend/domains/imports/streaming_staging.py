@@ -583,11 +583,7 @@ def cached_preflight_report(key: tuple) -> dict[str, Any] | None:
                 valid = (
                     not staging._closed
                     and observer is not None
-                    and observer.execute("PRAGMA data_version").fetchone()[0]
-                    == staging.preflight_data_version
                     and _sha256_file(staging.database_path) == staging.preflight_staging_digest
-                    and observer.execute("PRAGMA data_version").fetchone()[0]
-                    == staging.preflight_data_version
                 )
             except (OSError, sqlite3.Error):
                 valid = False

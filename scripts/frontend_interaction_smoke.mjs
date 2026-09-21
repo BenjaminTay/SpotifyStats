@@ -470,7 +470,7 @@ async function pageState(client) {
       search: location.search,
       alerts: Array.from(document.querySelectorAll('[role="alert"]')).filter(el => el.getClientRects().length).map(el => el.innerText),
       skeletonCount: document.querySelectorAll('main [data-slot="skeleton"], main .mobile-state-loading').length,
-      statsKpiCount: document.querySelectorAll('main [aria-label="播放统计核心数据"]').length,
+      statsKpiCount: document.querySelectorAll('[aria-label="播放统计核心数据"]').length,
     }))();
   `)
 }
@@ -768,12 +768,13 @@ const SCENARIOS = {
   'settings-data-import': async ({ client, baseUrl, waitMs }) => {
     await navigate(client, baseUrl, '/settings', waitMs)
     await waitForText(client, '参数与配置', waitMs)
-    await expandSectionForText(client, '数据导入', '串流数据', waitMs)
-    await waitForText(client, '账号数据', waitMs)
-    await waitForText(client, '当前数据库记录数', waitMs)
-    await waitForText(client, '导入 Spotify 账号数据包', waitMs)
+    await expandSectionForText(client, '数据导入', '选择 Spotify Extended Streaming History JSON', waitMs)
+    await waitForText(client, '账号资料包', waitMs)
+    await waitForText(client, '现有数据库', waitMs)
+    await waitForText(client, '运行历史', waitMs)
     await waitForAnyText(client, ['未导入', '已导入'], waitMs)
-    await assertClickableTextCount(client, ['开始导入', '重新导入', '导入中...'], 2, waitMs)
+    await assertClickableTextCount(client, ['接收并检查'], 1, waitMs)
+    await assertClickableTextCount(client, ['导入账号资料', '再次导入'], 1, waitMs)
   },
 
   'theme-toggle': async ({ client, baseUrl, waitMs }) => {
@@ -828,9 +829,20 @@ const SCENARIOS = {
     await waitForSearchParam(client, 'period', 'last_4_weeks', waitMs)
     await waitForCondition(async () => {
       const state = await pageState(client)
-      return analysisResponses.some(response => isAnalysisUnavailable(response, state)) ? state : null
-    }, waitMs, 'Expected completed Analysis snapshot_unavailable response and visible unavailable UI')
+      return analysisResponses.some(response => isAnalysisReady(response, state) || isAnalysisUnavailable(response, state)) ? state : null
+    }, dataWaitMs, 'Expected completed Analysis response with either ready data or visible snapshot_unavailable UI')
   },
+}
+
+export function isAnalysisReady(response, state) {
+  const url = new URL(response.url)
+  const finalUrl = new URL(state.url)
+  return response.complete && response.status === 200
+    && url.origin === finalUrl.origin && url.pathname === '/api/analysis/stats'
+    && url.searchParams.get('period') === 'last_4_weeks'
+    && finalUrl.pathname === '/analysis/stats'
+    && finalUrl.searchParams.get('period') === 'last_4_weeks'
+    && state.statsKpiCount > 0
 }
 
 export function isAnalysisUnavailable(response, state) {
@@ -905,12 +917,14 @@ async function runScenario({ port, baseUrl, apiBaseUrl, scenario, waitMs, viewpo
       pageErrors: pageErrors.slice(0, 5),
     }
   } catch (error) {
+    const finalState = await pageState(client).catch(() => null)
     return {
       scenario,
       viewport: viewportName,
       ok: false,
       failures: [error instanceof Error ? error.message : String(error)],
-      finalPath: null,
+      finalPath: finalState?.path ?? null,
+      finalState,
       consoleErrorCount: 0,
       consoleWarningCount: 0,
       pageErrorCount: pageErrors.length,

@@ -63,7 +63,11 @@ data/
 data/
 ├── spotify_stats.db                     # SQLite 数据库（78MB+，导入后生成）
 ├── spotify_stats.db-shm / .db-wal       # SQLite WAL 文件（运行时自动管理）
+├── import_control/                      # 独立控制库、发布锁与批次锁
+├── import_sources/                      # 已发布的活动原始来源版本与指针
+├── import_backups/                      # 写入前数据库/旧来源恢复点（本地私有）
 ├── artist_genre_overrides.seed.json     # 人工审校的艺人流派种子数据（~171KB）
+├── *_cache.db                           # Billboard、年度、治理等持久派生 sidecar
 └── covers/                              # 封面图片缓存
     ├── albums/                          #   专辑封面（WebP，Spotify API 全量拉取）
     └── artists/                         #   艺人头像
@@ -236,31 +240,19 @@ Spotify 推断的用户兴趣标签，按类别分组：
 
 ### 1. Streaming History 导入
 
-`backend/core/import_data.py` → `import_data()`：
+当前 Settings 工作台先把每个文件上传到服务端草稿批次，再执行 `finalize`。冻结批次按文件名、类型、大小和 SHA-256 固化，后续预检与执行只读取该不可变版本；浏览器本地路径不会进入 API、运行记录或报告。
 
-1. 扫描 `data/streaming/Streaming_History_Audio_*.json`（+ 可选 `Video_*.json`）
-2. 导入前检查必需文件；完全重复文件会阻断导入，日期重叠只提示，完全相同的记录在导入时自动跳过
-3. 预读取所有文件计算总记录数（用于进度条）
-4. 创建数据库快照后清空旧播放数据（`plays`、预聚合表、`track_albums`）
-5. 逐文件逐记录解析：
-   - 时区转换（`ts` UTC → 本地）
-   - 平台归类（`platform` → `ios/android/desktop/web/other`）
-   - Featured Artist 提取（从曲名中解析 `(feat. X)` / `(with Y)` 等模式）
-   - 维度表去重插入（artists / albums / tracks）
-   - track_artists 关联写入（primary + featured）
-   - 保存播放当时的 `spotify_track_id_at_play`，避免后续曲目重命名或同名专辑搜索误伤
-6. 每 5000 条批量写入 `plays` 表，并在结果中返回 `duplicate_records_skipped`
-7. 后置维护派生数据：
-   - 用 Spotify Web API 批量补齐新曲目的 `spotify_track_meta`
-   - 根据 track API 返回的 Spotify album id 建立 `album_spotify_links` 证据
-   - 批量补齐 `spotify_album_meta`，包括封面、发行类型、发行日期和曲目数
-   - 重建 `album_projects` / `album_project_albums` / `album_project_tracks`
-   - 重建 `agg_weekly_*` 与 `agg_weekly_track_sources`
-   - 清理后端内存缓存并返回导入健康报告
-8. 复核 SQLite 完整性、播放数量和播放→曲目/专辑关系；硬错误会恢复导入前快照，普通元数据缺口保留为 `partial`
-9. 返回统计摘要（`total_records`, `unique_artists`, `unique_albums`, `unique_tracks`, `duplicate_records_skipped`）和维护状态（`maintenance_status`）
+执行流程如下：
 
-`maintenance_status=partial` 表示基础播放数据已经导入，但 Spotify API 凭据不可用、上游请求失败，或仍有近期曲目/专辑元数据未解析。此时播放记录仍可查询，封面、album project、专辑榜等派生结果可能需要补全后再刷新。
+1. 预检把输入解析到权限受限的临时 staging，并与活动 `fingerprint_version + dataset_digest + record_count` 基线比较。
+2. `baseline_required`、`identical`、`snapshot_superset`、`delta_tail`、`reconciled_snapshot` 与风险关系分别得到明确动作；不能证明时不猜测追加或删除。
+3. 写入前创建恢复点，并取得跨线程、跨进程 writer lease。事实、活动代际、dataset digest、ChangeSet 和发布日志在同一事务提交；源目录以不可变版本 + 原子指针发布。
+4. `identical` 在备份、事实写入和派生重建前结束；超集或安全尾包只写新增事实；历史增删需要绑定当前输入/基线的确认；完整替换仍保留恢复点。
+5. 事实提交后按固定阶段恢复：元数据、身份、Album Project/L3、Billboard、候选索引、关键预热、封面补充、精确快照。阶段有 generation/digest/revision 栅栏，失败从对应阶段重试，不重新插入已经发布的事实。
+6. 核心统计与全部精确结果分别发布 `core_ready` / `ready`；旧 LKG 可继续服务时显示 warming，没有可信结果时显示 unavailable 或 failed，不返回虚假 0。
+7. 原始事实只由事实事务修改；元数据、身份和治理结果写独立覆盖层、revision 与审计记录。
+
+Spotify 凭据或外部服务不可用时，元数据阶段会留下可恢复的 `partial`/失败证据。已经提交的播放事实不会因此整库回滚；依赖这些元数据的 L3、搜索或封面阶段保持未就绪，待外部条件恢复后定向重试。
 
 若已经导入过一批新数据，但当时派生数据没有正确维护，可运行：
 
@@ -283,7 +275,9 @@ Wrapped 2025 → 音乐库 → 歌单 → 搜索记录 → 兴趣画像
 
 ### 3. 触发方式
 
-- **设置页手动导入**：点击「导入数据」按钮，可分别触发 Streaming History 和 Account Data 导入
+- **设置页数据导入工作台**：创建批次、上传文件、冻结、预检、确认后执行；可分页查看持久运行历史、阶段证据、报告、重试和重新核对
+- **旧目录兼容入口**：`POST /api/import/streaming` 仍可读取配置的本地目录，但共用同一计划、writer lease、发布日志和阶段恢复合同
+- **账号数据导入**：继续从 Settings 单独触发；账号原始 JSON 不混入 Streaming History 批次
 - **命令行派生数据维护**：运行 `scripts/refresh_import_derived_data.py` 可补齐既有导入数据的元数据、专辑项目和榜单聚合
 - **首次启动**：若数据库不存在，应用引导用户导入
 
@@ -310,6 +304,14 @@ Wrapped 2025 → 音乐库 → 歌单 → 搜索记录 → 兴趣画像
 | `chat_sessions` / `chat_messages` | 十-百级 | AI 对话历史 |
 | `billboard_weekly_*` | 千级 | Billboard 周榜快照 |
 | `schema_migrations` | 十级 | 数据库迁移版本记录 |
+
+### 导入控制库、来源与恢复点
+
+- `import_control/control.sqlite3` 独立保存上传批次、运行、阶段 attempt、错误码、报告和恢复动作；同目录还保存发布锁与批次锁。主库恢复不会抹掉失败尝试。
+- `import_sources/<batch-id>/packet/` 中的接收批次在冻结前可继续上传，冻结后内容不可变；发布版本另有 `resolved/` 全量视图。系统只接受约定的 Spotify 导出文件名和来源类型。
+- `import_sources/` 保存服务端拥有的来源版本；活动指针只在事实提交和目录发布都满足栅栏时切换。启动恢复会完成可证明的切换，或成套恢复到旧库/旧来源。
+- `import_backups/` 是本地私有恢复证据，不进入 Git，也不自动清理。清理策略必须另行确认，不能把磁盘回收与一次导入执行混在一起。
+- 运行中会出现 `.lock`、WAL/SHM 和临时目录；应用正常退出或恢复后可回收临时 staging，但活动来源、控制库、备份和失败证据必须保留。
 
 ### covers/ — 封面缓存
 

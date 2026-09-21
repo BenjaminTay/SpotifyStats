@@ -396,6 +396,48 @@ def clear_import_write_quarantine(
         conn.close()
 
 
+def mark_sources_published_and_clear_quarantine(
+    run_id: str,
+    *,
+    progress_pct: float,
+    message: str,
+    db_path: str | None = None,
+) -> None:
+    """Atomically finish source publication and release its durable write gate."""
+
+    conn = connect_control(db_path)
+    now = utc_now()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        gate = conn.execute(
+            "SELECT blocked,run_id FROM import_write_gate WHERE state_id=1"
+        ).fetchone()
+        if gate is not None and bool(gate[0]) and str(gate[1] or "") != run_id:
+            raise RuntimeError("import_write_gate_owned_by_another_run")
+        cursor = conn.execute(
+            """UPDATE import_runs
+               SET status='running', publication_state='sources_published',
+                   progress_pct=?, message=?, error_code=NULL, error_detail=NULL,
+                   retryable=0, completed_at=NULL, updated_at=?
+               WHERE run_id=? AND publication_state IN ('facts_committed','sources_published')""",
+            (max(0.0, min(1.0, float(progress_pct))), message, now, run_id),
+        )
+        if cursor.rowcount != 1:
+            raise RuntimeError("source_publication_run_compare_and_swap_failed")
+        conn.execute(
+            """UPDATE import_write_gate
+               SET blocked=0, run_id=NULL, reason_code=NULL, updated_at=?
+               WHERE state_id=1""",
+            (now,),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def get_run(run_id: str, *, db_path: str | None = None) -> dict[str, Any] | None:
     conn = connect_control(db_path)
     try:

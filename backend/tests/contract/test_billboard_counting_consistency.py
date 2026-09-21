@@ -70,6 +70,190 @@ def isolated_seed_db(use_seed_db):
 
 
 class TestRawFallbackConsistency:
+    def test_full_rebuild_is_invariant_to_play_id_order_for_equal_timestamps(
+        self,
+        isolated_seed_db,
+    ):
+        import backend.core.db as db_mod
+        from backend.core.db import get_db
+
+        fd, reversed_path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        source = sqlite3.connect(isolated_seed_db)
+        destination = sqlite3.connect(reversed_path)
+        source.backup(destination)
+        source.close()
+        destination.close()
+
+        def prepare(path: str, same_timestamp_order: tuple[str, str]) -> None:
+            db_mod.DB_PATH = path
+            conn = get_db(readonly=False)
+            tracks = conn.execute(
+                """SELECT track_id, album_id, spotify_track_id
+                   FROM tracks
+                   WHERE album_id IS NOT NULL
+                     AND spotify_track_id IS NOT NULL
+                     AND spotify_track_id != ''
+                   ORDER BY track_id LIMIT 2"""
+            ).fetchall()
+            assert len(tracks) == 2
+            by_name = {"a": tracks[0], "b": tracks[1]}
+            conn.execute("DELETE FROM plays")
+            for table in (
+                "agg_weekly_tracks",
+                "agg_weekly_albums",
+                "agg_weekly_track_sources",
+                "agg_weekly_artists",
+            ):
+                conn.execute(f'DELETE FROM "{table}"')
+
+            def insert(name: str, ts: str, ms_played: int, fingerprint: str) -> None:
+                track = by_name[name]
+                conn.execute(
+                    """INSERT INTO plays(
+                           ts,ts_year,ts_month,ts_week,ts_dow,ts_hour,ts_date,
+                           platform,ms_played,track_id,source_album_id,
+                           spotify_track_id_at_play,content_type,
+                           source_fingerprint,source_fingerprint_version,
+                           import_generation_id
+                       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        ts,
+                        2025,
+                        1,
+                        1,
+                        4,
+                        10,
+                        "2025-01-03",
+                        "desktop",
+                        ms_played,
+                        int(track[0]),
+                        int(track[1]),
+                        str(track[2]),
+                        "audio",
+                        fingerprint,
+                        1,
+                        "equal-ts-generation",
+                    ),
+                )
+
+            insert("a", "2025-01-03T10:00:00Z", 100_000, "c" * 64)
+            for name in same_timestamp_order:
+                insert(
+                    name,
+                    "2025-01-03T10:02:00Z",
+                    100_000 if name == "a" else 0,
+                    ("b" if name == "a" else "a") * 64,
+                )
+            conn.execute(
+                """UPDATE playback_import_state
+                   SET active_generation_id='equal-ts-generation',
+                       dataset_digest='equal-ts-digest'
+                   WHERE state_id=1"""
+            )
+            conn.commit()
+            conn.close()
+
+        try:
+            prepare(isolated_seed_db, ("b", "a"))
+            prepare(reversed_path, ("a", "b"))
+
+            def load_semantic_frames(path: str) -> tuple[pd.DataFrame, ...]:
+                db_mod.DB_PATH = path
+                _clear_billboard_runtime_caches()
+                from backend.domains.billboard.data_loader import (
+                    load_billboard_raw,
+                    load_billboard_raw_for_artists,
+                )
+
+                conn = get_db(readonly=True)
+                try:
+                    plays = db_mod.load_plays(
+                        conn,
+                        min_ms=30_000,
+                        music_only=True,
+                        merge_enabled=True,
+                        filtered=True,
+                    )
+                    artists = db_mod.load_plays_for_artists(
+                        conn,
+                        min_ms=30_000,
+                        music_only=True,
+                        merge_enabled=True,
+                        filtered=True,
+                    )
+                finally:
+                    conn.close()
+                play_columns = [
+                    "ts",
+                    "source_fingerprint",
+                    "track_id",
+                    "ms_played",
+                ]
+                artist_columns = [*play_columns, "artist_id"]
+                billboard = load_billboard_raw(30_000, True, 4, 0, True)
+                billboard_artists = load_billboard_raw_for_artists(30_000, True, 4, 0, True)
+                billboard_columns = [
+                    "ts",
+                    "track_id",
+                    "source_album_id",
+                    "ms_played",
+                    "counted_at",
+                ]
+                return (
+                    plays[play_columns].reset_index(drop=True),
+                    artists[artist_columns].reset_index(drop=True),
+                    billboard[billboard_columns].reset_index(drop=True),
+                    billboard_artists[[*billboard_columns, "artist_id"]].reset_index(drop=True),
+                )
+
+            left_frames = load_semantic_frames(isolated_seed_db)
+            right_frames = load_semantic_frames(reversed_path)
+            pd.testing.assert_frame_equal(left_frames[0], right_frames[0], check_dtype=False)
+            pd.testing.assert_frame_equal(left_frames[1], right_frames[1], check_dtype=False)
+            pd.testing.assert_frame_equal(left_frames[2], right_frames[2], check_dtype=False)
+            pd.testing.assert_frame_equal(left_frames[3], right_frames[3], check_dtype=False)
+
+            db_mod.DB_PATH = isolated_seed_db
+            build_aggregations(
+                min_ms=30_000,
+                music_only=True,
+                week_start_dow=4,
+                week_start_hour=0,
+                dynamic_threshold=False,
+                max_merge_gap_minutes=5,
+                expected_generation_id="equal-ts-generation",
+            )
+            db_mod.DB_PATH = reversed_path
+            build_aggregations(
+                min_ms=30_000,
+                music_only=True,
+                week_start_dow=4,
+                week_start_hour=0,
+                dynamic_threshold=False,
+                max_merge_gap_minutes=5,
+                expected_generation_id="equal-ts-generation",
+            )
+            left = sqlite3.connect(isolated_seed_db)
+            right = sqlite3.connect(reversed_path)
+            try:
+                for table in (
+                    "agg_weekly_tracks",
+                    "agg_weekly_albums",
+                    "agg_weekly_track_sources",
+                    "agg_weekly_artists",
+                ):
+                    assert (
+                        left.execute(f'SELECT * FROM "{table}" ORDER BY 1,2,3').fetchall()
+                        == right.execute(f'SELECT * FROM "{table}" ORDER BY 1,2,3').fetchall()
+                    ), table
+            finally:
+                left.close()
+                right.close()
+        finally:
+            db_mod.DB_PATH = isolated_seed_db
+            os.unlink(reversed_path)
+
     @pytest.mark.parametrize("dynamic_threshold", [False, True])
     def test_tail_partition_build_matches_full_rebuild_for_all_four_tables(
         self,

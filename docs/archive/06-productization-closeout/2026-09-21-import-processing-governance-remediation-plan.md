@@ -4,11 +4,13 @@
 
 | 维度 | 状态 |
 | --- | --- |
-| 文档 | CURRENT：待实施规划 |
-| 本规划新增能力 | PLANNED |
-| 本规划实施验收 | NOT_RUN |
-| 本次导入事故的既有修复 | 工作区已有实现；历史验证见事故报告，不能替代后续阶段验收 |
-| Git / 发布 | 本规划不包含 commit、push、部署或正式数据迁移 |
+| 文档 | ARCHIVED：已完成规划 |
+| 本规划新增能力 | IMPLEMENTED |
+| 本规划实施验收 | PASS：真实副本、恢复、性能、API、浏览器与默认完整 fullstack |
+| 本次导入事故的既有修复 | 已纳入 S0–S6 完整交付与回归 |
+| Git / 发布 | 本地阶段提交；UNPUSHED、NOT_DEPLOYED，未再次迁移正式数据 |
+
+完成证据见 [S0 基线报告](../../reports/2026-09-21-import-remediation-s0-baseline.md)、[S1–S5 实施报告](../../reports/2026-09-21-import-remediation-s1-s5.md)与 [S6 最终验收报告](../../reports/2026-09-21-import-governance-final-acceptance.md)。本文保留原规划内容用于回溯，不再作为待执行计划。
 
 ## 1. 目标与依据
 
@@ -18,10 +20,10 @@
 
 依据按证据类型区分：
 
-- [2026-09-21 导入事故报告](../reports/2026-09-21-streaming-import-incident-and-optimization.md)：本次失败、回滚、修复和成功导入证据。
+- [2026-09-21 导入事故报告](../../reports/2026-09-21-streaming-import-incident-and-optimization.md)：本次失败、回滚、修复和成功导入证据。
 - [关联任务：导入最新 Spotify 数据](thread://01a0c22e-f8e9-7471-ac13-2316a6ea0393?hostId=local)：导入完成后对新旧原始数据集合的补充核对。
-- [数据导入与健康规则](../reference/data-import-and-health.md)、[音乐源数据管理规则](../reference/music-metadata-management.md)：当前安全、统计与治理合同。
-- [阶段 7D 预检优化证据](../reports/2026-09-20-stage7d-import-preflight.md)、[增量导入终验](../reports/2026-08-23-incremental-import-final-acceptance.md)：既有能力与历史性能基线。
+- [数据导入与健康规则](../../reference/data-import-and-health.md)、[音乐源数据管理规则](../../reference/music-metadata-management.md)：当前安全、统计与治理合同。
+- [阶段 7D 预检优化证据](../../reports/2026-09-20-stage7d-import-preflight.md)、[增量导入终验](../../reports/2026-08-23-incremental-import-final-acceptance.md)：既有能力与历史性能基线。
 - 本轮读取的当前工作区源码：导入 API、基线加载与执行决策、维护与恢复服务、JobQueue、L3 规划和预检界面。
 
 本文的数字均为本次事故及后续分析的历史样本，不是对当前正式数据库的再次验收。后续实施必须先核对实际代码、工作区改动和数据版本。
@@ -345,7 +347,7 @@ S1 必须协调 API、后台任务、账号导入及本机维护脚本这些实�
 
 优先补充现有测试：`test_incremental_import_*`、`test_import_preflight_cache.py`、`test_import_api_jobs.py`、`test_import_maintenance_recovery.py`、`test_import_maintenance_scoping.py`、`test_job_queue.py`、`test_spotify_metadata_refresh.py`、`test_l3_album_attribution.py` 和 `test_track_identity.py`。新测试只用于真实新增合同与失败窗口，不复制实现细节。
 
-每阶段按变更选择 unit/contract、前端测试与 build，文档变更运行 `python3 scripts/docs_audit.py`。S6 使用 [全栈验证规则](../reference/fullstack-verification.md)中的默认完整命令；局部 `--only`/`--from` 只可报告 Partial。测试隔离遵循 [后端测试隔离规则](../reference/backend-test-isolation.md)。
+每阶段按变更选择 unit/contract、前端测试与 build，文档变更运行 `python3 scripts/docs_audit.py`。S6 使用 [全栈验证规则](../../reference/fullstack-verification.md)中的默认完整命令；局部 `--only`/`--from` 只可报告 Partial。测试隔离遵循 [后端测试隔离规则](../../reference/backend-test-isolation.md)。
 
 真实输入、SQLite、副本、完整错误样例和性能 raw samples 存本地受控证据目录，不进 Git；仓库报告只保留脱敏汇总及重放方法。外部 Spotify 真实请求结果和离线固定响应结果分别报告。
 

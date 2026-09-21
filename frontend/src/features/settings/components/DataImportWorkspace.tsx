@@ -104,22 +104,25 @@ function ImportResult({
   const warmingCore = coreStages.filter((stage) => stage.freshness === 'warming' || ['pending', 'running'].includes(stage.status))
   const result = run.result ?? {}
   const qualityCount = Number(result.quality_issue_count ?? result.warning_count ?? 0)
+  const noop = result.noop === true || result.executed_strategy === 'noop'
   const factsPublished = ['facts_committed', 'sources_published', 'core_ready', 'ready'].includes(run.publication_state)
 
   return (
     <section className="space-y-3" aria-label="导入结果">
       <div className="grid gap-2 md:grid-cols-3">
         <ResultDimension
-          title="数据已更新"
+          title={noop ? '数据未变化' : '数据已更新'}
           icon={Database}
-          state={factsPublished ? '播放事实已提交' : run.status === 'failed' ? '播放事实未更新' : '等待事实发布'}
-          detail={factsPublished ? `发布状态：${run.publication_state}` : run.message || '输入仍在检查或执行中'}
+          state={noop ? '播放事实保持不变' : factsPublished ? '播放事实已提交' : run.status === 'failed' ? '播放事实未更新' : '等待事实发布'}
+          detail={noop ? '输入包与活动基线一致；没有重写播放事实或创建恢复备份。' : factsPublished ? `发布状态：${run.publication_state}` : run.message || '输入仍在检查或执行中'}
         />
         <ResultDimension
           title="统计准备情况"
           icon={Clock3}
-          state={failedCore.length > 0 ? '部分统计不可用' : warmingCore.length > 0 ? '统计仍在准备' : '必需统计已完成'}
-          detail={failedCore.length > 0
+          state={noop ? '无需重建' : failedCore.length > 0 ? '部分统计不可用' : warmingCore.length > 0 ? '统计仍在准备' : '必需统计已完成'}
+          detail={noop
+            ? '当前统计继续使用既有 ready 结果，没有安排派生或封面任务。'
+            : failedCore.length > 0
             ? '失败不会伪装成 warming；请按阶段重试。'
             : warmingCore.length > 0
               ? '100% 播放写入不等于全部快照 ready。'
@@ -249,6 +252,11 @@ export function DataImportWorkspace({
   const receiveFiles = async () => {
     if (files.length === 0) return
     setActionError('')
+    // A second upload must not leave the previous batch's executable plan on
+    // screen while the new immutable batch is still being received/frozen.
+    setBatchId(null)
+    setSelectedRunId(null)
+    setConfirmWarnings(false)
     try {
       const batch = await dataImport.createBatch({ kind: 'snapshot' })
       for (const file of files) {
@@ -347,7 +355,7 @@ export function DataImportWorkspace({
               我已核对上述警告与计划
             </label>
           )}
-          <Button className="min-h-11" size="sm" disabled={dataImport.preflight.blockers.length > 0 || dataImport.executingRun || (dataImport.preflight.warnings.length > 0 && !confirmWarnings)} onClick={() => void execute()}>
+          <Button className="min-h-11" size="sm" disabled={busy || dataImport.preflight.blockers.length > 0 || dataImport.executingRun || (dataImport.preflight.warnings.length > 0 && !confirmWarnings)} onClick={() => void execute()}>
             {dataImport.executingRun && <LoaderCircle className="size-4 animate-spin" />}
             执行已确认计划
           </Button>

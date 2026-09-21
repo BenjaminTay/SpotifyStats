@@ -58,11 +58,13 @@ def _music_search_startup_rebuild_enabled() -> bool:
 async def lifespan(_app: FastAPI):
     # Resolve cross-file publication crash windows before migrations or any
     # other startup writer can change the database generation.
-    from backend.domains.imports.write_coordinator import exclusive_publication
+    from backend.domains.imports.control_store import import_write_gate_state
     from backend.services.import_publication_service import recover_interrupted_publications
 
-    with exclusive_publication(blocking=True):
-        recover_interrupted_publications()
+    publication_recovery = recover_interrupted_publications()
+    remaining_gate = import_write_gate_state()
+    if publication_recovery.get("blocked") or remaining_gate.get("blocked"):
+        raise RuntimeError("import_publication_recovery_blocked")
     run_migrations()
 
     # L3 album attribution is a small deterministic relationship projection,
@@ -229,10 +231,6 @@ async def lifespan(_app: FastAPI):
     # Import maintenance is a strict pre-worker barrier: merely putting it at
     # the front of a FIFO queue would still let another worker run generic work
     # concurrently.
-    job_queue.start(
-        db_module.DB_PATH,
-        priority_job_types=(PLAYBACK_IMPORT_MAINTENANCE_JOB_TYPE,),
-    )
     outside_pytest = "PYTEST_CURRENT_TEST" not in os.environ
     if outside_pytest:
         enqueue_billboard_snapshot_rebuild("application startup", queue=job_queue)
@@ -288,6 +286,14 @@ async def lifespan(_app: FastAPI):
 
     if _music_search_startup_rebuild_enabled() and outside_pytest:
         enqueue_music_search_snapshot_rebuild(rebuild_documents=candidate_index_rebuild_required)
+    # Finish collecting startup targets while the queue is still prepared but
+    # no worker can mutate a source revision underneath another enqueue call.
+    # start() then executes import recovery as a strict barrier before it
+    # releases the remaining jobs to their normal resource lanes.
+    job_queue.start(
+        db_module.DB_PATH,
+        priority_job_types=(PLAYBACK_IMPORT_MAINTENANCE_JOB_TYPE,),
+    )
     if os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0" and outside_pytest:
         start_warmup_thread()
     yield

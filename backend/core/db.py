@@ -2066,7 +2066,15 @@ def _load_plays_cached(
                 "NULLIF(t_source.spotify_track_id, ''))"
             )
 
-        sql = f"SELECT {cols} {from_clause} {where} ORDER BY p.ts"
+        # Equal timestamps occur in real exports.  play_id depends on the
+        # import path, so it cannot be the first tie-breaker when two
+        # semantically identical databases were populated in a different
+        # order.  The source fingerprint is stable across incremental and
+        # replacement imports; play_id remains only the final local fallback.
+        sql = (
+            f"SELECT {cols} {from_clause} {where} "
+            "ORDER BY p.ts, COALESCE(p.source_fingerprint, ''), p.play_id"
+        )
         df = pd.read_sql_query(sql, conn, params=params)
         if "resolved_track_id" in df.columns:
             df["representative_track_id"] = df["resolved_track_id"]
@@ -2285,7 +2293,10 @@ def _load_plays_for_artists_cached(
                 "NULLIF(t_source.spotify_track_id, ''))"
             )
 
-        sql = f"SELECT {cols} {from_clause} {where} ORDER BY p.ts"
+        sql = (
+            f"SELECT {cols} {from_clause} {where} "
+            "ORDER BY p.ts, COALESCE(p.source_fingerprint, ''), p.play_id"
+        )
         df = pd.read_sql_query(sql, conn, params=params)
         if "resolved_track_id" in df.columns:
             df["representative_track_id"] = df["resolved_track_id"]
@@ -2761,6 +2772,7 @@ def build_aggregations(
     # (ms_played filter is applied AFTER merge to preserve short fragments)
     df = pd.read_sql_query(
         f"""SELECT p.play_id, p.ts, p.ts_date, p.ts_dow, p.ts_hour, p.ms_played,
+                   p.source_fingerprint,
                    p.track_id AS source_track_id,
                    COALESCE(li_spotify.l1_id, li_local.l1_id) AS l1_id,
                    COALESCE(li_spotify.representative_track_id,
@@ -2793,7 +2805,7 @@ def build_aggregations(
                     NULLIF(t_source.spotify_track_id, '')
                  )
             {where}
-            ORDER BY p.ts, p.play_id""",
+            ORDER BY p.ts, COALESCE(p.source_fingerprint, ''), p.play_id""",
         conn,
         params=fp,
     )

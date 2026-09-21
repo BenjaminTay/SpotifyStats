@@ -577,7 +577,7 @@ class TestBillboardService:
         assert data["chart_summary"]["peak_weeks"] == sum(
             int(row["rank"]) == peak_position for row in history
         )
-        assert data["chart_summary"]["no1_weeks"] == 0
+        assert data["chart_summary"]["no1_weeks"] == sum(int(row["rank"]) == 1 for row in history)
         assert data["chart_summary"]["power_score"] > 0
         assert data["tracks"] == []
 

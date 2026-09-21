@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -421,6 +422,193 @@ def test_readiness_recheck_promotes_only_after_all_exact_families_are_ready(monk
     assert any(item[1].get("status") == "succeeded" for item in updates if len(item) == 2)
 
 
+def test_year_end_projection_warming_is_a_valid_readiness_state(monkeypatch):
+    from backend.domains.music_search import variants, year_end_projection
+    from backend.services import (
+        billboard_snapshot_service,
+        import_stage_service,
+        music_search_maintenance_service,
+    )
+
+    service = import_stage_service
+
+    conn = sqlite3.connect(":memory:")
+    monkeypatch.setattr(service, "get_db", lambda readonly=True: conn)
+    monkeypatch.setattr(
+        variants, "build_music_search_variant_contexts", lambda *_args: (1, 2, 3, 4)
+    )
+    monkeypatch.setattr(
+        year_end_projection,
+        "year_end_projection_set_status",
+        lambda *_args: {
+            "status": "warming",
+            "ready_count": 0,
+            "variants": [{"status": "pending"} for _ in range(4)],
+        },
+    )
+    monkeypatch.setattr(
+        music_search_maintenance_service,
+        "_current_filter_values",
+        lambda _conn: {},
+    )
+    monkeypatch.setattr(
+        music_search_maintenance_service,
+        "_revalidated_snapshot_set_report",
+        lambda *_args: {"ready_count": 4},
+    )
+    monkeypatch.setattr(
+        billboard_snapshot_service,
+        "billboard_default_snapshots_ready",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        billboard_snapshot_service,
+        "billboard_default_snapshots_have_lkg",
+        lambda: True,
+    )
+
+    result = service.inspect_import_readiness()
+
+    assert result["status"] == "warming"
+    assert result["build_in_progress"] is True
+
+
+def test_unavailable_without_lkg_remains_watchable_while_job_is_active(monkeypatch):
+    from backend.domains.music_search import variants, year_end_projection
+    from backend.services import (
+        billboard_snapshot_service,
+        import_stage_service,
+        music_search_maintenance_service,
+    )
+
+    service = import_stage_service
+
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        """
+        CREATE TABLE music_search_snapshot_variant_state(
+            maintenance_status TEXT,
+            active_snapshot_key TEXT
+        );
+        INSERT INTO music_search_snapshot_variant_state VALUES
+            ('pending', NULL), ('pending', NULL), ('pending', NULL), ('pending', NULL);
+        CREATE TABLE background_jobs(job_id TEXT PRIMARY KEY, status TEXT NOT NULL);
+        INSERT INTO background_jobs VALUES ('search-job', 'pending');
+        """
+    )
+    monkeypatch.setattr(service, "get_db", lambda readonly=True: conn)
+    monkeypatch.setattr(
+        service,
+        "latest_stage_attempts",
+        lambda _run_id: [
+            {
+                "stage": "candidate_index",
+                "output_evidence": {"search_job_id": "search-job"},
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        variants, "build_music_search_variant_contexts", lambda *_args: (1, 2, 3, 4)
+    )
+    monkeypatch.setattr(
+        year_end_projection,
+        "year_end_projection_set_status",
+        lambda *_args: {
+            "status": "ready",
+            "ready_count": 4,
+            "variants": [{"status": "ready"} for _ in range(4)],
+        },
+    )
+    monkeypatch.setattr(
+        music_search_maintenance_service,
+        "_current_filter_values",
+        lambda _conn: {},
+    )
+    monkeypatch.setattr(
+        music_search_maintenance_service,
+        "_revalidated_snapshot_set_report",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        billboard_snapshot_service,
+        "billboard_default_snapshots_ready",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        billboard_snapshot_service,
+        "billboard_default_snapshots_have_lkg",
+        lambda: True,
+    )
+
+    result = service.inspect_import_readiness("run-1")
+
+    assert result["status"] == "unavailable"
+    assert result["search_job_status"] == "pending"
+    assert result["build_in_progress"] is True
+
+
+def test_reconcile_keeps_unavailable_active_build_running(monkeypatch):
+    from backend.services import import_stage_service as service
+
+    updates = []
+    monkeypatch.setattr(
+        service,
+        "get_run",
+        lambda _run_id: {
+            "new_generation_id": "generation-1",
+            "new_dataset_digest": "digest-1",
+        },
+    )
+    monkeypatch.setattr(service, "_fact_fence", lambda *_args: None)
+    monkeypatch.setattr(
+        service,
+        "inspect_import_readiness",
+        lambda _run_id: {"status": "unavailable", "build_in_progress": True},
+    )
+    monkeypatch.setattr(service, "update_run", lambda _run_id, **fields: updates.append(fields))
+    monkeypatch.setattr(
+        service,
+        "start_stage_attempt",
+        lambda *_args, **_kwargs: pytest.fail("active build must not be finalized as failed"),
+    )
+
+    result = service.reconcile_import_readiness("run-1")
+
+    assert result["status"] == "unavailable"
+    assert updates == [
+        {
+            "status": "running",
+            "publication_state": "core_ready",
+            "progress_pct": 0.95,
+            "completed_at": None,
+            "message": "核心数据可用，精确快照正在后台构建",
+        }
+    ]
+
+
+def test_readiness_watcher_waits_through_unavailable_active_build(monkeypatch):
+    from backend.services import import_stage_service as service
+
+    results = iter(
+        (
+            {"status": "unavailable", "build_in_progress": True},
+            {"status": "ready", "build_in_progress": False},
+        )
+    )
+    observed = []
+    monkeypatch.setattr(service, "get_run", lambda _run_id: {"status": "running"})
+    monkeypatch.setattr(
+        service,
+        "reconcile_import_readiness",
+        lambda _run_id: observed.append("poll") or next(results),
+    )
+    monkeypatch.setattr(service.time, "sleep", lambda _seconds: None)
+
+    service._watch_readiness("run-1")
+
+    assert observed == ["poll", "poll"]
+
+
 def test_terminal_control_run_writes_private_json_and_markdown_reports(tmp_path, monkeypatch):
     from backend.core import db as db_module
     from backend.domains.imports.control_store import control_root, create_run, update_run
@@ -551,6 +739,74 @@ def test_retryable_exact_failure_keeps_core_ready_and_task_state_separate(monkey
     assert updates[-1]["publication_state"] == "core_ready"
 
 
+def test_active_exact_build_without_lkg_starts_watcher(monkeypatch):
+    from backend.services import import_stage_service as service
+
+    finished = []
+    watchers = []
+    stable_revision = {"schema_version": 1, "sha256": "stable"}
+    monkeypatch.setattr(
+        service,
+        "get_run",
+        lambda _run_id: {
+            "run_id": "run-1",
+            "status": "running",
+            "publication_state": "core_ready",
+            "new_generation_id": "generation-1",
+            "new_dataset_digest": "digest-1",
+            "result": {},
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "latest_stage_attempts",
+        lambda _run_id: [
+            {
+                "stage": "critical_prewarm",
+                "status": "succeeded",
+                "output_evidence": {
+                    "status": "ready",
+                    "validation_dependency_revision": stable_revision,
+                },
+            }
+        ],
+    )
+    monkeypatch.setattr(service, "_stage_dependency_revision", lambda _stage: stable_revision)
+    monkeypatch.setattr(service, "_fact_fence", lambda *_args: None)
+    monkeypatch.setattr(service, "supersede_other_runs", lambda *_args: None)
+    monkeypatch.setattr(service, "start_stage_attempt", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(
+        service,
+        "finish_stage_attempt",
+        lambda *_args, **kwargs: finished.append(kwargs),
+    )
+    monkeypatch.setattr(
+        service,
+        "_run_stage",
+        lambda *_args, **_kwargs: {
+            "status": "unavailable",
+            "build_in_progress": True,
+        },
+    )
+    monkeypatch.setattr(service, "update_run", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        service,
+        "start_import_readiness_watcher",
+        lambda run_id: watchers.append(run_id),
+    )
+
+    result = service.run_import_stages(
+        "run-1",
+        _change_set_fixture(),
+        stages=("exact_snapshots",),
+    )
+
+    assert result["status"] == "running"
+    assert finished[-1]["status"] == "warming"
+    assert finished[-1]["output"]["status"] == "unavailable"
+    assert watchers == ["run-1"]
+
+
 def _change_set_fixture():
     from backend.domains.imports.change_set import PlaybackChangeSet
 
@@ -661,6 +917,96 @@ def test_persistent_quarantine_blocks_and_then_releases_normal_writers(tmp_path,
     os.close(descriptor)
 
 
+def test_persistent_quarantine_blocks_unowned_exclusive_writer(tmp_path, monkeypatch):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import (
+        clear_import_write_quarantine,
+        quarantine_import_writes,
+    )
+    from backend.domains.imports.write_coordinator import (
+        ImportWriteQuarantinedError,
+        acquire_writer_lease,
+        exclusive_publication,
+    )
+
+    database = tmp_path / "state" / "app.db"
+    monkeypatch.setattr(db_module, "DB_PATH", str(database))
+    quarantine_import_writes("run-owner", "source_pending")
+
+    with pytest.raises(ImportWriteQuarantinedError):
+        with exclusive_publication():
+            pass
+    with pytest.raises(ImportWriteQuarantinedError):
+        with exclusive_publication(owner_run_id="run-other"):
+            pass
+
+    with exclusive_publication(owner_run_id="run-owner"):
+        assert acquire_writer_lease() is None
+
+    clear_import_write_quarantine("run-owner")
+
+
+def test_source_publication_state_and_gate_clear_are_atomic(tmp_path, monkeypatch):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import (
+        create_run,
+        get_run,
+        import_write_gate_state,
+        mark_sources_published_and_clear_quarantine,
+        quarantine_import_writes,
+        update_run,
+    )
+    from backend.domains.imports.source_registry import freeze_local_batch
+
+    monkeypatch.setattr(db_module, "DB_PATH", str(tmp_path / "state" / "app.db"))
+    batch = freeze_local_batch(_packet(tmp_path / "atomic-source", "0", [{"ts": "x"}]))
+
+    def make_run(run_id: str) -> None:
+        create_run(
+            run_id=run_id,
+            execution_key=f"{run_id}-key",
+            batch_id=batch["batch_id"],
+            confirmation_digest="confirmed",
+            requested_mode="auto",
+            detected_relation="snapshot_superset",
+            strategy="append",
+            baseline_reason_code=None,
+            plan={},
+        )
+        update_run(run_id, status="running", publication_state="facts_committed")
+
+    make_run("run-published")
+    update_run(
+        "run-published",
+        status="blocked",
+        error_code="source_publish_failed",
+        completed_at="2026-09-21T00:00:00+00:00",
+    )
+    quarantine_import_writes("run-published", "source_pending")
+    mark_sources_published_and_clear_quarantine(
+        "run-published",
+        progress_pct=0.65,
+        message="published",
+    )
+    published = get_run("run-published")
+    assert published["publication_state"] == "sources_published"
+    assert published["status"] == "running"
+    assert published["completed_at"] is None
+    assert published["error_code"] is None
+    assert not import_write_gate_state()["blocked"]
+
+    make_run("run-cas-rejected")
+    quarantine_import_writes("different-owner", "source_pending")
+    with pytest.raises(RuntimeError, match="import_write_gate_owned_by_another_run"):
+        mark_sources_published_and_clear_quarantine(
+            "run-cas-rejected",
+            progress_pct=0.65,
+            message="must roll back",
+        )
+    assert get_run("run-cas-rejected")["publication_state"] == "facts_committed"
+    assert import_write_gate_state()["run_id"] == "different-owner"
+
+
 def test_report_write_failure_is_persisted_and_can_be_retried(tmp_path, monkeypatch):
     from backend.core import db as db_module
     from backend.domains.imports.control_store import create_run, get_run, update_run
@@ -769,6 +1115,118 @@ def test_readiness_status_never_disguises_failed_or_missing_as_warming(kwargs, e
     from backend.services.import_stage_service import _classify_readiness
 
     assert _classify_readiness(**kwargs) == expected
+
+
+def test_stage_dependency_revision_ignores_publication_bookkeeping(tmp_path, monkeypatch):
+    from backend.services import import_stage_service as service
+
+    database = tmp_path / "dependency.db"
+    conn = sqlite3.connect(database)
+    conn.execute(
+        """CREATE TABLE playback_import_state(
+               state_id INTEGER PRIMARY KEY,
+               active_generation_id TEXT,
+               dataset_digest TEXT,
+               record_count INTEGER,
+               active_source_version_id TEXT,
+               active_publication_id TEXT,
+               publication_state TEXT,
+               last_relation TEXT,
+               last_strategy TEXT,
+               updated_at TEXT
+           )"""
+    )
+    conn.execute(
+        """INSERT INTO playback_import_state VALUES(
+               1, 'generation-1', 'digest-1', 10, 'source-1', 'publication-1',
+               'sources_published', 'snapshot_superset', 'append', '2026-09-21T00:00:00Z'
+           )"""
+    )
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        service,
+        "get_db",
+        lambda readonly=True: sqlite3.connect(database),
+    )
+
+    before = service._stage_dependency_revision("metadata")
+    conn = sqlite3.connect(database)
+    conn.execute(
+        """UPDATE playback_import_state
+           SET active_source_version_id='source-2',
+               active_publication_id='publication-2',
+               publication_state='core_ready',
+               last_relation='identical',
+               last_strategy='reuse',
+               updated_at='2026-09-21T00:01:00Z'
+           WHERE state_id=1"""
+    )
+    conn.commit()
+    conn.close()
+
+    assert service._stage_dependency_revision("metadata") == before
+
+    conn = sqlite3.connect(database)
+    conn.execute("UPDATE playback_import_state SET dataset_digest='digest-2' WHERE state_id=1")
+    conn.commit()
+    conn.close()
+    assert service._stage_dependency_revision("metadata") != before
+
+
+def test_core_ready_restart_reuses_verified_early_stages(monkeypatch):
+    from backend.services import import_stage_service as service
+
+    calls = []
+    stable_revision = {"schema_version": 1, "sha256": "stable"}
+    monkeypatch.setattr(
+        service,
+        "IMPORT_STAGES",
+        ("metadata", "critical_prewarm", "exact_snapshots"),
+    )
+    monkeypatch.setattr(
+        service,
+        "get_run",
+        lambda _run_id: {
+            "run_id": "run-1",
+            "publication_state": "core_ready",
+            "new_generation_id": "generation-1",
+            "new_dataset_digest": "digest-1",
+            "result": {"active_records": 10},
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "latest_stage_attempts",
+        lambda _run_id: [
+            {
+                "stage": stage,
+                "status": "succeeded",
+                "output_evidence": {
+                    "status": "ready",
+                    "validation_dependency_revision": stable_revision,
+                },
+            }
+            for stage in ("metadata", "critical_prewarm")
+        ],
+    )
+    monkeypatch.setattr(service, "_stage_dependency_revision", lambda _stage: stable_revision)
+    monkeypatch.setattr(service, "_fact_fence", lambda *_args: None)
+    monkeypatch.setattr(service, "supersede_other_runs", lambda *_args: None)
+    monkeypatch.setattr(service, "start_stage_attempt", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(service, "finish_stage_attempt", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        service,
+        "_run_stage",
+        lambda stage, **_kwargs: calls.append(stage) or {"status": "ready"},
+    )
+    monkeypatch.setattr(service, "_publish_main_state", lambda *_args: None)
+    monkeypatch.setattr(service, "update_run", lambda *_args, **_kwargs: None)
+
+    result = service.run_import_stages("run-1", _change_set_fixture())
+
+    assert result["status"] == "succeeded"
+    assert calls == ["exact_snapshots"]
 
 
 def test_stage_success_is_replayed_when_declared_dependency_revision_changes(monkeypatch):

@@ -82,6 +82,16 @@ def test_modes_have_distinct_cached_reports_even_when_tokens_match(packet):
     assert len(cache._staging_cache) == 3
 
 
+def test_unrelated_derived_write_does_not_abort_or_invalidate_preflight(packet):
+    expected = read(packet)
+    with sqlite3.connect(packet[2]) as writer:
+        writer.execute("CREATE TABLE derived_probe(value INTEGER)")
+        writer.execute("INSERT INTO derived_probe VALUES(1)")
+
+    assert read(packet) == expected
+    assert len(packet[3]) == 1
+
+
 @pytest.mark.parametrize(
     "change",
     ["add", "delete", "size", "mtime", "same_size_same_mtime", "account", "account_report"],

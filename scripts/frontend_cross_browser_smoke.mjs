@@ -735,12 +735,13 @@ def run_settings_data_import(browser):
     try:
         page.goto(absolute_url("/settings"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
         wait_for_text(page, "参数与配置")
-        expand_section_for_text(page, "数据导入", "串流数据")
-        wait_for_text(page, "账号数据")
-        wait_for_text(page, "当前数据库记录数")
-        wait_for_text(page, "导入 Spotify 账号数据包")
+        expand_section_for_text(page, "数据导入", "选择 Spotify Extended Streaming History JSON")
+        wait_for_text(page, "账号资料包")
+        wait_for_text(page, "现有数据库")
+        wait_for_text(page, "运行历史")
         wait_for_any_text(page, ["未导入", "已导入"])
-        assert_clickable_text_count(page, ["开始导入", "重新导入", "导入中..."], 2)
+        assert_clickable_text_count(page, ["接收并检查"], 1)
+        assert_clickable_text_count(page, ["导入账号资料", "再次导入"], 1)
         assert_page_health(page, console_messages, page_errors)
         print("PASS core-interactions settings-data-import")
     finally:

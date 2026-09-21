@@ -1,5 +1,9 @@
 # SpotifyStats 文档地图
 
+- [数据导入处理与治理 S6 最终验收](reports/2026-09-21-import-governance-final-acceptance.md)
+
+- [数据导入处理与治理 S1–S5 实施报告](reports/2026-09-21-import-remediation-s1-s5.md)
+
 - [阶段 S0：导入事故修复与测量基线](reports/2026-09-21-import-remediation-s0-baseline.md)
 
 - [2026-09-21 串流导入事故复盘与优化建议](reports/2026-09-21-streaming-import-incident-and-optimization.md)
@@ -118,7 +122,6 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
-- [`plans/2026-09-21-import-processing-governance-remediation-plan.md`](plans/2026-09-21-import-processing-governance-remediation-plan.md)：基于 9 月 21 日导入事故的 S0–S6 修复优化规划，覆盖批次一致性、基线生命周期、阶段恢复、任务优先级、身份治理与完整本地验收；待实施
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
 
@@ -171,6 +174,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 - [`archive/README.md`](archive/README.md)：归档阅读规则与阶段目录
 - [`archive/06-productization-closeout/`](archive/06-productization-closeout/)：最近一次产品化收口阶段
+- [`archive/06-productization-closeout/2026-09-21-import-processing-governance-remediation-plan.md`](archive/06-productization-closeout/2026-09-21-import-processing-governance-remediation-plan.md)：已完成的数据导入、阶段恢复、任务调度、身份治理与 S6 完整验收规划
 - [`archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md`](archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md)：已完成的 L3 歌曲作品、原生专辑唯一归属、Taylor 并集和 Live 逐曲回流实施计划
 - [`archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md`](archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md)：已完成的串流增量导入 Phase A–E 规划与实施记录
 - [`archive/06-productization-closeout/2026-08-27-spotify-track-identity-l1-migration-plan.md`](archive/06-productization-closeout/2026-08-27-spotify-track-identity-l1-migration-plan.md)：已被最终 canonical track / L2 / L3 方案取代的早期 Spotify-L1 规划

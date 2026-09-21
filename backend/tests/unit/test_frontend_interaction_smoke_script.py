@@ -52,7 +52,7 @@ def test_frontend_interaction_smoke_script_covers_core_non_destructive_flows():
     assert "AI 功能尚未配置" in source
     assert "数据与显示" in source
     assert "数据导入" in source
-    assert "'串流数据'" in source
+    assert "选择 Spotify Extended Streaming History JSON" in source
     assert "榜单参数" in source
     assert "归并与版本" in source
     assert "DATA & DISPLAY" not in source
@@ -62,8 +62,9 @@ def test_frontend_interaction_smoke_script_covers_core_non_destructive_flows():
     assert "assertSwitchAvailable" in source
     assert "clickSwitchByLabel" not in source
     assert "过滤参数已更新" not in source
-    assert "当前数据库记录数" in source
-    assert "导入 Spotify 账号数据包" in source
+    assert "现有数据库" in source
+    assert "账号资料包" in source
+    assert "运行历史" in source
     assert "艺人语言数据" in source
     assert "Top 未知艺人" in source
     assert "暂无高播放量未知艺人。" in source
@@ -117,6 +118,30 @@ for (const invalid of [
 assert.equal(classify(entry,response,state,'mobile-section-sheet').consoleErrors.length,1);
 const extra = {...entry,networkRequestId:'other',url:url+'/other'};
 assert.equal(classifyAnalysisConsole('mobile-time-filter',[entry,extra],[response],state).consoleErrors.length,1);
+"""
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script], cwd=ROOT, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_mobile_analysis_filter_accepts_only_completed_ready_payload_with_visible_kpis():
+    script = r"""
+import assert from 'node:assert/strict';
+import { isAnalysisReady } from './scripts/frontend_interaction_smoke.mjs';
+const url = 'http://127.0.0.1:5173/api/analysis/stats?period=last_4_weeks';
+const response = {requestId:'r1',url,status:200,complete:true};
+const state = {url:'http://127.0.0.1:5173/analysis/stats?period=last_4_weeks',skeletonCount:0,statsKpiCount:1};
+assert.equal(isAnalysisReady(response,state),true);
+for (const invalid of [
+ {...response,status:503}, {...response,complete:false},
+ {...response,url:url.replace('/analysis/stats','/other')},
+ {...response,url:url.replace('last_4_weeks','custom')},
+]) assert.equal(isAnalysisReady(invalid,state),false);
+for (const invalid of [
+ {...state,statsKpiCount:0},
+ {...state,url:state.url.replace('last_4_weeks','lifetime')},
+]) assert.equal(isAnalysisReady(response,invalid),false);
 """
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script], cwd=ROOT, capture_output=True, text=True

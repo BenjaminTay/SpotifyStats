@@ -113,9 +113,21 @@ def _install_successful_durable_pipeline(monkeypatch, import_api, *, import_impl
 
 
 @pytest.fixture(autouse=True)
-def reset_import_jobs(monkeypatch, client):
+def reset_import_jobs(monkeypatch, client, tmp_path):
     from backend.api import import_ as import_api
     from backend.domains.imports.control_store import connect_control
+
+    # The legacy route now enters the same immutable-source registry as the
+    # batch API.  Give every contract test a tiny owned source packet so a
+    # mocked import cannot copy the developer's real data/streaming directory
+    # into one sidecar per function-scoped database.
+    streaming_dir = tmp_path / "legacy-streaming"
+    account_dir = tmp_path / "legacy-account"
+    streaming_dir.mkdir()
+    account_dir.mkdir()
+    (streaming_dir / "Streaming_History_Audio_000.json").write_text("[]", encoding="utf-8")
+    monkeypatch.setattr(import_api, "DATA_DIR", str(streaming_dir))
+    monkeypatch.setattr(import_api, "ACCOUNT_DATA_DIR", str(account_dir))
 
     control = connect_control()
     try:

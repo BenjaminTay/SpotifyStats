@@ -416,7 +416,10 @@ def _execute_control_run(
         else:
             import_mode, strategy = "replace", "full"
 
-        with exclusive_publication(on_error=restore_before_publication_unlock):
+        with exclusive_publication(
+            on_error=restore_before_publication_unlock,
+            owner_run_id=run_id,
+        ):
             state_conn = get_db(readonly=True)
             try:
                 state = state_conn.execute(

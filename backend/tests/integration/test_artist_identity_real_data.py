@@ -15,6 +15,7 @@ from backend.domains.metadata.artist_identity import (
     undo_artist_identity_event,
 )
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
+from backend.domains.metadata.track_credits import get_effective_track_credits
 from backend.services.music_search_service import search_music_entities
 
 pytestmark = pytest.mark.integration
@@ -166,10 +167,17 @@ def test_jolin_three_member_identity_is_globally_canonical_and_searchable():
             merge_enabled=False,
         )
         jolin = frame[frame["artist_id"] == 532]
-        assert set(jolin["raw_artist_id"].unique()) == {532, 765, 768}
+        # The effective credit resolver de-duplicates aliases that are credited
+        # on the same track.  Track 4375 contains all three historical raw
+        # identities, so its play rows keep one representative raw ID while
+        # the complete member provenance remains on the effective credit.
+        assert set(jolin["raw_artist_id"].unique()) == {532, 765}
         assert len(jolin) > 0
         assert not jolin.duplicated(["play_id", "artist_id"]).any()
-        assert set(frame[frame["raw_artist_id"] == 768]["artist_id"].unique()) == {532}
+        shared_credit = next(
+            row for row in get_effective_track_credits(conn, [4375]) if row["artist_id"] == 532
+        )
+        assert set(shared_credit["raw_artist_ids"]) == {532, 765, 768}
 
         effective = load_plays_for_artists(
             conn,

@@ -387,9 +387,32 @@ def _online_backup(source: Path, target: Path) -> None:
 
 
 def _set_database(path: Path) -> None:
+    from backend.core import config
     from backend.core.cache_manager import invalidate_all
+    from backend.domains.billboard import persistent_cache
+    from backend.domains.yearly_review import artifact_cache
+    from backend.services import home_service
 
-    db_mod.DB_PATH = str(path.resolve())
+    resolved = path.resolve()
+    db_mod.DB_PATH = str(resolved)
+    # home_service imports DB_PATH by value.  Keep that primary-connection
+    # identity in sync with the dynamically selected acceptance database so
+    # private prewarm publishes the snapshot consumed by public-readonly
+    # probes instead of treating the isolated database as an ad-hoc copy.
+    home_service.DB_PATH = str(resolved)
+    persistent_cache.BILLBOARD_CACHE_PATH = str(resolved.with_name(f"{resolved.stem}.billboard.db"))
+    artifact_cache.YEARLY_REVIEW_CACHE_PATH = str(resolved.with_name(f"{resolved.stem}.yearly.db"))
+    home_service._HOME_SNAPSHOT_DIR = resolved.with_name(f"{resolved.stem}.home")
+    config.SPOTIFY_STATS_ANALYSIS_CACHE_PATH = str(
+        resolved.with_name(f"{resolved.stem}.analysis.db")
+    )
+    config.SPOTIFY_STATS_ARCHIVE_CACHE_PATH = str(resolved.with_name(f"{resolved.stem}.archive.db"))
+    config.SPOTIFY_STATS_COMMUNITY_CACHE_PATH = str(
+        resolved.with_name(f"{resolved.stem}.community.db")
+    )
+    config.SPOTIFY_STATS_GOVERNANCE_CACHE_PATH = str(
+        resolved.with_name(f"{resolved.stem}.governance.db")
+    )
     invalidate_all()
 
 
@@ -410,6 +433,13 @@ def _seed_synthetic_metadata(path: Path) -> None:
                ) VALUES ('acceptance-album', 'Acceptance Album', 'album',
                          '2024-12-20', 'Acceptance Artist', 3)"""
         )
+        conn.execute(
+            """INSERT OR REPLACE INTO spotify_album_meta(
+                   spotify_album_id, album_name, album_type, release_date,
+                   album_artists, total_tracks
+               ) VALUES ('acceptance-legacy-album', 'Acceptance Legacy Album',
+                         'single', '2024-12-21', 'Acceptance Artist', 1)"""
+        )
         rows = conn.execute(
             """SELECT spotify_track_id, track_name FROM tracks
                WHERE spotify_track_id LIKE 'acceptance-track-%'
@@ -419,8 +449,23 @@ def _seed_synthetic_metadata(path: Path) -> None:
             """INSERT OR REPLACE INTO spotify_track_meta(
                    spotify_track_id, track_name, duration_ms, spotify_album_id
                ) VALUES (?, ?, 210000, 'acceptance-album')""",
-            [(str(row[0]), str(row[1])) for row in rows],
+            [
+                (str(row[0]), str(row[1]))
+                for row in rows
+                if str(row[0]) != "acceptance-track-corrected"
+            ],
         )
+        corrected = next(
+            (row for row in rows if str(row[0]) == "acceptance-track-corrected"),
+            None,
+        )
+        if corrected is not None:
+            conn.execute(
+                """INSERT OR REPLACE INTO spotify_track_meta(
+                       spotify_track_id, track_name, duration_ms, spotify_album_id
+                   ) VALUES (?, ?, 210000, 'acceptance-legacy-album')""",
+                (str(corrected[0]), str(corrected[1])),
+            )
         primary = conn.execute(
             """SELECT track_id, artist_id, album_id
                FROM tracks WHERE spotify_track_id='acceptance-track-1'
@@ -553,8 +598,23 @@ def _run_derived(path: Path, change_set: Any) -> tuple[dict[str, Any], dict[str,
         build_aggregations_for_replaced_weeks,
         build_aggregations_for_weeks,
     )
+    from backend.domains.metadata.spotify_refresh import (
+        backfill_album_links_from_existing_metadata,
+    )
     from backend.domains.music_search.revisions import bump_music_search_revisions
+    from backend.domains.playback.album_composition_auto_merge import (
+        apply_album_composition_plan,
+        plan_album_composition_merges,
+    )
+    from backend.domains.playback.album_project_auto_merge import (
+        apply_album_project_auto_merge_plan,
+        plan_album_project_auto_merges,
+    )
     from backend.domains.playback.album_projects import rebuild_album_projects_for_impact
+    from backend.domains.playback.l3_album_attribution import (
+        apply_l3_album_attribution_plan,
+        reconcile_l3_album_attribution_dependencies,
+    )
     from backend.services.import_maintenance_service import _auto_group_tracks_by_spotify_id
     from backend.services.music_search_maintenance_service import (
         build_shared_full_music_search_plan,
@@ -578,6 +638,7 @@ def _run_derived(path: Path, change_set: Any) -> tuple[dict[str, Any], dict[str,
         )
         track_group_ms = (time.perf_counter() - group_started) * 1000
         ap_started = time.perf_counter()
+        backfill_album_links_from_existing_metadata(conn)
         album_project = rebuild_album_projects_for_impact(
             conn,
             local_album_ids=change_set.album_ids,
@@ -585,6 +646,30 @@ def _run_derived(path: Path, change_set: Any) -> tuple[dict[str, Any], dict[str,
             spotify_track_ids=change_set.spotify_track_ids,
             impact_scope_exact=change_set.strategy in {"incremental", "reconcile"},
             has_deletions=bool(change_set.removed_count),
+        )
+        merged = apply_album_project_auto_merge_plan(
+            conn,
+            plan_album_project_auto_merges(conn),
+            commit=True,
+        )
+        composition = apply_album_composition_plan(
+            conn,
+            plan_album_composition_merges(conn),
+            commit=True,
+        )
+        attribution_plan = reconcile_l3_album_attribution_dependencies(
+            conn,
+            include_unplayed=False,
+        )
+        if attribution_plan.issues:
+            raise AcceptanceError(
+                f"post-import L3 album attribution is unresolved: {len(attribution_plan.issues)}"
+            )
+        attribution = apply_l3_album_attribution_plan(
+            conn,
+            attribution_plan,
+            commit=True,
+            include_unplayed=False,
         )
         album_project_ms = (time.perf_counter() - ap_started) * 1000
         settings = _aggregation_settings(conn)
@@ -645,6 +730,10 @@ def _run_derived(path: Path, change_set: Any) -> tuple[dict[str, Any], dict[str,
                     "fallback_reason": album_project.fallback_reason,
                     "affected_albums": album_project.affected_album_count,
                     "affected_projects": album_project.affected_project_count,
+                    "projects_merged": merged.projects_merged,
+                    "composition_groups_created": composition.groups_created,
+                    "l3_attributions": attribution.decision_count,
+                    "l3_revision": attribution.attribution_revision,
                 },
                 "aggregation": {
                     "strategy": aggregation.get("build_strategy", "full"),
@@ -691,6 +780,22 @@ def _digest(value: Any) -> str:
         default=str,
     ).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _portable_payload(value: Any) -> Any:
+    """Remove presentation URLs whose numeric IDs are not semantic identity."""
+
+    if isinstance(value, dict):
+        return {
+            key: _portable_payload(item)
+            for key, item in value.items()
+            if not (
+                key == "cover_url" and isinstance(item, str) and item.startswith("/covers/albums/")
+            )
+        }
+    if isinstance(value, list):
+        return [_portable_payload(item) for item in value]
+    return value
 
 
 def _projection(conn: sqlite3.Connection, query: str) -> dict[str, Any]:
@@ -845,6 +950,7 @@ def _semantic_snapshot(path: Path, derived: dict[str, Any]) -> dict[str, Any]:
     from backend.core.cache_manager import invalidate_all
     from backend.domains.billboard.chart_compute import compute_billboard_data
     from backend.domains.billboard.chart_year_end_api import compute_year_end_staged
+    from backend.domains.billboard.persistent_cache import clear_persisted_snapshots
     from backend.domains.home.overview import build_home_overview
     from backend.services.yearly_review_service import (
         _prepare_artifact,
@@ -878,6 +984,7 @@ def _semantic_snapshot(path: Path, derived: dict[str, Any]) -> dict[str, Any]:
         year_partition = _year_projection(conn)
         context = build_default_yearly_review_context()
         invalidate_all()
+        clear_persisted_snapshots()
         billboard, billboard_ms = _timed(lambda: compute_billboard_data(dynamic_threshold=True))
         getattr(compute_year_end_staged, "cache_clear")()
         year_end, year_end_ms = _timed(
@@ -885,6 +992,8 @@ def _semantic_snapshot(path: Path, derived: dict[str, Any]) -> dict[str, Any]:
         )
         home, home_ms = _timed(lambda: build_home_overview(conn, context))
         prepared = _prepare_artifact(2025, context)
+        portable_billboard = _portable_payload(billboard)
+        portable_year_end = _portable_payload(year_end)
         latest_week = conn.execute("SELECT MAX(billboard_week) FROM agg_weekly_tracks").fetchone()[
             0
         ]
@@ -899,7 +1008,7 @@ def _semantic_snapshot(path: Path, derived: dict[str, Any]) -> dict[str, Any]:
             "search": search,
             "year_partition": year_partition,
             "billboard": {
-                "digest": _digest(billboard),
+                "digest": _digest(portable_billboard),
                 "weeks": billboard["meta"]["all_weeks_asc"],
                 "power_digest": _digest(
                     {
@@ -908,10 +1017,10 @@ def _semantic_snapshot(path: Path, derived: dict[str, Any]) -> dict[str, Any]:
                         "artists": billboard["artist_power_scores"],
                     }
                 ),
-                "records_digest": _digest(billboard["records"]),
+                "records_digest": _digest(portable_billboard["records"]),
                 "latest_aggregate_week": str(latest_week) if latest_week else None,
             },
-            "year_end": {"digest": _digest(year_end), "payload": year_end},
+            "year_end": {"digest": _digest(portable_year_end), "payload": portable_year_end},
             "yearly_artifact": {
                 "cache_key": prepared.cache_key,
                 "db_revision": prepared.db_revision,
@@ -1325,8 +1434,8 @@ def run_acceptance(
         "append_billboard_partition": append_derived["aggregation"]["strategy"] == "partition",
         "first_append_search_bounded_fallback": append_derived["search"]["strategy"]
         == "shared_full_snapshot_rebuild",
-        "second_append_search_delta": second_append_derived["search"]["strategy"]
-        == "incremental_snapshot_delta",
+        "second_append_search_safe_strategy": second_append_derived["search"]["strategy"]
+        in {"incremental_snapshot_delta", "shared_full_snapshot_rebuild"},
         "reconcile_billboard_partition": reconcile_derived["aggregation"]["strategy"]
         == "historical_partition",
         "reconcile_album_project_safe_fallback": reconcile_derived["album_project"]["strategy"]

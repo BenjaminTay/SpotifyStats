@@ -8,14 +8,23 @@
 
 ## 与现有导入流程的关系
 
-当前导入流程仍由 Settings 页面触发：
+当前导入流程由 Settings 的“数据导入工作台”触发：
 
-1. 串流数据导入读取 `data/streaming/Streaming_History_Audio_*.json`，写入基础播放、曲目、专辑和艺人数据。
+1. 用户创建服务端批次并上传 `Streaming_History_Audio_*.json` / 可选 Video 分片；批次冻结后文件名、类型、大小和 SHA-256 不可变。旧 `data/streaming/` 入口作为本机兼容来源，进入同一控制面和发布合同。
 2. 账号数据导入读取 `data/account/` 下的 Account Data JSON，补充收藏、歌单、Wrapped、搜索记录等非播放数据。
-3. 串流导入完成后继续执行 Spotify 曲目、专辑和艺人元数据维护，补齐本地实体的封面 URL，并为播放历史中有 URL 但缺文件的专辑和艺人排队下载。
-4. Album Project 和 Billboard 预聚合发布后，先预热最新完整榜单与首页；四套公开音乐查找精确统计快照（L2/L3 × 动态阈值开/关）随后转入后台维护，兼容的同一开放周尾部追加可走 snapshot delta，其余情况整组四套 shared-full 重建；年度总结预热等精确快照完成后再启动，避免与首屏争抢资源。
-5. 封面下载按“实体类型 + 实体 ID”去重，校验 HTTP 状态、图片签名和最小大小，采用临时文件原子替换；失败会真实记录并在上限内重试，不再把下载失败记作完成。
-6. 快照未完成时搜索候选和详情深链仍可用，精确播放/榜单摘要显示为 warming，不显示虚假的 0。健康报告重新读取数据库状态，帮助判断维护是否完成；它不改变以上导入语义。
+3. 预检、确认、事实发布、来源指针和阶段 attempt 写入独立控制库；浏览器刷新、服务重启或主库恢复不会丢失运行历史和失败证据。
+4. 串流事实发布后继续执行 Spotify 曲目、专辑和艺人元数据维护，补齐本地实体的封面 URL，并为播放历史中有 URL 但缺文件的专辑和艺人排队下载。
+5. Album Project 和 Billboard 预聚合发布后，先预热最新完整榜单与首页；四套公开音乐查找精确统计快照（L2/L3 × 动态阈值开/关）随后转入后台维护，兼容的同一开放周尾部追加可走 snapshot delta，其余情况整组四套 shared-full 重建；年度总结预热等精确快照完成后再启动，避免与首屏争抢资源。
+6. 封面下载按“实体类型 + 实体 ID”去重，校验 HTTP 状态、图片签名和最小大小，采用临时文件原子替换；失败会真实记录并在上限内重试，不再把下载失败记作完成。
+7. 快照未完成时搜索候选和详情深链仍可用，精确播放/榜单摘要显示为 warming，不显示虚假的 0。健康报告重新读取数据库状态，帮助判断维护是否完成；它不改变以上导入语义。
+
+### 持久批次与运行 API
+
+- `POST /api/import/batches` 创建 `snapshot` 或带活动 parent 的 `delta` 接收批次；`PUT /api/import/batches/{id}/files/{name}` 只接受约定文件名和明确的 audio/video 类型。
+- `POST /api/import/batches/{id}/finalize` 在批次锁内重新核对临时文件并原子冻结；同一 manifest 可复用既有不可变版本。执行只读取冻结 packet 或已发布 resolved 全量视图。
+- `GET /api/import/batches/{id}/preflight` 返回绑定该批次与当前活动基线的计划及确认标识；`POST /api/import/batches/{id}/runs` 创建持久运行。相同逻辑请求以 batch、manifest、模式、确认和活动事实栅栏去重。
+- `GET /api/import/runs`、`/latest`、`/{id}` 与 `/{id}/report` 提供分页历史、当前状态、阶段证据和 JSON/Markdown 报告；`retry` 只重跑失败/未完成阶段，`recheck` 重新核对当前 readiness。
+- 普通响应不返回服务端绝对路径、用户名、原始记录或未脱敏异常；报告保留 error code、阶段、作用域、分母和受影响计数。
 
 ## 导入前检查
 
@@ -136,23 +145,23 @@ schema 59 起，普通应用、后台作业、导入快照和年度缓存的持�
 
 ## 第二轮：导入安全边界
 
-当前串流和账号导入在实际写入前都会尝试创建 SQLite 一致性快照，快照使用 SQLite backup API，能够覆盖 WAL 中已经提交的内容。快照放在 `data/import_backups/`，不会写入 Git，也不会被自动删除。
+当前串流和账号导入在实际写入前都会尝试创建 SQLite Online Backup。已有数据库的快照失败会阻断写入；首次导入失败会清理本次半成品。快照位于 `data/import_backups/`，不进入 Git，也不自动删除。
 
-- 已有数据库：快照创建失败时，导入不会开始；导入或串流导入后的维护失败时，系统尝试恢复导入前快照。
-- 并发边界：同一进程内只允许一个数据库导入任务；已有导入运行时，后续任务直接标记为未开始，不创建快照、不修改数据库。
-- 导入门禁：串流导入会重新核对最新文件状态，避免用户查看预检后文件又发生变化；账号数据导入不受 Streaming History 文件门禁影响。
-- 首次导入：数据库尚不存在时，快照状态为 `skipped`；如果这次首次导入失败，系统会清理本次创建的半成品数据库。
-- 导入任务结果：成功结果包含 `database_snapshot`；失败结果包含 `database_snapshot` 和 `rollback`，其中 `rollback.status` 为 `restored` 表示已有数据库已恢复，`removed_new_database` 表示首次导入半成品已清理，`failed` 表示需要停止继续导入并人工检查。
-- 串流导入成功结果还包含 `duplicate_records_skipped` 和 `post_import_health`。后者只复核 SQLite 完整性、播放记录数量和播放→曲目/专辑关系；这些硬指标失败会按导入异常进入已有回滚路径，普通元数据缺口仍只显示为 `partial` 提醒。
-- 回滚后会清空运行时统计缓存，避免页面继续使用失败导入产生的旧派生结果。
+串流发布窗口使用跨进程 `fcntl` writer lease；普通活动主库写连接持共享租约，导入发布、恢复和来源指针切换持独占租约。上传/finalize 另有批次锁，冻结时重新核对文件内容，避免 manifest 与 packet 混合。仓库维护脚本写活动主库时也必须经过同一协调入口；显式离线副本不占用活动库租约。
 
-当前已完成增量导入 Phase A–E。写入任务仍保留 SQLite Online Backup；append 与 reconcile 都在一个事务中批量写入，并在同一次提交内精确核对输入关系、实际新增/移除、活动 count/digest 和事实代际；导入器异常时显式 rollback 并关闭写连接，随后才允许快照恢复。
+一次运行的事实事务同时发布播放事实、活动 generation、fingerprint version、dataset digest、record count、年度分区和 `PlaybackChangeSet`。append/reconcile 在提交前验证 previous digest；replace 的清空与重写也位于同一事务。事实提交前的错误可恢复整套数据库/来源；事实已提交后的元数据、Album Project、Billboard、搜索或封面失败不再整库回滚，而是保留新事实并从失败阶段恢复，避免覆盖期间出现的其他有效提交。
 
-派生维护仍在活动事实发布后执行。事实、活动代际、年度分区和紧凑 ChangeSet 会在同一事务提交；维护完成前导入运行记录保持 `maintenance_pending`。应用启动会先严格反序列化 ChangeSet，再核对活动代际、指纹版本、实际记录数和数据集摘要；证据一致时通过持久队列幂等恢复维护，证据无效或事实漂移时标记 `recovery_blocked`，不会把旧派生结果冒充为成功。播放缓存会在事实提交后立即失效，Billboard 聚合只能在活动代际未变化时原子发布。封面后台任务会在进程重启后恢复 pending/orphan running，过期 URL 任务不能覆盖新来源。完整 replace 的清空、批量写入、ChangeSet 与活动状态发布位于同一个写事务，进程内异常可直接回滚；导入前 Online Backup 继续作为跨进程硬中止与维护失败的外层恢复边界。四套公开搜索快照已经具备整组原子发布、代际栅栏，以及同一开放周和恰好跨一个开放周的实体级 delta；历史修正走精确 Billboard 周替换与搜索 shared-full 安全回退。
+来源版本使用服务端不可变 packet 与 resolved 全量视图。控制库的 publication journal 记录旧/新来源、快照、事实状态和指针状态；活动指针采用 compare-and-swap。启动恢复在 writer lease 内重新核对主库 generation/digest、来源 manifest 和当前指针，只完成可证明的发布或成套恢复。若存在更晚提交、来源漂移或证据不足，标记 `recovery_blocked`，不会覆盖后来事实。
 
-Billboard 四张预聚合已经支持精确尾部变化的周分区更新：局部旧/新逻辑帧包含可合并的完整前序链，时长贡献按周切片，变化以有符号差值应用到四张影子表；固定与动态阈值证明的影响周取并集，无法证明闭包时仍安全回退全量。四套公开搜索统计已完成同周和恰好跨一个开放周追加的 snapshot delta；多周或历史变化仍回退 shared-full。年度分区已经额外覆盖跨年收听区间和可合并的前序连续链。
+固定阶段顺序为：`metadata → identity_merge → album_project_l3 → billboard_aggregates → candidate_index → critical_prewarm → cover_supplemental → exact_snapshots`。每次 attempt 持久保存输入 generation/digest、依赖 revision 向量、输出证据、可重试性和错误码；旧任务在运行前后都要通过事实/依赖 fence，不能发布到新代际。`metadata=partial` 不会伪装为成功；依赖它的 L3 或精确统计保持不可用或失败，待外部条件恢复后定向重试。
 
-历史 reconcile 使用独立的旧、新有序事实视图，从增删位置及相邻记录向前后闭合相同 track/source 连续链，并比较 fixed/dynamic 两套贡献。变化只涉及完整历史周、活动代际和统计依赖一致、闭包不超过 100,000 行时，从当前事实有界重算并替换目标周四张聚合；开放周、证据或成本门禁失败时全量重建。Album Project 仅在无删除且实际元数据影响闭包精确时定向重建；其他情况全量回退。历史 reconcile 的公共搜索四变体（fixed/dynamic × L2/L3）继续使用 shared-full；旧 L1 快照只作为 stale 证据保留。
+事实提交后先失效旧播放缓存。Billboard 四张预聚合支持可证明尾部变化的周分区更新，局部旧/新逻辑帧包含前后连续链，时长贡献按周切片；固定与动态阈值影响周取并集。历史迟到、删除、开放周或闭包/成本证明不足时保留原因并全量回退。年度分区覆盖跨年收听区间和可合并前序链。
+
+四套公开搜索合同固定为 L2/L3 × fixed/dynamic。候选索引、四套精确 context 与详情年榜投影分别保存 active/target/LKG；同一开放周或恰好跨一个开放周且依赖兼容时可走 snapshot delta，多周、历史修正或依赖变化走 shared-full。L1 只保留兼容/陈旧证据，不属于当前必须发布集合。
+
+后台队列按关键 CPU、网络、补充任务分 lane，并为关键统计保留执行能力。任务以逻辑 target 和 generation/revision 去重，重启后恢复优先级、目标与有限重试；1,204 个封面任务不能成为关键统计的前置排空条件，低优先级任务仍需最终推进。
+
+发布状态严格区分：`facts_committed` 表示事实已提交但统计未就绪，`core_ready` 表示核心统计可用，`ready` 表示全部必需精确结果就绪；有旧结果时可显示 warming/LKG，没有可信结果时为 unavailable，确定失败时为 failed。GET 不同步冷建，也不返回虚假健康或 0。
 
 ## 相关代码
 
@@ -161,16 +170,20 @@ Billboard 四张预聚合已经支持精确尾部变化的周分区更新：局�
 - 增量关系分类：`backend/domains/imports/incremental.py`
 - 播放事实执行动作：`backend/domains/imports/execution.py`
 - 指纹基线与运行记录：`backend/domains/imports/state.py`
+- 持久控制库与来源版本：`backend/domains/imports/control_store.py`、`backend/domains/imports/source_registry.py`
+- 跨进程写入协调与恢复：`backend/domains/imports/write_coordinator.py`、`backend/services/import_maintenance_recovery_service.py`
 - ChangeSet 与年度播放分区：`backend/domains/imports/change_set.py`
 - 搜索 snapshot lineage、周账本与增量发布：`backend/domains/music_search/snapshot_lineage.py`、`backend/domains/music_search/snapshot_delta.py`、`backend/domains/music_search/snapshot_ledger.py`、`backend/domains/music_search/snapshot_week_delta.py`
 - 尾部逻辑播放差值：`backend/domains/playback/logical_delta.py`
 - 增量元数据与封面维护：`backend/domains/metadata/spotify_refresh.py`、`backend/services/cover_cache_service.py`
 - 只读导入计划：`backend/services/import_plan_service.py`
+- 固定阶段、依赖栅栏与 readiness：`backend/services/import_stage_service.py`
+- 优先级、资源 lane 与 target 去重：`backend/core/job_queue.py`
 - 导入快照与回滚：`backend/domains/imports/database_snapshot.py`
 - 后端健康报告：`backend/domains/metadata/import_health.py`
 - API：`backend/api/import_.py`
-- 前端入口：`frontend/src/features/settings/components/DataImportSection.tsx`
-- 前端查询：`frontend/src/hooks/useDataImportHealth.ts`
+- 前端入口：`frontend/src/features/settings/components/DataImportWorkspace.tsx`
+- 前端查询：`frontend/src/hooks/useDataImport.ts`、`frontend/src/hooks/useDataImportHealth.ts`
 
 ## Community 派生维护
 

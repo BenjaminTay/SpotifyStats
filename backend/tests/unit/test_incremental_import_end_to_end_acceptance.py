@@ -76,6 +76,36 @@ def test_workdir_guard_rejects_repository_and_source_sibling(tmp_path) -> None:
         acceptance.validate_workdir(source.parent / "acceptance", source)
 
 
+def test_set_database_keeps_home_primary_identity_and_snapshot_root_aligned(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.core import config
+    from backend.core import db as db_module
+    from backend.domains.billboard import persistent_cache
+    from backend.domains.yearly_review import artifact_cache
+    from backend.services import home_service
+
+    for module, name in (
+        (db_module, "DB_PATH"),
+        (home_service, "DB_PATH"),
+        (home_service, "_HOME_SNAPSHOT_DIR"),
+        (persistent_cache, "BILLBOARD_CACHE_PATH"),
+        (artifact_cache, "YEARLY_REVIEW_CACHE_PATH"),
+        (config, "SPOTIFY_STATS_ANALYSIS_CACHE_PATH"),
+        (config, "SPOTIFY_STATS_ARCHIVE_CACHE_PATH"),
+        (config, "SPOTIFY_STATS_COMMUNITY_CACHE_PATH"),
+        (config, "SPOTIFY_STATS_GOVERNANCE_CACHE_PATH"),
+    ):
+        monkeypatch.setattr(module, name, getattr(module, name))
+
+    database = tmp_path / "isolated.db"
+    acceptance._set_database(database)
+
+    assert db_module.DB_PATH == str(database.resolve())
+    assert home_service.DB_PATH == str(database.resolve())
+    assert home_service._HOME_SNAPSHOT_DIR == database.with_name("isolated.home")
+
+
 def test_public_projection_does_not_emit_semantic_rows() -> None:
     projection = {
         "facts": {"row_count": 1, "digest": "facts", "rows": [["private"]]},
@@ -121,6 +151,20 @@ def test_public_projection_does_not_emit_semantic_rows() -> None:
 
     assert "rows" not in str(public)
     assert "private" not in str(public)
+
+
+def test_portable_payload_ignores_only_local_album_cover_ids() -> None:
+    payload = {
+        "cover_url": "/covers/albums/123.jpg",
+        "remote_cover_url": "https://example.test/cover.jpg",
+        "nested": [{"cover_url": "https://example.test/album.jpg", "plays": 4}],
+    }
+
+    portable = acceptance._portable_payload(payload)
+
+    assert "cover_url" not in portable
+    assert portable["remote_cover_url"] == "https://example.test/cover.jpg"
+    assert portable["nested"] == [{"cover_url": "https://example.test/album.jpg", "plays": 4}]
 
 
 def test_yearly_invalidation_contract_requires_fact_revision_and_key_change() -> None:

@@ -13,6 +13,7 @@
 
 ## 已完成规划
 
+- [`2026-09-21-import-processing-governance-remediation-plan.md`](2026-09-21-import-processing-governance-remediation-plan.md)：导入批次一致性、阶段恢复、关键任务调度、身份治理与 S6 完整本地终验已完成；最终证据见 [`../../reports/2026-09-21-import-governance-final-acceptance.md`](../../reports/2026-09-21-import-governance-final-acceptance.md)。
 - [`2026-08-23-incremental-streaming-import-plan.md`](2026-08-23-incremental-streaming-import-plan.md)：串流数据关系识别、基础事实增量发布、派生分区更新、历史修正与恢复边界。当前运行规则以 [`../../reference/data-import-and-health.md`](../../reference/data-import-and-health.md) 为准，分阶段证据见 [`../../reports/README.md`](../../reports/README.md)。
 - [`2026-08-27-spotify-track-identity-l1-migration-plan.md`](2026-08-27-spotify-track-identity-l1-migration-plan.md)：已被最终 canonical track / L2 / L3 方案取代的早期 Spotify-L1 规划；只用于回溯决策过程。当前规则见 [`../../reference/music-metadata-management.md`](../../reference/music-metadata-management.md)，最终证据见 [`../../reports/2026-08-27-spotify-track-l1-identity-migration.md`](../../reports/2026-08-27-spotify-track-l1-identity-migration.md)。
 - [`2026-06-23-playback-records-plan.md`](2026-06-23-playback-records-plan.md)：播放记录早期 6 栏规划；已补当前 5 栏/20 模块实现差异，未采用 P2 不自动成为待办。

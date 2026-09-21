@@ -25,6 +25,9 @@ class ImportWriteQuarantinedError(RuntimeError):
 
 _process_lock = threading.RLock()
 _exclusive_depth: ContextVar[int] = ContextVar("import_publication_depth", default=0)
+_exclusive_owner_run_id: ContextVar[str | None] = ContextVar(
+    "import_publication_owner_run_id", default=None
+)
 
 
 def publication_lock_path(db_path: str | None = None) -> Path:
@@ -123,12 +126,24 @@ def exclusive_publication(
     db_path: str | None = None,
     blocking: bool = False,
     on_error: Callable[[BaseException], None] | None = None,
+    owner_run_id: str | None = None,
 ) -> Iterator[None]:
-    """Hold the process and filesystem publication gates for one critical window."""
+    """Hold the process and filesystem publication gates for one critical window.
+
+    A durable import quarantine applies to exclusive writers too.  Only the
+    publication/recovery operation that owns the quarantined run may cross it;
+    an arbitrary exclusive context must not turn the ContextVar self-deadlock
+    exemption into a quarantine bypass.
+    """
 
     with _process_lock:
         depth = _exclusive_depth.get()
         if depth:
+            active_owner = _exclusive_owner_run_id.get()
+            if owner_run_id is not None and active_owner not in {None, owner_run_id}:
+                raise ImportWriteQuarantinedError(
+                    f"exclusive publication is owned by import run {active_owner}"
+                )
             token = _exclusive_depth.set(depth + 1)
             try:
                 yield
@@ -144,7 +159,16 @@ def exclusive_publication(
                 fcntl.flock(descriptor, flags)
             except BlockingIOError as exc:
                 raise ImportWriteBusyError("another database publication is running") from exc
+            from backend.domains.imports.control_store import import_write_gate_state
+
+            gate = import_write_gate_state(db_path=db_path)
+            gate_owner = str(gate.get("run_id") or "")
+            if gate.get("blocked") and (not owner_run_id or gate_owner != owner_run_id):
+                raise ImportWriteQuarantinedError(
+                    f"database writes are quarantined by import run {gate_owner or 'unknown'}"
+                )
             token = _exclusive_depth.set(1)
+            owner_token = _exclusive_owner_run_id.set(owner_run_id)
             try:
                 try:
                     yield
@@ -153,6 +177,7 @@ def exclusive_publication(
                         on_error(exc)
                     raise
             finally:
+                _exclusive_owner_run_id.reset(owner_token)
                 _exclusive_depth.reset(token)
                 fcntl.flock(descriptor, fcntl.LOCK_UN)
         finally:

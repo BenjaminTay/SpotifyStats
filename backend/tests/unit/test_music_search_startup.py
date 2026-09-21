@@ -124,9 +124,8 @@ def test_import_maintenance_recovery_is_registered_and_scanned_before_search_sta
     assert events.index("register:playback_import_maintenance") < events.index("queue:prepare")
     assert events.index("queue:prepare") < events.index("recovery:scan")
     assert events.index("recovery:scan") < events.index("queue:start")
-    assert events.index("queue:start") < events.index("cover:recover")
     assert events.index("cover:recover") < events.index("search:enqueue")
-    assert events.index("queue:start") < events.index("search:enqueue")
+    assert events.index("search:enqueue") < events.index("queue:start")
     assert search_options == [{"rebuild_documents": expected_rebuild_documents}]
 
 

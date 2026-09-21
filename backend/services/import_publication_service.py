@@ -10,8 +10,9 @@ from backend.core import db as db_module
 from backend.core.db import get_db
 from backend.domains.imports.control_store import (
     active_source_state,
-    clear_import_write_quarantine,
     get_run,
+    import_write_gate_state,
+    mark_sources_published_and_clear_quarantine,
     pending_publications,
     quarantine_import_writes,
     restore_active_source,
@@ -130,19 +131,23 @@ def publish_sources(
         raise
     finally:
         conn.close()
-    update_run(
+    mark_sources_published_and_clear_quarantine(
         run_id,
-        publication_state="sources_published",
         progress_pct=0.65,
         message="播放事实与活动原始来源已发布",
     )
-    clear_import_write_quarantine(run_id)
 
 
 def recover_interrupted_publications(*, db_path: str | None = None) -> dict[str, int]:
     from backend.domains.imports.write_coordinator import exclusive_publication
 
-    with exclusive_publication(db_path=db_path, blocking=True):
+    gate = import_write_gate_state(db_path=db_path)
+    owner_run_id = str(gate.get("run_id") or "") if gate.get("blocked") else None
+    with exclusive_publication(
+        db_path=db_path,
+        blocking=True,
+        owner_run_id=owner_run_id or None,
+    ):
         return _recover_interrupted_publications_locked(db_path=db_path)
 
 
