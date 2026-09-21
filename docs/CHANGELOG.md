@@ -1,5 +1,12 @@
 # 变更日志
 
+## 2026-09-22：legacy 导入基线首次来源登记收口
+
+- 合法 migration 79 legacy 指纹基线不再被活动来源栅栏误判为漂移：相同输入保持零事实写入的明确 noop；完整超集和显式完整替换可经 count/digest 对账首次登记来源；不完整尾包继续 fail-closed 并提示使用完整导出。
+- 保留锁内重评估、确认 token、main/control 指针对账、事务基线 fence 与硬中止恢复；正式库 Online Backup 的 94,760 条来源可在全新数据库重放为相同指纹集合和 digest，正式数据库未写入。
+- 崩溃恢复测试改用局部 `monkeypatch.context()`，不再泄漏全局数据库/账号路径；相关四文件组合正序和逆序各 96 项通过。
+- HEAD `9dddc89` 的最新默认完整 fullstack 八个必需阶段全部 PASS：seed 2,936 passed / 2 skipped、真实 integration 186 passed / 1 skipped、前端 670 passed / 4 skipped、API smoke 153/153、boundary 113/113，Chromium/Firefox/WebKit 全部通过。详见 [S6 报告](reports/2026-09-21-import-governance-final-acceptance.md)。未合入主检出、push 或部署。
+
 ## 2026-09-21：数据导入处理与治理 S6 最终验收
 
 - 三次独立真实副本从 92,908 条旧事实增量至 94,760 条，新增 1,852、删除 0、保留两条迟到记录；14 项语义对账、四套搜索快照、replacement 对照与再次导入 noop 全部通过。
