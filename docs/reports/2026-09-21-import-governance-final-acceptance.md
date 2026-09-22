@@ -1,10 +1,10 @@
 # 数据导入处理与治理 S6 最终验收报告
 
-> 日期：2026-09-21；二轮独立复核收口：2026-09-22
+> 日期：2026-09-21；二轮、三轮独立复核修复收口：2026-09-22
 > 规划：S0–S6 全部实施
 > 实现状态：IMPLEMENTED
 > 验证状态：PASS（真实隔离副本 + 故障恢复 + 性能 + API + 浏览器 + 默认完整 fullstack）
-> Git：S0–S6 已提交 `ae6febc`、`d37c9af`、`37c8431`、`8102f47`；独立复核与追加验收提交 `031075a`、`17002f0`、`7d3d079`、`9dddc89`；UNPUSHED
+> Git：S0–S6 已提交 `ae6febc`、`d37c9af`、`37c8431`、`8102f47`；独立复核与追加验收提交 `031075a`、`17002f0`、`7d3d079`、`9dddc89`、`8c5dfc0`；UNPUSHED
 > 部署：NOT_DEPLOYED
 
 ## 结论
@@ -14,6 +14,8 @@
 初次收口后又执行了一轮独立破坏性复核。复核在隔离副本中发现并稳定复现三个 P1：默认 snapshot 尾包的活动原始来源缺少历史父链、replace 确认与独占锁之间存在跨进程覆盖窗口、事实事务提交后而控制日志仍为 `prepared` 的硬中止无法向前恢复。三个问题均已重新打开、修复并补入真实编排回归；本报告中的最终结论以追加修复后的证据为准，不再沿用 `8102f47` 时点的旧结论。
 
 2026-09-22 的二轮独立复核又发现一个 P1 升级兼容问题和一个 P2 测试隔离问题：migration 79 的合法 legacy 指纹基线尚无活动来源登记，被来源三元组栅栏误判为漂移；崩溃恢复测试撤销整个 `monkeypatch` 后直接覆盖全局数据库/账号路径，导致后续 Community 测试读取错误数据库。两项均已用先红后绿回归修复；最新结论以 `9dddc89` 代码及本报告末尾的新默认完整门禁为准。
+
+第三轮独立复核进一步证明另一种升级前置状态仍被误判：数据库已有播放事实，但逐行指纹、generation 和活动来源基线全部缺失时，预检正确返回 `baseline_required`，已确认的完整替换却被来源对齐检查提前阻断。`8c5dfc0` 将该状态单独收窄为 `legacy_baseline_missing`，只允许经过确认、锁内重评估和事务基线栅栏的 full replace 初始化；append、未确认执行、部分指纹、控制库已有来源或 pending recovery 仍然 fail-closed。修复已通过专项探针和最新默认完整门禁，尚待第三轮独立复核方重新验收，不能表述为已获独立签收。
 
 最终真实副本从 92,908 条旧事实导入至 94,760 条，新增 1,852、删除 0，保留 2 条迟到记录。三次独立副本运行全部通过 14 项语义对账、四套公开搜索快照、replacement 对照和再次导入 noop。正式 `data` 没有再次导入；本轮没有 push 或部署。
 
@@ -90,6 +92,22 @@
 
 正式数据库只读核对为 94,760 条、fingerprint version 1、generation/digest 完整、source/publication 指针为空、`publication_state=legacy`，与缺陷前置状态一致。SQLite Online Backup 副本使用当前 `data/streaming` 完整导出验证 relation=`identical`；在首次登记的事实提交后模拟硬中止，恢复结果为 completed=1、blocked=0。恢复后主库/control 的 source、generation、digest 指针一致，pending=0、写闸门解除；活动来源在另一全新数据库重放为 94,760 条，指纹集合和 digest 均与副本一致。探针前后正式数据库 SHA-256、inode、大小和 mtime 全部不变。该探针明确跳过无关派生阶段；派生全链由下述默认完整门禁覆盖。
 
+## 三轮独立复核：已有事实但无指纹基线
+
+第三轮复核使用 tracked seed 稳定复现：主库有 117 条播放事实，但 `source_fingerprint`、`source_fingerprint_version`、`import_generation_id` 均为 0 条，`playback_import_state` 的 generation/digest/source/publication 为空、record count 为 0、publication state 为 `legacy`；控制库也没有活动来源或恢复证据。预检返回 `baseline_required`，修复前已确认的 replace/auto 都以 `confirmed_plan_drift` 阻断。
+
+`8c5dfc0` 只在下列证据同时成立时把状态分类为 `legacy_baseline_missing`：主库确有事实；预检是 `active_state_missing`；主状态 generation、digest、source、publication 和 fingerprint version 为空且 record count 为 0；publication state 精确为 `legacy`；逐行 fingerprint、fingerprint version、generation 三类来源证据全部为 0；控制库 source/generation/digest 为空；不存在 pending publication 或写隔离。该分类只允许 `decision=replace`、`confirm_plan=true`、`relation=baseline_required` 的执行继续；其他组合仍按确认漂移拒绝。既有确认 token、跨进程独占锁、锁内重新预检、`BEGIN IMMEDIATE` 事务基线 fence、来源语义对账及崩溃恢复均未放宽。
+
+专项矩阵和原始探针结果：
+
+- missing-baseline 定向矩阵 8/8，完整真实编排文件 22/22；append 与未确认执行被阻断，replace 和 auto 的已确认 full replace 均成功，并在全新数据库真实重放为相同 count/digest。
+- 竞争者先完成首次登记后，旧确认按 `confirmed_plan_drift` 阻断；首次登记在事实提交后硬中止，可恢复为 completed=1、blocked=0，主库/control 来源一致且写闸门解除。
+- 部分逐行指纹、控制库已有来源、pending run 三种损坏状态均不能冒充合法旧库。
+- 未改动的第三轮复核探针由 117 条无指纹事实成功完整替换为 2 条有指纹事实；随后 auto 对相同输入为 ready noop。未改动的上一轮三条 P1 探针和 migration 79 legacy 探针也全部通过。
+- 编排、control/source、API contract、Community 四文件按原失败顺序共 104/104 通过；没有依赖测试顺序或全局路径泄漏。
+
+以上均在独立 worktree 和临时 SQLite 中执行；没有写正式数据库、合并主检出、push 或部署。结论是“第三轮缺陷已本地修复并完成实现方验收”，不是“第三轮独立复核已经签收”。
+
 ## 性能、API 与浏览器
 
 - ready 基线冷预检三次：5,666.722 / 5,300.994 / 5,539.753 ms，median 5,539.753 ms。
@@ -150,6 +168,21 @@ warning 未被虚写为零：seed 有 1 个 LibreSSL/urllib3 环境 warning 与 
 | browser-compat | PASS | 154,418 |
 
 最新门禁明细：Backend seed 2,936 passed / 2 skipped / 4 warnings；真实 integration 186 passed / 1 skipped / 1 warning；Frontend 86 files passed / 1 skipped（670 tests passed / 4 skipped）；production build、pre-commit、mypy、ruff、secrets 与文档/OpenAPI 审计均通过；API smoke 153/153、boundary 113/113，所有监测端点 hot P95 均低于 500 ms；路由、交互、40 组控件 inventory、长列表及 Chromium、Firefox、WebKit 全部 PASS。既有 LibreSSL/urllib3、AnyIO HTTP 422 弃用和 Vite 大 chunk warning 仍如实保留。
+
+第三轮 P1 修复后的最新默认完整 fullstack：`20260922T064118.846119Z-33ffa88be60d`，mode=`full`，HEAD=`8c5dfc0a4ba50b90588c7b457fdf87338009467f`，启动时 `dirty=false`、播放事实 94,760 条，总耗时 1,528,668 ms。八个必需阶段全部 PASS；optional 未选择。
+
+| 必需阶段 | 状态 | 耗时 ms |
+| --- | --- | ---: |
+| preflight | PASS | 8,386 |
+| quality | PASS | 50,348 |
+| backend | PASS | 535,101 |
+| api | PASS | 225,447 |
+| browser-routes | PASS | 401,930 |
+| browser-interactions | PASS | 81,528 |
+| browser-inventory | PASS | 47,670 |
+| browser-compat | PASS | 178,041 |
+
+该 run 明细：Backend seed 2,944 passed / 2 skipped / 4 warnings；真实 integration 186 passed / 1 skipped / 1 warning；Frontend 86 files passed / 1 skipped（670 tests passed / 4 skipped）；production build、pre-commit、mypy、ruff、secrets 与文档/OpenAPI 审计均通过；API smoke 153/153、boundary 113/113，所有监测端点 hot P95 均低于 500 ms；完整路由、五档 viewport、交互、图表、40 组控件 inventory、长列表及 Chromium、Firefox、WebKit 全部 PASS。既有 LibreSSL/urllib3、AnyIO HTTP 422 弃用和 Vite 大 chunk warning 仍如实保留。
 
 ## 数据与交付边界
 

@@ -8,13 +8,15 @@
 | 本规划新增能力 | IMPLEMENTED |
 | 本规划实施验收 | PASS：真实副本、恢复、性能、API、浏览器与默认完整 fullstack |
 | 本次导入事故的既有修复 | 已纳入 S0–S6 完整交付与回归 |
-| Git / 发布 | 本地阶段提交至 `9dddc89`；UNPUSHED、NOT_DEPLOYED，未再次迁移正式数据 |
+| Git / 发布 | 本地阶段提交至 `8c5dfc0`；UNPUSHED、NOT_DEPLOYED，未再次迁移正式数据 |
 
 完成证据见 [S0 基线报告](../../reports/2026-09-21-import-remediation-s0-baseline.md)、[S1–S5 实施报告](../../reports/2026-09-21-import-remediation-s1-s5.md)与 [S6 最终验收报告](../../reports/2026-09-21-import-governance-final-acceptance.md)。本文保留原规划内容用于回溯，不再作为待执行计划。
 
 初次 S6 收口后的独立复核曾发现三个 P1，并已在 `031075a` 追加修复：尾包活动来源父链、replace 确认与跨进程发布竞态、prepared/主库已提交崩溃窗口。最终门禁又在 `7d3d079` 修复 Community 语义 revision 受封面后台并发写入干扰而瞬时 503 的问题。追加的真实编排、来源重放、浏览器和新默认完整 fullstack 均已通过，规划维持 ARCHIVED/PASS；具体证据以 S6 最终报告的追加章节为准。
 
 2026-09-22 二轮独立复核发现并修复 legacy 指纹基线首次来源登记被误判漂移，以及崩溃恢复测试泄漏全局数据库/账号路径两项问题。`9dddc89` 保留已发布状态的全部漂移和恢复栅栏，同时允许经过 count/digest 完整对账的 legacy 全量来源首次登记；尾包继续 fail-closed。正式库 Online Backup 升级/崩溃恢复/来源重放、测试组合正反序和 HEAD `9dddc89` 的新默认完整 fullstack 均通过；正式数据库未写入，规划继续维持 ARCHIVED/PASS。
+
+2026-09-22 三轮独立复核继续发现升级前数据库“已有事实但逐行指纹、generation 与活动来源基线全部缺失”时，已确认 full replace 仍被来源对齐检查误阻断。`8c5dfc0` 新增严格的 `legacy_baseline_missing` 分类，只允许 `baseline_required` 的已确认 replace/auto 完整替换初始化；append、未确认、部分指纹、控制来源或 pending recovery 继续 fail-closed。专项 8/8、真实编排 22/22、原失败顺序四文件 104/104、原始复核探针及 HEAD `8c5dfc0` 的默认完整 fullstack 均通过；正式数据库未写入。实现方验收已完成，等待独立复核方重新验收，规划仍维持 ARCHIVED/PASS。
 
 ## 1. 目标与依据
 

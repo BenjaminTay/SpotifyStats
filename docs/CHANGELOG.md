@@ -1,5 +1,12 @@
 # 变更日志
 
+## 2026-09-22：无指纹旧库完整替换基线初始化
+
+- 修复升级前数据库已有播放事实、但逐行指纹、generation 和活动来源基线全部缺失时，已确认 full replace 被误判为来源漂移的问题；仅当主库/控制库/恢复状态共同证明是完整 legacy 空基线时，才允许 `baseline_required` 的已确认 replace/auto 初始化。
+- append、未确认执行、部分指纹、控制库已有来源、pending publication 和竞争发布仍然 fail-closed；既有确认 token、跨进程锁、锁内重评估、事务基线 fence、来源重放对账与硬中止恢复均保留。
+- missing-baseline 专项 8/8、真实编排 22/22、原失败顺序四文件 104/104，以及未改动的三轮/上一轮原始探针全部通过。
+- HEAD `8c5dfc0` 的默认完整 fullstack 八个必需阶段全部 PASS：seed 2,944 passed / 2 skipped、真实 integration 186 passed / 1 skipped、前端 670 passed / 4 skipped、API smoke 153/153、boundary 113/113，Chromium/Firefox/WebKit 全部通过。正式数据库未写入，未合并主检出、push 或部署；等待独立复核方重新验收。
+
 ## 2026-09-22：legacy 导入基线首次来源登记收口
 
 - 合法 migration 79 legacy 指纹基线不再被活动来源栅栏误判为漂移：相同输入保持零事实写入的明确 noop；完整超集和显式完整替换可经 count/digest 对账首次登记来源；不完整尾包继续 fail-closed 并提示使用完整导出。
