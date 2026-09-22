@@ -89,15 +89,18 @@ def _pending(targets):
 def ensure(conn, filters=None, families=None):
     if public_readonly_db_guard_active():
         raise PermissionError("Public requests cannot build Archive")
-    params = resolve_archive_filters(conn, filters or {})
     families = tuple(families or FAMILIES)
     if not set(families).issubset(FAMILIES):
         raise ValueError("Unknown Archive family")
-    namespace = database_identity(conn)
     lock_path = store.path().with_suffix(".build.lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        # Callers may share one injected SQLite connection across concurrent
+        # maintenance requests. Resolve source state only after the build lock
+        # is held so SQLite never receives overlapping calls on that handle.
+        params = resolve_archive_filters(conn, filters or {})
+        namespace = database_identity(conn)
         return _ensure_once(digest(namespace), json.dumps(params, sort_keys=True), families)
 
 

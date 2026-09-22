@@ -106,13 +106,15 @@ def read(conn, view, params, **filters):
 def ensure(conn, params=None):
     if public_readonly_db_guard_active():
         raise PermissionError("Public requests cannot build Community")
-    resolved, key, _ = context(conn, params or {})
     import fcntl
 
     lock_path = store.path().with_suffix(".build.lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        # Resolve the request key under the same lock as the build. Concurrent
+        # callers can otherwise overlap reads on one injected SQLite handle.
+        resolved, key, _ = context(conn, params or {})
         return _ensure_once(key, json.dumps(resolved, sort_keys=True))
 
 

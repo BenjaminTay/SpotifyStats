@@ -207,7 +207,6 @@ def ensure(conn, filters=None, families=None):
         raise PermissionError("Public requests cannot build governance facts")
     if conn.in_transaction:
         raise ValueError("Commit source writes before governance maintenance")
-    params = parameters(conn, filters)
     families = tuple(families or RESULT_FAMILIES)
     if not set(families).issubset(RESULT_FAMILIES):
         raise ValueError("Unknown governance family")
@@ -215,6 +214,10 @@ def ensure(conn, filters=None, families=None):
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        # Keep all reads from an injected connection inside the build lock;
+        # sqlite3 connections are not safe for overlapping execute calls even
+        # when ``check_same_thread`` is disabled.
+        params = parameters(conn, filters)
         return _ensure_once(
             digest(database_identity(conn)), json.dumps(params, sort_keys=True), families
         )
