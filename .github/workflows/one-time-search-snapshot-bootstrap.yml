@@ -171,10 +171,22 @@ jobs:
           SERVER_PORT: ${{ secrets.SERVER_PORT }}
           SERVER_USER: ${{ secrets.SERVER_USER }}
         run: |
-          scp -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" \
-            "$SERVER_USER@$SERVER_HOST:$REPORT_PATH" \
-            "$RUNNER_TEMP/music-search-bootstrap-report.json"
-          python3 - "$RUNNER_TEMP/music-search-bootstrap-report.json" <<'PY'
+          local_report="$RUNNER_TEMP/music-search-bootstrap-report.json"
+          for attempt in {1..5}; do
+            if scp -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+              -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" \
+              "$SERVER_USER@$SERVER_HOST:$REPORT_PATH" "$local_report"; then
+              break
+            fi
+            rm -f -- "$local_report"
+            if [[ "$attempt" -eq 5 ]]; then
+              printf 'Failed to download bootstrap report after %s attempts.\n' "$attempt" >&2
+              exit 1
+            fi
+            printf 'Bootstrap report download attempt %s failed; retrying.\n' "$attempt" >&2
+            sleep 10
+          done
+          python3 - "$local_report" <<'PY'
           import json
           import sys
 
@@ -195,7 +207,7 @@ jobs:
               handle.write(f"- Peak RSS: {resources['peak_rss_mib']:.3f} MiB\n")
               handle.write("- Production container image and identity: unchanged\n")
           PY
-          cat "$RUNNER_TEMP/music-search-bootstrap-report.json.summary" >> "$GITHUB_STEP_SUMMARY"
+          cat "$local_report.summary" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload one-day bootstrap evidence
         uses: actions/upload-artifact@v4

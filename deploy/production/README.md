@@ -232,6 +232,7 @@ Online Backup，但不得停服或替换数据库。
 Break Glass 调用中启用 `restart_current_backend`。workflow 只重启当前 Backend 容器，要求容器 ID
 与镜像 ID 前后不变并等待其恢复 `healthy`，然后才创建 Online Backup；该选项会造成短暂 API
 中断，但不会更换镜像、修改生产数据库或绕过容量门禁。
+引导报告下载对瞬时 SSH 断连最多重试 5 次；重试只读取隐私安全报告，不会重复修改生产数据。
 
 一次性统计引导默认要求 `MemAvailable >= 2304MiB`，覆盖当前真实库约 1.83GiB 的冷建峰值并留出
 约 20% 余量。正常发布固定使用
