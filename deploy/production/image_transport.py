@@ -634,12 +634,30 @@ def _cache_blob(source: Path, destination: Path, digest: str, size: int) -> None
 
 
 def _build_archive(layout: Path, archive: Path) -> None:
+    def normalize_tar_info(info: tarfile.TarInfo) -> tarfile.TarInfo:
+        # The OCI payload is content-addressed, but tar otherwise copies host
+        # mtimes and ownership. Normalize packaging metadata so a retry of the
+        # same release key produces the same retained archive bytes.
+        info.uid = 0
+        info.gid = 0
+        info.uname = ""
+        info.gname = ""
+        info.mtime = 0
+        info.mode = 0o755 if info.isdir() else 0o644
+        info.pax_headers = {}
+        return info
+
     partial = archive.with_name(f".{archive.name}.partial")
     if partial.exists() or partial.is_symlink():
         partial.unlink()
     with tarfile.open(partial, mode="w", format=tarfile.PAX_FORMAT) as output:
         for name in (*LAYOUT_FILES, "blobs"):
-            output.add(layout / name, arcname=name, recursive=True)
+            output.add(
+                layout / name,
+                arcname=name,
+                recursive=True,
+                filter=normalize_tar_info,
+            )
     with partial.open("rb") as handle:
         os.fsync(handle.fileno())
     os.chmod(partial, 0o600)
