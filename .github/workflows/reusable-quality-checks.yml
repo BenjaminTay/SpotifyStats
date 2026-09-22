@@ -16,6 +16,7 @@ jobs:
   checks:
     name: Backend, frontend and build checks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,13 +37,18 @@ jobs:
       - name: Documentation checks
         run: .venv/bin/python scripts/docs_audit.py --include-archive
 
-      - name: Backend unit and contract checks
+      - name: Backend unit checks
         env:
           SPOTIFY_STATS_TEST_SOURCE_DB: backend/tests/fixtures/seed.db
-        run: |
-          .venv/bin/pytest -m unit -q
-          .venv/bin/pytest -m contract -q
-          .venv/bin/ruff check backend/
+        run: .venv/bin/pytest -m unit -q
+
+      - name: Backend contract checks
+        env:
+          SPOTIFY_STATS_TEST_SOURCE_DB: backend/tests/fixtures/seed.db
+        run: .venv/bin/pytest -m contract -q
+
+      - name: Backend lint
+        run: .venv/bin/ruff check backend/
 
       - name: Set up Node
         uses: actions/setup-node@v4

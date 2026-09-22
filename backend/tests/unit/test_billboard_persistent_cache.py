@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
@@ -19,6 +20,26 @@ def _context(cache_key: str, request_key: str = "request-v1") -> dict[str, str]:
         "source_revision": cache_key,
         "builder_version": persistent_cache.BILLBOARD_CACHE_BUILDER_VERSION,
     }
+
+
+def _published_cache_bytes(directory: Path) -> dict[str, bytes]:
+    """Capture persisted bytes while ignoring SQLite's empty WAL sidecar.
+
+    On Linux, a read-only WAL-aware connection may materialize a zero-byte
+    ``-wal`` file even though it cannot append a frame. The shared-memory file
+    is likewise lock coordination. Existing database bytes and every non-empty
+    WAL remain part of the mutation contract.
+    """
+
+    captured: dict[str, bytes] = {}
+    for path in directory.iterdir():
+        if path.name.endswith("-shm"):
+            continue
+        content = path.read_bytes()
+        if path.name.endswith("-wal") and not content:
+            continue
+        captured[path.name] = content
+    return captured
 
 
 def test_snapshot_survives_a_new_read_and_does_not_rebuild(tmp_path, monkeypatch):
@@ -163,9 +184,9 @@ def test_public_snapshot_reads_never_build_or_write(tmp_path, monkeypatch, state
     monkeypatch.setattr(persistent_cache, "store_persisted_snapshot", forbidden)
     monkeypatch.setattr(persistent_cache, "_lock_for", forbidden)
     # WAL shared-memory read marks are lock coordination, not published data.
-    # Keep byte-for-byte checks for the database and WAL; do not open immutable
-    # readers, which would silently ignore a writer's committed WAL frames.
-    before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if not p.name.endswith("-shm")}
+    # Keep byte-for-byte checks for the database and non-empty WAL; do not open
+    # immutable readers, which would silently ignore committed WAL frames.
+    before = _published_cache_bytes(tmp_path)
     token = set_public_readonly_db_guard(True)
     try:
         if state in {"exact", "lkg"}:
@@ -188,9 +209,7 @@ def test_public_snapshot_reads_never_build_or_write(tmp_path, monkeypatch, state
             assert error.value.detail["status"] == "unavailable"
     finally:
         reset_public_readonly_db_guard(token)
-    assert {
-        p.name: p.read_bytes() for p in tmp_path.iterdir() if not p.name.endswith("-shm")
-    } == before
+    assert _published_cache_bytes(tmp_path) == before
 
 
 def test_failed_private_rebuild_retains_old_publication(tmp_path, monkeypatch):
@@ -216,7 +235,7 @@ def test_public_reader_sees_committed_wal_without_publishing_or_checkpointing(
     context = _context("wal-revision")
     persistent_cache.store_persisted_snapshot(context, {"records": {"count": 23}})
     monkeypatch.setattr(persistent_cache, "build_cache_context", lambda *_args: context)
-    before = {p.name: p.read_bytes() for p in tmp_path.iterdir() if not p.name.endswith("-shm")}
+    before = _published_cache_bytes(tmp_path)
     assert (tmp_path / "billboard.db-wal").stat().st_size > 0
     token = set_public_readonly_db_guard(True)
     try:
@@ -228,7 +247,5 @@ def test_public_reader_sees_committed_wal_without_publishing_or_checkpointing(
         assert result["records"] == {"count": 23}
     finally:
         reset_public_readonly_db_guard(token)
-    assert {
-        p.name: p.read_bytes() for p in tmp_path.iterdir() if not p.name.endswith("-shm")
-    } == before
+    assert _published_cache_bytes(tmp_path) == before
     writer.close()
