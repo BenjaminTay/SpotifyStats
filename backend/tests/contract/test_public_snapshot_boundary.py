@@ -43,7 +43,12 @@ def _state(db_path, files):
     disk = {
         str(p.relative_to(files)): (p.read_bytes(), p.stat().st_mtime_ns)
         for p in files.rglob("*")
-        if p.is_file() and not p.name.endswith("-shm")
+        if p.is_file()
+        and not p.name.endswith("-shm")
+        # SQLite may leave an empty WAL sidecar after a read-only connection is
+        # opened on Linux. It contains no committed frames, so it is not a
+        # published-state mutation. Non-empty WAL files remain byte-exact here.
+        and not (p.name.endswith("-wal") and p.stat().st_size == 0)
     }
     return tables, disk
 
