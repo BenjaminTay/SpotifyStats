@@ -39,11 +39,13 @@ jobs:
 
       - name: Backend unit checks
         env:
+          PYTEST_ADDOPTS: "-o faulthandler_timeout=120"
           SPOTIFY_STATS_TEST_SOURCE_DB: backend/tests/fixtures/seed.db
         run: .venv/bin/pytest -m unit -q
 
       - name: Backend contract checks
         env:
+          PYTEST_ADDOPTS: "-o faulthandler_timeout=120"
           SPOTIFY_STATS_TEST_SOURCE_DB: backend/tests/fixtures/seed.db
         run: .venv/bin/pytest -m contract -q
 
