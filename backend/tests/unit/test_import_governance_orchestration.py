@@ -34,7 +34,7 @@ def _source(root: Path, label: str, days: list[int]) -> Path:
     return directory
 
 
-def _setup(tmp_path, monkeypatch):
+def _setup(tmp_path, monkeypatch, *, tracked_seed: bool = False):
     from backend.api import import_ as api
     from backend.core import db as db_module
     from backend.core.migrations import run_migrations
@@ -42,7 +42,17 @@ def _setup(tmp_path, monkeypatch):
     database = tmp_path / "state" / "app.db"
     database.parent.mkdir()
     monkeypatch.setattr(db_module, "DB_PATH", str(database))
-    sqlite3.connect(database).close()
+    if tracked_seed:
+        seed = Path(__file__).resolve().parents[1] / "fixtures" / "seed.db"
+        source = sqlite3.connect(f"{seed.as_uri()}?mode=ro&immutable=1", uri=True)
+        target = sqlite3.connect(database)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+            source.close()
+    else:
+        sqlite3.connect(database).close()
     run_migrations()
     account = tmp_path / "account"
     account.mkdir()
@@ -121,6 +131,249 @@ def _establish_legacy_baseline(api, source: Path):
     )
     api._publish_import_state(assessment, result, executed_strategy="full")
     return assessment
+
+
+def _assert_tracked_missing_baseline(db_module) -> None:
+    conn = db_module.get_db(readonly=True)
+    try:
+        facts = conn.execute(
+            """SELECT COUNT(*),COUNT(source_fingerprint),
+                      COUNT(source_fingerprint_version),COUNT(import_generation_id)
+               FROM plays"""
+        ).fetchone()
+        state = conn.execute(
+            """SELECT active_generation_id,dataset_digest,record_count,
+                      fingerprint_version,active_source_version_id,
+                      active_publication_id,publication_state
+               FROM playback_import_state WHERE state_id=1"""
+        ).fetchone()
+    finally:
+        conn.close()
+    assert tuple(facts) == (117, 0, 0, 0)
+    assert tuple(state) == (None, None, 0, None, None, None, "legacy")
+
+
+def test_missing_baseline_requires_confirmation_and_rejects_append(tmp_path, monkeypatch):
+    from backend.core import db as db_module
+    from backend.domains.imports.execution import ImportExecutionAction, resolve_import_execution
+
+    api, _database, _account = _setup(tmp_path, monkeypatch, tracked_seed=True)
+    _assert_tracked_missing_baseline(db_module)
+    source = _source(tmp_path, "missing-baseline-actions", [1, 2])
+    auto = _plan_run(api, source)
+    append = _plan_run(api, source, mode="append")
+    assert auto[3].plan.relation.value == "baseline_required"
+    assert auto[3].baseline_status == "missing"
+    assert auto[3].baseline_reason_code == "active_state_missing"
+    assert (
+        resolve_import_execution(
+            auto[3].plan,
+            requested_mode="auto",
+            confirm_plan=False,
+        ).action
+        is ImportExecutionAction.NEEDS_CONFIRMATION
+    )
+    assert (
+        resolve_import_execution(
+            append[3].plan,
+            requested_mode="append",
+            confirm_plan=True,
+        ).action
+        is ImportExecutionAction.BLOCKED
+    )
+    _assert_tracked_missing_baseline(db_module)
+
+
+@pytest.mark.parametrize("mode", ["replace", "auto"])
+def test_confirmed_missing_baseline_full_replace_publishes_replayable_source(
+    tmp_path, monkeypatch, mode
+):
+    from backend.core import db as db_module
+    from backend.core.import_data import import_data
+    from backend.core.migrations import run_migrations
+    from backend.domains.imports.control_store import active_source_state, get_run
+    from backend.domains.imports.source_registry import (
+        resolve_batch_directory,
+        source_dataset_summary,
+    )
+
+    api, database, _account = _setup(tmp_path, monkeypatch, tracked_seed=True)
+    _assert_tracked_missing_baseline(db_module)
+    planned = _plan_run(
+        api,
+        _source(tmp_path, f"missing-baseline-{mode}", [1, 2]),
+        mode=mode,
+    )
+    assert planned[3].plan.relation.value == "baseline_required"
+
+    _execute(api, planned, mode=mode)
+
+    run = get_run(planned[0])
+    assert run["status"] == "succeeded"
+    assert run["publication_state"] == "sources_published"
+    assert run["result"]["executed_strategy"] == "full"
+    assert run["result"]["inserted_records"] == 2
+    conn = db_module.get_db(readonly=True)
+    try:
+        state = tuple(
+            conn.execute(
+                """SELECT active_generation_id,dataset_digest,record_count,
+                          fingerprint_version,active_source_version_id,
+                          active_publication_id,publication_state
+                   FROM playback_import_state WHERE state_id=1"""
+            ).fetchone()
+        )
+        identities = set(
+            conn.execute(
+                "SELECT content_type,source_fingerprint FROM plays ORDER BY play_id"
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+    control = active_source_state()
+    assert len(identities) == 2
+    assert all(identity[1] for identity in identities)
+    assert state[2:] == (2, 1, run["source_version_id"], run["run_id"], "sources_published")
+    assert control["active_source_version_id"] == state[4]
+    assert control["active_generation_id"] == state[0]
+    assert control["active_dataset_digest"] == state[1]
+    assert source_dataset_summary(run["source_version_id"]) == {
+        "record_count": 2,
+        "dataset_digest": state[1],
+    }
+
+    replay_db = tmp_path / "replay" / f"{mode}.db"
+    replay_db.parent.mkdir(exist_ok=True)
+    sqlite3.connect(replay_db).close()
+    source_dir = resolve_batch_directory(run["source_version_id"], active=True)
+    with monkeypatch.context() as replay_patch:
+        replay_patch.setattr(db_module, "DB_PATH", str(replay_db))
+        run_migrations()
+        replay = import_data(
+            data_dir=str(source_dir),
+            build_preaggregations=False,
+            mode="replace",
+        )
+        assert replay["active_records"] == 2
+        assert replay["dataset_digest"] == state[1]
+    assert db_module.DB_PATH == str(database)
+
+
+def test_missing_baseline_confirmation_drift_is_blocked_after_competing_registration(
+    tmp_path, monkeypatch
+):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import get_run
+
+    api, _database, _account = _setup(tmp_path, monkeypatch, tracked_seed=True)
+    stale = _plan_run(api, _source(tmp_path, "missing-baseline-stale", [1, 2]), mode="replace")
+    winner = _plan_run(api, _source(tmp_path, "missing-baseline-winner", [1, 2, 3]), mode="replace")
+    _execute(api, winner, mode="replace")
+    assert get_run(winner[0])["status"] == "succeeded"
+
+    _execute(api, stale, mode="replace")
+
+    run = get_run(stale[0])
+    assert run["status"] == "blocked"
+    assert run["error_code"] == "confirmed_plan_drift"
+    conn = db_module.get_db(readonly=True)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0] == 3
+    finally:
+        conn.close()
+
+
+def test_interrupted_missing_baseline_registration_recovers_published_source(tmp_path, monkeypatch):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import (
+        active_source_state,
+        get_run,
+        import_write_gate_state,
+    )
+    from backend.services.import_publication_service import recover_interrupted_publications
+
+    api, database, account = _setup(tmp_path, monkeypatch, tracked_seed=True)
+    planned = _plan_run(api, _source(tmp_path, "missing-baseline-crash", [1, 2]), mode="replace")
+
+    def hard_stop(*_args, **_kwargs):
+        raise KeyboardInterrupt("simulated hard stop during missing-baseline registration")
+
+    with monkeypatch.context() as crash_patch:
+        crash_patch.setattr(api, "mark_facts_committed", hard_stop)
+        with pytest.raises(KeyboardInterrupt):
+            _execute(api, planned, mode="replace")
+
+    run = get_run(planned[0])
+    assert run["publication_state"] == "prepared"
+    assert import_write_gate_state()["blocked"] == 1
+    assert db_module.DB_PATH == str(database)
+    assert api.ACCOUNT_DATA_DIR == str(account)
+    assert recover_interrupted_publications() == {
+        "completed": 1,
+        "not_committed": 0,
+        "blocked": 0,
+    }
+    recovered = get_run(planned[0])
+    control = active_source_state()
+    conn = db_module.get_db(readonly=True)
+    try:
+        state = tuple(
+            conn.execute(
+                """SELECT active_generation_id,dataset_digest,record_count,
+                          active_source_version_id,publication_state
+                   FROM playback_import_state WHERE state_id=1"""
+            ).fetchone()
+        )
+    finally:
+        conn.close()
+    assert recovered["publication_state"] == "sources_published"
+    assert state[2:] == (2, recovered["source_version_id"], "sources_published")
+    assert control["active_source_version_id"] == state[3]
+    assert control["active_generation_id"] == state[0]
+    assert control["active_dataset_digest"] == state[1]
+    assert import_write_gate_state()["blocked"] == 0
+
+
+@pytest.mark.parametrize("damage", ["partial_fingerprint", "control_source", "pending_run"])
+def test_damaged_missing_baseline_state_is_not_accepted_as_legacy(tmp_path, monkeypatch, damage):
+    from backend.core import db as db_module
+    from backend.domains.imports.control_store import (
+        connect_control,
+        update_run,
+    )
+
+    api, _database, _account = _setup(tmp_path, monkeypatch, tracked_seed=True)
+    planned = _plan_run(
+        api, _source(tmp_path, f"missing-baseline-damage-{damage}", [1, 2]), mode="replace"
+    )
+    if damage == "partial_fingerprint":
+        conn = db_module.get_db(readonly=False)
+        try:
+            conn.execute(
+                """UPDATE plays SET source_fingerprint='partial',
+                           source_fingerprint_version=1,import_generation_id='partial'
+                   WHERE play_id=(SELECT MIN(play_id) FROM plays)"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    elif damage == "control_source":
+        conn = connect_control()
+        try:
+            conn.execute(
+                """UPDATE import_source_state
+                   SET active_source_version_id=?,active_generation_id='lost-generation',
+                       active_dataset_digest='lost-digest' WHERE state_id=1""",
+                (planned[1]["batch_id"],),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    else:
+        update_run(planned[0], publication_state="prepared")
+
+    with pytest.raises(api.ConfirmedImportPlanDriftError):
+        api._assert_confirmed_source_alignment(planned[3])
 
 
 def test_legacy_identical_noop_preserves_unregistered_source_and_facts(tmp_path, monkeypatch):

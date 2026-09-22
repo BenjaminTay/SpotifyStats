@@ -272,7 +272,12 @@ def _batch_confirmation_token(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-SourceAlignment = Literal["empty", "legacy_unregistered", "published"]
+SourceAlignment = Literal[
+    "empty",
+    "legacy_baseline_missing",
+    "legacy_unregistered",
+    "published",
+]
 
 
 def _assert_confirmed_source_alignment(
@@ -288,12 +293,20 @@ def _assert_confirmed_source_alignment(
                       active_publication_id,publication_state
                FROM playback_import_state WHERE state_id=1"""
         ).fetchone()
-        fact_count = int(conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0])
+        fact_state = conn.execute(
+            """SELECT COUNT(*),COUNT(source_fingerprint),
+                      COUNT(source_fingerprint_version),COUNT(import_generation_id)
+               FROM plays"""
+        ).fetchone()
     finally:
         conn.close()
     if state is None:
         raise ConfirmedImportPlanDriftError("主库导入状态缺失；请先恢复导入状态")
 
+    fact_count = int(fact_state[0] or 0)
+    fingerprinted_count = int(fact_state[1] or 0)
+    fingerprint_versioned_count = int(fact_state[2] or 0)
+    generation_bound_count = int(fact_state[3] or 0)
     generation_id = str(state[0]) if state[0] else None
     digest = str(state[1]) if state[1] else None
     state_count = int(state[2] or 0)
@@ -340,6 +353,27 @@ def _assert_confirmed_source_alignment(
         and not has_recovery_evidence
     ):
         return "empty"
+
+    if (
+        fact_count > 0
+        and assessment.baseline_status == "missing"
+        and assessment.baseline_reason_code == "active_state_missing"
+        and generation_id is None
+        and digest is None
+        and state_count == 0
+        and fingerprint_version is None
+        and source_version_id is None
+        and publication_id is None
+        and publication_state == "legacy"
+        and fingerprinted_count == 0
+        and fingerprint_versioned_count == 0
+        and generation_bound_count == 0
+        and control_source is None
+        and control_generation is None
+        and control_digest is None
+        and not has_recovery_evidence
+    ):
+        return "legacy_baseline_missing"
 
     if (
         fact_count > 0
@@ -634,6 +668,14 @@ def _execute_control_run(
             }:
                 raise ConfirmedImportPlanDriftError(decision.message)
             source_alignment = _assert_confirmed_source_alignment(assessment)
+            if source_alignment == "legacy_baseline_missing" and not (
+                decision.action is ImportExecutionAction.REPLACE
+                and confirm_plan
+                and assessment.plan.relation.value == "baseline_required"
+            ):
+                raise ConfirmedImportPlanDriftError(
+                    "旧库尚无可比较的指纹基线；仅允许确认后的完整替换"
+                )
             if decision.action is ImportExecutionAction.NOOP:
                 if source_alignment == "legacy_unregistered":
                     update_control_run(
