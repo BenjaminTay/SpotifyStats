@@ -82,6 +82,24 @@ jobs:
             -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" "$SERVER_USER@$SERVER_HOST" \
             "timeout --signal=TERM --kill-after=10s 1m docker login '$TCR_REGISTRY' --username '$TCR_USERNAME' --password-stdin"
 
+      - name: Report privacy-safe server capacity
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" \
+            "$SERVER_USER@$SERVER_HOST" bash -s <<'REMOTE'
+          set -Eeuo pipefail
+          echo "Memory summary (MiB):"
+          awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ { printf "%s %d\n", $1, int($2 / 1024) }' /proc/meminfo
+          echo "Running container memory:"
+          docker stats --no-stream --format '{{.Name}} memory={{.MemUsage}} percent={{.MemPerc}}' \
+            | LC_ALL=C sort
+          echo "Largest processes by RSS (KiB):"
+          ps -eo comm=,rss= --sort=-rss | head -n 12
+          REMOTE
+
       - name: Build Billboard and four statistics variants on a resumable Online Backup without deployment
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
