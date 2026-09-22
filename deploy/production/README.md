@@ -228,6 +228,11 @@ Online Backup，但不得停服或替换数据库。
 `INITIALIZE_SEARCH_SNAPSHOTS`，且不部署应用。完成一次性引导后，
 正常 UI、部署脚本、查询匹配或 Git SHA 变化不得再次冷建四套统计。
 
+若只读容量诊断确认当前 Backend 的驻留缓存导致 `MemAvailable` 低于冷建门槛，可在同一次显式
+Break Glass 调用中启用 `restart_current_backend`。workflow 只重启当前 Backend 容器，要求容器 ID
+与镜像 ID 前后不变并等待其恢复 `healthy`，然后才创建 Online Backup；该选项会造成短暂 API
+中断，但不会更换镜像、修改生产数据库或绕过容量门禁。
+
 一次性统计引导默认要求 `MemAvailable >= 2304MiB`，覆盖当前真实库约 1.83GiB 的冷建峰值并留出
 约 20% 余量。正常发布固定使用
 `--statistics-reuse-only`，统计不能精确复用时会在任何候选/统计重建前失败，因此独立使用

@@ -11,6 +11,11 @@ on:
         description: Type INITIALIZE_SEARCH_SNAPSHOTS to confirm this one-time operation
         required: true
         type: string
+      restart_current_backend:
+        description: Restart the unchanged current backend first to release resident caches
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -100,6 +105,40 @@ jobs:
           ps -eo comm=,rss= --sort=-rss | head -n 12
           REMOTE
 
+      - name: Restart unchanged current backend and wait for health
+        if: ${{ inputs.restart_current_backend }}
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-bootstrap-key" \
+            "$SERVER_USER@$SERVER_HOST" bash -s <<'REMOTE'
+          set -Eeuo pipefail
+          deploy_dir="/opt/spotify-stats"
+          compose() {
+            docker compose --env-file "$deploy_dir/.env" -f "$deploy_dir/compose.yml" "$@"
+          }
+          before_id="$(compose ps -q backend)"
+          [[ -n "$before_id" ]]
+          before_image="$(docker inspect --format '{{.Image}}' "$before_id")"
+          compose restart backend
+          after_id="$(compose ps -q backend)"
+          [[ "$after_id" == "$before_id" ]]
+          after_image="$(docker inspect --format '{{.Image}}' "$after_id")"
+          [[ "$after_image" == "$before_image" ]]
+          health=""
+          for _ in {1..60}; do
+            health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$after_id")"
+            if [[ "$health" == "healthy" ]]; then
+              break
+            fi
+            sleep 2
+          done
+          [[ "$health" == "healthy" ]]
+          awk '/^MemAvailable:/ { printf "MemAvailable after backend restart: %d MiB\n", int($2 / 1024) }' /proc/meminfo
+          REMOTE
+
       - name: Build Billboard and four statistics variants on a resumable Online Backup without deployment
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}
@@ -154,7 +193,7 @@ jobs:
               handle.write("- Billboard aggregation: v4 all-duration ready\n")
               handle.write(f"- Snapshot elapsed: {payload['snapshot_elapsed_ms'] / 1000:.3f}s\n")
               handle.write(f"- Peak RSS: {resources['peak_rss_mib']:.3f} MiB\n")
-              handle.write("- Production containers: unchanged\n")
+              handle.write("- Production container image and identity: unchanged\n")
           PY
           cat "$RUNNER_TEMP/music-search-bootstrap-report.json.summary" >> "$GITHUB_STEP_SUMMARY"
 
