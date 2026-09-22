@@ -16,17 +16,19 @@ data/account/
 # Runtime-generated files (database, cover caches, WAL)
 data/spotify_stats.db
 data/spotify_stats.db-shm
-data/community_cache.build.lock
-data/account_archive_cache.build.lock
-data/governance_cache.build.lock
 data/spotify_stats.db-wal
-# Timestamped local backups created before derived-data rebuilds
+data/*.build.lock
 data/*.db.pre-*
 data/yearly_review_cache.db*
 data/covers/
 data/cache/
 data/import_control/
 data/import_sources/
+
+# Local database backups, raw import snapshots, and recovery artifacts
+data/backups/
+data/import_backups/
+data/recovery/
 
 # Claude Code session data
 .claude/
