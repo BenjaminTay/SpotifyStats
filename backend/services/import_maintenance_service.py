@@ -312,6 +312,19 @@ def run_post_streaming_import_maintenance(
             "maintenance_status": status,
             "tracks_metadata_requested": metadata_report.tracks_requested,
             "tracks_metadata_updated": metadata_report.tracks_updated,
+            "track_credit_evidence_requested": getattr(
+                metadata_report, "credit_evidence_requested", 0
+            ),
+            "track_credit_evidence_observed": getattr(
+                metadata_report, "credit_evidence_observed", 0
+            ),
+            "track_credit_evidence_changed": getattr(metadata_report, "credit_evidence_changed", 0),
+            "track_credit_evidence_unchanged": getattr(
+                metadata_report, "credit_evidence_unchanged", 0
+            ),
+            "track_credit_evidence_failed": getattr(metadata_report, "credit_evidence_failed", 0),
+            "track_credit_evidence_lkg": getattr(metadata_report, "credit_evidence_lkg", 0),
+            "track_credit_evidence_missing": getattr(metadata_report, "credit_evidence_missing", 0),
             "albums_metadata_requested": metadata_report.albums_requested,
             "albums_metadata_updated": metadata_report.albums_updated,
             "artists_metadata_requested": metadata_report.artists_requested,
@@ -452,6 +465,25 @@ def run_import_maintenance_stage(
                 "provider_available": metadata_report.provider_available,
                 "errors": list(metadata_report.errors),
                 "tracks_updated": metadata_report.tracks_updated,
+                "track_credit_evidence_requested": getattr(
+                    metadata_report, "credit_evidence_requested", 0
+                ),
+                "track_credit_evidence_observed": getattr(
+                    metadata_report, "credit_evidence_observed", 0
+                ),
+                "track_credit_evidence_changed": getattr(
+                    metadata_report, "credit_evidence_changed", 0
+                ),
+                "track_credit_evidence_unchanged": getattr(
+                    metadata_report, "credit_evidence_unchanged", 0
+                ),
+                "track_credit_evidence_failed": getattr(
+                    metadata_report, "credit_evidence_failed", 0
+                ),
+                "track_credit_evidence_lkg": getattr(metadata_report, "credit_evidence_lkg", 0),
+                "track_credit_evidence_missing": getattr(
+                    metadata_report, "credit_evidence_missing", 0
+                ),
                 "albums_updated": metadata_report.albums_updated,
                 "artists_updated": metadata_report.artists_updated,
                 "artist_searches_updated": metadata_report.artist_searches_updated,

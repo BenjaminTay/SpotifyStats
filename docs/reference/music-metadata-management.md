@@ -103,6 +103,12 @@ L2/L3 发布，但不得伪装成已自动修复。
 
 语言和 genre 的主艺人归属规则是独立产品语义，仍按各自文档执行，不因曲目 featured fan-out 自动改变。
 
+### 2.1 Spotify Track `artists[]` 证据
+
+Spotify Track API 返回的完整 `artists[]` 以原始顺序保存到 `spotify_track_credit_sets`、`spotify_track_artist_credits`；首次观察或成员、顺序、署名名称变化记入 `spotify_track_credit_events`。这三张表只表示 provider evidence，不表示 `primary` / `featured` 角色，也不参与当前有效署名、统计、搜索或自动归并。重复且内容相同的刷新只更新时间，不新增事件；空数组、缺失/重复艺人 ID 等非法响应保留上一可用证据并报告失败。
+
+日常 Spotify 元数据刷新会优先补本次导入关联曲目的证据缺口，并有界重试历史缺口。全库历史补采必须用显式 `scripts/backfill_spotify_track_artist_credits.py` 执行；默认仅预览，`--apply` 只允许指向隔离数据库副本。`scripts/audit_spotify_track_credits.py` 只读比较权威 `spotify_track_owners`、稳定的 Spotify artist 外部 ID 和当前有效署名；名称相似仅是待核对候选，不能自动建立本地身份或 override。只有 owner 明确、provider 证据有效且全部 Spotify 艺人身份都已唯一解析时，双方独有成员列表才可计算；否则返回 `null` 表示尚无法判断，不能误读为空列表或已确认差异。差异分类是后续人工治理的输入，不是已修正的署名事实。
+
 ## 3. 直接编辑、预览与撤销
 
 - `preview` 返回变更前后署名、受影响曲目/艺人/专辑/播放范围、canonical 重复风险和全局消费者范围。

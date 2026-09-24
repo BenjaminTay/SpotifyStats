@@ -683,6 +683,39 @@ CREATE TABLE IF NOT EXISTS spotify_track_meta (
 
 CREATE INDEX IF NOT EXISTS idx_spotify_track_meta_album ON spotify_track_meta(spotify_album_id);
 
+CREATE TABLE IF NOT EXISTS spotify_track_credit_sets (
+    spotify_track_id TEXT PRIMARY KEY REFERENCES spotify_track_meta(spotify_track_id),
+    artist_count INTEGER NOT NULL CHECK(artist_count > 0),
+    credit_signature TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    source_run_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS spotify_track_artist_credits (
+    spotify_track_id TEXT NOT NULL REFERENCES spotify_track_credit_sets(spotify_track_id)
+                     ON DELETE CASCADE,
+    spotify_artist_id TEXT NOT NULL,
+    credited_name TEXT NOT NULL,
+    credit_order INTEGER NOT NULL CHECK(credit_order >= 0),
+    observed_at TEXT NOT NULL,
+    PRIMARY KEY(spotify_track_id, spotify_artist_id),
+    UNIQUE(spotify_track_id, credit_order)
+);
+
+CREATE TABLE IF NOT EXISTS spotify_track_credit_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    spotify_track_id TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK(event_type IN ('observed', 'changed')),
+    before_json TEXT,
+    after_json TEXT NOT NULL,
+    source_run_id TEXT,
+    observed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_spotify_track_credit_events_track
+    ON spotify_track_credit_events(spotify_track_id, event_id);
+
 CREATE TABLE IF NOT EXISTS spotify_album_meta (
     spotify_album_id   TEXT PRIMARY KEY,
     album_name         TEXT NOT NULL,

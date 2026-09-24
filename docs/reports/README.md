@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [Spotify Track `artists[]` 证据交付与隔离验收](2026-09-24-spotify-track-artists-evidence-delivery.md)
+
 - [数据导入处理与治理 S6 最终验收](2026-09-21-import-governance-final-acceptance.md)
 
 - [数据导入处理与治理 S1–S5 实施报告](2026-09-21-import-remediation-s1-s5.md)

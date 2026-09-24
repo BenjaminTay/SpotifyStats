@@ -119,6 +119,7 @@ def live_import_health(conn, payload):
         _state_snapshot,
         format_import_health,
     )
+    from backend.domains.metadata.spotify_track_credits import credit_evidence_coverage
     from backend.domains.playback.l3_album_attribution import (
         L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
         get_l3_album_attribution_state,
@@ -149,9 +150,9 @@ def live_import_health(conn, payload):
         s["current_revision"] != s["active_aggregate_revision"] or s["rebuild_status"] != "ready"
         for s in (derived["artist_identity"], derived["track_credits"])
     )
-    result = format_import_health(
-        payload["database"], payload["relationships"], payload["metadata"], derived
-    )
+    metadata = dict(payload["metadata"])
+    metadata["spotify_track_credit_evidence"] = credit_evidence_coverage(conn)
+    result = format_import_health(payload["database"], payload["relationships"], metadata, derived)
     # Runtime errors are read now, never frozen into a previously green check.
     errors = [
         s["last_error"]

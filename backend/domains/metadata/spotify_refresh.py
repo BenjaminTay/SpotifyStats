@@ -7,6 +7,14 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass
 
+from backend.domains.metadata.spotify_track_credits import (
+    InvalidSpotifyCreditsError,
+    credit_evidence_coverage,
+    evidence_schema_available,
+    save_track_credit_evidence,
+    select_missing_credit_evidence,
+)
+
 TRACK_BATCH_SIZE = 50
 ALBUM_BATCH_SIZE = 20
 ARTIST_BATCH_SIZE = 50
@@ -35,6 +43,13 @@ class MetadataRefreshReport:
     local_album_ids_updated: frozenset[int] = frozenset()
     local_artist_ids_updated: frozenset[int] = frozenset()
     impact_scope_exact: bool = True
+    credit_evidence_requested: int = 0
+    credit_evidence_observed: int = 0
+    credit_evidence_changed: int = 0
+    credit_evidence_unchanged: int = 0
+    credit_evidence_failed: int = 0
+    credit_evidence_lkg: int = 0
+    credit_evidence_missing: int = 0
 
 
 @dataclass(frozen=True)
@@ -180,57 +195,72 @@ def upsert_track_batch(
     scope: MetadataRefreshScope | None = None,
     local_album_ids_relinked: set[int] | None = None,
     local_artist_ids_relinked: set[int] | None = None,
+    credit_outcomes: list[tuple[str, str, str | None]] | None = None,
+    source_run_id: str | None = None,
 ) -> int:
     updated = 0
-    for track in tracks:
-        if not track:
-            continue
-        album_id = (track.get("album") or {}).get("id")
-        conn.execute(
-            """INSERT OR REPLACE INTO spotify_track_meta(
+    try:
+        for track in tracks:
+            if not track:
+                continue
+            album_id = (track.get("album") or {}).get("id")
+            conn.execute(
+                """INSERT INTO spotify_track_meta(
                    spotify_track_id, track_name, duration_ms, popularity,
                    explicit, track_number, disc_number, isrc, spotify_album_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                track["id"],
-                track.get("name"),
-                track.get("duration_ms"),
-                track.get("popularity"),
-                1 if track.get("explicit") else 0,
-                track.get("track_number"),
-                track.get("disc_number"),
-                (track.get("external_ids") or {}).get("isrc"),
-                album_id,
-            ),
-        )
-        if album_id:
-            if local_album_ids_relinked is not None:
-                local_album_ids_relinked.update(
-                    int(row[0])
-                    for row in conn.execute(
-                        """SELECT DISTINCT source_album_id
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(spotify_track_id) DO UPDATE SET
+                   track_name=excluded.track_name,
+                   duration_ms=excluded.duration_ms,
+                   popularity=excluded.popularity,
+                   explicit=excluded.explicit,
+                   track_number=excluded.track_number,
+                   disc_number=excluded.disc_number,
+                   isrc=excluded.isrc,
+                   spotify_album_id=excluded.spotify_album_id""",
+                (
+                    track["id"],
+                    track.get("name"),
+                    track.get("duration_ms"),
+                    track.get("popularity"),
+                    1 if track.get("explicit") else 0,
+                    track.get("track_number"),
+                    track.get("disc_number"),
+                    (track.get("external_ids") or {}).get("isrc"),
+                    album_id,
+                ),
+            )
+            if credit_outcomes is not None and evidence_schema_available(conn):
+                try:
+                    outcome = save_track_credit_evidence(conn, track, source_run_id=source_run_id)
+                    credit_outcomes.append((str(track["id"]), outcome, None))
+                except InvalidSpotifyCreditsError as exc:
+                    credit_outcomes.append((str(track["id"]), "failed", str(exc)))
+            if album_id:
+                if local_album_ids_relinked is not None:
+                    local_album_ids_relinked.update(
+                        int(row[0])
+                        for row in conn.execute(
+                            """SELECT DISTINCT source_album_id
                            FROM plays
                            WHERE spotify_track_id_at_play = ?
                              AND source_album_id IS NOT NULL""",
-                        (track["id"],),
-                    ).fetchall()
-                )
-            conn.execute(
-                """UPDATE plays
-                   SET spotify_album_id_at_play = ?
-                   WHERE spotify_track_id_at_play = ?""",
-                (album_id, track["id"]),
-            )
-            # ``album_spotify_links.spotify_album_id`` references
-            # ``spotify_album_meta``. A track response can introduce a new
-            # album before the subsequent album batch has inserted that
-            # parent row, so defer those links to the metadata backfill below.
-            if conn.execute(
-                "SELECT 1 FROM spotify_album_meta WHERE spotify_album_id=?",
-                (album_id,),
-            ).fetchone():
+                            (track["id"],),
+                        ).fetchall()
+                    )
                 conn.execute(
-                    """INSERT OR REPLACE INTO album_spotify_links(
+                    """UPDATE plays
+                       SET spotify_album_id_at_play = ?
+                       WHERE spotify_track_id_at_play = ?""",
+                    (album_id, track["id"]),
+                )
+                # A Track can introduce a new album before its parent row exists.
+                if conn.execute(
+                    "SELECT 1 FROM spotify_album_meta WHERE spotify_album_id=?",
+                    (album_id,),
+                ).fetchone():
+                    conn.execute(
+                        """INSERT OR REPLACE INTO album_spotify_links(
                            album_id, spotify_album_id, evidence, confidence,
                            play_count, track_count, first_seen, last_seen, updated_at)
                        SELECT source_album_id, ?, 'play_track_api', 1.0,
@@ -240,16 +270,19 @@ def upsert_track_batch(
                        WHERE spotify_track_id_at_play = ?
                          AND source_album_id IS NOT NULL
                        GROUP BY source_album_id""",
-                    (album_id, track["id"]),
-                )
-        _link_local_artist_from_track(
-            conn,
-            track,
-            scope=scope,
-            local_artist_ids_relinked=local_artist_ids_relinked,
-        )
-        updated += 1
-    conn.commit()
+                        (album_id, track["id"]),
+                    )
+            _link_local_artist_from_track(
+                conn,
+                track,
+                scope=scope,
+                local_artist_ids_relinked=local_artist_ids_relinked,
+            )
+            updated += 1
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     return updated
 
 
@@ -697,6 +730,7 @@ def refresh_missing_spotify_metadata(
     progress_callback=None,
     *,
     scope: MetadataRefreshScope | None = None,
+    source_run_id: str | None = None,
 ) -> MetadataRefreshReport:
     spotify_track_ids_updated: set[str] = set()
     spotify_album_ids_updated: set[str] = set()
@@ -709,19 +743,25 @@ def refresh_missing_spotify_metadata(
         local_album_ids_relinked=local_album_ids_relinked,
     )
     if not access_token:
+        coverage = credit_evidence_coverage(conn)
         return MetadataRefreshReport(
             album_links_backfilled=album_links_backfilled,
             provider_available=False,
             errors=("spotify_credentials_missing",),
             local_album_ids_relinked=frozenset(local_album_ids_relinked),
             impact_scope_exact=False,
+            credit_evidence_missing=int(coverage["missing"]),
         )
 
     errors: list[str] = []
     if scope is None:
         track_ids = list(
             dict.fromkeys(
-                [*select_missing_track_ids(conn), *select_track_ids_for_artist_linkage(conn)]
+                [
+                    *select_missing_track_ids(conn),
+                    *select_track_ids_for_artist_linkage(conn),
+                    *select_missing_credit_evidence(conn),
+                ]
             )
         )
     else:
@@ -731,11 +771,14 @@ def refresh_missing_spotify_metadata(
                 [
                     *select_missing_track_ids(conn, limit=SCOPED_TRACK_BACKLOG_LIMIT),
                     *select_track_ids_for_artist_linkage(conn, limit=SCOPED_TRACK_BACKLOG_LIMIT),
+                    *select_missing_credit_evidence(conn, limit=SCOPED_TRACK_BACKLOG_LIMIT),
                 ]
             )
         )[:SCOPED_TRACK_BACKLOG_LIMIT]
         track_ids = list(dict.fromkeys([*scoped_track_ids, *track_backlog]))
     tracks_updated = 0
+    credit_outcomes: list[tuple[str, str, str | None]] = []
+    credit_schema = evidence_schema_available(conn)
     album_ids_seen: set[str] = set()
 
     for offset in range(0, len(track_ids), TRACK_BATCH_SIZE):
@@ -746,16 +789,33 @@ def refresh_missing_spotify_metadata(
                 0.0,
             )
         data = provider.get_tracks(batch, access_token)
-        if data is None:
+        if not isinstance(data, dict) or not isinstance(data.get("tracks"), list):
             errors.append("tracks_batch_failed")
+            if credit_schema:
+                credit_outcomes.extend(
+                    (track_id, "failed", "tracks_batch_failed") for track_id in batch
+                )
             continue
-        tracks = data.get("tracks", [])
+        returned_tracks = [track for track in data["tracks"] if isinstance(track, dict)]
+        returned = {str(track.get("id")) for track in returned_tracks if track.get("id")}
+        if credit_schema:
+            credit_outcomes.extend(
+                (track_id, "failed", "track_missing_from_batch")
+                for track_id in batch
+                if track_id not in returned
+            )
+            for track in returned_tracks:
+                if track.get("id") and str(track.get("id")) not in batch:
+                    errors.append("track_id_mismatch")
+        tracks = [track for track in returned_tracks if str(track.get("id")) in batch]
         tracks_updated += upsert_track_batch(
             conn,
             tracks,
             scope=scope,
             local_album_ids_relinked=local_album_ids_relinked,
             local_artist_ids_relinked=local_artist_ids_updated,
+            credit_outcomes=credit_outcomes if credit_schema else None,
+            source_run_id=source_run_id or (None if scope is None else scope.generation_id),
         )
         for track in tracks:
             track_id = track and track.get("id")
@@ -902,6 +962,9 @@ def refresh_missing_spotify_metadata(
             artist_ids=(None if scope is None else scope.artist_ids | local_artist_ids_updated),
         )
 
+    if any(item[1] == "failed" for item in credit_outcomes):
+        errors.append("track_credit_evidence_partial")
+
     return MetadataRefreshReport(
         tracks_requested=len(track_ids),
         tracks_updated=tracks_updated,
@@ -920,6 +983,22 @@ def refresh_missing_spotify_metadata(
         local_album_ids_updated=frozenset(local_album_ids_updated),
         local_artist_ids_updated=frozenset(local_artist_ids_updated),
         impact_scope_exact=not errors,
+        credit_evidence_requested=len(track_ids) if credit_schema else 0,
+        credit_evidence_observed=sum(item[1] == "observed" for item in credit_outcomes),
+        credit_evidence_changed=sum(item[1] == "changed" for item in credit_outcomes),
+        credit_evidence_unchanged=sum(item[1] == "unchanged" for item in credit_outcomes),
+        credit_evidence_failed=sum(item[1] == "failed" for item in credit_outcomes),
+        credit_evidence_lkg=sum(
+            item[1] == "failed"
+            and conn.execute(
+                "SELECT 1 FROM spotify_track_credit_sets WHERE spotify_track_id=?", (item[0],)
+            ).fetchone()
+            is not None
+            for item in credit_outcomes
+        )
+        if credit_schema
+        else 0,
+        credit_evidence_missing=int(credit_evidence_coverage(conn)["missing"]),
     )
 
 
@@ -967,6 +1046,13 @@ def _scoped_track_candidates(
         ).fetchone()
         is None
         or _track_needs_artist_link(conn, spotify_id, scope=scope)
+        or (
+            evidence_schema_available(conn)
+            and conn.execute(
+                "SELECT 1 FROM spotify_track_credit_sets WHERE spotify_track_id=?", (spotify_id,)
+            ).fetchone()
+            is None
+        )
     ]
 
 

@@ -1,5 +1,11 @@
 # 变更日志
 
+## 2026-09-24：Spotify Track 多艺人证据接入
+
+- schema 80 独立保存 Spotify Track `artists[]` 的有序艺人 ID 与署名名称，并记录首次观察和后续变化；不自动修改有效曲目署名、统计或人工覆盖层。
+- 元数据刷新与健康报告增加证据覆盖和失败计数，提供显式隔离副本回填及只读差异审计；身份未解析时双方独有成员保持未知，不凭名称自动认定同一艺人。
+- 隔离数据库副本完成 8,320 首曲目的真实 API 回填和幂等复跑，修复后本地 unit/contract 为 2,435 passed、712 deselected；尚未做完整全栈或生产迁移验收。详见[交付报告](reports/2026-09-24-spotify-track-artists-evidence-delivery.md)。
+
 ## 2026-09-22：无指纹旧库完整替换基线初始化
 
 - 修复升级前数据库已有播放事实、但逐行指纹、generation 和活动来源基线全部缺失时，已确认 full replace 被误判为来源漂移的问题；仅当主库/控制库/恢复状态共同证明是完整 legacy 空基线时，才允许 `baseline_required` 的已确认 replace/auto 初始化。
