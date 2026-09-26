@@ -95,19 +95,20 @@ L2/L3 发布，但不得伪装成已自动修复。
 
 有效署名由 `backend/domains/metadata/track_credits.py` 唯一解析：
 
-1. 读取原始 `track_artists`；旧测试库无该表时才回退到 `tracks.artist_id` 主艺人。
-2. 叠加 active `track_credit_overrides`，支持 `add`、`remove`、`set_role`，角色为 `primary` 或 `featured`。
-3. 每个成员必须绑定本地稳定 `artist_id`，禁止只保存名称。
-4. 通过艺人身份 resolver 投影到 canonical artist；同一曲目上的 alias 重叠只保留一个 canonical credit。
-5. artist fan-out 后，同一有效播放事件对同一 canonical artist 至多贡献一次；增加合作艺人不会增加歌曲本身的播放事件数。
+1. 读取原始 `track_artists`；旧测试库无该表时才回退到 `tracks.artist_id` 主艺人。原始标题识别的合作艺人保留为兜底，不因 Spotify 漏列而自动删除。
+2. 对权威 owner、有合法 Track `artists[]`、且主艺人与身份无冲突的曲目，叠加 `spotify_auto_track_credits`。本地同一艺人优先按 Spotify artist ID 解析；缺 ID 时只用唯一、无冲突的规范化同名关联，否则新建带 provider ID 的本地艺人。无法安全解析的曲目保留上一可用自动署名，不生成逐条审核任务。
+3. 最后叠加 active `track_credit_overrides`，支持 `add`、`remove`、`set_role`；人工操作始终优先于自动署名，角色为 `primary` 或 `featured`。
+4. 每个成员必须绑定本地稳定 `artist_id`，禁止只保存名称。
+5. 通过艺人身份 resolver 投影到 canonical artist；同一曲目上的 alias 重叠只保留一个 canonical credit。
+6. artist fan-out 后，同一有效播放事件对同一 canonical artist 至多贡献一次；增加合作艺人不会增加歌曲本身的播放事件数。
 
 语言和 genre 的主艺人归属规则是独立产品语义，仍按各自文档执行，不因曲目 featured fan-out 自动改变。
 
 ### 2.1 Spotify Track `artists[]` 证据
 
-Spotify Track API 返回的完整 `artists[]` 以原始顺序保存到 `spotify_track_credit_sets`、`spotify_track_artist_credits`；首次观察或成员、顺序、署名名称变化记入 `spotify_track_credit_events`。这三张表只表示 provider evidence，不表示 `primary` / `featured` 角色，也不参与当前有效署名、统计、搜索或自动归并。重复且内容相同的刷新只更新时间，不新增事件；空数组、缺失/重复艺人 ID 等非法响应保留上一可用证据并报告失败。
+Spotify Track API 返回的完整 `artists[]` 以原始顺序保存到 `spotify_track_credit_sets`、`spotify_track_artist_credits`；首次观察或成员、顺序、署名名称变化记入 `spotify_track_credit_events`。这三张表仍只表示 provider evidence，不表示 `primary` / `featured` 角色；独立的 `spotify_auto_track_credits` 才是可用于有效署名的自动投影。除原始主艺人外的 Spotify 成员在现有双角色模型中使用技术性 `featured`，不代表 Spotify 声称其为 feat.。重复且内容相同的刷新只更新时间，不新增事件或署名 revision；空数组、缺失/重复艺人 ID 等非法响应保留上一可用证据和自动署名并报告失败。
 
-日常 Spotify 元数据刷新会优先补本次导入关联曲目的证据缺口，并有界重试历史缺口。全库历史补采必须用显式 `scripts/backfill_spotify_track_artist_credits.py` 执行；默认仅预览，`--apply` 只允许指向隔离数据库副本。`scripts/audit_spotify_track_credits.py` 只读比较权威 `spotify_track_owners`、稳定的 Spotify artist 外部 ID 和当前有效署名；名称相似仅是待核对候选，不能自动建立本地身份或 override。只有 owner 明确、provider 证据有效且全部 Spotify 艺人身份都已唯一解析时，双方独有成员列表才可计算；否则返回 `null` 表示尚无法判断，不能误读为空列表或已确认差异。差异分类是后续人工治理的输入，不是已修正的署名事实。
+日常 Spotify 元数据刷新会优先补本次导入关联曲目的证据缺口，并有界重试历史缺口；成功获取后自动同步有效署名，并通过同一 track-credit revision 触发统计与搜索维护。全库历史补采使用 `scripts/backfill_spotify_track_artist_credits.py --apply`；已有证据可用 `--sync-existing` 离线同步。默认只预览；写正式应用数据库必须显式给出 `--allow-primary --backup-path`，脚本先做 SQLite Online Backup。失败或中断后可再次运行，已保存的证据不会重复拉取。`scripts/audit_spotify_track_credits.py` 仍是只读差异诊断，不是人工审批队列；历史报告中的待核对状态不能当作当前有效署名状态。
 
 ## 3. 直接编辑、预览与撤销
 

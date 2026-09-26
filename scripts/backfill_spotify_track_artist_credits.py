@@ -21,7 +21,9 @@ from backend.domains.metadata.spotify_track_credits import (  # noqa: E402
     credit_evidence_coverage,
     evidence_schema_available,
     save_track_credit_evidence,
+    schedule_automatic_credit_rebuild,
     select_missing_credit_evidence,
+    sync_automatic_spotify_credits,
 )
 from backend.providers.spotify.client import SpotifyProvider  # noqa: E402
 
@@ -146,7 +148,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db-path", type=Path, default=Path(DB_PATH))
     parser.add_argument("--apply", action="store_true", help="Call Spotify and write evidence")
+    parser.add_argument(
+        "--sync-existing", action="store_true",
+        help="Apply already stored artist arrays without calling Spotify",
+    )
+    parser.add_argument(
+        "--allow-primary", action="store_true",
+        help="Explicitly allow a write to the application database with --backup-path",
+    )
+    parser.add_argument(
+        "--backup-path", type=Path,
+        help="New Online Backup destination required for application database writes",
+    )
     parser.add_argument("--after-id", default="", help="Resume after this Spotify track ID")
+    parser.add_argument(
+        "--track-id", action="append", default=[],
+        help="Fetch one eligible Spotify Track ID (repeatable)",
+    )
     parser.add_argument("--max-tracks", type=int, default=200, help="0 means all remaining IDs")
     parser.add_argument(
         "--refresh-existing",
@@ -158,20 +176,50 @@ def main() -> int:
     args = parser.parse_args()
     if args.max_tracks < 0:
         parser.error("--max-tracks must be nonnegative")
-    if args.apply and args.db_path.resolve() == Path(DB_PATH).resolve():
-        parser.error(
-            "--apply requires an explicit isolated --db-path; primary DB backfill is a separate release operation"
-        )
-    conn = _connection(args.db_path, write=args.apply)
+    if args.apply and args.sync_existing:
+        parser.error("--apply and --sync-existing are separate modes")
+    if args.sync_existing and args.track_id:
+        parser.error("--track-id is only valid for Spotify fetch or dry run")
+    write = args.apply or args.sync_existing
+    primary = args.db_path.resolve() == Path(DB_PATH).resolve()
+    if write and primary and (not args.allow_primary or args.backup_path is None):
+        parser.error("application database writes require --allow-primary and --backup-path")
+    if args.allow_primary and not primary:
+        parser.error("--allow-primary is only valid for the application database")
+    if args.backup_path is not None:
+        if not write or not primary:
+            parser.error("--backup-path is only valid for application database writes")
+        if args.backup_path.exists() or args.backup_path.is_symlink():
+            parser.error("--backup-path must not already exist")
+        if not args.backup_path.parent.is_dir():
+            parser.error("--backup-path parent directory must exist")
+    conn = _connection(args.db_path, write=write)
     try:
         if not evidence_schema_available(conn):
             parser.error("credit evidence migration is missing from the selected database")
-        ids = _eligible_ids(
-            conn, args.after_id, args.max_tracks, refresh_existing=args.refresh_existing
+        if write and not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='spotify_auto_track_credits'"
+        ).fetchone():
+            parser.error("automatic credit migration 81 is missing from the selected database")
+        if args.backup_path is not None:
+            backup = sqlite3.connect(args.backup_path)
+            try:
+                conn.backup(backup)
+            finally:
+                backup.close()
+        ids = (
+            _eligible_ids(conn, args.after_id, args.max_tracks, refresh_existing=args.refresh_existing)
+            if not args.sync_existing else []
         )
+        if args.track_id:
+            eligible = set(_eligible_ids(conn, "", 0, refresh_existing=args.refresh_existing))
+            ids = sorted(set(args.track_id) & eligible)
+            if len(ids) != len(set(args.track_id)):
+                parser.error("some --track-id values are not eligible; use --refresh-existing if stored")
         report = {
-            "mode": "apply" if args.apply else "dry_run",
+            "mode": "apply" if args.apply else "sync_existing" if args.sync_existing else "dry_run",
             "db_path": str(args.db_path.resolve()),
+            "backup_path": str(args.backup_path.resolve()) if args.backup_path else None,
             "run_id": args.run_id or str(uuid.uuid4()),
             "after_id": args.after_id,
             "refresh_existing": args.refresh_existing,
@@ -182,6 +230,23 @@ def main() -> int:
         }
         if args.apply:
             report.update(run_backfill(conn, SpotifyProvider(), ids, run_id=report["run_id"]))
+            failed_ids = {item["spotify_track_id"] for item in report["failures"]}
+            successful_ids = [
+                value for value in ids
+                if value not in failed_ids
+                and report["last_processed_id"]
+                and value <= report["last_processed_id"]
+            ]
+            report["automatic_credits"] = sync_automatic_spotify_credits(conn, successful_ids)
+            conn.commit()
+            schedule_automatic_credit_rebuild(
+                conn, report["automatic_credits"]["revision"]
+            )
+            report["coverage_after"] = credit_evidence_coverage(conn)
+        elif args.sync_existing:
+            report["automatic_credits"] = sync_automatic_spotify_credits(conn)
+            conn.commit()
+            schedule_automatic_credit_rebuild(conn, report["automatic_credits"]["revision"])
             report["coverage_after"] = credit_evidence_coverage(conn)
         rendered = json.dumps(report, ensure_ascii=False, indent=2)
         if args.report:

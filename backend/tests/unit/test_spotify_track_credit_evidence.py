@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from backend.core.db import SCHEMA
-from backend.core.migrations import migrate_080
+from backend.core.migrations import migrate_080, migrate_081
 from backend.domains.metadata.spotify_refresh import (
     refresh_missing_spotify_metadata,
     upsert_track_batch,
@@ -16,7 +16,13 @@ from backend.domains.metadata.spotify_track_credits import (
     credit_evidence_coverage,
     save_track_credit_evidence,
     select_missing_credit_evidence,
+    sync_automatic_spotify_credits,
 )
+from backend.domains.metadata.track_credits import (
+    apply_track_credit_override,
+    get_effective_track_credits,
+)
+from backend.domains.music_search.index import _active_music_entity_ids
 from scripts.backfill_spotify_track_artist_credits import _eligible_ids, run_backfill
 
 pytestmark = pytest.mark.unit
@@ -178,6 +184,145 @@ def test_migration_80_is_additive_and_repeatable() -> None:
         "spotify_track_credit_events",
     } <= tables
     conn.close()
+
+
+def test_migration_81_is_additive_and_repeatable() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE tracks(track_id INTEGER PRIMARY KEY)")
+    conn.execute("CREATE TABLE artists(artist_id INTEGER PRIMARY KEY)")
+    conn.execute("CREATE TABLE spotify_track_credit_sets(spotify_track_id TEXT PRIMARY KEY)")
+    migrate_081(conn)
+    migrate_081(conn)
+    assert conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='spotify_auto_track_credits'"
+    ).fetchone()
+    conn.close()
+
+
+def test_automatic_credits_are_idempotent_and_manual_remove_wins() -> None:
+    conn = _conn()
+    _seed_track(conn)
+    conn.execute("INSERT INTO track_artists(track_id, artist_id, role) VALUES (1, 1, 'primary')")
+    save_track_credit_evidence(conn, _track())
+    before = [tuple(row) for row in conn.execute("SELECT * FROM track_artists")]
+    first = sync_automatic_spotify_credits(conn, ["spotify-track-1"])
+    assert first == {
+        "processed": 1,
+        "changed": 1,
+        "skipped": 0,
+        "created_artists": 0,
+        "revision": 1,
+    }
+    assert [
+        (row["artist_id"], row["source"]) for row in get_effective_track_credits(conn, [1])
+    ] == [(1, "raw"), (2, "spotify")]
+    assert sync_automatic_spotify_credits(conn, ["spotify-track-1"])["revision"] == 0
+    assert conn.execute("SELECT current_revision FROM track_credit_state").fetchone()[0] == 1
+    assert [tuple(row) for row in conn.execute("SELECT * FROM track_artists")] == before
+
+    apply_track_credit_override(
+        conn,
+        track_id=1,
+        artist_id=2,
+        action="remove",
+        role=None,
+        evidence_type="user_confirmed",
+        evidence_source=None,
+        reason="人工排除",
+        expected_revision=1,
+        idempotency_key="manual-remove-spotify-artist-2",
+    )
+    assert [row["artist_id"] for row in get_effective_track_credits(conn, [1])] == [1]
+    assert sync_automatic_spotify_credits(conn, ["spotify-track-1"])["changed"] == 0
+    assert [row["artist_id"] for row in get_effective_track_credits(conn, [1])] == [1]
+    conn.close()
+
+
+def test_automatic_credit_creates_missing_artist_without_changing_raw_track() -> None:
+    conn = _conn()
+    _seed_track(conn)
+    conn.execute("DELETE FROM artists WHERE artist_id=2")
+    save_track_credit_evidence(conn, _track())
+    result = sync_automatic_spotify_credits(conn, ["spotify-track-1"])
+    assert result["created_artists"] == 1
+    assert (
+        conn.execute(
+            """SELECT external_id FROM artist_identity_external_ids e
+             JOIN artists a ON a.artist_id=e.artist_id
+            WHERE a.artist_name='合作艺人' AND e.provider='spotify'"""
+        ).fetchone()[0]
+        == "spotify-artist-2"
+    )
+    assert conn.execute("SELECT artist_id FROM tracks WHERE track_id=1").fetchone()[0] == 1
+    assert [row["artist_name"] for row in get_effective_track_credits(conn, [1])] == [
+        "主艺人",
+        "合作艺人",
+    ]
+    conn.close()
+
+
+def test_spotify_only_artist_is_in_active_search_candidate_closure() -> None:
+    conn = _conn()
+    _seed_track(conn)
+    conn.execute(
+        """INSERT INTO plays(
+               ts, ts_year, ts_month, ts_week, ts_dow, ts_hour, ts_date,
+               platform, ms_played, track_id, spotify_track_id_at_play)
+           VALUES (
+               '2024-01-01T00:00:00Z', 2024, 1, 1, 0, 0, '2024-01-01',
+               'test', 180000, 1, 'spotify-track-1')"""
+    )
+    save_track_credit_evidence(conn, _track())
+    sync_automatic_spotify_credits(conn, ["spotify-track-1"])
+    assert 2 in _active_music_entity_ids(conn)[2]
+    conn.close()
+
+
+def test_automatic_credit_skips_primary_or_identity_conflict() -> None:
+    conn = _conn()
+    _seed_track(conn)
+    wrong = _track([{"id": "other", "name": "其他艺人"}])
+    save_track_credit_evidence(conn, wrong)
+    assert sync_automatic_spotify_credits(conn, ["spotify-track-1"])["skipped"] == 1
+    assert conn.execute("SELECT COUNT(*) FROM spotify_auto_track_credits").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM artists").fetchone()[0] == 2
+    conn.close()
+
+
+def test_display_cache_sees_credit_revision_written_by_another_connection(
+    tmp_path, monkeypatch
+) -> None:
+    from backend.core import db as db_mod
+
+    source = _conn()
+    _seed_track(source)
+    source.execute(
+        """INSERT INTO track_l1_identities(
+               l1_id, provider, external_track_id, representative_track_id)
+           VALUES (1, 'spotify', 'spotify-track-1', 1)"""
+    )
+    source.commit()
+    path = tmp_path / "credits.db"
+    target = sqlite3.connect(path)
+    source.backup(target)
+    target.close()
+    source.close()
+    monkeypatch.setattr(db_mod, "DB_PATH", str(path))
+    db_mod._get_track_artist_names_map_cached.cache_clear()
+    db_mod._get_track_all_artists_map_cached.cache_clear()
+    try:
+        assert db_mod.get_track_artist_names_map()[1] == ["主艺人"]
+        writer = sqlite3.connect(path)
+        writer.row_factory = sqlite3.Row
+        save_track_credit_evidence(writer, _track())
+        assert sync_automatic_spotify_credits(writer, ["spotify-track-1"])["revision"] == 1
+        writer.commit()
+        writer.close()
+        assert db_mod.get_track_artist_names_map()[1] == ["主艺人", "合作艺人"]
+        assert db_mod.get_track_all_artists_map()[1] == "主艺人, 合作艺人"
+    finally:
+        db_mod._get_track_artist_names_map_cached.cache_clear()
+        db_mod._get_track_all_artists_map_cached.cache_clear()
 
 
 def test_backfill_retries_missing_and_repeat_fetch_has_no_new_event() -> None:

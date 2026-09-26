@@ -8,6 +8,7 @@ import sqlite3
 import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 
@@ -173,6 +174,250 @@ def _name_key(value: str) -> str:
     return "".join(
         char for char in unicodedata.normalize("NFKD", value).casefold() if char.isalnum()
     )
+
+
+def sync_automatic_spotify_credits(
+    conn: sqlite3.Connection, spotify_track_ids: list[str] | None = None
+) -> dict[str, int]:
+    """Apply unambiguous Spotify members below manual overrides, without changing raw facts.
+
+    A provider ID must belong to one authoritative track, and its artist list
+    must contain that track's existing primary artist. Missing local artists
+    are linked by a unique, non-conflicting name or created by Spotify ID.
+    Ambiguous tracks retain their previous automatic credits unchanged.
+    The caller commits and schedules one full credit rebuild after a changed
+    revision; no individual approval is required.
+    """
+    if (
+        not evidence_schema_available(conn)
+        or not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='spotify_auto_track_credits'"
+        ).fetchone()
+    ):
+        return {"processed": 0, "changed": 0, "skipped": 0, "created_artists": 0, "revision": 0}
+
+    from backend.domains.metadata.artist_identity import get_artist_identity_map
+    from backend.domains.metadata.track_credits import get_track_credit_revision
+
+    selected = sorted(set(spotify_track_ids or []))
+    if spotify_track_ids is not None and not selected:
+        return {"processed": 0, "changed": 0, "skipped": 0, "created_artists": 0, "revision": 0}
+    where = f"WHERE o.spotify_track_id IN ({','.join('?' for _ in selected)})" if selected else ""
+    owners = conn.execute(
+        f"""SELECT DISTINCT o.track_id FROM spotify_track_owners o
+            JOIN spotify_track_credit_sets s ON s.spotify_track_id=o.spotify_track_id
+            {where} ORDER BY o.track_id""",
+        selected,
+    ).fetchall()
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(artists)")}
+    has_spotify_column = "spotify_artist_id" in columns
+    artist_rows = conn.execute(
+        "SELECT artist_id, artist_name, spotify_artist_id FROM artists"
+        if has_spotify_column
+        else "SELECT artist_id, artist_name, NULL AS spotify_artist_id FROM artists"
+    ).fetchall()
+    names: dict[str, list[int]] = {}
+    artist_direct: dict[int, str] = {}
+    direct_ids: dict[str, set[int]] = {}
+    for row in artist_rows:
+        artist_id = int(row[0])
+        names.setdefault(_name_key(str(row[1])), []).append(artist_id)
+        if row[2]:
+            direct_ids.setdefault(str(row[2]), set()).add(artist_id)
+            artist_direct[artist_id] = str(row[2])
+    external: dict[str, set[int]] = {}
+    artist_external: dict[int, set[str]] = {}
+    for row in conn.execute(
+        "SELECT external_id, artist_id FROM artist_identity_external_ids WHERE provider='spotify'"
+    ):
+        external.setdefault(str(row[0]), set()).add(int(row[1]))
+        artist_external.setdefault(int(row[1]), set()).add(str(row[0]))
+    identity = get_artist_identity_map(conn)
+    report = {"processed": 0, "changed": 0, "skipped": 0, "created_artists": 0, "revision": 0}
+    conn.execute("SAVEPOINT spotify_auto_credits")
+    try:
+        for owner in owners:
+            track_id = int(owner[0])
+            report["processed"] += 1
+            track = conn.execute(
+                """SELECT t.artist_id, t.spotify_track_id, a.artist_name
+                     FROM tracks t JOIN artists a ON a.artist_id=t.artist_id
+                    WHERE t.track_id=?""",
+                (track_id,),
+            ).fetchone()
+            if track is None:
+                report["skipped"] += 1
+                continue
+            choices = [
+                str(row[0])
+                for row in conn.execute(
+                    """SELECT o.spotify_track_id FROM spotify_track_owners o
+                       JOIN spotify_track_credit_sets s
+                         ON s.spotify_track_id=o.spotify_track_id
+                      WHERE o.track_id=? ORDER BY o.spotify_track_id""",
+                    (track_id,),
+                )
+            ]
+            raw_spotify_id = str(track[1] or "")
+            chosen = (
+                raw_spotify_id
+                if raw_spotify_id in choices
+                else (choices[0] if len(choices) == 1 else None)
+            )
+            if not chosen:
+                report["skipped"] += 1
+                continue
+            provider = conn.execute(
+                """SELECT spotify_artist_id, credited_name, credit_order
+                     FROM spotify_track_artist_credits WHERE spotify_track_id=?
+                    ORDER BY credit_order""",
+                (chosen,),
+            ).fetchall()
+            if not provider:
+                report["skipped"] += 1
+                continue
+            primary_id = int(track[0])
+            primary_canonical = identity.get(primary_id)
+            primary_canonical_id = (
+                primary_canonical.canonical_artist_id if primary_canonical else primary_id
+            )
+            planned: list[tuple[str, str, int, int | None]] = []
+            primary_found = False
+            conflict = False
+            for spotify_artist_id_raw, credited_name_raw, order_raw in provider:
+                spotify_artist_id = str(spotify_artist_id_raw)
+                credited_name = str(credited_name_raw)
+                linked = direct_ids.get(spotify_artist_id, set()) | external.get(
+                    spotify_artist_id, set()
+                )
+                canonical = {
+                    identity[value].canonical_artist_id if value in identity else value
+                    for value in linked
+                }
+                if len(canonical) > 1:
+                    conflict = True
+                    break
+                if linked:
+                    artist_id = primary_id if primary_id in linked else min(linked)
+                else:
+                    candidates = names.get(_name_key(credited_name), [])
+                    if len(candidates) > 1:
+                        conflict = True
+                        break
+                    artist_id = candidates[0] if candidates else None
+                    if artist_id is not None and (
+                        artist_direct.get(artist_id, spotify_artist_id) != spotify_artist_id
+                        or (artist_external.get(artist_id, set()) - {spotify_artist_id})
+                    ):
+                        conflict = True
+                        break
+                if artist_id is not None:
+                    resolved = identity.get(artist_id)
+                    canonical_id = resolved.canonical_artist_id if resolved else artist_id
+                    if canonical_id == primary_canonical_id:
+                        primary_found = True
+                elif _name_key(credited_name) == _name_key(str(track[2])):
+                    primary_found = True
+                planned.append((spotify_artist_id, credited_name, int(order_raw), artist_id))
+            planned_members = [
+                str(item[3]) if item[3] is not None else f"new:{_name_key(item[1])}"
+                for item in planned
+            ]
+            if conflict or not primary_found or len(set(planned_members)) != len(planned_members):
+                report["skipped"] += 1
+                continue
+
+            desired: list[tuple[int, int, str, str, str, int]] = []
+            for spotify_artist_id, credited_name, order, artist_id in planned:
+                if artist_id is None:
+                    cursor = conn.execute(
+                        "INSERT INTO artists(artist_name, spotify_artist_id) VALUES (?, ?)"
+                        if has_spotify_column
+                        else "INSERT INTO artists(artist_name) VALUES (?)",
+                        (credited_name, spotify_artist_id)
+                        if has_spotify_column
+                        else (credited_name,),
+                    )
+                    artist_id = int(cursor.lastrowid)
+                    names.setdefault(_name_key(credited_name), []).append(artist_id)
+                    identity = get_artist_identity_map(conn)
+                    report["created_artists"] += 1
+                if has_spotify_column:
+                    conn.execute(
+                        "UPDATE artists SET spotify_artist_id=COALESCE(spotify_artist_id, ?) "
+                        "WHERE artist_id=?",
+                        (spotify_artist_id, artist_id),
+                    )
+                conn.execute(
+                    """INSERT OR IGNORE INTO artist_identity_external_ids(
+                           artist_id, provider, external_id, evidence_type, verified)
+                       VALUES (?, 'spotify', ?, 'spotify_track_credit', 0)""",
+                    (artist_id, spotify_artist_id),
+                )
+                direct_ids.setdefault(spotify_artist_id, set()).add(artist_id)
+                artist_direct[artist_id] = spotify_artist_id
+                external.setdefault(spotify_artist_id, set()).add(artist_id)
+                artist_external.setdefault(artist_id, set()).add(spotify_artist_id)
+                desired.append(
+                    (track_id, artist_id, chosen, spotify_artist_id, credited_name, order)
+                )
+            existing = [
+                tuple(row)
+                for row in conn.execute(
+                    """SELECT track_id, artist_id, spotify_track_id, spotify_artist_id,
+                              credited_name, credit_order
+                         FROM spotify_auto_track_credits WHERE track_id=?
+                        ORDER BY credit_order""",
+                    (track_id,),
+                )
+            ]
+            if existing == desired:
+                continue
+            conn.execute("DELETE FROM spotify_auto_track_credits WHERE track_id=?", (track_id,))
+            conn.executemany(
+                """INSERT INTO spotify_auto_track_credits(
+                       track_id, artist_id, spotify_track_id, spotify_artist_id,
+                       credited_name, credit_order)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                desired,
+            )
+            report["changed"] += 1
+        if report["changed"]:
+            conn.execute(
+                """UPDATE track_credit_state
+                      SET current_revision=current_revision+1, rebuild_status='pending',
+                          last_error=NULL, updated_at=datetime('now') WHERE state_id=1"""
+            )
+            report["revision"] = get_track_credit_revision(conn)
+        conn.execute("RELEASE SAVEPOINT spotify_auto_credits")
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT spotify_auto_credits")
+        conn.execute("RELEASE SAVEPOINT spotify_auto_credits")
+        raise
+    return report
+
+
+def schedule_automatic_credit_rebuild(conn: sqlite3.Connection, revision: int) -> None:
+    """Publish a changed automatic-credit revision only for the application DB."""
+    if not revision:
+        return
+    from backend.core.db import DB_PATH
+
+    database = conn.execute("PRAGMA database_list").fetchone()
+    path = str(database[2] or "") if database is not None else ""
+    if not path or Path(path).resolve() != Path(DB_PATH).resolve():
+        return
+    from backend.core.cache_manager import invalidate_all
+    from backend.services.music_search_maintenance_service import mark_music_search_for_rebuild
+    from backend.services.track_credit_rebuild_service import ensure_track_credit_rebuild_job
+
+    invalidate_all()
+    mark_music_search_for_rebuild(
+        reason="Spotify automatic track credits changed",
+        documents=True,
+        conn=conn,
+    )
+    ensure_track_credit_rebuild_job(revision, conn=conn)
 
 
 def audit_track_credit_evidence(conn: sqlite3.Connection, *, limit: int | None = None) -> dict:

@@ -149,6 +149,22 @@ def _active_overrides(
     return [dict(row) for row in rows]
 
 
+def _automatic_spotify_credits(
+    conn: sqlite3.Connection, track_ids: Iterable[int] | None = None
+) -> list[dict[str, Any]]:
+    if not _table_exists(conn, "spotify_auto_track_credits"):
+        return []
+    where, params = _where_track_ids(track_ids, "c")
+    rows = conn.execute(
+        f"""SELECT c.track_id, c.artist_id, c.spotify_track_id,
+                   c.spotify_artist_id, c.credited_name, c.credit_order
+              FROM spotify_auto_track_credits c {where}
+             ORDER BY c.track_id, c.credit_order""",
+        params,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def _apply_override(
     credit_map: dict[tuple[int, int], dict[str, Any]], override: dict[str, Any]
 ) -> None:
@@ -179,6 +195,16 @@ def _effective_raw_map(
     proposed: dict[str, Any] | None = None,
 ) -> dict[tuple[int, int], dict[str, Any]]:
     credit_map = _raw_credit_map(conn, track_ids)
+    for credit in _automatic_spotify_credits(conn, track_ids):
+        key = (int(credit["track_id"]), int(credit["artist_id"]))
+        if key not in credit_map:
+            credit_map[key] = {
+                "track_id": key[0],
+                "artist_id": key[1],
+                "role": "featured",
+                "source": "spotify",
+                "override_id": None,
+            }
     for override in _active_overrides(conn, track_ids):
         _apply_override(credit_map, override)
     if proposed:

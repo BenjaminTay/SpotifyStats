@@ -12,7 +12,9 @@ from backend.domains.metadata.spotify_track_credits import (
     credit_evidence_coverage,
     evidence_schema_available,
     save_track_credit_evidence,
+    schedule_automatic_credit_rebuild,
     select_missing_credit_evidence,
+    sync_automatic_spotify_credits,
 )
 
 TRACK_BATCH_SIZE = 50
@@ -964,6 +966,13 @@ def refresh_missing_spotify_metadata(
 
     if any(item[1] == "failed" for item in credit_outcomes):
         errors.append("track_credit_evidence_partial")
+
+    automatic_report = sync_automatic_spotify_credits(
+        conn, [item[0] for item in credit_outcomes if item[1] != "failed"]
+    )
+    if automatic_report["changed"]:
+        conn.commit()
+        schedule_automatic_credit_rebuild(conn, automatic_report["revision"])
 
     return MetadataRefreshReport(
         tracks_requested=len(track_ids),

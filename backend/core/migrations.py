@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 80
+LATEST_SCHEMA_VERSION = 81
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4079,6 +4079,25 @@ def migrate_080(conn: sqlite3.Connection):
     conn.execute(
         """CREATE INDEX IF NOT EXISTS idx_spotify_track_credit_events_track
            ON spotify_track_credit_events(spotify_track_id, event_id)"""
+    )
+
+
+@migration(81, "spotify_automatic_track_credits")
+def migrate_081(conn: sqlite3.Connection):
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS spotify_auto_track_credits (
+            track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            spotify_track_id TEXT NOT NULL REFERENCES spotify_track_credit_sets(spotify_track_id),
+            spotify_artist_id TEXT NOT NULL,
+            credited_name TEXT NOT NULL,
+            credit_order INTEGER NOT NULL CHECK(credit_order >= 0),
+            PRIMARY KEY(track_id, artist_id)
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_spotify_auto_track_credits_track
+           ON spotify_auto_track_credits(track_id)"""
     )
 
 
