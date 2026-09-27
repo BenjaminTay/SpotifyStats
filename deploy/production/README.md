@@ -113,7 +113,9 @@ Quick Tunnel 只用于临时测试：URL 在隧道重启后可能变化，官方
 5. 执行 `./deploy.sh <commit-sha>`，再运行 `./verify.sh`。
 6. 最后按需单独配置外部 HTTPS 入口。Tailscale 是可选项；只有明确需要时才运行
    `configure-tailscale.sh` 或 `configure-public-funnel.sh`。
-7. 运行 `./install-backup-timer.sh` 安装每日 SQLite 在线备份，并配置异机备份。
+7. 运行 `./install-backup-timer.sh` 安装每周日 03:20（另有最多 20 分钟随机延迟）的 SQLite 在线备份。服务器 `.env` 中的 `BACKUP_RETENTION_DAYS=28` 只清理普通定时备份；备份完成并通过完整性检查后才清理过期文件。发布前和恢复前备份不会被普通轮转清理。
+
+重要数据导入前，先运行 `SPOTIFY_STATS_BACKUP_NAME="spotify-stats-pre-import-$(date -u +%Y%m%dT%H%M%SZ).db" ./backup.sh` 并确认成功；导入完成后再以 `spotify-stats-post-import-` 前缀运行一次。普通周备份之间的其他写入最多可能损失约一周。修改本文件或 timer 模板后，须重新安装 timer，并用 `systemctl cat spotify-stats-backup.timer` 核对服务器生效规则。
 
 建议预先生成网关密钥：
 
