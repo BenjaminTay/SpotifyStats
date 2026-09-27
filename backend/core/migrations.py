@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 79
+LATEST_SCHEMA_VERSION = 81
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4037,6 +4037,67 @@ def migrate_079(conn: sqlite3.Connection):
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_playback_import_runs_publication "
         "ON playback_import_runs(publication_id)"
+    )
+
+
+@migration(80, "spotify_track_artist_credit_evidence")
+def migrate_080(conn: sqlite3.Connection):
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS spotify_track_credit_sets (
+            spotify_track_id TEXT PRIMARY KEY REFERENCES spotify_track_meta(spotify_track_id),
+            artist_count INTEGER NOT NULL CHECK(artist_count > 0),
+            credit_signature TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            source_run_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS spotify_track_artist_credits (
+            spotify_track_id TEXT NOT NULL REFERENCES spotify_track_credit_sets(spotify_track_id)
+                             ON DELETE CASCADE,
+            spotify_artist_id TEXT NOT NULL,
+            credited_name TEXT NOT NULL,
+            credit_order INTEGER NOT NULL CHECK(credit_order >= 0),
+            observed_at TEXT NOT NULL,
+            PRIMARY KEY(spotify_track_id, spotify_artist_id),
+            UNIQUE(spotify_track_id, credit_order)
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS spotify_track_credit_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            spotify_track_id TEXT NOT NULL,
+            event_type TEXT NOT NULL CHECK(event_type IN ('observed', 'changed')),
+            before_json TEXT,
+            after_json TEXT NOT NULL,
+            source_run_id TEXT,
+            observed_at TEXT NOT NULL
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_spotify_track_credit_events_track
+           ON spotify_track_credit_events(spotify_track_id, event_id)"""
+    )
+
+
+@migration(81, "spotify_automatic_track_credits")
+def migrate_081(conn: sqlite3.Connection):
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS spotify_auto_track_credits (
+            track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+            artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+            spotify_track_id TEXT NOT NULL REFERENCES spotify_track_credit_sets(spotify_track_id),
+            spotify_artist_id TEXT NOT NULL,
+            credited_name TEXT NOT NULL,
+            credit_order INTEGER NOT NULL CHECK(credit_order >= 0),
+            PRIMARY KEY(track_id, artist_id)
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_spotify_auto_track_credits_track
+           ON spotify_auto_track_credits(track_id)"""
     )
 
 

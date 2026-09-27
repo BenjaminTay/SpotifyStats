@@ -122,6 +122,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
+- [`plans/2026-09-23-multi-source-music-metadata-roadmap.md`](plans/2026-09-23-multi-source-music-metadata-roadmap.md)：MusicBrainz、Apple Music、曲目语言与封面替代等后续方向的分析记录和重新启动门槛；当前延后
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
 
@@ -143,6 +144,8 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 ## 交付与验证报告
 
 - [`reports/2026-09-22-runtime-resource-optimization.md`](reports/2026-09-22-runtime-resource-optimization.md)：日常轻量入口、构建清单、最终代码 D/F、M/D 峰值、真实 hidden 60 分钟 soak 与默认完整 fullstack 证据
+
+- [`reports/2026-09-24-spotify-track-artists-evidence-delivery.md`](reports/2026-09-24-spotify-track-artists-evidence-delivery.md)：Spotify Track `artists[]` 证据持久化、隔离副本全量回填、复跑幂等和差异审计；[实施规划归档](archive/06-productization-closeout/2026-09-23-spotify-track-artists-evidence-plan.md)
 
 - [`reports/2026-09-19-billboard-sidecar-safety-closeout.md`](reports/2026-09-19-billboard-sidecar-safety-closeout.md)：阶段 0.5 事故安全收口，重新生成正式 Billboard 快照与测试隔离
 

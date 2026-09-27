@@ -1,5 +1,10 @@
 # 变更日志
 
+## 2026-09-27：运行资源优化本地提交与集成
+
+- 资源优化实现提交 `a0df33a4`，完成规划归档；与 main `3e608f22` 的自动多艺人署名、备份策略集成，保留双方行为。
+- 合并结果 unit/contract 为 2,492 passed、2 skipped；202 份文档审计与提交钩子通过。原始完整全栈和资源专项验收仍按实现报告标注版本，未推送或部署。
+
 ## 2026-09-27：资源优化独立复核缺口收口
 
 - 日常入口改用托管构建输入清单，前端源码、public、依赖和配置的新增、修改、删除都会判定构建过期；普通 `npm run build` 没有清单时要求一次 `scripts/start_daily.py --build`，不再用当前文件 mtime 推断历史输入集合。
@@ -15,6 +20,19 @@
 - 实际 rank context job type 修正为 `artist_rank_context_rebuild`，避免与 Billboard/Analysis 重叠；Analysis 使用窄 duration frame，rank context 最后消费者完成后只释放两类宽播放帧。M4/D3 连续 RSS 为 1,480.8 / 1,453.8 MiB，均通过 1.5 GiB 门槛；逐任务全清缓存实验更差并已撤回。
 - headed Chrome 完成 3×20 分钟真实 visible→hidden→visible soak：hidden 窗口零 API 请求，JS heap/DOM/listener/resource entries 有界；后端、preview、浏览器第 2→3 轮稳定 RSS 分别只增长 2.2 / 2.6 / 48.3 MiB，全部通过。浏览器 physical footprint +71 MiB / +10.7% 略高于并列诊断阈值，保留后续跟踪。
 - R6 同周/跨周/历史修正/完整 replace 导入矩阵 14 项语义投影等价；API probe 显式数据库路径同时隔离六套 sidecar。默认完整 fullstack 运行 `20260924T131913.048597Z-2041631da26f` 八个必需阶段全部 PASS：seed 2,991 passed / 2 skipped、真实 integration 186 passed / 1 skipped、前端 670 passed / 4 skipped、API 153/153 与 boundary 113/113、Chromium/Firefox/WebKit 全部通过。完整边界见[实施报告](reports/2026-09-22-runtime-resource-optimization.md)。未 commit、push 或部署。
+
+## 2026-09-27：Spotify Track 多艺人自动署名
+
+- 新增 schema 81 自动署名投影：有效曲目署名合并原始记录与 Spotify Track `artists[]`，人工添加、排除和角色调整始终优先；不改写原始播放、曲目或原始艺人关系。
+- 日常 Spotify 刷新与显式历史回填成功后自动关联稳定艺人身份、补建缺失本地艺人，推动同一署名 revision 的统计和搜索重建；身份或主艺人冲突时保留上一可用结果，不要求逐条人工核对。
+- 搜索候选的活跃艺人集合改按有播放来源的有效署名补全，并提升候选索引版本；否则新合作艺人虽进入周榜，却缺少搜索文档，导致精确周榜账本无法发布。正式库重新构建后候选文档由 21,653 增至 22,239，四个常用精确统计变体均恢复 ready。
+- 隔离副本验证 7,272 个 owner 的自动同步可幂等复跑；正式应用数据库带 Online Backup 回填 8,320/8,320 首证据，7,251 个 owner 获得自动署名，21 个冲突/歧义 owner 保持原结果，新增 586 个本地艺人。`plays`、`tracks`、`track_artists` 与回填前备份的逐表哈希一致。署名 revision 39 的 aggregate 已重建为 ready；本地歌曲详情 API 中 `We Found Love` 返回 Rihanna + Calvin Harris。
+
+## 2026-09-24：Spotify Track 多艺人证据接入
+
+- schema 80 独立保存 Spotify Track `artists[]` 的有序艺人 ID 与署名名称，并记录首次观察和后续变化；不自动修改有效曲目署名、统计或人工覆盖层。
+- 元数据刷新与健康报告增加证据覆盖和失败计数，提供显式隔离副本回填及只读差异审计；身份未解析时双方独有成员保持未知，不凭名称自动认定同一艺人。
+- 隔离数据库副本完成 8,320 首曲目的真实 API 回填和幂等复跑，修复后本地 unit/contract 为 2,435 passed、712 deselected；尚未做完整全栈或生产迁移验收。详见[交付报告](reports/2026-09-24-spotify-track-artists-evidence-delivery.md)。
 
 ## 2026-09-22：无指纹旧库完整替换基线初始化
 

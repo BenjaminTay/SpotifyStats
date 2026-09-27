@@ -49,11 +49,19 @@ if integrity != "ok":
 PY
 
 retention_days="$(sed -n 's/^BACKUP_RETENTION_DAYS=//p' "$ENV_FILE" | tail -n 1)"
-retention_days="${retention_days:-14}"
+retention_days="${retention_days:-28}"
 if [[ ! "$retention_days" =~ ^[0-9]+$ ]]; then
   echo "BACKUP_RETENTION_DAYS 必须是非负整数。" >&2
   exit 1
 fi
 
-find backups -maxdepth 1 -type f -name 'spotify-stats-*.db' -mtime "+$retention_days" -delete
+# Only expire ordinary scheduled snapshots. Release, import, and manually named
+# recovery points also use the spotify-stats-*.db prefix and need separate review.
+find backups -maxdepth 1 -type f -mtime "+$retention_days" -print0 |
+  while IFS= read -r -d '' path; do
+    name="${path##*/}"
+    if [[ "$name" =~ ^spotify-stats-[0-9]{8}T[0-9]{6}Z\.db$ ]]; then
+      rm -- "$path"
+    fi
+  done
 echo "SQLite 备份完成：$DEPLOY_DIR/backups/$backup_name"

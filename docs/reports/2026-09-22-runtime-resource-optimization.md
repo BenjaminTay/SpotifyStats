@@ -4,7 +4,7 @@
 >
 > 最终收口：2026-09-27
 >
-> 实现状态：`IMPLEMENTED`；本地验证状态：`PASS`；仓库状态：随本报告提交交付（验收时为未提交工作树）；远端状态：`UNPUSHED`；部署状态：`NOT_DEPLOYED`
+> 实现状态：`IMPLEMENTED`；本地验证状态：`PASS`；仓库状态：`COMMITTED a0df33a4`（实现提交；当前报告另含本地集成记录）；远端状态：`UNPUSHED`；部署状态：`NOT_DEPLOYED`
 >
 > 隔离分支：`codex/runtime-resource-optimization`；基线 HEAD：`a2467aece19dec10ea5964e1ee49dc2935cda7e8`
 
@@ -140,4 +140,13 @@ physical footprint 作为并列诊断：后端从 507 降至 497 MiB，preview �
 - 已实现并验证：R0 正常 lifespan 测量与 fail-closed 竞争检查、R1 日常入口、R2 minimal 预热、R3 定向对象生命周期、R4 重型分类、R5 真实 hidden soak、R6 导入等价与默认完整 fullstack。
 - 资源门槛：最终 F 三样本、空闲 CPU、M4/D3 ≤1.5 GiB、长期 RSS 增长与隐藏页零请求均 PASS。
 - 诊断残余：长期浏览器 physical footprint 第 2→3 轮 +71 MiB / +10.7%，略高于同公式阈值 66.2 MiB；不阻断冻结 RSS 门槛，但保留后续版本复测。
-- 验收完成后已获本地提交与合并授权；集成结果另行记录。未执行 push、部署或生产验收；AI Agent V6 与真实模型调用不在本轮范围。
+- 验收完成后已获本地提交与合并授权；实现与集成见下节。未执行 push、部署或生产验收；AI Agent V6 与真实模型调用不在本轮范围。
+
+## 9. 本地提交与集成收口
+
+- 实现提交：`a0df33a4`，包含已验收实现、启动说明、测量脚本、回归测试及归档后的测量合同。
+- 集成基线：当前 main `3e608f22`，保留 Spotify Track 多艺人证据、自动署名及每周备份策略。数据库代码自动合并，CHANGELOG 与文档索引冲突保留双方内容。
+- 实际提交钩子发现三个测量脚本的嵌套 JSON 类型标注不准确；修正为动态 JSON 字段类型并修正进程退出诊断格式。未改变测量算法，36 项启动/测量回归通过，Ruff、format、mypy、detect-secrets 均通过。
+- 合并结果 unit/contract：2,492 passed、2 skipped、712 deselected，219.29 秒；使用默认 seed 与独立测试临时目录，未运行真实库迁移。202 份含 archive 文档审计与 diff 检查通过，AGENTS/CLAUDE 保持一致。
+- 原默认完整 fullstack 和资源专项是前述实现验收证据；本节新增的是合并结果的 unit/contract 集成验证，不将其称为合并后重新运行完整全栈或生产验收。
+- 已完成规划归档至 [R0–R6 测量合同](../archive/06-productization-closeout/2026-09-22-runtime-resource-optimization-plan.md)。主检出的 AI V6 未提交规划与索引保持独立；未推送或部署。

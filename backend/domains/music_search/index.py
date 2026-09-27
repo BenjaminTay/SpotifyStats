@@ -37,7 +37,7 @@ from backend.domains.music_search.normalization import (
 from backend.domains.music_search.revisions import get_music_search_revision_state
 from backend.domains.playback.album_projects import get_album_project_revision
 
-INDEX_SCHEMA_VERSION = "music_search_candidate_index_v4_l1"
+INDEX_SCHEMA_VERSION = "music_search_candidate_index_v5_effective_credits"
 
 
 @dataclass(frozen=True)
@@ -475,6 +475,20 @@ def _active_music_entity_ids(
                    FROM track_artists ta
                    JOIN plays p ON p.track_id=ta.track_id"""
             ).fetchall()
+        )
+    # The raw import closure misses Spotify-only and manually added credits.
+    # Candidate artists must cover the same effective fan-out as weekly charts,
+    # while still excluding artists with no active playback source.
+    played_source_ids = {
+        int(row[0])
+        for row in conn.execute(
+            "SELECT DISTINCT track_id FROM plays WHERE track_id IS NOT NULL"
+        ).fetchall()
+    }
+    if played_source_ids:
+        artist_ids.update(
+            int(credit["artist_id"])
+            for credit in get_effective_track_credits(conn, played_source_ids)
         )
     return track_ids, album_ids, artist_ids
 
