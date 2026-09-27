@@ -59,12 +59,14 @@ def test_user_approved_identity_groups_have_audit_external_ids_search_and_counts
             assert expected_plays > 0
             assert not frame[frame["artist_id"] == alias_id].shape[0]
             for artist_id in (canonical_id, alias_id):
-                link = conn.execute(
+                links = conn.execute(
                     """SELECT external_id, verified FROM artist_identity_external_ids
-                       WHERE artist_id=? AND provider='spotify'""",
+                       WHERE artist_id=? AND provider='spotify'
+                       ORDER BY external_id""",
                     (artist_id,),
-                ).fetchone()
-                assert tuple(link) == (spotify_id, 1)
+                ).fetchall()
+                assert spotify_id in {str(link["external_id"]) for link in links}
+                assert links and all(int(link["verified"]) == 1 for link in links)
                 raw_name = conn.execute(
                     "SELECT artist_name FROM artists WHERE artist_id=?", (artist_id,)
                 ).fetchone()[0]

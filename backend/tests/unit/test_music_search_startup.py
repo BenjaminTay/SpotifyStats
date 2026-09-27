@@ -30,6 +30,20 @@ def test_music_search_startup_rebuild_flag_is_independent_from_cache_warmup(
     assert _music_search_startup_rebuild_enabled() is True
 
 
+def test_startup_warmup_mode_preserves_full_rollback_and_supports_minimal(monkeypatch) -> None:
+    from backend.core.config import startup_warmup_mode
+
+    monkeypatch.delenv("SPOTIFY_STATS_WARMUP_MODE", raising=False)
+    monkeypatch.setenv("SPOTIFY_STATS_WARMUP", "1")
+    assert startup_warmup_mode() == "full"
+
+    monkeypatch.setenv("SPOTIFY_STATS_WARMUP_MODE", "minimal")
+    assert startup_warmup_mode() == "minimal"
+
+    monkeypatch.setenv("SPOTIFY_STATS_WARMUP", "0")
+    assert startup_warmup_mode() == "off"
+
+
 @pytest.mark.parametrize(
     ("candidate_index_rebuild_required", "expected_rebuild_documents"),
     [(False, False), (True, True)],

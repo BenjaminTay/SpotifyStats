@@ -125,6 +125,10 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收
 
+## 已完成资源优化的测量合同
+
+- [`archive/06-productization-closeout/2026-09-22-runtime-resource-optimization-plan.md`](archive/06-productization-closeout/2026-09-22-runtime-resource-optimization-plan.md)：启动、空闲、必要维护与长期浏览器资源优化；含 2026-09-27 最终代码 D/F 页面与资源独立复核
+
 ## 已确认但仍有实现参考价值的设计
 
 - [`designs/2026-08-31-ai-agent-quality-v4.md`](designs/2026-08-31-ai-agent-quality-v4.md)：Answer Contract、Tool Evidence V2、Constraint Patch V2、Worker lease/SSE 恢复与年度报告硬门禁
@@ -137,6 +141,8 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 - [`designs/mobile-web-m0-prototype/README.md`](designs/mobile-web-m0-prototype/README.md)：移动端 M0 视觉原型
 
 ## 交付与验证报告
+
+- [`reports/2026-09-22-runtime-resource-optimization.md`](reports/2026-09-22-runtime-resource-optimization.md)：日常轻量入口、构建清单、最终代码 D/F、M/D 峰值、真实 hidden 60 分钟 soak 与默认完整 fullstack 证据
 
 - [`reports/2026-09-19-billboard-sidecar-safety-closeout.md`](reports/2026-09-19-billboard-sidecar-safety-closeout.md)：阶段 0.5 事故安全收口，重新生成正式 Billboard 快照与测试隔离
 

@@ -16,7 +16,7 @@ from scripts import api_boundary_probe, api_smoke_probe
         api_boundary_probe._configure_database_path,
     ],
 )
-def test_probe_database_copy_disables_background_work_and_isolates_yearly_cache(
+def test_probe_database_copy_disables_background_work_and_isolates_derived_caches(
     configure,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -26,7 +26,16 @@ def test_probe_database_copy_disables_background_work_and_isolates_yearly_cache(
     monkeypatch.setenv("SPOTIFY_STATS_WARMUP", "1")
     monkeypatch.setenv("SPOTIFY_STATS_SEARCH_STARTUP_REBUILD", "1")
     monkeypatch.setenv("SPOTIFY_STATS_L3_STARTUP_RECONCILE", "1")
-    monkeypatch.delenv("SPOTIFY_STATS_YEARLY_CACHE_PATH", raising=False)
+    cache_paths = {
+        "SPOTIFY_STATS_BILLBOARD_CACHE_PATH": "billboard_cache.db",
+        "SPOTIFY_STATS_ANALYSIS_CACHE_PATH": "analysis_cache.db",
+        "SPOTIFY_STATS_YEARLY_CACHE_PATH": "yearly_review_cache.db",
+        "SPOTIFY_STATS_COMMUNITY_CACHE_PATH": "community_cache.db",
+        "SPOTIFY_STATS_ARCHIVE_CACHE_PATH": "account_archive_cache.db",
+        "SPOTIFY_STATS_GOVERNANCE_CACHE_PATH": "governance_cache.db",
+    }
+    for key in cache_paths:
+        monkeypatch.delenv(key, raising=False)
     original_db_path = db_mod.DB_PATH
 
     try:
@@ -36,9 +45,8 @@ def test_probe_database_copy_disables_background_work_and_isolates_yearly_cache(
         assert os.environ["SPOTIFY_STATS_WARMUP"] == "0"
         assert os.environ["SPOTIFY_STATS_SEARCH_STARTUP_REBUILD"] == "0"
         assert os.environ["SPOTIFY_STATS_L3_STARTUP_RECONCILE"] == "0"
-        assert os.environ["SPOTIFY_STATS_YEARLY_CACHE_PATH"] == str(
-            tmp_path / "yearly_review_cache.db"
-        )
+        for key, filename in cache_paths.items():
+            assert os.environ[key] == str(tmp_path / filename)
     finally:
         db_mod.DB_PATH = original_db_path
 

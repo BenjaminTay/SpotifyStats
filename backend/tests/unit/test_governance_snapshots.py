@@ -43,9 +43,11 @@ def governance(tmp_path, monkeypatch):
         )
     conn.commit()
     db._load_plays_cached.cache_clear()
+    db._load_plays_for_artists_cached.cache_clear()
     yield conn
     conn.close()
     db._load_plays_cached.cache_clear()
+    db._load_plays_for_artists_cached.cache_clear()
 
 
 @pytest.mark.parametrize(
@@ -115,6 +117,39 @@ def test_joint_build_and_four_concurrent_exact(governance, monkeypatch):
     assert service.read(governance, "genre_coverage")["snapshot"]["status"] == "ready"
     assert service.read(governance, "language_coverage")["unknown_pct"] == 100
     assert db._load_plays_cached.cache_info().currsize == 0
+
+
+@pytest.mark.parametrize(
+    ("loader", "cached"),
+    [
+        (db.load_plays, db._load_plays_cached),
+        (db.load_plays_for_artists, db._load_plays_for_artists_cached),
+    ],
+)
+def test_playback_frame_lru_is_bounded_beyond_legal_filter_capacity(governance, loader, cached):
+    cached.cache_clear()
+    for min_ms in range(17):
+        loader(
+            governance,
+            min_ms=min_ms,
+            music_only=True,
+            merge_enabled=False,
+            dynamic_threshold=False,
+        )
+
+    after_fill = cached.cache_info()
+    assert after_fill.maxsize == 16
+    assert after_fill.currsize == 16
+    assert after_fill.misses == 17
+
+    loader(
+        governance,
+        min_ms=0,
+        music_only=True,
+        merge_enabled=False,
+        dynamic_threshold=False,
+    )
+    assert cached.cache_info().misses == 18
 
 
 def test_precise_revision_and_rollback(governance):

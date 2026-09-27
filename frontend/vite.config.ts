@@ -9,6 +9,10 @@ export default defineConfig(() => {
   const plugins: PluginOption[] = [react(), tailwindcss()]
   const backendUrl = process.env.VITE_BACKEND_URL ?? 'http://localhost:8000'
   const dependencyRoot = realpathSync(path.resolve(__dirname, 'node_modules'))
+  const backendProxy = {
+    '/api': backendUrl,
+    '/covers': backendUrl,
+  }
 
   if (process.env.ANALYZE === 'true') {
     plugins.push(
@@ -36,10 +40,12 @@ export default defineConfig(() => {
         // its filesystem allow-list.
         allow: [searchForWorkspaceRoot(process.cwd()), dependencyRoot],
       },
-      proxy: {
-        '/api': backendUrl,
-        '/covers': backendUrl,
-      },
+      proxy: backendProxy,
+    },
+    preview: {
+      host: '127.0.0.1',
+      strictPort: true,
+      proxy: backendProxy,
     },
   }
 })

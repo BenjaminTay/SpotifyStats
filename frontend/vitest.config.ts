@@ -14,5 +14,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     css: false,
+    // Keep the full suite deterministic on shared developer machines. The
+    // default CPU-sized pool can starve jsdom timers when other verification
+    // jobs are active, producing unrelated 5 s interaction timeouts.
+    maxWorkers: 2,
   },
 })

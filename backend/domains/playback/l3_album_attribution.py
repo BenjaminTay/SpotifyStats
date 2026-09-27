@@ -321,6 +321,73 @@ def get_l3_album_attribution_state(conn: sqlite3.Connection) -> dict[str, Any]:
     return dict(row)
 
 
+def l3_album_attribution_dependencies_ready(conn: sqlite3.Connection) -> bool:
+    """Validate the durable publication fence without rebuilding its plan.
+
+    Publication is atomic: ``status=ready`` is committed with the rows and the
+    exact upstream revisions. Startup therefore only needs bounded metadata,
+    count, and revision checks. A missing/mismatched fence still falls back to
+    the complete reconciliation planner.
+    """
+
+    required = {
+        "l3_song_album_attributions",
+        "l3_song_album_attribution_issues",
+        "l3_song_album_attribution_exclusions",
+        "l3_album_attribution_revision_state",
+    }
+    if not all(_table_exists(conn, table) for table in required):
+        return False
+    state = get_l3_album_attribution_state(conn)
+    track_revision = _track_identity_revision(conn)
+    album_revision = _album_project_revision(conn)
+    if not (
+        state["status"] == "ready"
+        and state["policy_version"] == L3_ALBUM_ATTRIBUTION_POLICY_VERSION
+        and int(state["track_identity_revision"]) == track_revision
+        and int(state["album_project_revision"]) == album_revision
+        and bool(state["mapping_digest"])
+    ):
+        return False
+    if conn.execute("SELECT COUNT(*) FROM l3_song_album_attributions").fetchone()[0] != int(
+        state["attributed_count"]
+    ):
+        return False
+    issue_counts = dict(
+        conn.execute(
+            "SELECT issue_kind, COUNT(*) FROM l3_song_album_attribution_issues GROUP BY issue_kind"
+        ).fetchall()
+    )
+    if int(issue_counts.get("conflict", 0)) != int(state["conflict_count"]):
+        return False
+    if int(issue_counts.get("uncovered", 0)) != int(state["uncovered_count"]):
+        return False
+    if conn.execute("SELECT COUNT(*) FROM l3_song_album_attribution_exclusions").fetchone()[
+        0
+    ] != int(state["excluded_count"]):
+        return False
+    if int(state["attributed_count"]) + int(state["conflict_count"]) + int(
+        state["uncovered_count"]
+    ) + int(state["excluded_count"]) != int(state["scanned_count"]):
+        return False
+    for table in (
+        "l3_song_album_attributions",
+        "l3_song_album_attribution_issues",
+        "l3_song_album_attribution_exclusions",
+    ):
+        mismatch = conn.execute(
+            f'''SELECT 1 FROM "{table}"
+                 WHERE policy_version<>?
+                    OR track_identity_revision<>?
+                    OR album_project_revision<>?
+                 LIMIT 1''',
+            (L3_ALBUM_ATTRIBUTION_POLICY_VERSION, track_revision, album_revision),
+        ).fetchone()
+        if mismatch is not None:
+            return False
+    return _current_projection_digest(conn) == state["mapping_digest"]
+
+
 def _track_identity_revision(conn: sqlite3.Connection) -> int:
     try:
         row = conn.execute(

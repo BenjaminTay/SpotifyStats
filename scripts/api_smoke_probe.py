@@ -623,10 +623,11 @@ def _configure_database_path(value: str | None) -> None:
     resolved = Path(value).expanduser().resolve()
     if not resolved.is_file():
         raise FileNotFoundError(f"API smoke database does not exist: {resolved}")
-    os.environ.setdefault(
-        "SPOTIFY_STATS_YEARLY_CACHE_PATH",
-        str(resolved.with_name("yearly_review_cache.db")),
-    )
+    from scripts.runtime_measurement import isolated_environment
+
+    for key, path in isolated_environment(resolved.parent).items():
+        if key != "SPOTIFY_STATS_DB_PATH":
+            os.environ.setdefault(key, path)
     from backend.core import db as db_mod
 
     db_mod.DB_PATH = str(resolved)

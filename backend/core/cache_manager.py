@@ -50,6 +50,18 @@ def invalidate_many(*namespaces: str) -> None:
         invalidate(namespace)
 
 
+def invalidate_keys(namespace: str, keys: set[str]) -> None:
+    """Release selected cache entries without disturbing sibling hot data."""
+    with _registry_lock:
+        for key in keys:
+            fn = _lru_registry.get(namespace, {}).get(key)
+            if fn is not None and hasattr(fn, "cache_clear"):
+                fn.cache_clear()
+            wrapper = _ttl_registry.get(namespace, {}).get(key)
+            if wrapper is not None and hasattr(wrapper, "cache_clear"):
+                wrapper.cache_clear()
+
+
 def invalidate_playback_caches() -> None:
     """Invalidate only runtime domains whose payloads read playback/dimensions."""
     invalidate_many(

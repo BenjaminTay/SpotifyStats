@@ -1,5 +1,21 @@
 # 变更日志
 
+## 2026-09-27：资源优化独立复核缺口收口
+
+- 日常入口改用托管构建输入清单，前端源码、public、依赖和配置的新增、修改、删除都会判定构建过期；普通 `npm run build` 没有清单时要求一次 `scripts/start_daily.py --build`，不再用当前文件 mtime 推断历史输入集合。
+- 补齐最终代码 E 状态 D/F 各三次独立、交错、5 分钟空闲样本；启动首次可用、必要维护、最终 exact 与 exact 后 fresh-SPA first/revisit 分开计时。严格目标 DOM 复核下，F 的 first/revisit 中位数 642.6/51.9ms 均通过相对 D 门槛；启动 CPU 6.174 秒、RSS 594.5MiB、footprint 435MiB、空闲 CPU 0.323% 均通过资源门槛。
+- 完整前端测试固定最多两个 Vitest worker，消除共享开发机 CPU 争用造成的跨模块 jsdom 伪超时；Billboard 两个 6.7–7.7MiB 完整兼容响应跳过已发布快照的重复深度校验，规范化 JSON 哈希不变，最终 fullstack 的 22 轮热 P95 分别为 253.566ms 与 270.884ms，继续遵守 500ms 门槛。
+- 六次正式样本均使用各自 Online Backup 与 inode/lineage publication，operation exit、采样完整性、最终 exact、同一 SPA 和首尾竞争检查全部通过；被其他工作树 fullstack/Playwright 污染或锁阻断的尝试明确排除。最终代码默认完整 fullstack `20260927T050220.824591Z-93e325671990` 八阶段全部 PASS：seed 2,998 passed / 2 skipped、integration 186 passed / 1 skipped、前端 670 passed / 4 skipped、API 153/153 与 boundary 113/113、Chromium/Firefox/WebKit 全部通过。详见[实施报告](reports/2026-09-22-runtime-resource-optimization.md)。未 commit、push 或部署。
+
+## 2026-09-24：启动、运行资源与长期内存优化（本地 Pass）
+
+- 新增无 reload、复用既有正式前端构建的本机日常入口；端口冲突 fail-closed，只绑定 loopback，只关闭自身进程组。preview 与 dev 共用显式 API/封面代理和 SPA 深链。
+- 启动预热分为 `full / minimal / off`：日常入口使用 minimal，只恢复首屏持久结果；预热进入 JobQueue，与 Billboard、Analysis、Community、Archive、Governance 和艺人 rank context 共用 CPU-heavy gate。L3 依赖完整且行 revision 一致时可精确跳过 reconcile。
+- 正常 lifespan 测量补齐 Online Backup/path contract、E/M/D 状态、进程创建前采样、CPU 秒、macOS footprint、事件时间线、性能锁和启动前 fail-closed 竞争检测。最终 F 三样本中位数为 health 3.546 秒、exact 页面 7.836 秒、4.337 CPU 秒、240.5 MiB 后端 RSS、0.421% 稳定空闲应用 CPU。
+- 实际 rank context job type 修正为 `artist_rank_context_rebuild`，避免与 Billboard/Analysis 重叠；Analysis 使用窄 duration frame，rank context 最后消费者完成后只释放两类宽播放帧。M4/D3 连续 RSS 为 1,480.8 / 1,453.8 MiB，均通过 1.5 GiB 门槛；逐任务全清缓存实验更差并已撤回。
+- headed Chrome 完成 3×20 分钟真实 visible→hidden→visible soak：hidden 窗口零 API 请求，JS heap/DOM/listener/resource entries 有界；后端、preview、浏览器第 2→3 轮稳定 RSS 分别只增长 2.2 / 2.6 / 48.3 MiB，全部通过。浏览器 physical footprint +71 MiB / +10.7% 略高于并列诊断阈值，保留后续跟踪。
+- R6 同周/跨周/历史修正/完整 replace 导入矩阵 14 项语义投影等价；API probe 显式数据库路径同时隔离六套 sidecar。默认完整 fullstack 运行 `20260924T131913.048597Z-2041631da26f` 八个必需阶段全部 PASS：seed 2,991 passed / 2 skipped、真实 integration 186 passed / 1 skipped、前端 670 passed / 4 skipped、API 153/153 与 boundary 113/113、Chromium/Firefox/WebKit 全部通过。完整边界见[实施报告](reports/2026-09-22-runtime-resource-optimization.md)。未 commit、push 或部署。
+
 ## 2026-09-22：无指纹旧库完整替换基线初始化
 
 - 修复升级前数据库已有播放事实、但逐行指纹、generation 和活动来源基线全部缺失时，已确认 full replace 被误判为来源漂移的问题；仅当主库/控制库/恢复状态共同证明是完整 legacy 空基线时，才允许 `baseline_required` 的已确认 replace/auto 初始化。

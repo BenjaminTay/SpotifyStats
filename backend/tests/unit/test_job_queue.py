@@ -640,3 +640,48 @@ def test_cpu_heavy_jobs_are_serialized_across_workers(temp_db):
     q.stop()
 
     assert max_active == 1
+
+
+def test_search_publication_requeues_import_health_governance(temp_db, monkeypatch):
+    from backend.services import governance_snapshot_service
+
+    scheduled = []
+    monkeypatch.setattr(
+        governance_snapshot_service,
+        "enqueue_defaults",
+        lambda reason, queue: scheduled.append((reason, queue)),
+    )
+    queue = JobQueue(max_workers=0)
+    queue._db_path = temp_db
+    queue.register("music_search_snapshot_rebuild", lambda _job: None)
+    job = Job.create("music_search_snapshot_rebuild", "music_search", "current")
+    queue._insert_db_job(job)
+
+    assert queue._process_job(job) is True
+    assert scheduled == [("music_search_snapshot_rebuild", queue)]
+
+
+def test_rank_context_rebuild_shares_cpu_heavy_gate(temp_db):
+    active = 0
+    max_active = 0
+    guard = threading.Lock()
+
+    def handler(_job):
+        nonlocal active, max_active
+        with guard:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.05)
+        with guard:
+            active -= 1
+
+    q = JobQueue(max_workers=3)
+    q.register("analysis_snapshot_rebuild", handler)
+    q.register("artist_rank_context_rebuild", handler)
+    q.start(temp_db)
+    q.enqueue(Job.create("analysis_snapshot_rebuild", "analysis", "one"))
+    q.enqueue(Job.create("artist_rank_context_rebuild", "rank", "two"))
+    q.wait_until_idle()
+    q.stop()
+
+    assert max_active == 1

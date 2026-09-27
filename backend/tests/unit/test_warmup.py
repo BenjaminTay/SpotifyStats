@@ -87,3 +87,20 @@ class TestWarmup:
         assert calls[4][1]["bb_top_n"] == 30
         assert calls[4][1]["dynamic_threshold"] is True
         assert calls[4][1]["merge_level"] == 2
+
+    def test_minimal_warmup_only_restores_persisted_home(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "backend.services.home_service.prewarm_default_home_overview",
+            lambda: calls.append("home"),
+        )
+        monkeypatch.setattr(
+            "backend.core.warmup.get_db",
+            lambda: pytest.fail("minimal warmup must not load playback facts"),
+        )
+
+        from backend.core import warmup
+
+        warmup.warm_common_caches(mode="minimal")
+
+        assert calls == ["home"]

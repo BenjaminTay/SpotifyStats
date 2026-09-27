@@ -508,7 +508,11 @@ def _assess(
 ):
     from backend.services.import_plan_service import assess_streaming_import
 
+    needs_initial_schema = not path.exists()
     _set_database(path)
+    if needs_initial_schema:
+        db_mod.init_db()
+        db_mod.ensure_schema()
     return assess_streaming_import(
         data_dir,
         account_dir,

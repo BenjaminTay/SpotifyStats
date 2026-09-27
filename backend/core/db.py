@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.core.cache import singleflight
+from backend.core.config import SPOTIFY_STATS_DB_PATH
 from backend.domains.playback.logical_timeline import reconstruct_logical_plays
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ def _downcast_ints(df):
 
 
 # backend/core/ → os.path.dirname x3 = project root
-DB_PATH = os.path.join(
+DB_PATH = SPOTIFY_STATS_DB_PATH or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "spotify_stats.db"
 )
 

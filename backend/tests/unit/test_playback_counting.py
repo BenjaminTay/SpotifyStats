@@ -690,6 +690,158 @@ class TestMergeSessionBoundaries:
         assert summary["total_hours"] == pytest.approx(1.0)
         assert summary["active_days"] == 1
 
+    def test_projected_duration_frame_preserves_analysis_facts(self):
+        from backend.core.db import merge_consecutive_plays
+        from backend.domains.playback.logical_timeline import LISTENING_INTERVALS_COLUMN
+        from backend.services.analysis_stats_service import build_duration_frame
+
+        raw = pd.DataFrame(
+            [
+                {
+                    "play_id": 80,
+                    "ts": "2026-01-01T16:02:00Z",
+                    "track_id": 1,
+                    "track_name": "Boundary Song",
+                    "artist_name": "Boundary Artist",
+                    "album_name": "Boundary Album",
+                    "platform": "test",
+                    "reason_start": "trackdone",
+                    "reason_end": "trackdone",
+                    "shuffle": False,
+                    "ms_played": 240_000,
+                    "duration_ms": 240_000,
+                },
+                {
+                    "play_id": 81,
+                    "ts": "2026-01-02T05:30:00Z",
+                    "track_id": 2,
+                    "track_name": "Second Song",
+                    "artist_name": "Second Artist",
+                    "album_name": "Second Album",
+                    "platform": "test",
+                    "reason_start": "trackdone",
+                    "reason_end": "trackdone",
+                    "shuffle": False,
+                    "ms_played": 3_900_000,
+                    "duration_ms": 3_900_000,
+                },
+            ]
+        )
+        events = merge_consecutive_plays(raw, min_ms=30_000, max_gap_minutes=5)
+        resolved = {"start_date": "2026-01-01", "end_date": "2026-01-02"}
+        full = build_duration_frame(events, resolved)
+        projected = build_duration_frame(
+            events,
+            resolved,
+            source_columns=(
+                LISTENING_INTERVALS_COLUMN,
+                "track_id",
+                "album_name",
+                "artist_name",
+            ),
+        )
+
+        facts = [
+            "ms_played",
+            "ts_date",
+            "ts_year",
+            "ts_month",
+            "ts_week",
+            "ts_dow",
+            "ts_hour",
+            "track_id",
+            "album_name",
+            "artist_name",
+        ]
+        pd.testing.assert_frame_equal(projected[facts], full[facts])
+        assert set(projected) == {
+            LISTENING_INTERVALS_COLUMN,
+            *facts,
+            "slice_start_at",
+            "slice_end_at",
+            "ts_date_dt",
+        }
+        assert (
+            projected.memory_usage(index=True, deep=True).sum()
+            < full.memory_usage(index=True, deep=True).sum()
+        )
+
+    def test_analysis_stats_builds_one_projected_duration_frame(self, monkeypatch):
+        from backend.core.db import merge_consecutive_plays
+        from backend.domains.playback.logical_timeline import (
+            LISTENING_INTERVALS_COLUMN,
+        )
+        from backend.services import analysis_stats_service as service
+
+        raw = pd.DataFrame(
+            [
+                {
+                    "play_id": 90,
+                    "ts": "2026-01-01T01:00:00Z",
+                    "track_id": 1,
+                    "track_name": "Song",
+                    "artist_name": "Artist",
+                    "album_name": "Album",
+                    "platform": "test",
+                    "reason_start": "trackdone",
+                    "reason_end": "trackdone",
+                    "shuffle": False,
+                    "ms_played": 60_000,
+                    "duration_ms": 60_000,
+                }
+            ]
+        )
+        events = merge_consecutive_plays(raw, min_ms=30_000, max_gap_minutes=5)
+        calls = []
+        original = service.build_duration_frame
+
+        def fake_load(*_args, **kwargs):
+            calls.append(
+                (
+                    "load",
+                    (
+                        kwargs.get("attach_duration_slices"),
+                        kwargs.get("reuse_unfiltered_frame"),
+                    ),
+                )
+            )
+            return (
+                events,
+                events,
+                {
+                    "period": "lifetime",
+                    "label": "全部时间",
+                    "start_date": "2026-01-01",
+                    "end_date": "2026-01-01",
+                },
+            )
+
+        def measured_duration(frame, resolved, **kwargs):
+            calls.append(("duration", kwargs.get("source_columns")))
+            return original(frame, resolved, **kwargs)
+
+        monkeypatch.setattr(service, "load_period_plays", fake_load)
+        monkeypatch.setattr(service, "build_duration_frame", measured_duration)
+        monkeypatch.setattr(service, "build_consumer_taste_profile", lambda *_args: {})
+        monkeypatch.setattr(service, "recent_plays", lambda *_args: [])
+
+        result = service._build_analysis_stats(object(), 30_000, True, True)
+
+        assert result["summary"]["total_hours"] == pytest.approx(60_000 / 3_600_000, abs=0.1)
+        assert calls == [
+            ("load", (False, True)),
+            (
+                "duration",
+                (
+                    LISTENING_INTERVALS_COLUMN,
+                    "track_id",
+                    "album_name",
+                    "artist_name",
+                ),
+            ),
+        ]
+        assert LISTENING_INTERVALS_COLUMN in events
+
     def test_relative_periods_anchor_to_latest_data_date(self):
         from backend.services.analysis_stats_service import resolve_period
 
@@ -741,6 +893,31 @@ class TestEntityStatsPerformanceBoundaries:
         assert current_df["track_id"].tolist() == [1, 2]
         assert "listening_duration_slices" not in current_df.attrs
         assert resolved["start_date"] == "2026-06-27"
+
+    def test_snapshot_stats_can_reuse_unfiltered_lifetime_frame(self):
+        from backend.services import analysis_stats_service as service
+
+        frame = pd.DataFrame(
+            {
+                "ts_date": ["2026-07-20", "2026-07-24"],
+                "track_id": [1, 2],
+            }
+        )
+
+        all_df, current_df, resolved = service.load_period_plays(
+            object(),
+            30_000,
+            True,
+            True,
+            "lifetime",
+            _loader=lambda *_args, **_kwargs: frame,
+            attach_duration_slices=False,
+            reuse_unfiltered_frame=True,
+        )
+
+        assert all_df is frame
+        assert current_df is frame
+        assert resolved["start_date"] == "2026-07-20"
 
     def test_play_ranks_reuse_scope_and_pass_scoped_duration_rows(self, monkeypatch):
         from backend.services import entity_stats_service as service

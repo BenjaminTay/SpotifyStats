@@ -225,6 +225,53 @@ class TestCacheManager:
         invalidate("test_inv")
         assert _sample_calc2.cache_info().currsize == 0
 
+    def test_invalidate_keys_releases_only_named_heavy_entries(self):
+        from functools import lru_cache
+
+        from backend.core.cache_manager import invalidate_keys, register_lru
+
+        @lru_cache(maxsize=4)
+        def playback_frame(value):
+            return value
+
+        @lru_cache(maxsize=4)
+        def presentation_map(value):
+            return value
+
+        register_lru("bounded_db", "plays_for_artists", playback_frame)
+        register_lru("bounded_db", "artist_names", presentation_map)
+        playback_frame("large")
+        presentation_map("small")
+
+        invalidate_keys("bounded_db", {"plays_for_artists"})
+
+        assert playback_frame.cache_info().currsize == 0
+        assert presentation_map.cache_info().currsize == 1
+
+    def test_rank_job_releases_playback_frames_after_last_consumer(self, monkeypatch):
+        from backend.core import cache_manager
+        from backend.services import entity_rank_context_service as service
+
+        class Connection:
+            closed = False
+
+            def close(self):
+                self.closed = True
+
+        connection = Connection()
+        released = []
+        monkeypatch.setattr(service, "get_db", lambda readonly=True: connection)
+        monkeypatch.setattr(service, "ensure", lambda _conn: {"published": True})
+        monkeypatch.setattr(
+            cache_manager,
+            "invalidate_keys",
+            lambda namespace, keys: released.append((namespace, keys)),
+        )
+
+        assert service.handle_rebuild(object()) == {"published": True}
+        assert connection.closed is True
+        assert released == [("db", {"plays", "plays_for_artists"})]
+
     def test_ttl_namespace_and_stats(self):
         from backend.core.cache import ttl_cached
         from backend.core.cache_manager import get_stats, register_ttl

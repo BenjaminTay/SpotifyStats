@@ -78,3 +78,30 @@ export function findChrome(explicitPath) {
   }
   return match
 }
+
+export function findHeadedChrome(explicitPath) {
+  const candidates = [
+    explicitPath,
+    process.env.CHROME_PATH,
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    ...listPlaywrightChromiumCandidates(),
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+  ].filter(Boolean)
+
+  const match = candidates.find((candidate) => existsSync(candidate))
+  if (!match) {
+    throw new Error(
+      'Headed Chrome/Chromium executable not found. Pass --chrome or install Playwright Chromium.',
+    )
+  }
+  if (match.includes('chrome-headless-shell')) {
+    throw new Error('frontend runtime soak requires headed Chrome; headless shell is not valid')
+  }
+  return match
+}

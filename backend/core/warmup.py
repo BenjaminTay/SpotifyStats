@@ -68,7 +68,7 @@ def _configured_warmup_filters(conn) -> tuple[dict, dict]:
     return play, billboard
 
 
-def warm_common_caches() -> None:
+def warm_common_caches(*, mode: str = "full") -> None:
     """Prime expensive default caches used by first-page navigation."""
     # Restore the persisted last-known-good home snapshot before starting any
     # CPU-heavy analysis work, so the first navigation is never queued behind
@@ -76,6 +76,11 @@ def warm_common_caches() -> None:
     from backend.services.home_service import prewarm_default_home_overview
 
     prewarm_default_home_overview()
+
+    if mode == "minimal":
+        return
+    if mode != "full":
+        raise ValueError(f"Unsupported warmup mode: {mode}")
 
     conn = get_db()
     try:
@@ -144,12 +149,12 @@ def prewarm_import_critical_caches() -> None:
     prewarm_default_home_overview()
 
 
-def start_warmup_thread() -> threading.Thread:
+def start_warmup_thread(*, mode: str = "full") -> threading.Thread:
     """Start cache warmup in the background and return the thread."""
 
     def run() -> None:
         try:
-            warm_common_caches()
+            warm_common_caches(mode=mode)
         except Exception:
             logger.exception("Backend cache warmup failed")
 

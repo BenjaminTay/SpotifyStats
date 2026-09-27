@@ -3,25 +3,25 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import zlib
+from os import PathLike
 from pathlib import Path
 from typing import Any
 
 from backend.core.access_surface import public_readonly_db_guard_active
+from backend.core.config import SPOTIFY_STATS_YEARLY_CACHE_PATH
 from backend.core.db import DB_PATH, enforce_sqlite_foreign_keys
 
 CACHE_FORMAT_VERSION = 1
 DEFAULT_MAX_ENTRIES = 32
 MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
-YEARLY_REVIEW_CACHE_PATH = os.environ.get(
-    "SPOTIFY_STATS_YEARLY_CACHE_PATH",
-    str(Path(DB_PATH).with_name("yearly_review_cache.db")),
+YEARLY_REVIEW_CACHE_PATH = SPOTIFY_STATS_YEARLY_CACHE_PATH or str(
+    Path(DB_PATH).with_name("yearly_review_cache.db")
 )
 
 
-def _connect(cache_path: str | os.PathLike[str] | None = None) -> sqlite3.Connection:
+def _connect(cache_path: str | PathLike[str] | None = None) -> sqlite3.Connection:
     path = Path(cache_path or YEARLY_REVIEW_CACHE_PATH)
     if public_readonly_db_guard_active():
         if not path.is_file():
@@ -100,7 +100,7 @@ def _decode_artifact(payload: bytes, expected_bytes: int) -> dict[str, Any]:
 def load_persisted_artifact(
     cache_key: str,
     *,
-    cache_path: str | os.PathLike[str] | None = None,
+    cache_path: str | PathLike[str] | None = None,
 ) -> dict[str, Any] | None:
     """Return an exact persistent-cache hit, deleting corrupt rows safely."""
     try:
@@ -132,7 +132,7 @@ def load_persisted_artifact(
 def has_persisted_artifact(
     cache_key: str,
     *,
-    cache_path: str | os.PathLike[str] | None = None,
+    cache_path: str | PathLike[str] | None = None,
 ) -> bool:
     """Check an exact persistent hit without inflating its payload."""
     try:
@@ -194,7 +194,7 @@ def store_persisted_artifact(
     year: int,
     filter_fingerprint: str,
     source_db_revision: str,
-    cache_path: str | os.PathLike[str] | None = None,
+    cache_path: str | PathLike[str] | None = None,
     max_entries: int = DEFAULT_MAX_ENTRIES,
 ) -> None:
     """Atomically persist one artifact and prune the oldest exact-key entries."""
