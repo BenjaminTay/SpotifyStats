@@ -113,7 +113,9 @@ Quick Tunnel 只用于临时测试：URL 在隧道重启后可能变化，官方
 5. 执行 `./deploy.sh <commit-sha>`，再运行 `./verify.sh`。
 6. 最后按需单独配置外部 HTTPS 入口。Tailscale 是可选项；只有明确需要时才运行
    `configure-tailscale.sh` 或 `configure-public-funnel.sh`。
-7. 运行 `./install-backup-timer.sh` 安装每日 SQLite 在线备份，并配置异机备份。
+7. 运行 `./install-backup-timer.sh` 安装每周日 03:20（另有最多 20 分钟随机延迟）的 SQLite 在线备份。服务器 `.env` 中的 `BACKUP_RETENTION_DAYS=28` 只清理普通定时备份；备份完成并通过完整性检查后才清理过期文件。发布前和恢复前备份不会被普通轮转清理。
+
+重要数据导入前，先运行 `SPOTIFY_STATS_BACKUP_NAME="spotify-stats-pre-import-$(date -u +%Y%m%dT%H%M%SZ).db" ./backup.sh` 并确认成功；导入完成后再以 `spotify-stats-post-import-` 前缀运行一次。普通周备份之间的其他写入最多可能损失约一周。修改本文件或 timer 模板后，须重新安装 timer，并用 `systemctl cat spotify-stats-backup.timer` 核对服务器生效规则。
 
 建议预先生成网关密钥：
 
@@ -227,6 +229,12 @@ Online Backup，但不得停服或替换数据库。
 `one-time-search-snapshot-bootstrap.yml` 在 Online Backup 副本建立 Billboard v4 与四套搜索统计；该 workflow 需要显式输入
 `INITIALIZE_SEARCH_SNAPSHOTS`，且不部署应用。完成一次性引导后，
 正常 UI、部署脚本、查询匹配或 Git SHA 变化不得再次冷建四套统计。
+
+若只读容量诊断确认当前 Backend 的驻留缓存导致 `MemAvailable` 低于冷建门槛，可在同一次显式
+Break Glass 调用中启用 `restart_current_backend`。workflow 只重启当前 Backend 容器，要求容器 ID
+与镜像 ID 前后不变并等待其恢复 `healthy`，然后才创建 Online Backup；该选项会造成短暂 API
+中断，但不会更换镜像、修改生产数据库或绕过容量门禁。
+引导报告下载对瞬时 SSH 断连最多重试 5 次；重试只读取隐私安全报告，不会重复修改生产数据。
 
 一次性统计引导默认要求 `MemAvailable >= 2304MiB`，覆盖当前真实库约 1.83GiB 的冷建峰值并留出
 约 20% 余量。正常发布固定使用

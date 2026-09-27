@@ -29,11 +29,17 @@ from backend.core.access_surface import (
     trusted_gateway_required,
     trusted_request_surface,
 )
-from backend.core.config import FRONTEND_ORIGIN, l3_startup_reconcile_enabled
+from backend.core.config import (
+    FRONTEND_ORIGIN,
+    external_cover_fallback_enabled,
+    l3_startup_reconcile_enabled,
+    music_search_startup_rebuild_enabled,
+    running_under_pytest,
+    startup_warmup_mode,
+)
 from backend.core.logging_config import setup_logging
 from backend.core.migrations import run_migrations
 from backend.core.request_context import REQUEST_ID_HEADER, reset_request_id, set_request_id
-from backend.core.warmup import start_warmup_thread
 from backend.models.common import HealthResponse, RuntimeCapabilitiesResponse
 from backend.providers.base import (
     ProviderAuthError,
@@ -51,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 def _music_search_startup_rebuild_enabled() -> bool:
     """Return whether lifespan should enqueue the search catch-up job."""
-    return os.environ.get("SPOTIFY_STATS_SEARCH_STARTUP_REBUILD", "1") != "0"
+    return music_search_startup_rebuild_enabled()
 
 
 @asynccontextmanager
@@ -82,6 +88,7 @@ async def lifespan(_app: FastAPI):
     )
     from backend.domains.playback.l3_album_attribution import (
         apply_l3_album_attribution_plan,
+        l3_album_attribution_dependencies_ready,
         reconcile_l3_album_attribution_dependencies,
     )
     from backend.services.analysis_snapshot_revision import (
@@ -100,22 +107,25 @@ async def lifespan(_app: FastAPI):
     if l3_startup_reconcile_enabled():
         startup_conn = get_startup_db(readonly=False)
         try:
-            attribution_plan = reconcile_l3_album_attribution_dependencies(
-                startup_conn,
-                include_unplayed=False,
-            )
-            if attribution_plan.issues:
-                logger.error(
-                    "L3 album attribution remains unpublished: unresolved_issues=%s",
-                    len(attribution_plan.issues),
-                )
-            elif attribution_plan.changed:
-                apply_l3_album_attribution_plan(
+            if l3_album_attribution_dependencies_ready(startup_conn):
+                logger.info("L3 album attribution already current; startup reconciliation skipped.")
+            else:
+                attribution_plan = reconcile_l3_album_attribution_dependencies(
                     startup_conn,
-                    attribution_plan,
-                    ensure_schema=False,
                     include_unplayed=False,
                 )
+                if attribution_plan.issues:
+                    logger.error(
+                        "L3 album attribution remains unpublished: unresolved_issues=%s",
+                        len(attribution_plan.issues),
+                    )
+                elif attribution_plan.changed:
+                    apply_l3_album_attribution_plan(
+                        startup_conn,
+                        attribution_plan,
+                        ensure_schema=False,
+                        include_unplayed=False,
+                    )
         finally:
             startup_conn.close()
 
@@ -134,7 +144,8 @@ async def lifespan(_app: FastAPI):
     recover_interrupted_agent_tasks()
 
     # Start background job queue for async enrichment & cover downloads
-    from backend.core.job_queue import get_job_queue
+    from backend.core.job_queue import Job, get_job_queue
+    from backend.core.warmup import warm_common_caches
     from backend.jobs.handlers import (
         handle_cover_download,
         handle_genius_lyrics,
@@ -219,6 +230,10 @@ async def lifespan(_app: FastAPI):
     )
     job_queue.register("music_search_snapshot_rebuild", handle_music_search_snapshot_rebuild)
     job_queue.register(BILLBOARD_SNAPSHOT_REBUILD_JOB_TYPE, handle_billboard_snapshot_rebuild)
+    job_queue.register(
+        "startup_cache_warmup",
+        lambda job: warm_common_caches(mode=str(job.payload.get("mode") or "full")),
+    )
     # Resolve the configured database at lifespan start. Tests and maintenance
     # tools intentionally replace ``db_module.DB_PATH`` with an isolated copy;
     # importing the string at module load would make the persistent JobQueue
@@ -231,7 +246,7 @@ async def lifespan(_app: FastAPI):
     # Import maintenance is a strict pre-worker barrier: merely putting it at
     # the front of a FIFO queue would still let another worker run generic work
     # concurrently.
-    outside_pytest = "PYTEST_CURRENT_TEST" not in os.environ
+    outside_pytest = not running_under_pytest()
     if outside_pytest:
         enqueue_billboard_snapshot_rebuild("application startup", queue=job_queue)
         enqueue_defaults("application startup", queue=job_queue)
@@ -250,7 +265,6 @@ async def lifespan(_app: FastAPI):
     # empty scopes, so this cannot turn application startup into a full scan.
     enqueue_failed_cover_download_recovery(job_queue)
     from backend.core.db import get_db
-    from backend.core.job_queue import Job
     from backend.domains.metadata.artist_identity import get_identity_state
     from backend.domains.metadata.track_credits import get_track_credit_state
     from backend.domains.music_search.index import (
@@ -286,6 +300,16 @@ async def lifespan(_app: FastAPI):
 
     if _music_search_startup_rebuild_enabled() and outside_pytest:
         enqueue_music_search_snapshot_rebuild(rebuild_documents=candidate_index_rebuild_required)
+    warmup_mode = startup_warmup_mode()
+    if warmup_mode != "off" and outside_pytest:
+        job_queue.enqueue_if_not_pending(
+            Job.create(
+                "startup_cache_warmup",
+                "runtime",
+                warmup_mode,
+                mode=warmup_mode,
+            )
+        )
     # Finish collecting startup targets while the queue is still prepared but
     # no worker can mutate a source revision underneath another enqueue call.
     # start() then executes import recovery as a strict barrier before it
@@ -294,8 +318,6 @@ async def lifespan(_app: FastAPI):
         db_module.DB_PATH,
         priority_job_types=(PLAYBACK_IMPORT_MAINTENANCE_JOB_TYPE,),
     )
-    if os.environ.get("SPOTIFY_STATS_WARMUP", "1") != "0" and outside_pytest:
-        start_warmup_thread()
     yield
     job_queue.stop()
 
@@ -459,7 +481,14 @@ async def request_id_middleware(request: Request, call_next):
 
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_COVERS_DIR = os.path.join(_PROJECT_ROOT, "data", "covers")
+# Tests and explicit embeddings may override this. Normal runtime derives the
+# cover root from the configured database so isolated copies cannot read or
+# populate the formal checkout's cover directory.
+_COVERS_DIR: str | None = None
+
+
+def _covers_dir() -> str:
+    return _COVERS_DIR or os.path.join(os.path.dirname(db_module.DB_PATH), "covers")
 
 
 def _provider_error_response(exc: ProviderError) -> tuple[int, str]:
@@ -710,11 +739,14 @@ async def get_cover(request: Request, cover_type: str, entity_id: int):
     if cover_type not in ("albums", "artists"):
         raise HTTPException(status_code=404)
 
-    filepath = os.path.join(_COVERS_DIR, cover_type, f"{entity_id}.jpg")
+    filepath = os.path.join(_covers_dir(), cover_type, f"{entity_id}.jpg")
 
     # ① 本地缓存命中
     if os.path.isfile(filepath):
         return _local_cover_response(request, filepath)
+
+    if not external_cover_fallback_enabled():
+        raise HTTPException(status_code=404)
 
     # ② 本地缺失，尝试从 DB CDN URL 获取
     cdn_url = _get_cover_cdn_url(cover_type, entity_id)

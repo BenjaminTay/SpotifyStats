@@ -37,7 +37,8 @@ compose() {
 }
 
 if compose ps --status running --services | grep -qx backend; then
-  "$DEPLOY_DIR/backup.sh"
+  SPOTIFY_STATS_BACKUP_NAME="spotify-stats-pre-restore-$(date -u +%Y%m%dT%H%M%SZ)-$$.db" \
+    "$DEPLOY_DIR/backup.sh"
 fi
 
 compose stop backend

@@ -84,7 +84,7 @@
 |------|---------|------|
 | `database` | 播放数量、音频/视频数量、有效音频数量、日期范围、空曲目、负时长、SQLite 完整性、外键问题 | 判断基础库是否可读、是否存在明显坏数据 |
 | `relationships` | 播放→曲目/专辑、曲目→主艺人和曲目署名关系 | 判断统计链路是否会丢掉有效播放 |
-| `metadata` | 最近 90 天的曲目与来源专辑、Spotify 元数据、Album Project 覆盖 | 判断新导入内容是否需要维护 |
+| `metadata` | 最近 90 天的曲目与来源专辑、Spotify 元数据、Track `artists[]` 证据覆盖、Album Project 覆盖 | 判断新导入内容是否需要维护 |
 | `derived` | 周聚合、Album Project、Billboard 聚合、artist identity/track credit revision | 判断下游页面是否与当前事实同步 |
 
 产品首页优先读取 `summary`：`safe_to_use` 回答核心统计能否继续使用，`headline` 给出用户结论，其余计数按“影响当前统计的问题类 / 历史建议类 / 说明类”拆分。每个 `issues` 项同时包含 `impact_scope`、`user_status`、`user_title`、`user_explanation` 和 `action`；技术 `code` 与表关系只在高级详情中展示。
@@ -99,6 +99,8 @@
 - `blocked`：没有播放数据、SQLite 完整性检查失败，或播放记录引用了不存在的实体。
 
 外键检查会按「子表 → 父表」返回明细。历史元数据孤儿记录不会自动删除，也不会仅凭健康检查改写 `plays`、`tracks`、`track_artists`；后续如需清理，必须单独设计可预览、可回滚的维护任务。
+
+`metadata.spotify_track_credit_evidence` 只读返回有 Spotify Track ID 的去重曲目 `eligible`、已保存合法有序证据的 `stored`、待补采的 `missing`，以及 `ready` / `missing` / `unavailable` 状态；它不是当前有效署名准确率。元数据阶段另记录本次证据请求、首次保存、变化、无变化、失败、上一可用证据和剩余缺口数。凭据缺失或 provider 失败保持可重试的 partial/degraded 语义，不撤销已经发布的播放事实；健康 GET 不访问 Spotify，也不在读取时补采。
 
 ## 可行动问题
 

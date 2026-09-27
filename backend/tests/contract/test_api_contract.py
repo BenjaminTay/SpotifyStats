@@ -162,6 +162,7 @@ class TestBillboardEndpoints:
             "records",
         ]:
             assert key in data, f"Missing key: {key}"
+        assert "snapshot" in data
 
 
 class TestAnalysisRecordsEndpoint:

@@ -1,5 +1,10 @@
 # 变更日志
 
+## 2026-09-27：AI Agent V6 本地提交与主分支集成
+
+- 实现提交 `8edcd1c8` 与 main `c1acbec6` 集成；保留 Spotify 多艺人迁移 80/81，将 V6 迁移顺延为 82–84，合并搜索署名与封面索引版本。
+- 合并结果后端 unit/contract 2536 passed / 2 skipped，前端 684 passed / 4 skipped，构建与 81→84 隔离升级通过。完整全栈与真实模型历史证据仍按原候选标注，未推送或部署。详见[本地集成报告](reports/2026-09-27-ai-agent-v6-local-integration.md)。
+
 ## 2026-09-22：AI Agent V6 统一运行时与渐进报告
 
 - 2026-09-27 第六轮收口：确认 `vampire` 旧 v11 搜索快照 381 次来自陈旧派生值，规范事件为主成员 379 次加 L3 附加成员 1 次、合计 380。统计快照提升为 v12 并拒绝旧 builder LKG；完整 Billboard 单成员计数统一从规范加权成员集求和，快照榜单构建复用有效普通周聚合。v12 四变体重建通过；12/12 代表组合与动态/固定阈值各 493/493 多成员 L3 组对账零差异。冻结 11 题真实模型 11/11，Turn/Tool P95 为 11.348s/4.719s。默认完整 fullstack run `20260927T123442.686018Z-e24f493b421d` 八阶段同轮 PASS：backend 3044 passed / 2 skipped、真实 integration 186 passed / 1 skipped、frontend 684 passed / 4 skipped、API 154/154、boundary 113/113，51 组性能端点与 Chromium/Firefox/WebKit 门禁通过。当前为 `LOCAL_PASS`；未 commit、push 或部署。
@@ -13,6 +18,40 @@
 - `awaiting_input` 成为后端、API、SSE 和前端一致的真实任务状态；SSE cursor v2 支持审核章节渐进读取、刷新重连和 v1 兼容，无数据年度 fail-closed 返回明确空态，不调用模型生成虚假叙事。
 - 隔离 Online Backup 的真实模型验收达到新自由问法 24/24、现行历史集 42/42（45 turns）、固定 12 题连续三轮 12/12；完整年度三组 cold/hot 中位数 54.363s/30.482s，6/6 模型章节、0 回退。完整本地门禁状态见 [最终验收报告](reports/2026-09-22-ai-agent-v6-final-acceptance.md)。未提交、push 或部署。
 - 2026-09-24 补修候选的默认完整 fullstack run `20260924T100812.924811Z-1471d2b787a8` 八个必需阶段同一轮全部 PASS：seed 3010 passed / 2 skipped、真实 integration 186 passed / 1 skipped、前端 674 passed / 4 skipped、API smoke 154/154、边界 113/113、OpenAPI operation/边界无遗漏，Chromium/Firefox/WebKit 全部通过；第二轮补修后该 run 不代表当前候选。未提交、push 或部署。
+
+## 2026-09-27：运行资源优化本地提交与集成
+
+- 资源优化实现提交 `a0df33a4`，完成规划归档；与 main `3e608f22` 的自动多艺人署名、备份策略集成，保留双方行为。
+- 合并结果 unit/contract 为 2,492 passed、2 skipped；202 份文档审计与提交钩子通过。原始完整全栈和资源专项验收仍按实现报告标注版本，未推送或部署。
+
+## 2026-09-27：资源优化独立复核缺口收口
+
+- 日常入口改用托管构建输入清单，前端源码、public、依赖和配置的新增、修改、删除都会判定构建过期；普通 `npm run build` 没有清单时要求一次 `scripts/start_daily.py --build`，不再用当前文件 mtime 推断历史输入集合。
+- 补齐最终代码 E 状态 D/F 各三次独立、交错、5 分钟空闲样本；启动首次可用、必要维护、最终 exact 与 exact 后 fresh-SPA first/revisit 分开计时。严格目标 DOM 复核下，F 的 first/revisit 中位数 642.6/51.9ms 均通过相对 D 门槛；启动 CPU 6.174 秒、RSS 594.5MiB、footprint 435MiB、空闲 CPU 0.323% 均通过资源门槛。
+- 完整前端测试固定最多两个 Vitest worker，消除共享开发机 CPU 争用造成的跨模块 jsdom 伪超时；Billboard 两个 6.7–7.7MiB 完整兼容响应跳过已发布快照的重复深度校验，规范化 JSON 哈希不变，最终 fullstack 的 22 轮热 P95 分别为 253.566ms 与 270.884ms，继续遵守 500ms 门槛。
+- 六次正式样本均使用各自 Online Backup 与 inode/lineage publication，operation exit、采样完整性、最终 exact、同一 SPA 和首尾竞争检查全部通过；被其他工作树 fullstack/Playwright 污染或锁阻断的尝试明确排除。最终代码默认完整 fullstack `20260927T050220.824591Z-93e325671990` 八阶段全部 PASS：seed 2,998 passed / 2 skipped、integration 186 passed / 1 skipped、前端 670 passed / 4 skipped、API 153/153 与 boundary 113/113、Chromium/Firefox/WebKit 全部通过。详见[实施报告](reports/2026-09-22-runtime-resource-optimization.md)。未 commit、push 或部署。
+
+## 2026-09-24：启动、运行资源与长期内存优化（本地 Pass）
+
+- 新增无 reload、复用既有正式前端构建的本机日常入口；端口冲突 fail-closed，只绑定 loopback，只关闭自身进程组。preview 与 dev 共用显式 API/封面代理和 SPA 深链。
+- 启动预热分为 `full / minimal / off`：日常入口使用 minimal，只恢复首屏持久结果；预热进入 JobQueue，与 Billboard、Analysis、Community、Archive、Governance 和艺人 rank context 共用 CPU-heavy gate。L3 依赖完整且行 revision 一致时可精确跳过 reconcile。
+- 正常 lifespan 测量补齐 Online Backup/path contract、E/M/D 状态、进程创建前采样、CPU 秒、macOS footprint、事件时间线、性能锁和启动前 fail-closed 竞争检测。最终 F 三样本中位数为 health 3.546 秒、exact 页面 7.836 秒、4.337 CPU 秒、240.5 MiB 后端 RSS、0.421% 稳定空闲应用 CPU。
+- 实际 rank context job type 修正为 `artist_rank_context_rebuild`，避免与 Billboard/Analysis 重叠；Analysis 使用窄 duration frame，rank context 最后消费者完成后只释放两类宽播放帧。M4/D3 连续 RSS 为 1,480.8 / 1,453.8 MiB，均通过 1.5 GiB 门槛；逐任务全清缓存实验更差并已撤回。
+- headed Chrome 完成 3×20 分钟真实 visible→hidden→visible soak：hidden 窗口零 API 请求，JS heap/DOM/listener/resource entries 有界；后端、preview、浏览器第 2→3 轮稳定 RSS 分别只增长 2.2 / 2.6 / 48.3 MiB，全部通过。浏览器 physical footprint +71 MiB / +10.7% 略高于并列诊断阈值，保留后续跟踪。
+- R6 同周/跨周/历史修正/完整 replace 导入矩阵 14 项语义投影等价；API probe 显式数据库路径同时隔离六套 sidecar。默认完整 fullstack 运行 `20260924T131913.048597Z-2041631da26f` 八个必需阶段全部 PASS：seed 2,991 passed / 2 skipped、真实 integration 186 passed / 1 skipped、前端 670 passed / 4 skipped、API 153/153 与 boundary 113/113、Chromium/Firefox/WebKit 全部通过。完整边界见[实施报告](reports/2026-09-22-runtime-resource-optimization.md)。未 commit、push 或部署。
+
+## 2026-09-27：Spotify Track 多艺人自动署名
+
+- 新增 schema 81 自动署名投影：有效曲目署名合并原始记录与 Spotify Track `artists[]`，人工添加、排除和角色调整始终优先；不改写原始播放、曲目或原始艺人关系。
+- 日常 Spotify 刷新与显式历史回填成功后自动关联稳定艺人身份、补建缺失本地艺人，推动同一署名 revision 的统计和搜索重建；身份或主艺人冲突时保留上一可用结果，不要求逐条人工核对。
+- 搜索候选的活跃艺人集合改按有播放来源的有效署名补全，并提升候选索引版本；否则新合作艺人虽进入周榜，却缺少搜索文档，导致精确周榜账本无法发布。正式库重新构建后候选文档由 21,653 增至 22,239，四个常用精确统计变体均恢复 ready。
+- 隔离副本验证 7,272 个 owner 的自动同步可幂等复跑；正式应用数据库带 Online Backup 回填 8,320/8,320 首证据，7,251 个 owner 获得自动署名，21 个冲突/歧义 owner 保持原结果，新增 586 个本地艺人。`plays`、`tracks`、`track_artists` 与回填前备份的逐表哈希一致。署名 revision 39 的 aggregate 已重建为 ready；本地歌曲详情 API 中 `We Found Love` 返回 Rihanna + Calvin Harris。
+
+## 2026-09-24：Spotify Track 多艺人证据接入
+
+- schema 80 独立保存 Spotify Track `artists[]` 的有序艺人 ID 与署名名称，并记录首次观察和后续变化；不自动修改有效曲目署名、统计或人工覆盖层。
+- 元数据刷新与健康报告增加证据覆盖和失败计数，提供显式隔离副本回填及只读差异审计；身份未解析时双方独有成员保持未知，不凭名称自动认定同一艺人。
+- 隔离数据库副本完成 8,320 首曲目的真实 API 回填和幂等复跑，修复后本地 unit/contract 为 2,435 passed、712 deselected；尚未做完整全栈或生产迁移验收。详见[交付报告](reports/2026-09-24-spotify-track-artists-evidence-delivery.md)。
 
 ## 2026-09-22：无指纹旧库完整替换基线初始化
 

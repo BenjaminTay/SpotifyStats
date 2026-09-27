@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -104,6 +105,31 @@ def test_set_database_keeps_home_primary_identity_and_snapshot_root_aligned(
     assert db_module.DB_PATH == str(database.resolve())
     assert home_service.DB_PATH == str(database.resolve())
     assert home_service._HOME_SNAPSHOT_DIR == database.with_name("isolated.home")
+
+
+def test_assess_initializes_only_a_missing_database(tmp_path, monkeypatch) -> None:
+    calls: list[str] = []
+
+    monkeypatch.setattr(acceptance, "_set_database", lambda path: calls.append("set"))
+    monkeypatch.setattr(acceptance.db_mod, "init_db", lambda: calls.append("init"))
+    monkeypatch.setattr(acceptance.db_mod, "ensure_schema", lambda: calls.append("schema"))
+
+    from backend.services import import_plan_service
+
+    monkeypatch.setattr(
+        import_plan_service,
+        "assess_streaming_import",
+        lambda *args, **kwargs: SimpleNamespace(plan=SimpleNamespace(relation="ok")),
+    )
+
+    database = tmp_path / "fresh.db"
+    acceptance._assess(database, tmp_path / "streaming", tmp_path / "account")
+    assert calls == ["set", "init", "schema"]
+
+    database.touch()
+    calls.clear()
+    acceptance._assess(database, tmp_path / "streaming", tmp_path / "account")
+    assert calls == ["set"]
 
 
 def test_public_projection_does_not_emit_semantic_rows() -> None:

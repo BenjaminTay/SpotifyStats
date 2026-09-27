@@ -127,6 +127,23 @@ npm run dev
 
 首次启动只会创建或迁移 SQLite，不会自动导入个人 JSON。打开前端后，进入「设置 → 数据导入」，先运行只读的「导入前检查」，再手动导入 Streaming History 和 Account Data；完成后可在同一区域查看数据健康报告。详细规则见 [`docs/reference/data-import-and-health.md`](docs/reference/data-import-and-health.md)。
 
+### 4. 日常轻量启动
+
+已经完成开发和前端构建后，日常查看不需要 reload 或重新构建：
+
+```bash
+# 先检查端口和前端构建是否可用
+python3 scripts/start_daily.py --check
+
+# 首次使用日常入口，或前端源码/依赖变化后重新构建
+python3 scripts/start_daily.py --build
+
+# 后续日常启动
+python3 scripts/start_daily.py
+```
+
+然后访问 <http://127.0.0.1:4173>。该入口只绑定 loopback，后端使用 minimal 预热，前端复用现有正式构建。`--build` 会在成功构建后记录受支持的前端输入清单；普通 `npm run build` 没有该清单，日常入口会要求执行一次 `--build`，避免删除源码或 public 资源后误用旧产物。端口冲突时会明确退出，不会停止其他服务。按 `Ctrl-C` 会关闭本次入口自己创建的两个进程。开发时仍使用上一节的 reload + Vite dev 命令。
+
 ### 查看移动端效果
 
 Phone presentation 使用独立的移动网页布局，主要触控目标至少为 44×44px；数据导入、元数据治理、凭据和系统维护仍建议在桌面端完成。可以使用 390×844 响应式视口快速查看：

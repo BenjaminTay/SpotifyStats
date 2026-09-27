@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from backend.core.migrations import migrate_080, migrate_081, migrate_082
+from backend.core.migrations import migrate_082, migrate_083, migrate_084
 from backend.domains.agent_runtime.event_log import AgentEventLog
 from backend.domains.agent_runtime.observation import compact_observation
 from backend.domains.agent_runtime.tool_runtime import ToolOutcome
@@ -1465,9 +1465,9 @@ def test_v6_chat_cancellation_during_retry_prevents_second_provider_dispatch(
     _create_runtime_db(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    migrate_080(conn)
-    migrate_081(conn)
     migrate_082(conn)
+    migrate_083(conn)
+    migrate_084(conn)
     conn.execute(
         """UPDATE ai_task_runs
            SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
@@ -1844,9 +1844,9 @@ def test_v6_chat_resume_rejects_provider_change_for_unfinished_model_step(
     _create_runtime_db(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    migrate_080(conn)
-    migrate_081(conn)
     migrate_082(conn)
+    migrate_083(conn)
+    migrate_084(conn)
     conn.execute(
         """UPDATE ai_task_runs
            SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
@@ -1928,9 +1928,9 @@ def test_v6_chat_resume_retries_same_logical_call_with_original_provider(
     _create_runtime_db(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    migrate_080(conn)
-    migrate_081(conn)
     migrate_082(conn)
+    migrate_083(conn)
+    migrate_084(conn)
     conn.execute(
         """UPDATE ai_task_runs
            SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
@@ -2036,9 +2036,9 @@ def test_v6_chat_resume_rejects_incompatible_frozen_request_contract(
     _create_runtime_db(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    migrate_080(conn)
-    migrate_081(conn)
     migrate_082(conn)
+    migrate_083(conn)
+    migrate_084(conn)
     conn.execute(
         """UPDATE ai_task_runs
            SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
@@ -2133,9 +2133,9 @@ def test_v6_chat_resume_defers_new_steering_until_after_frozen_retry(
     _create_runtime_db(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    migrate_080(conn)
-    migrate_081(conn)
     migrate_082(conn)
+    migrate_083(conn)
+    migrate_084(conn)
     conn.execute(
         """UPDATE ai_task_runs
            SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
@@ -2248,9 +2248,9 @@ def test_v6_chat_resume_replays_committed_response_and_only_missing_tool(
     _create_runtime_db(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    migrate_080(conn)
-    migrate_081(conn)
     migrate_082(conn)
+    migrate_083(conn)
+    migrate_084(conn)
     conn.execute(
         """UPDATE ai_task_runs
            SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
@@ -2370,9 +2370,9 @@ def test_v6_chat_last_step_replays_committed_answer_without_new_provider_call(
     _create_runtime_db(db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    migrate_080(conn)
-    migrate_081(conn)
     migrate_082(conn)
+    migrate_083(conn)
+    migrate_084(conn)
     conn.execute(
         """UPDATE ai_task_runs
            SET runtime_version='v6', workflow_version='v6', event_schema_version=2,

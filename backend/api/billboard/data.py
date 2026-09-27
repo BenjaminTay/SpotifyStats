@@ -13,7 +13,9 @@ from __future__ import annotations
 from typing import Literal, Union
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
+from pydantic_core import to_json
 
 from backend.api.billboard.projections import (
     all_time_projection,
@@ -178,6 +180,13 @@ class NumberOnesProjectionResponse(BillboardSnapshotResponse):
     artist_power_scores: list[dict]
 
 
+def _bulk_json_response(payload: dict) -> Response:
+    """Encode a validated bulk snapshot once without a second model walk."""
+    if "snapshot" not in payload:
+        payload = {**payload, "snapshot": None}
+    return Response(content=to_json(payload), media_type="application/json")
+
+
 def _billboard_params(filters: BillboardFilters):
     """Extract Billboard computation params from filters."""
     return dict(
@@ -209,10 +218,15 @@ def get_billboard_data(
     Returns weekly rankings, track/artist/album summaries, records,
     and power scores. Kept for backward compatibility.
     """
-    return compute_billboard_data(
-        **_billboard_params(filters),
-        merge_level=merge_cfg.merge_level,
-        include_compilations=include_compilations,
+    # The persisted snapshot has already passed the Billboard publication
+    # validator. Returning a Response keeps the documented response model while
+    # avoiding a second deep Pydantic walk over this multi-megabyte payload.
+    return _bulk_json_response(
+        compute_billboard_data(
+            **_billboard_params(filters),
+            merge_level=merge_cfg.merge_level,
+            include_compilations=include_compilations,
+        )
     )
 
 
@@ -344,8 +358,10 @@ def get_billboard_all_time(
             if projection == "number-ones"
             else all_time_projection(data, entity)
         )
-    return compute_all_time_staged(
-        **_billboard_params(filters),
-        merge_level=merge_cfg.merge_level,
-        include_compilations=include_compilations,
+    return _bulk_json_response(
+        compute_all_time_staged(
+            **_billboard_params(filters),
+            merge_level=merge_cfg.merge_level,
+            include_compilations=include_compilations,
+        )
     )

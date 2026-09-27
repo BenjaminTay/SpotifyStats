@@ -8,7 +8,9 @@
 >
 > 实现状态：`SIXTH_ROUND_COMPLETE`；验证状态：`LOCAL_PASS`
 >
-> 仓库状态：`UNCOMMITTED`；远端状态：`UNPUSHED`；部署状态：`NOT_DEPLOYED`
+> 仓库状态：实现已本地提交 `8edcd1c8`；远端状态：`UNPUSHED`；部署状态：`NOT_DEPLOYED`
+>
+> 本文验收数据对应合并前 V6 候选，保留当时版本与迁移编号；后续主分支集成验证见[本地集成报告](2026-09-27-ai-agent-v6-local-integration.md)。
 
 ## 1. 结论与边界
 

@@ -1,8 +1,14 @@
 # 交付与验证报告索引
 
+- [AI Agent V6 本地提交与主分支集成](2026-09-27-ai-agent-v6-local-integration.md)
+
 - [AI Agent V6 统一运行时与渐进报告最终本地验收](2026-09-22-ai-agent-v6-final-acceptance.md)
 
 - [AI Agent V6 S0 基线与固定评测合同](2026-09-22-ai-agent-v6-s0-baseline.md)
+
+- [启动、运行资源与长期内存优化实施报告（含 2026-09-27 独立复核收口）](2026-09-22-runtime-resource-optimization.md)
+
+- [Spotify Track `artists[]` 证据交付与隔离验收](2026-09-24-spotify-track-artists-evidence-delivery.md)
 
 - [数据导入处理与治理 S6 最终验收](2026-09-21-import-governance-final-acceptance.md)
 

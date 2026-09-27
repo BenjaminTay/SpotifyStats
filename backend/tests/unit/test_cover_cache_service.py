@@ -9,6 +9,23 @@ from backend.core.job_queue import Job, JobQueue
 pytestmark = pytest.mark.unit
 
 
+def test_cover_route_root_follows_configured_database(monkeypatch, tmp_path):
+    from backend import main
+    from backend.core import db
+
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "spotify_stats.db"))
+    monkeypatch.setattr(main, "_COVERS_DIR", None)
+
+    assert main._covers_dir() == str(tmp_path / "covers")
+
+
+def test_external_cover_fallback_can_be_disabled_for_isolated_runs(monkeypatch):
+    from backend.core.config import external_cover_fallback_enabled
+
+    monkeypatch.setenv("SPOTIFY_STATS_EXTERNAL_COVERS", "0")
+    assert external_cover_fallback_enabled() is False
+
+
 class _Queue:
     def __init__(self):
         self.jobs: list[Job] = []

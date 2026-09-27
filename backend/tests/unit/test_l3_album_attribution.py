@@ -15,6 +15,7 @@ from backend.domains.playback.l3_album_attribution import (
     apply_l3_album_attribution_plan,
     build_l3_album_attribution_scope_health,
     get_l3_album_attribution_state,
+    l3_album_attribution_dependencies_ready,
     load_l3_song_album_attributions,
     plan_l3_album_attributions,
     reconcile_l3_album_attribution_dependencies,
@@ -529,6 +530,15 @@ def test_played_reconcile_and_apply_are_idempotent() -> None:
         assert second_plan.changed is False
         assert second_report.changed is False
         assert second_report.attribution_revision == first_report.attribution_revision
+        assert l3_album_attribution_dependencies_ready(conn) is True
+        conn.execute(
+            """UPDATE l3_song_album_attributions
+                  SET evidence_json='{"tampered":true}' """
+        )
+        assert l3_album_attribution_dependencies_ready(conn) is False
+        conn.rollback()
+        conn.execute("UPDATE track_identity_state SET current_revision=current_revision+1")
+        assert l3_album_attribution_dependencies_ready(conn) is False
     finally:
         conn.close()
 

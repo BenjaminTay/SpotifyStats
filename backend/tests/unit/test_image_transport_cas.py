@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import shutil
 import tarfile
 from pathlib import Path
@@ -253,6 +254,21 @@ def test_cas_first_plan_misses_then_second_plan_hits_and_rebuilds_archive(tmp_pa
     )
     assert second["missing_count"] == 0
     assert second["missing_bytes"] == 0
+
+
+def test_rebuilt_archive_is_stable_across_host_metadata_changes(tmp_path: Path) -> None:
+    revision = "9" * 40
+    artifact, _digest = _artifact(tmp_path / "source", revision)
+    layout = artifact / "layout"
+    first = tmp_path / "first.tar"
+    second = tmp_path / "second.tar"
+
+    image_transport._build_archive(layout, first)
+    for path in layout.rglob("*"):
+        os.utime(path, (1_900_000_000, 1_900_000_000), follow_symlinks=False)
+    image_transport._build_archive(layout, second)
+
+    assert image_transport.sha256_path(first) == image_transport.sha256_path(second)
 
 
 def test_corrupt_cache_and_partial_file_are_never_treated_as_hits(tmp_path: Path) -> None:

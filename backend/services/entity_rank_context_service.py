@@ -153,3 +153,11 @@ def handle_rebuild(job):
         return ensure(conn)
     finally:
         conn.close()
+        # Rank context is the final startup-maintenance consumer of both full
+        # playback DataFrames. Later Community/Archive/Governance builders use
+        # their persistent projections or direct narrow SQL, so retaining these
+        # wide frames only increases the combined maintenance peak. Clearing the
+        # two named entries preserves all small presentation and result caches.
+        from backend.core.cache_manager import invalidate_keys
+
+        invalidate_keys("db", {"plays", "plays_for_artists"})

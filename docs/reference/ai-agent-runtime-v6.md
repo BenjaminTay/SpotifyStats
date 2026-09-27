@@ -49,3 +49,7 @@
 - 单曲 Agent 结果对已上榜、未上榜和零播放实体统一提供 `effective_play_count`；未上榜图表不伪造 `peak_position`。完整 builder 的 L2/L3 `total_plays` 使用版本组聚合，Power 名次使用已发布稳定 `power_rank`，不能按分数再次排序改变并列顺序。
 - Agent 快路径保持回答所需的周历史、榜单间断、running 指标和 chart data，但不展开页面展示专用的 `meta.version_group`；这项展示差异不得被描述为事实缺失或逐字段完全相等。
 - 音乐搜索只在专辑/艺人具有 `image_path` 或 `image_url` 元数据时发布本地 `/covers/...jpg`。读取旧候选 generation 或 legacy 搜索结果时，按当前结果页至多执行两次元数据查询并将失效本地 URL 清为 `null`；不访问文件系统、不触发封面下载，也不要求同步重建索引。外部/provider URL 原样保留。
+
+## 7. 主分支迁移集成
+
+2026-09-27 合并后保留主分支已使用的 schema 80/81（Spotify 多艺人署名），V6 运行与章节、冻结上下文与预算、模型派发三项迁移依次使用 82/83/84。分支验收期间的 80/81/82 仅是当时隔离副本的编号，历史验收数据库不能直接替换正式数据库；新验收或发布从主分支数据库副本按当前迁移链升级。搜索候选版本为 `music_search_candidate_index_v6_credits_and_covers`，同时包含有效署名与封面可用性。

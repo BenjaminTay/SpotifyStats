@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _ENV_PATH = _PROJECT_ROOT / ".env"
-if _ENV_PATH.exists():
+if _ENV_PATH.exists() and not os.environ.get("SPOTIFY_RUNTIME_MEASUREMENT"):
     load_dotenv(_ENV_PATH)
 
 
@@ -53,11 +53,14 @@ FRONTEND_ORIGIN = _get("FRONTEND_ORIGIN", "http://localhost:5173")
 
 # ── App behaviour ───────────────────────────────────────────────────────
 
+SPOTIFY_STATS_DB_PATH = _get("SPOTIFY_STATS_DB_PATH", "")
 SPOTIFY_STATS_WARMUP = _get("SPOTIFY_STATS_WARMUP", "1")
 SPOTIFY_STATS_BILLBOARD_CACHE_PATH = _get("SPOTIFY_STATS_BILLBOARD_CACHE_PATH", "")
 SPOTIFY_STATS_COMMUNITY_CACHE_PATH = _get("SPOTIFY_STATS_COMMUNITY_CACHE_PATH", "")
 SPOTIFY_STATS_ARCHIVE_CACHE_PATH = _get("SPOTIFY_STATS_ARCHIVE_CACHE_PATH", "")
 SPOTIFY_STATS_ANALYSIS_CACHE_PATH = _get("SPOTIFY_STATS_ANALYSIS_CACHE_PATH", "")
+SPOTIFY_STATS_YEARLY_CACHE_PATH = _get("SPOTIFY_STATS_YEARLY_CACHE_PATH", "")
+SPOTIFY_STATS_GOVERNANCE_CACHE_PATH = _get("SPOTIFY_STATS_GOVERNANCE_CACHE_PATH", "")
 PYTEST_CURRENT_TEST = _get("PYTEST_CURRENT_TEST", "")
 MUSIC_SEARCH_CANDIDATE_LKG = _get_bool("MUSIC_SEARCH_CANDIDATE_LKG", True)
 MUSIC_SEARCH_STATISTICS_LKG = _get_bool("MUSIC_SEARCH_STATISTICS_LKG", True)
@@ -72,6 +75,38 @@ def l3_startup_reconcile_enabled() -> bool:
     """
 
     return _get_bool("SPOTIFY_STATS_L3_STARTUP_RECONCILE", True)
+
+
+def music_search_startup_rebuild_enabled() -> bool:
+    """Return whether lifespan should enqueue Search catch-up maintenance."""
+
+    return _get_bool("SPOTIFY_STATS_SEARCH_STARTUP_REBUILD", True)
+
+
+def startup_warmup_mode() -> str:
+    """Resolve the startup cache strategy while preserving the legacy switch.
+
+    ``full`` is the historical behavior. ``minimal`` restores only the small
+    persisted Home snapshot; durable snapshot maintenance remains owned by the
+    normal queue. ``off`` is reserved for isolated probes and rollback checks.
+    """
+
+    if not _get_bool("SPOTIFY_STATS_WARMUP", True):
+        return "off"
+    mode = _get("SPOTIFY_STATS_WARMUP_MODE", "full").strip().lower()
+    return mode if mode in {"full", "minimal", "off"} else "full"
+
+
+def running_under_pytest() -> bool:
+    """Read the pytest marker dynamically because collection precedes lifespan."""
+
+    return bool(_get("PYTEST_CURRENT_TEST"))
+
+
+def external_cover_fallback_enabled() -> bool:
+    """Allow CDN/API cover fallback; isolated measurements disable it."""
+
+    return _get_bool("SPOTIFY_STATS_EXTERNAL_COVERS", True)
 
 
 # ``AI_AGENT_RUNTIME=v2`` is the historical native-tool protocol label.
@@ -109,4 +144,3 @@ SPOTIFY_STATS_API_TOKEN = _get("SPOTIFY_STATS_API_TOKEN", "")
 SPOTIFY_STATS_TOKEN_KEY = _get("SPOTIFY_STATS_TOKEN_KEY", "")
 
 # Local governance health/coverage publications.
-SPOTIFY_STATS_GOVERNANCE_CACHE_PATH = os.getenv("SPOTIFY_STATS_GOVERNANCE_CACHE_PATH", "")

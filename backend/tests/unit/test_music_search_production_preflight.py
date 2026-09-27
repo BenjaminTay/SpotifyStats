@@ -576,6 +576,15 @@ def test_one_time_statistics_bootstrap_is_manual_resumable_and_never_deploys() -
     assert "all_six_ready" not in workflow
     assert "one-time-search-snapshot-bootstrap.yml" in production_workflow
     assert "INITIALIZE_SEARCH_SNAPSHOTS" in workflow
+    assert "restart_current_backend:" in workflow
+    assert "compose restart backend" in workflow
+    assert '[[ "$after_id" == "$before_id" ]]' in workflow
+    assert '[[ "$after_image" == "$before_image" ]]' in workflow
+    assert '[[ "$health" == "healthy" ]]' in workflow
+    assert "for attempt in {1..5}" in workflow
+    assert "ConnectTimeout=20" in workflow
+    assert "ServerAliveCountMax=3" in workflow
+    assert '[[ "$attempt" -eq 5 ]]' in workflow
     assert "bootstrap-music-search-statistics.sh" in production_workflow
     assert "prepare-music-search-bootstrap-resume.py" in production_workflow
 

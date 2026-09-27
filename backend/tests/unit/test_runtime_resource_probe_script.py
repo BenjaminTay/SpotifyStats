@@ -34,6 +34,28 @@ def test_runtime_resource_probe_exposes_reusable_cli():
     assert "--max-total-cpu-percent" in result.stdout
     assert "--max-service-rss-mb" in result.stdout
     assert "--max-service-cpu-percent" in result.stdout
+    assert "--backend-pid-file" in result.stdout
+    assert "--frontend-pid-file" in result.stdout
+    assert "--macos-footprint-interval" in result.stdout
+
+
+def test_frontend_runtime_soak_exposes_continuous_browser_cli():
+    script = ROOT / "scripts" / "frontend_runtime_soak.mjs"
+
+    result = subprocess.run(
+        ["node", str(script), "--help"],
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "one SPA document" in result.stdout
+    assert "--round-seconds" in result.stdout
+    assert "--stable-seconds" in result.stdout
+    assert "--browser-pid-file" in result.stdout
+    assert "--phase-file" in result.stdout
 
 
 def test_runtime_resource_probe_extracts_port_from_urls():
@@ -147,3 +169,43 @@ def test_runtime_resource_probe_parses_service_budget_specs():
 
     with pytest.raises(ValueError):
         parse_service_budget("backend")
+
+
+def test_runtime_resource_probe_parses_macos_footprint_units():
+    from scripts.runtime_resource_probe import parse_macos_footprint
+
+    current, peak = parse_macos_footprint(
+        "Auxiliary data:\n    phys_footprint: 768 MB\n    phys_footprint_peak: 1.5 GB\n"
+    )
+
+    assert current == 768
+    assert peak == 1536
+
+
+def test_runtime_resource_probe_rejects_long_sampling_gaps():
+    from scripts.runtime_resource_probe import sampling_integrity
+
+    healthy = sampling_integrity(
+        [{"elapsed_ms": 0}, {"elapsed_ms": 250}, {"elapsed_ms": 500}], interval=0.25
+    )
+    interrupted = sampling_integrity(
+        [
+            {"timestamp": 1000, "elapsed_ms": 0},
+            {"timestamp": 1000.25, "elapsed_ms": 250},
+            {"timestamp": 1008, "elapsed_ms": 500},
+        ],
+        interval=0.25,
+    )
+
+    assert healthy == {
+        "valid": True,
+        "sample_count": 3,
+        "max_gap_seconds": 0.25,
+        "threshold_seconds": 5.0,
+    }
+    assert interrupted == {
+        "valid": False,
+        "sample_count": 3,
+        "max_gap_seconds": 7.75,
+        "threshold_seconds": 5.0,
+    }

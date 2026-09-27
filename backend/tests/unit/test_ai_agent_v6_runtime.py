@@ -5,7 +5,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from backend.core.migrations import migrate_080, migrate_081, migrate_082
+from backend.core.migrations import migrate_082, migrate_083, migrate_084
 from backend.domains.agent_runtime.event_log import AgentEventLog
 from backend.domains.agent_runtime.runtime_store import (
     IncompatibleModelRequestError,
@@ -67,9 +67,9 @@ def _init_runtime_schema(conn: sqlite3.Connection) -> None:
         );
         """
     )
-    migrate_080(conn)
-    migrate_081(conn)
     migrate_082(conn)
+    migrate_083(conn)
+    migrate_084(conn)
     conn.execute(
         """INSERT INTO ai_task_runs
            (task_id, task_type, status, stage, runtime_version, workflow_version,

@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -114,6 +115,39 @@ def ps_rows_for_pids(pids: list[int]) -> list[ProcessRow]:
     if result.returncode != 0:
         return []
     return parse_ps_rows(result.stdout)
+
+
+def parse_macos_footprint(output: str) -> tuple[float | None, float | None]:
+    """Return current and lifetime physical footprint in MiB."""
+
+    def value(name: str) -> float | None:
+        match = re.search(rf"{name}:\s+([0-9.]+)\s+(KB|MB|GB)", output)
+        if not match:
+            return None
+        amount = float(match.group(1))
+        return amount * {"KB": 1 / 1024, "MB": 1, "GB": 1024}[match.group(2)]
+
+    return value("phys_footprint"), value("phys_footprint_peak")
+
+
+def macos_footprint_for_pids(pids: list[int]) -> tuple[float | None, float | None]:
+    if sys.platform != "darwin" or not pids:
+        return None, None
+    current = []
+    lifetime = []
+    for pid in pids:
+        result = run_command(["/usr/bin/footprint", "-p", str(pid)])
+        if result.returncode != 0:
+            continue
+        observed, peak = parse_macos_footprint(result.stdout)
+        if observed is not None:
+            current.append(observed)
+        if peak is not None:
+            lifetime.append(peak)
+    return (
+        round(sum(current), 3) if current else None,
+        round(sum(lifetime), 3) if lifetime else None,
+    )
 
 
 def summarize_processes(label: str, url: str, rows: list[ProcessRow]) -> dict:
@@ -229,7 +263,7 @@ def render_markdown(report: dict) -> str:
         )
     if report.get("budget_failures"):
         lines.append("")
-        lines.append("Budget failures:")
+        lines.append("Validation failures:")
         for failure in report["budget_failures"]:
             lines.append(f"- {failure}")
     lines.append("")
@@ -238,6 +272,13 @@ def render_markdown(report: dict) -> str:
     lines.append(
         "- Missing services are reported as status `missing`; use `--fail-on-missing` to gate."
     )
+    if report.get("sampling_integrity"):
+        integrity = report["sampling_integrity"]
+        lines.append(
+            "- Sampling integrity: "
+            f"max gap {integrity['max_gap_seconds']}s / "
+            f"threshold {integrity['threshold_seconds']}s."
+        )
     return "\n".join(lines)
 
 
@@ -297,6 +338,15 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument("--phase-file", type=Path, help="Caller writes the current phase label")
     parser.add_argument("--stop-file", type=Path, help="Finish when caller creates this sentinel")
     parser.add_argument("--browser-pid-file", type=Path)
+    parser.add_argument("--browser-pid", type=int)
+    parser.add_argument("--backend-pid-file", type=Path)
+    parser.add_argument("--frontend-pid-file", type=Path)
+    parser.add_argument(
+        "--macos-footprint-interval",
+        type=float,
+        default=0,
+        help="Sample macOS physical footprint at this slower interval; 0 disables it",
+    )
     parser.add_argument(
         "--ready-file",
         type=Path,
@@ -314,15 +364,24 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
 def collect_snapshots(args: argparse.Namespace) -> list[dict]:
     targets = [
-        ("backend", args.backend_url),
-        ("frontend", args.frontend_url),
+        ("backend", args.backend_url, args.backend_pid_file),
+        ("frontend", args.frontend_url, args.frontend_pid_file),
     ]
     if args.preview_url:
-        targets.append(("preview", args.preview_url))
-    return [
-        capture_snapshot(label, url, include_children=not args.no_children)
-        for label, url in targets
-    ]
+        targets.append(("preview", args.preview_url, None))
+    snapshots = []
+    for label, url, pid_file in targets:
+        if pid_file and pid_file.exists():
+            try:
+                pids = [int(pid_file.read_text().strip())]
+            except ValueError:
+                pids = []
+            if not args.no_children:
+                pids = expand_process_tree(pids)
+            snapshots.append(summarize_processes(label, url, ps_rows_for_pids(pids)))
+        else:
+            snapshots.append(capture_snapshot(label, url, include_children=not args.no_children))
+    return snapshots
 
 
 def file_sizes(paths):
@@ -348,7 +407,7 @@ def series_peaks(series):
     peaks = {}
     for label in labels:
         values = [s for point in series for s in point["services"] if s["label"] == label]
-        peaks[label] = {
+        peak = {
             "peak_rss_mb": max(s["rss_mb"] for s in values),
             "peak_cpu_percent": max(s["cpu_percent"] for s in values),
             "read_bytes": sum(s.get("read_delta") or 0 for s in values)
@@ -358,7 +417,62 @@ def series_peaks(series):
             if any(s.get("write_delta") is not None for s in values)
             else None,
         }
+        if any("physical_footprint_mb" in service for service in values):
+            footprint_values = [
+                s["physical_footprint_mb"]
+                for s in values
+                if s.get("physical_footprint_mb") is not None
+            ]
+            lifetime_values = [
+                s["physical_footprint_peak_mb"]
+                for s in values
+                if s.get("physical_footprint_peak_mb") is not None
+            ]
+            peak["peak_physical_footprint_mb"] = (
+                max(footprint_values) if footprint_values else None
+            )
+            peak["reported_lifetime_footprint_peak_mb"] = (
+                max(lifetime_values) if lifetime_values else None
+            )
+        if "elapsed_ms" in series[0] and "elapsed_ms" in series[-1]:
+            cpu_seconds = round(sum(s.get("cpu_seconds_delta") or 0 for s in values), 6)
+            peak.update(
+                cpu_seconds=cpu_seconds,
+                time_weighted_avg_cpu_percent=round(
+                    cpu_seconds
+                    / max(
+                        0.001,
+                        (series[-1]["elapsed_ms"] - series[0]["elapsed_ms"]) / 1000,
+                    )
+                    * 100,
+                    3,
+                ),
+            )
+        peaks[label] = peak
     return peaks
+
+
+def sampling_integrity(series: list[dict], interval: float) -> dict:
+    """Reject operation evidence with gaps consistent with sleep or sampler stalls."""
+
+    def observed_seconds(point: dict) -> float:
+        timestamp = point.get("timestamp")
+        if isinstance(timestamp, (int, float)):
+            return float(timestamp)
+        return float(point["elapsed_ms"]) / 1000
+
+    gaps = [
+        max(0.0, observed_seconds(current) - observed_seconds(previous))
+        for previous, current in zip(series, series[1:])
+    ]
+    max_gap = round(max(gaps, default=0.0), 3)
+    threshold = round(max(5.0, interval * 10), 3)
+    return {
+        "valid": max_gap <= threshold,
+        "sample_count": len(series),
+        "max_gap_seconds": max_gap,
+        "threshold_seconds": threshold,
+    }
 
 
 def collect_series(args):
@@ -368,6 +482,7 @@ def collect_series(args):
     except ImportError:
         psutil = None
     previous = {}
+    last_footprint_sample = float("-inf")
     series = []
     owned = None
     interrupted = False
@@ -382,8 +497,10 @@ def collect_series(args):
         while True:
             services = collect_snapshots(args)
             # Classify separately; never add browser or probe RSS to application budgets.
-            if args.browser_pid_file and args.browser_pid_file.exists():
+            browser_pid = args.browser_pid
+            if browser_pid is None and args.browser_pid_file and args.browser_pid_file.exists():
                 browser_pid = int(args.browser_pid_file.read_text().strip())
+            if browser_pid is not None:
                 services.append(
                     summarize_processes(
                         "browser",
@@ -409,6 +526,10 @@ def collect_series(args):
                     )
                 )
             now = time.monotonic()
+            sample_footprint = (
+                args.macos_footprint_interval > 0
+                and now - last_footprint_sample >= args.macos_footprint_interval
+            )
             for service in services:
                 service["role"] = (
                     "application"
@@ -416,6 +537,7 @@ def collect_series(args):
                     else service["label"]
                 )
                 cpu = []
+                cpu_seconds = []
                 reads = []
                 writes = []
                 for pid in service["pids"]:
@@ -434,6 +556,7 @@ def collect_series(args):
                             read = write = None
                         before = previous.get(identity)
                         if before:
+                            cpu_seconds.append(max(0, total - before[1]))
                             cpu.append(
                                 max(0, total - before[1]) / max(0.001, now - before[0]) * 100
                             )
@@ -455,6 +578,7 @@ def collect_series(args):
                         pass
                 if cpu:
                     service["cpu_percent"] = round(sum(cpu), 3)
+                service["cpu_seconds_delta"] = round(sum(cpu_seconds), 6)
                 service["cpu_evidence"] = "interval_cpu_seconds" if cpu else "ps_lifetime_percent"
                 service["read_delta"] = (
                     sum(reads) if reads and all(v is not None for v in reads) else None
@@ -467,6 +591,19 @@ def collect_series(args):
                     if service["read_delta"] is not None
                     else "not_available_on_platform_or_first_observation"
                 )
+                if sample_footprint:
+                    footprint, lifetime_peak = macos_footprint_for_pids(service["pids"])
+                    service["physical_footprint_mb"] = footprint
+                    service["physical_footprint_peak_mb"] = lifetime_peak
+                    service["footprint_evidence"] = (
+                        "macos_footprint" if footprint is not None else "not_available"
+                    )
+                else:
+                    service["physical_footprint_mb"] = None
+                    service["physical_footprint_peak_mb"] = None
+                    service["footprint_evidence"] = "not_sampled_this_interval"
+            if sample_footprint:
+                last_footprint_sample = now
             point = {
                 "timestamp": time.time(),
                 "elapsed_ms": (now - started) * 1000,
@@ -518,10 +655,39 @@ def main(argv: Optional[list[str]] = None) -> int:
     context = contract.context_from_args(args)
     series, operation_exit = collect_series(args)
     peaks = series_peaks(series)
-    snapshots = [s.copy() for s in series[-1]["services"] if s["role"] == "application"]
+    labels = sorted(
+        {
+            service["label"]
+            for point in series
+            for service in point["services"]
+            if service["role"] == "application"
+        }
+    )
+    snapshots = []
+    for label in labels:
+        observed = [
+            service
+            for point in series
+            for service in point["services"]
+            if service["label"] == label and service["status"] == "ok"
+        ]
+        if observed:
+            snapshots.append(observed[-1].copy())
+        else:
+            snapshots.append(
+                next(
+                    service.copy()
+                    for service in series[-1]["services"]
+                    if service["label"] == label
+                )
+            )
     for s in snapshots:
         s["rss_mb"] = peaks[s["label"]]["peak_rss_mb"]
         s["cpu_percent"] = peaks[s["label"]]["peak_cpu_percent"]
+        s["cpu_seconds"] = peaks[s["label"]]["cpu_seconds"]
+        s["time_weighted_avg_cpu_percent"] = peaks[s["label"]][
+            "time_weighted_avg_cpu_percent"
+        ]
     report = build_json_report(snapshots)
     # Total is the peak of simultaneous application trees, not sum of unrelated peaks.
     report["total_rss_mb"] = max(
@@ -559,6 +725,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             for key, value in series[0]["files"].items()
         },
     )
+    integrity = sampling_integrity(series, args.interval)
+    report["sampling_integrity"] = integrity
     try:
         service_rss_budgets = collect_service_budgets(args.max_service_rss_mb)
         service_cpu_budgets = collect_service_budgets(args.max_service_cpu_percent)
@@ -572,6 +740,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         service_rss_budgets=service_rss_budgets,
         service_cpu_budgets=service_cpu_budgets,
     )
+    if not integrity["valid"]:
+        budget_failures.append(
+            "sampling gap "
+            f"{integrity['max_gap_seconds']}s exceeds integrity threshold "
+            f"{integrity['threshold_seconds']}s"
+        )
     report["budget_failures"] = budget_failures
     print(render_markdown(report), flush=True)
 
@@ -583,7 +757,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.fail_on_missing and report["missing_count"] > 0:
         return 1
     if budget_failures:
-        print("Runtime resource budget failures:", file=sys.stderr)
+        print("Runtime resource validation failures:", file=sys.stderr)
         for failure in budget_failures:
             print(f"- {failure}", file=sys.stderr)
         return 1

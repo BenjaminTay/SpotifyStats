@@ -18,10 +18,10 @@ EOF
 
 sudo tee /etc/systemd/system/spotify-stats-backup.timer >/dev/null <<'EOF'
 [Unit]
-Description=Run SpotifyStats backup daily
+Description=Run SpotifyStats backup weekly
 
 [Timer]
-OnCalendar=*-*-* 03:20:00
+OnCalendar=Sun *-*-* 03:20:00
 RandomizedDelaySec=20m
 Persistent=true
 

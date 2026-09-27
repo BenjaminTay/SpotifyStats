@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.core.cache import singleflight
+from backend.core.config import SPOTIFY_STATS_DB_PATH
 from backend.domains.playback.logical_timeline import reconstruct_logical_plays
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ def _downcast_ints(df):
 
 
 # backend/core/ → os.path.dirname x3 = project root
-DB_PATH = os.path.join(
+DB_PATH = SPOTIFY_STATS_DB_PATH or os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "spotify_stats.db"
 )
 
@@ -682,6 +683,51 @@ CREATE TABLE IF NOT EXISTS spotify_track_meta (
 );
 
 CREATE INDEX IF NOT EXISTS idx_spotify_track_meta_album ON spotify_track_meta(spotify_album_id);
+
+CREATE TABLE IF NOT EXISTS spotify_track_credit_sets (
+    spotify_track_id TEXT PRIMARY KEY REFERENCES spotify_track_meta(spotify_track_id),
+    artist_count INTEGER NOT NULL CHECK(artist_count > 0),
+    credit_signature TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    source_run_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS spotify_track_artist_credits (
+    spotify_track_id TEXT NOT NULL REFERENCES spotify_track_credit_sets(spotify_track_id)
+                     ON DELETE CASCADE,
+    spotify_artist_id TEXT NOT NULL,
+    credited_name TEXT NOT NULL,
+    credit_order INTEGER NOT NULL CHECK(credit_order >= 0),
+    observed_at TEXT NOT NULL,
+    PRIMARY KEY(spotify_track_id, spotify_artist_id),
+    UNIQUE(spotify_track_id, credit_order)
+);
+
+CREATE TABLE IF NOT EXISTS spotify_track_credit_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    spotify_track_id TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK(event_type IN ('observed', 'changed')),
+    before_json TEXT,
+    after_json TEXT NOT NULL,
+    source_run_id TEXT,
+    observed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_spotify_track_credit_events_track
+    ON spotify_track_credit_events(spotify_track_id, event_id);
+
+CREATE TABLE IF NOT EXISTS spotify_auto_track_credits (
+    track_id INTEGER NOT NULL REFERENCES tracks(track_id),
+    artist_id INTEGER NOT NULL REFERENCES artists(artist_id),
+    spotify_track_id TEXT NOT NULL REFERENCES spotify_track_credit_sets(spotify_track_id),
+    spotify_artist_id TEXT NOT NULL,
+    credited_name TEXT NOT NULL,
+    credit_order INTEGER NOT NULL CHECK(credit_order >= 0),
+    PRIMARY KEY(track_id, artist_id)
+);
+CREATE INDEX IF NOT EXISTS idx_spotify_auto_track_credits_track
+    ON spotify_auto_track_credits(track_id);
 
 CREATE TABLE IF NOT EXISTS spotify_album_meta (
     spotify_album_id   TEXT PRIMARY KEY,
@@ -2469,8 +2515,28 @@ def db_exists() -> bool:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _track_display_cache_key() -> tuple[str, int, int, int]:
+    """Read cheap revisions so another process's credit write cannot leave display maps stale."""
+    from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_identity import get_track_identity_revision
+
+    conn = get_db()
+    try:
+        return (
+            str(DB_PATH),
+            get_identity_revision(conn),
+            get_track_credit_revision(conn),
+            get_track_identity_revision(conn),
+        )
+    finally:
+        conn.close()
+
+
 @lru_cache(maxsize=1)
-def get_track_all_artists_map() -> dict[int, str]:
+def _get_track_all_artists_map_cached(
+    _cache_key: tuple[str, int, int, int],
+) -> dict[int, str]:
     """Return the effective multi-artist display map keyed only by L1 ID.
 
     L1 IDs and raw ``tracks.track_id`` values are independent numeric
@@ -2500,8 +2566,18 @@ def get_track_all_artists_map() -> dict[int, str]:
     return {tid: ", ".join(names) for tid, names in resolved.items() if len(names) > 1}
 
 
+def get_track_all_artists_map() -> dict[int, str]:
+    return _get_track_all_artists_map_cached(_track_display_cache_key())
+
+
+get_track_all_artists_map.cache_clear = _get_track_all_artists_map_cached.cache_clear
+get_track_all_artists_map.cache_info = _get_track_all_artists_map_cached.cache_info
+
+
 @lru_cache(maxsize=1)
-def get_track_artist_names_map() -> dict[int, list[str]]:
+def _get_track_artist_names_map_cached(
+    _cache_key: tuple[str, int, int, int],
+) -> dict[int, list[str]]:
     """Return effective artist names keyed only by canonical L1 ID."""
     conn = get_db()
     from backend.domains.metadata.track_credits import canonical_artist_names_for_effective_tracks
@@ -2523,6 +2599,15 @@ def get_track_artist_names_map() -> dict[int, list[str]]:
         result = raw_result
     conn.close()
     return result
+
+
+def get_track_artist_names_map() -> dict[int, list[str]]:
+    """Return effective artist names keyed by L1 ID and credit revisions."""
+    return _get_track_artist_names_map_cached(_track_display_cache_key())
+
+
+get_track_artist_names_map.cache_clear = _get_track_artist_names_map_cached.cache_clear
+get_track_artist_names_map.cache_info = _get_track_artist_names_map_cached.cache_info
 
 
 def get_raw_track_artist_names_map() -> dict[int, list[str]]:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import unicodedata
+from collections.abc import Sequence
 from datetime import date, timedelta
 from functools import lru_cache
 from typing import Any
@@ -214,6 +215,7 @@ def build_duration_frame(
     resolved: dict | None = None,
     *,
     duration_source: pd.DataFrame | None = None,
+    source_columns: Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """Build duration slices from an explicitly scoped listening source.
 
@@ -233,6 +235,8 @@ def build_duration_frame(
         source = get_listening_duration_frame(df)
     if source is None:
         source = df
+    if source_columns is not None:
+        source = source.loc[:, [column for column in source_columns if column in source.columns]]
     slices = explode_listening_slices(source, granularity="hour")
     if slices.empty or resolved is None:
         return slices.reset_index(drop=True)
@@ -328,6 +332,7 @@ def load_period_plays(
     max_merge_gap_minutes: int | None = 5,
     _loader=None,
     attach_duration_slices: bool = True,
+    reuse_unfiltered_frame: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     loader = _loader or load_plays
     df = loader(
@@ -339,11 +344,16 @@ def load_period_plays(
         max_merge_gap_minutes=max_merge_gap_minutes,
     )
     resolved = resolve_period(df, period, start_date, end_date)
-    current = (
-        filter_period(df, resolved)
-        if attach_duration_slices
-        else filter_period_events(df, resolved)
-    )
+    if attach_duration_slices:
+        current = filter_period(df, resolved)
+    elif reuse_unfiltered_frame and resolved["period"] == "lifetime":
+        # Snapshot stats treat the event frame as read-only and build a
+        # separate projected duration frame. Avoid a second deep copy of the
+        # complete lifetime table while keeping the default isolation contract
+        # for every interactive caller.
+        current = df
+    else:
+        current = filter_period_events(df, resolved)
     return df, current, resolved
 
 
@@ -665,6 +675,8 @@ def _build_analysis_stats(
     dynamic_threshold: bool = False,
     max_merge_gap_minutes: int | None = 5,
 ) -> dict:
+    from backend.domains.playback.logical_timeline import LISTENING_INTERVALS_COLUMN
+
     _, df, resolved = load_period_plays(
         conn,
         min_ms,
@@ -675,19 +687,31 @@ def _build_analysis_stats(
         end_date,
         dynamic_threshold=dynamic_threshold,
         max_merge_gap_minutes=max_merge_gap_minutes,
+        attach_duration_slices=False,
+        reuse_unfiltered_frame=True,
     )
-    summary = _summary(df)
-    daily = _daily_trend(df)
+    duration_frame = build_duration_frame(
+        df,
+        resolved,
+        source_columns=(
+            LISTENING_INTERVALS_COLUMN,
+            "track_id",
+            "album_name",
+            "artist_name",
+        ),
+    )
+    summary = _summary(df, duration_frame)
+    daily = _daily_trend(df, duration_frame)
     return {
         "period": resolved,
         "summary": summary,
         "daily_metrics": _daily_metrics(summary),
-        "hourly_distribution": _hourly_distribution(df),
+        "hourly_distribution": _hourly_distribution(df, duration_frame),
         "daily_trend": daily,
         "cumulative_trend": _cumulative_trend(daily),
-        "weekday_distribution": _weekday_distribution(df),
-        "month_distribution": _month_distribution(df),
-        "year_distribution": _year_distribution(df),
+        "weekday_distribution": _weekday_distribution(df, duration_frame),
+        "month_distribution": _month_distribution(df, duration_frame),
+        "year_distribution": _year_distribution(df, duration_frame),
         "behavior_summary": _behavior_summary(df),
         "taste_profile": build_consumer_taste_profile(conn, df),
         "recent_plays": recent_plays(conn, df, 50),

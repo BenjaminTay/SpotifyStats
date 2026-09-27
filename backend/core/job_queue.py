@@ -52,7 +52,8 @@ _CRITICAL_JOB_TYPES = {
     "community_snapshot_rebuild",
     "account_archive_snapshot_rebuild",
     "governance_snapshot_rebuild",
-    "entity_rank_context_rebuild",
+    "artist_rank_context_rebuild",
+    "startup_cache_warmup",
 }
 
 # Capture the primitives before application tests monkeypatch the shared
@@ -682,6 +683,8 @@ class JobQueue:
                 "community_snapshot_rebuild",
                 "account_archive_snapshot_rebuild",
                 "governance_snapshot_rebuild",
+                "artist_rank_context_rebuild",
+                "startup_cache_warmup",
             }
             with self._cpu_heavy_gate if cpu_heavy else nullcontext():
                 handler(job)
@@ -733,6 +736,7 @@ class JobQueue:
                 "artist_identity_rebuild",
                 "track_credit_rebuild",
                 "billboard_snapshot_rebuild",
+                "music_search_snapshot_rebuild",
             }:
                 from backend.services.governance_snapshot_service import (
                     enqueue_defaults as enqueue_governance,

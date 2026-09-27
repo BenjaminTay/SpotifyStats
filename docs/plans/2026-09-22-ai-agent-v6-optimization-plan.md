@@ -4,11 +4,13 @@
 >
 > 实现状态：`SIXTH_ROUND_COMPLETE`；验证状态：`LOCAL_PASS`
 >
-> 仓库状态：本规划未提交；远端状态：本规划未推送；部署状态：`NOT_DEPLOYED（V6）`
+> 仓库状态：实现已本地提交 `8edcd1c8`；远端状态：未推送；部署状态：`NOT_DEPLOYED（V6）`
 >
 > 文档状态：`COMPLETED_AFTER_L3_COUNT_RECONCILIATION`；生产发布仍需独立授权与在线验收。
 >
 > 源码核对基线：`main`，`49bfadfdd8d87d1bedb7d52b0788f53e0f219cfa`。后续实施以阶段开始时的实际代码和数据库版本重新确认。
+
+> 以下第六轮记录对应合并前候选；主分支集成与当前迁移编号见[本地集成报告](../reports/2026-09-27-ai-agent-v6-local-integration.md)。
 
 > 2026-09-27 第六轮完成：L3 composition 下 `vampire` 的旧 v11 快照 381 次与规范成员事件 380 次差异已关闭；v12 四变体重建、12/12 代表组合、动态/固定阈值各 493/493 多成员 L3 组对账、固定 11 题真实模型和默认完整 run `20260927T123442.686018Z-e24f493b421d` 均通过。第五轮及第六轮中间失败 run 继续保留为历史证据。当前证据见 [`../reports/2026-09-22-ai-agent-v6-final-acceptance.md`](../reports/2026-09-22-ai-agent-v6-final-acceptance.md)。未 commit、push 或部署。
 
