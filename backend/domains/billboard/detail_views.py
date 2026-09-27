@@ -32,7 +32,7 @@ from backend.domains.metadata.artist_identity import get_identity_revision
 from backend.domains.metadata.track_credits import get_track_credit_revision
 from backend.domains.music_search.revisions import get_music_search_revision_state
 
-DetailView = Literal["full", "summary", "overview", "tracks", "albums", "project"]
+DetailView = Literal["full", "summary", "agent", "overview", "tracks", "albums", "project"]
 
 
 def detail_revision_state() -> tuple:
@@ -284,12 +284,12 @@ def select_artist_detail_view(
 
 
 def get_track_detail_view(*args, view: DetailView = "full") -> dict:
-    if view == "summary":
+    if view in {"summary", "agent"}:
         summary = build_track_detail_summary(tuple(args))
         if summary is not None:
-            return summary
+            return summary if view == "agent" else select_track_detail_view(summary, "summary")
     payload = _track_detail_cached(tuple(args), detail_revision_state())
-    result = select_track_detail_view(payload, view)
+    result = payload if view == "agent" else select_track_detail_view(payload, view)
     result.update(
         load_detail_year_end_fields(tuple(args), entity="track", include_history=True)
         if view in {"full", "overview"}

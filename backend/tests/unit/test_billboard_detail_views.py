@@ -4,10 +4,124 @@ import pytest
 from backend.domains.billboard import detail_views
 from backend.domains.billboard.detail_views import (
     get_album_detail_view,
+    get_track_detail_view,
     select_album_detail_view,
     select_artist_detail_view,
     select_track_detail_view,
 )
+
+
+def test_track_summary_view_prefers_published_summary_without_full_build(monkeypatch):
+    published = {
+        "found": True,
+        "track_name": "Song",
+        "summary": {"peak_position": 1, "weeks_on_chart": 8},
+        "history": [],
+        "chart_data": {},
+    }
+    monkeypatch.setattr(detail_views, "build_track_detail_summary", lambda _args: published)
+    monkeypatch.setattr(
+        detail_views,
+        "get_track_history",
+        lambda *_args, **_kwargs: pytest.fail("exact published summary should avoid full build"),
+    )
+
+    result = get_track_detail_view(
+        7,
+        30_000,
+        True,
+        30,
+        20,
+        20,
+        4,
+        12,
+        None,
+        None,
+        True,
+        5,
+        True,
+        2,
+        False,
+        view="summary",
+    )
+
+    assert result["summary"] == published["summary"]
+    assert result["history"] == []
+    assert result["chart_data"] == {}
+
+
+def test_track_summary_view_keeps_full_builder_fallback(monkeypatch):
+    full = {
+        "found": True,
+        "track_name": "Song",
+        "summary": {"peak_position": 2, "weeks_on_chart": 3},
+        "history": [{"week": "2026-01-01"}],
+        "chart_data": {"x": ["2026-01-01"]},
+    }
+    monkeypatch.setattr(detail_views, "build_track_detail_summary", lambda _args: None)
+    monkeypatch.setattr(detail_views, "get_track_history", lambda *_args: full)
+    monkeypatch.setattr(detail_views, "detail_revision_state", lambda: ("fallback",))
+    detail_views._track_detail_cached.cache_clear()
+
+    result = get_track_detail_view(
+        7,
+        30_000,
+        True,
+        30,
+        20,
+        20,
+        4,
+        0,
+        2026,
+        2026,
+        True,
+        5,
+        True,
+        2,
+        False,
+        view="summary",
+    )
+
+    assert result["summary"] == full["summary"]
+    assert result["history"] == []
+    assert result["chart_data"] == {}
+
+
+def test_track_agent_view_keeps_published_weekly_facts(monkeypatch):
+    published = {
+        "found": True,
+        "track_name": "Song",
+        "summary": {"peak_position": 1, "weeks_on_chart": 1},
+        "history": [{"week": "2026-01-01", "rank": 1}],
+        "chart_data": {"x": ["2026-01-01"], "y": [1]},
+    }
+    monkeypatch.setattr(detail_views, "build_track_detail_summary", lambda _args: published)
+    monkeypatch.setattr(
+        detail_views,
+        "get_track_history",
+        lambda *_args, **_kwargs: pytest.fail("published agent evidence should avoid full build"),
+    )
+
+    result = get_track_detail_view(
+        7,
+        30_000,
+        True,
+        30,
+        20,
+        20,
+        4,
+        12,
+        None,
+        None,
+        True,
+        5,
+        True,
+        2,
+        False,
+        view="agent",
+    )
+
+    assert result is published
 
 
 def test_album_project_view_does_not_build_the_full_billboard_detail(monkeypatch):

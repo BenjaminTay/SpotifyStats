@@ -2,18 +2,30 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
+from backend.domains.agent_runtime.runtime_store import (
+    IncompatibleReportContextError,
+    RuntimeStore,
+)
 from backend.domains.ai_reports.final_artifact_quality import evaluate_final_artifact_quality
-from backend.domains.ai_reports.report_agent import run_report_agent
+from backend.domains.ai_reports.report_agent import (
+    REPORT_PROMPT_VERSION,
+    REPORT_RESEARCH_VERSION,
+    run_report_agent,
+)
 from backend.domains.ai_reports.report_section_protocol import (
+    REPORT_SECTION_CHECKPOINT_VERSION,
     audit_report_sections,
     strip_unsupported_numeric_sentences,
 )
 from backend.domains.ai_reports.runtime_metrics import ReportRuntimeMetrics
+from backend.domains.ai_reports.section_writer import SECTION_WRITER_VERSION, SectionWriteResult
 from backend.domains.ai_reports.yearly_validator import validate_yearly_report
 
 WRITER_PIPELINE_REQUEST_VALUE = "agent_synthesis_v2"
@@ -78,14 +90,58 @@ def generate_visual_yearly_artifact(
     request: dict[str, Any],
     *,
     emit_event: ReportAgentEvent | None = None,
+    checkpoint_store: RuntimeStore | None = None,
+    should_continue: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Generate a visual yearly artifact using Agent-synthesis style LLM writing."""
     runtime_metrics = ReportRuntimeMetrics()
-    with runtime_metrics.stage("context_snapshot"):
-        evidence, context = _run_visual_research(request, emit_event=emit_event)
-    context = dict(context)
-    snapshot_metadata = _dict(context.pop("_agent_context_snapshot", {}))
-    precomputed = _dict(context.pop("_agent_precomputed", {}))
+    frozen = (
+        checkpoint_store.get_report_generation_context(
+            contract_version=VISUAL_YEARLY_CONTRACT_VERSION,
+            plan_version=VISUAL_YEARLY_CONTRACT_VERSION,
+            prompt_version=REPORT_PROMPT_VERSION,
+            writer_version=SECTION_WRITER_VERSION,
+            validator_version=REPORT_SECTION_CHECKPOINT_VERSION,
+        )
+        if checkpoint_store is not None
+        else None
+    )
+    if frozen is not None:
+        evidence = list(frozen.get("evidence") or [])
+        context = dict(frozen.get("context") or {})
+        precomputed = _dict(frozen.get("precomputed"))
+        snapshot_metadata = _dict(precomputed.get("snapshot_metadata"))
+        context_key = str(frozen.get("context_key") or "")
+        runtime_metrics.record_context_snapshot(
+            cache_hit=True,
+            snapshot_key=str(frozen.get("source_key") or ""),
+            built=False,
+        )
+    else:
+        if checkpoint_store is not None and checkpoint_store.has_report_progress():
+            raise IncompatibleReportContextError(
+                "年度报告已有执行进度，但本代固定上下文缺失；请按当前数据显式重新生成"
+            )
+        with runtime_metrics.stage("context_snapshot"):
+            evidence, context = _run_visual_research(request, emit_event=emit_event)
+        context = dict(context)
+        snapshot_metadata = _dict(context.pop("_agent_context_snapshot", {}))
+        precomputed = _dict(context.pop("_agent_precomputed", {}))
+        context = {**context, "request_filters": _request_filters(request)}
+        context_key = hashlib.sha256(
+            json.dumps(
+                {
+                    "snapshot_key": snapshot_metadata.get("snapshot_key"),
+                    "request_filters": context["request_filters"],
+                    "period": context.get("period"),
+                    "contract": VISUAL_YEARLY_CONTRACT_VERSION,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
     if snapshot_metadata:
         runtime_metrics.record_context_snapshot(
             cache_hit=bool(snapshot_metadata.get("cache_hit")),
@@ -93,11 +149,130 @@ def generate_visual_yearly_artifact(
             built=bool(snapshot_metadata.get("built")),
         )
     context = {**context, "request_filters": _request_filters(request)}
+    if _context_has_no_play_data(context):
+        _emit(
+            emit_event,
+            "report_empty",
+            "当前年份没有满足过滤条件的播放记录",
+            "empty",
+            1.0,
+        )
+        runtime_payload = runtime_metrics.to_dict()
+        empty_metadata = {
+            "report_mode": VISUAL_YEARLY_REPORT_MODE,
+            "contract_version": VISUAL_YEARLY_CONTRACT_VERSION,
+            "fallback_level": "no_data",
+            "data_status": "empty",
+            "empty": True,
+            "section_count": 0,
+            "chart_count": 0,
+            "insight_card_count": 0,
+            "article_length": 0,
+            "critic_passed": True,
+            "fact_validation_passed": True,
+            "final_artifact_quality_passed": True,
+            "section_checkpoints_passed": True,
+            "section_checkpoint_count": 0,
+            "section_writer_fallback_count": 0,
+            "runtime_metrics": runtime_payload,
+        }
+        return {
+            "success": True,
+            "report": None,
+            "artifact": None,
+            "cached": False,
+            "cached_at": None,
+            "entities": {"artists": [], "tracks": []},
+            "metadata": empty_metadata,
+            "critic": {"ok": True, "issues": [], "repair_instructions": []},
+            "fact_validation": {"ok": True, "issues": []},
+            "evidence_ledger": [_entry_to_dict(item) for item in evidence],
+            "section_checkpoints": [],
+            "tool_evidence": [],
+            "section_writer_metadata": {
+                "version": SECTION_WRITER_VERSION,
+                "model_accepted_count": 0,
+                "fallback_count": 0,
+                "attempt_count": 0,
+                "empty_reasons": {},
+                "sections": [],
+            },
+            "report_context_key": context_key,
+            "runtime_metrics": runtime_payload,
+            "error": None,
+        }
+    resume_sections = (
+        [
+            item
+            for item in checkpoint_store.list_report_sections(validated_only=True)
+            if item.get("context_key") == context_key
+            and item.get("writer_version") == SECTION_WRITER_VERSION
+            and item.get("validator_version") == REPORT_SECTION_CHECKPOINT_VERSION
+        ]
+        if checkpoint_store is not None
+        else []
+    )
+    resume_research = (
+        checkpoint_store.get_report_research(
+            context_key=context_key,
+            research_version=REPORT_RESEARCH_VERSION,
+        )
+        if checkpoint_store is not None
+        else None
+    )
+
+    def commit_research(summary: str, research_evidence: list[dict[str, Any]]) -> None:
+        if checkpoint_store is None:
+            return
+        checkpoint_store.commit_report_research(
+            context_key=context_key,
+            research_version=REPORT_RESEARCH_VERSION,
+            research_summary=summary,
+            evidence=research_evidence,
+        )
+
+    def commit_section(result: SectionWriteResult) -> None:
+        if checkpoint_store is None:
+            return
+        usage: dict[str, int | float] = {}
+        for attempt in result.attempts:
+            for key, value in attempt.usage.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    usage[key] = usage.get(key, 0) + value
+        section = result.section
+        if bool(_period(context).get("is_partial_year")):
+            section = _normalize_partial_year_value(section)
+        row = checkpoint_store.upsert_report_section(
+            section_id=result.plan.section_id,
+            section_order=int(result.plan.payload.get("index") or 0),
+            status="validated",
+            context_key=context_key,
+            plan_version=VISUAL_YEARLY_CONTRACT_VERSION,
+            writer_version=SECTION_WRITER_VERSION,
+            validator_version=REPORT_SECTION_CHECKPOINT_VERSION,
+            source_kind="model" if result.accepted else "deterministic",
+            section=section,
+            audit=result.to_dict(),
+            usage=usage,
+            attempt_count=len(result.attempts),
+            fallback_reason=result.fallback_reason,
+        )
+        _emit(
+            emit_event,
+            "report_section_validated",
+            f"已完成 {len(checkpoint_store.list_report_sections(validated_only=True))}/6 章",
+            "writing_sections",
+            min(0.94, 0.84 + (int(row.get("section_order") or 0) + 1) * 0.015),
+        )
 
     # Phase B: Deterministic chart planning and data
     _emit(emit_event, "stage_started", "正在选择年报图表", "planning_visuals", 0.50)
     with runtime_metrics.stage("visual_planning"):
-        if precomputed:
+        if frozen is not None:
+            narrative = _dict(precomputed.get("narrative")) or _minimal_narrative(context)
+            visual = _dict(precomputed.get("visual"))
+            chart_specs = list(precomputed.get("chart_specs") or _default_chart_specs())
+        elif precomputed:
             narrative = _dict(precomputed.get("narrative")) or _minimal_narrative(context)
             visual = _dict(precomputed.get("visual"))
             chart_specs = list(precomputed.get("chart_specs") or _default_chart_specs())
@@ -114,10 +289,48 @@ def generate_visual_yearly_artifact(
             chart_data = build_visual_chart_data(context, chart_specs)
     context = {**context, "chart_data": chart_data}
     fallback_insights = build_story_insights(context, narrative)
-    prepared_fallback_sections = _ensure_chart_observation_interpretations(
-        _compose_sections(context, narrative, fallback_insights, visual),
-        chart_data,
-    )
+    if frozen is not None:
+        prepared_fallback_sections = tuple(
+            _Section(
+                id=str(item.get("id") or ""),
+                role=str(item.get("role") or "opening"),
+                heading=str(item.get("heading") or ""),
+                deck=str(item.get("deck") or ""),
+                prose=str(item.get("prose") or ""),
+                chart_refs=tuple(item.get("chart_refs") or []),
+                insight_refs=tuple(item.get("insight_refs") or []),
+                evidence_refs=tuple(item.get("evidence_refs") or []),
+                pull_quote=item.get("pull_quote"),
+            )
+            for item in frozen.get("plan") or []
+            if isinstance(item, dict)
+        )
+    else:
+        prepared_fallback_sections = _ensure_chart_observation_interpretations(
+            _compose_sections(context, narrative, fallback_insights, visual),
+            chart_data,
+        )
+        if checkpoint_store is not None:
+            checkpoint_store.commit_report_generation_context(
+                context_key=context_key,
+                source_key=str(snapshot_metadata.get("snapshot_key") or context_key),
+                contract_version=VISUAL_YEARLY_CONTRACT_VERSION,
+                plan_version=VISUAL_YEARLY_CONTRACT_VERSION,
+                prompt_version=REPORT_PROMPT_VERSION,
+                writer_version=SECTION_WRITER_VERSION,
+                validator_version=REPORT_SECTION_CHECKPOINT_VERSION,
+                request=_request_filters(request),
+                evidence=[_entry_to_dict(item) for item in evidence],
+                context=context,
+                precomputed={
+                    "snapshot_metadata": snapshot_metadata,
+                    "narrative": narrative,
+                    "visual": visual,
+                    "chart_specs": chart_specs,
+                    "chart_data": chart_data,
+                },
+                plan=[section.to_dict() for section in prepared_fallback_sections],
+            )
 
     # Phase D: Agent multi-turn research + report writing. Research is expensive,
     # so writer retries happen inside run_report_agent and never repeat tools.
@@ -142,6 +355,12 @@ def generate_visual_yearly_artifact(
                 else None
             ),
             emit_event=emit_event,
+            resume_sections=resume_sections,
+            on_section_committed=commit_section,
+            resume_research=resume_research,
+            on_research_committed=commit_research,
+            should_continue=should_continue,
+            checkpoint_store=checkpoint_store,
         )
 
     def _sanitize_prose(text: str) -> str:
@@ -282,6 +501,7 @@ def generate_visual_yearly_artifact(
     result["section_checkpoints"] = checkpoints
     result["tool_evidence"] = tool_evidence
     result["section_writer_metadata"] = section_writer_metadata
+    result["report_context_key"] = context_key
     artifact = result.get("artifact")
     if isinstance(artifact, dict):
         artifact["section_checkpoints"] = checkpoints
@@ -347,8 +567,34 @@ def _finalize_visual_artifact_result(
     sections = _remove_duplicate_editorial_fact_claims(sections, None)
     sections = _dedupe_editorial_sections(sections)
     sections = _dedupe_chart_refs_across_sections(sections)
+    if bool(_period(context).get("is_partial_year")):
+        sections = tuple(
+            _Section(
+                id=section.id,
+                role=section.role,
+                heading=_normalize_partial_year_text(section.heading),
+                deck=_normalize_partial_year_text(section.deck),
+                prose=_normalize_partial_year_text(section.prose),
+                chart_refs=section.chart_refs,
+                insight_refs=section.insight_refs,
+                evidence_refs=section.evidence_refs,
+                pull_quote=(
+                    _normalize_partial_year_text(section.pull_quote)
+                    if section.pull_quote is not None
+                    else None
+                ),
+            )
+            for section in sections
+        )
+        narrative = _normalize_partial_year_value(narrative)
+        visual = _normalize_partial_year_value(visual)
+        chart_specs = _normalize_partial_year_value(chart_specs)
     story_insights = build_story_insights(context, narrative)
+    if bool(_period(context).get("is_partial_year")):
+        story_insights = _normalize_partial_year_value(story_insights)
     insight_cards = _compose_insight_cards(context, narrative, story_insights)
+    if bool(_period(context).get("is_partial_year")):
+        insight_cards = _normalize_partial_year_value(insight_cards)
     prose = _report_text(sections)
     _emit(emit_event, "stage_started", "正在检查文风与事实口径", "reviewing_visual_artifact", 0.88)
 
@@ -1713,6 +1959,32 @@ def _clean_user_text(text: str, context: dict[str, Any]) -> str:
     return _repair_broken_generated_phrases(cleaned)
 
 
+def _normalize_partial_year_text(text: str) -> str:
+    cleaned = str(text or "")
+    for source, target in (
+        ("全年陪伴密度", "阶段陪伴密度"),
+        ("年度高光日", "阶段高光日"),
+        ("年度声音线索", "阶段声音线索"),
+        ("这一整年", "这个统计期"),
+        ("一整年", "这个统计期"),
+        ("这一年", "这个统计期"),
+    ):
+        cleaned = cleaned.replace(source, target)
+    return cleaned
+
+
+def _normalize_partial_year_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _normalize_partial_year_text(value)
+    if isinstance(value, dict):
+        return {key: _normalize_partial_year_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize_partial_year_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_normalize_partial_year_value(item) for item in value)
+    return value
+
+
 def _repair_broken_generated_phrases(text: str) -> str:
     """Undo bad Chinese fragments introduced by post-processing or LLM seams."""
     cleaned = str(text or "")
@@ -1894,6 +2166,19 @@ def _period(context: dict[str, Any]) -> dict[str, Any]:
 
 def _top_name(context: dict[str, Any], key: str, index: int, fallback: str) -> str:
     return _name_at(_list(context.get(key)), index, fallback)
+
+
+def _context_has_no_play_data(context: dict[str, Any]) -> bool:
+    hero = _dict(context.get("hero"))
+    if "total_plays" not in hero:
+        return False
+    try:
+        total_plays = int(hero.get("total_plays") or 0)
+    except (TypeError, ValueError):
+        return False
+    return total_plays <= 0 and not any(
+        _list(context.get(key)) for key in ("top_artists", "top_tracks", "top_albums")
+    )
 
 
 def _new_artist(context: dict[str, Any]) -> str:

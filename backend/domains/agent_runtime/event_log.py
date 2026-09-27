@@ -55,6 +55,21 @@ class AgentEventLog:
         self.task_id = task_id
         self.turn_id = turn_id
         self.session_id = session_id
+        has_v6_table = (
+            self.conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ai_runtime_events'"
+            ).fetchone()
+            is not None
+        )
+        runtime_row = (
+            self.conn.execute(
+                "SELECT runtime_version FROM ai_task_runs WHERE task_id = ?",
+                (self.task_id,),
+            ).fetchone()
+            if has_v6_table
+            else None
+        )
+        self._supports_v6 = bool(runtime_row and str(runtime_row[0]) == "v6")
 
     def append(
         self,
@@ -62,24 +77,46 @@ class AgentEventLog:
         payload: dict[str, Any] | None = None,
         *,
         step_index: int | None = None,
+        call_id: str | None = None,
+        response_commit_payload: dict[str, Any] | None = None,
     ) -> int:
-        row = self.conn.execute(
-            "SELECT COALESCE(MAX(sequence), 0) + 1 FROM ai_agent_turn_events WHERE turn_id = ?",
-            (self.turn_id,),
-        ).fetchone()
-        sequence = int(row[0])
+        sanitized = _sanitize_payload(payload or {})
+        if self._supports_v6:
+            from backend.domains.agent_runtime.runtime_store import RuntimeStore
+
+            return RuntimeStore(self.conn, self.task_id).commit_turn_event(
+                turn_id=self.turn_id,
+                session_id=self.session_id,
+                event_type=event_type,
+                payload=sanitized,
+                step_index=step_index,
+                step_id=(
+                    f"turn:{self.turn_id}:step:{step_index}"
+                    if step_index is not None
+                    else f"turn:{self.turn_id}"
+                ),
+                call_id=call_id
+                or (
+                    str(
+                        (payload or {}).get("model_call_id") or (payload or {}).get("call_id") or ""
+                    )
+                    or None
+                ),
+                response_commit_payload=response_commit_payload,
+            )
         cursor = self.conn.execute(
             """INSERT INTO ai_agent_turn_events
                (task_id, session_id, turn_id, sequence, step_index, event_type, payload_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               SELECT ?, ?, ?, COALESCE(MAX(sequence), 0) + 1, ?, ?, ?
+               FROM ai_agent_turn_events WHERE turn_id = ?""",
             (
                 self.task_id,
                 self.session_id,
                 self.turn_id,
-                sequence,
                 step_index,
                 event_type,
-                json.dumps(_sanitize_payload(payload or {}), ensure_ascii=False),
+                json.dumps(sanitized, ensure_ascii=False),
+                self.turn_id,
             ),
         )
         self.conn.commit()
@@ -91,11 +128,30 @@ class AgentEventLog:
         *,
         step_index: int | None = None,
         origin: str,
+        call_id: str | None = None,
+        usage: dict[str, Any] | None = None,
+        attempt_count: int = 1,
+        elapsed_ms: int = 0,
+        dispatch_id: str | None = None,
     ) -> None:
+        sanitized_message = _sanitize_payload(message)
         self.append(
             "model_message",
-            {"origin": origin, "message": message},
+            {"origin": origin, "message": sanitized_message},
             step_index=step_index,
+            call_id=call_id,
+            response_commit_payload=(
+                {
+                    "origin": origin,
+                    "message": sanitized_message,
+                    "usage": _sanitize_payload(usage) if usage else None,
+                    "attempt_count": max(1, int(attempt_count)),
+                    "elapsed_ms": max(0, int(elapsed_ms)),
+                    "dispatch_id": dispatch_id,
+                }
+                if self._supports_v6 and origin == "model_response" and call_id
+                else None
+            ),
         )
 
     def list_events(self) -> list[dict[str, Any]]:
@@ -115,7 +171,12 @@ class AgentEventLog:
 
     def reconstruct_messages(self) -> list[dict[str, Any]]:
         messages = []
-        for event in self.list_events():
+        events = self.list_events()
+        if self._supports_v6:
+            from backend.domains.agent_runtime.runtime_store import RuntimeStore
+
+            events = RuntimeStore(self.conn, self.task_id).list_events()
+        for event in events:
             if event["event_type"] != "model_message":
                 continue
             message = event["payload"].get("message")

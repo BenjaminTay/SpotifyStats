@@ -6,6 +6,8 @@ import { queryKeys } from '@/api/query-keys'
 import { api } from '@/lib/api'
 import type {
   AiAgentInboxPayload,
+  AiReportSection,
+  AiReportSectionsPayload,
   AiTaskCreatePayload,
   AiTaskEventsPayload,
   AiTaskRun,
@@ -16,7 +18,7 @@ import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 const POLL_INTERVAL_MS = 1_000
 
 function isActiveStatus(status: AiTaskRun['status'] | null | undefined): boolean {
-  return status === 'queued' || status === 'running' || status === 'cancelling'
+  return status === 'queued' || status === 'running' || status === 'awaiting_input' || status === 'cancelling'
 }
 
 function isTerminalStatus(status: AiTaskRun['status'] | null | undefined): boolean {
@@ -25,6 +27,79 @@ function isTerminalStatus(status: AiTaskRun['status'] | null | undefined): boole
 
 function isActiveTask(task: AiTaskRun | null | undefined): boolean {
   return isActiveStatus(task?.status)
+}
+
+function newerTask(
+  streamTask: AiTaskRun | null,
+  polledTask: AiTaskRun | null | undefined,
+): AiTaskRun | null {
+  if (!streamTask) return polledTask ?? null
+  if (!polledTask) return streamTask
+  const streamGeneration = streamTask.generation ?? 0
+  const polledGeneration = polledTask.generation ?? 0
+  if (streamGeneration !== polledGeneration) {
+    return streamGeneration > polledGeneration ? streamTask : polledTask
+  }
+  const streamVersion = streamTask.state_version ?? 0
+  const polledVersion = polledTask.state_version ?? 0
+  if (streamVersion !== polledVersion) return streamVersion > polledVersion ? streamTask : polledTask
+  if (isTerminalStatus(polledTask.status) && !isTerminalStatus(streamTask.status)) return polledTask
+  if (isTerminalStatus(streamTask.status) && !isTerminalStatus(polledTask.status)) return streamTask
+  const streamUpdated = String(streamTask.updated_at ?? '')
+  const polledUpdated = String(polledTask.updated_at ?? '')
+  return polledUpdated > streamUpdated ? polledTask : streamTask
+}
+
+function mergeAppendOnly<T, K extends string | number>(
+  polled: T[],
+  streamed: T[],
+  key: (item: T) => K,
+): T[] {
+  const merged = new Map<K, T>()
+  for (const item of [...polled, ...streamed]) merged.set(key(item), item)
+  return [...merged.values()]
+}
+
+function reconcileSections(
+  snapshot: AiReportSectionsPayload | undefined,
+  streamed: AiReportSection[],
+): AiReportSection[] {
+  const snapshotGeneration = snapshot?.generation ?? 0
+  const snapshotSequence = snapshot?.sequence ?? 0
+  const streamGeneration = streamed.reduce(
+    (latest, item) => Math.max(latest, item.generation ?? 0),
+    0,
+  )
+  const streamSequence = streamed.reduce(
+    (latest, item) => Math.max(latest, item.sequence ?? 0),
+    0,
+  )
+  if (snapshotGeneration > streamGeneration) {
+    return [...(snapshot?.sections ?? [])].sort((a, b) => a.section_order - b.section_order)
+  }
+  const merged = new Map<string, AiReportSection>()
+  for (const section of snapshot?.sections ?? []) merged.set(section.section_id, section)
+  const snapshotIsAuthoritative = snapshotGeneration === streamGeneration
+    && snapshotSequence >= streamSequence
+  if (!snapshotIsAuthoritative) {
+    for (const section of [...streamed].sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))) {
+      if (streamGeneration > 0 && section.generation !== streamGeneration) continue
+      if (
+        snapshotGeneration === section.generation
+        && (section.sequence ?? 0) <= snapshotSequence
+      ) continue
+      if (section.status === 'invalidated') merged.delete(section.section_id)
+      else {
+        const current = merged.get(section.section_id)
+        if (!current || section.section_version >= current.section_version) {
+          merged.set(section.section_id, section)
+        }
+      }
+    }
+  }
+  return [...merged.values()]
+    .filter((section) => section.status === 'validated')
+    .sort((a, b) => a.section_order - b.section_order)
 }
 
 function queryErrorMessage(error: unknown): string | null {
@@ -79,6 +154,19 @@ export function useStartReportTask() {
     mutationFn: (payload: ReportTaskRequest) => {
       if (!capabilities.ai) return Promise.reject(new Error('当前部署未开放 AI 功能'))
       return api.post<AiTaskCreatePayload>('/ai/tasks/report', payload)
+    },
+  })
+}
+
+export function useLookupReportTask() {
+  const { capabilities } = useRuntimeCapabilities()
+  return useMutation({
+    mutationFn: (payload: ReportTaskRequest) => {
+      if (!capabilities.ai) return Promise.reject(new Error('当前部署未开放 AI 功能'))
+      return api.post<AiTaskRun>('/ai/tasks/report/lookup', {
+        ...payload,
+        action: 'generate',
+      })
     },
   })
 }
@@ -150,6 +238,7 @@ export function useAiTask(taskId: string | null) {
   const [streamTask, setStreamTask] = useState<AiTaskRun | null>(null)
   const [streamEvents, setStreamEvents] = useState<AiTaskEventsPayload['events']>([])
   const [streamToolCalls, setStreamToolCalls] = useState<AiTaskEventsPayload['tool_calls']>([])
+  const [streamSections, setStreamSections] = useState<AiReportSection[]>([])
   const [streamedAnswer, setStreamedAnswer] = useState('')
   const previousTaskStateRef = useRef<{ taskId: string | null; status: AiTaskRun['status'] | null }>({
     taskId: null,
@@ -157,6 +246,7 @@ export function useAiTask(taskId: string | null) {
   })
   const taskKey = taskId ? queryKeys.aiTasks.task(taskId) : [...queryKeys.aiTasks.all, 'task', 'none'] as const
   const eventsKey = taskId ? queryKeys.aiTasks.events(taskId) : [...queryKeys.aiTasks.all, 'events', 'none'] as const
+  const sectionsKey = taskId ? queryKeys.aiTasks.sections(taskId) : [...queryKeys.aiTasks.all, 'sections', 'none'] as const
 
   const taskQuery = useQuery({
     queryKey: taskKey,
@@ -177,6 +267,14 @@ export function useAiTask(taskId: string | null) {
     ),
   })
   const refetchEvents = eventsQuery.refetch
+  const sectionsQuery = useQuery({
+    queryKey: sectionsKey,
+    queryFn: () => api.get<AiReportSectionsPayload>(`/ai/tasks/${taskId}/sections`),
+    enabled,
+    refetchInterval: () => (
+      streamState !== 'open' && isActiveTask(taskQuery.data) ? POLL_INTERVAL_MS : false
+    ),
+  })
 
   useEffect(() => {
     const status = taskQuery.data?.status ?? null
@@ -200,6 +298,8 @@ export function useAiTask(taskId: string | null) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setStreamToolCalls([])
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStreamSections([])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStreamedAnswer('')
     if (!taskId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -222,6 +322,11 @@ export function useAiTask(taskId: string | null) {
           setStreamState('failed')
           return
         }
+        if (event.type === 'stream.resync') {
+          cursor = undefined
+          setStreamState('failed')
+          return
+        }
         if (event.type === 'task.snapshot' || event.type === 'task.completed') {
           setStreamTask(event.data)
           if (event.type === 'task.completed') completed = true
@@ -237,6 +342,13 @@ export function useAiTask(taskId: string | null) {
           setStreamToolCalls((current) => current.some((item) => item.tool_call_id === event.data.tool_call_id)
             ? current
             : [...current, event.data])
+          return
+        }
+        if (event.type === 'task.section') {
+          setStreamSections((current) => {
+            const filtered = current.filter((item) => item.section_id !== event.data.section_id)
+            return [...filtered, event.data].sort((a, b) => a.section_order - b.section_order)
+          })
           return
         }
         if (event.type === 'task.answer_delta') {
@@ -267,25 +379,37 @@ export function useAiTask(taskId: string | null) {
     return () => controller.abort()
   }, [taskId])
 
-  const task = streamTask ?? taskQuery.data ?? null
-  const events = streamEvents.length > 0 ? streamEvents : (eventsQuery.data?.events ?? [])
-  const toolCalls = streamToolCalls.length > 0
-    ? streamToolCalls
-    : (eventsQuery.data?.tool_calls ?? [])
+  const task = newerTask(streamTask, taskQuery.data)
+  const events = mergeAppendOnly(
+    eventsQuery.data?.events ?? [],
+    streamEvents,
+    (item) => item.event_id,
+  ).sort((a, b) => a.event_id - b.event_id)
+  const toolCalls = mergeAppendOnly(
+    eventsQuery.data?.tool_calls ?? [],
+    streamToolCalls,
+    (item) => item.tool_call_id,
+  ).sort((a, b) => a.tool_call_id - b.tool_call_id)
+  const orderedSections = reconcileSections(sectionsQuery.data, streamSections)
 
   return {
     task,
     events,
     toolCalls,
+    sections: orderedSections,
     streamedAnswer,
     transport: streamState === 'open' ? 'sse' as const : 'polling' as const,
-    loading: taskQuery.isLoading || eventsQuery.isLoading,
-    fetching: taskQuery.isFetching || eventsQuery.isFetching,
+    loading: taskQuery.isLoading || eventsQuery.isLoading || sectionsQuery.isLoading,
+    fetching: taskQuery.isFetching || eventsQuery.isFetching || sectionsQuery.isFetching,
+    // Section transport may fail independently; it must not hide a completed
+    // report or the task's own terminal error. The polling/SSE merge can heal
+    // sections on the next reconnect.
     error: queryErrorMessage(taskQuery.error ?? eventsQuery.error),
     refetch: () => {
       if (!taskId) return
       void taskQuery.refetch()
       void eventsQuery.refetch()
+      void sectionsQuery.refetch()
     },
   }
 }

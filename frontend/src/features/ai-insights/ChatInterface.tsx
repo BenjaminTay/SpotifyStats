@@ -83,6 +83,7 @@ export function ChatInterface({
     taskId: activeChatTask?.taskId ?? null,
     sessionId: activeChatTask?.sessionId ?? null,
     active: isActiveAiTask(activeStatus),
+    awaitingInput: activeStatus === 'awaiting_input',
     setMessages,
     saveMessage,
     setError: setSessionError,
@@ -328,7 +329,9 @@ export function ChatInterface({
           value={input}
           disabled={composerDisabled}
           thinkingMode={thinkingMode}
-          placeholder={asking ? '可继续补充时间范围或分析要求…' : undefined}
+          placeholder={activeStatus === 'awaiting_input'
+            ? '请回答上方问题，Agent 会从当前进度继续…'
+            : asking ? '可继续补充时间范围或分析要求…' : undefined}
           onChange={setInput}
           onThinkingModeChange={setThinkingMode}
           onSend={handleSend}

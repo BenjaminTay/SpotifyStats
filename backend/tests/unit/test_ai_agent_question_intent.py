@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from backend.domains.ai_agent.question_frame import build_question_frame
 from backend.domains.ai_agent.question_intent import parse_question_intent
 from backend.services import ai_agent_service
 
@@ -91,6 +92,25 @@ def test_ranking_signals_win_over_generic_which_terms() -> None:
     assert artist_intent.task_type == "ranking"
     assert artist_intent.entity_type == "artist"
     assert "plays" in artist_intent.requested_metrics
+
+
+def test_year_end_champion_is_a_ranking_question() -> None:
+    question = "2025 年我的年榜冠军是谁？"
+    intent = parse_question_intent(question)
+    frame = build_question_frame(question, intent)
+
+    assert intent.task_type == "ranking"
+    assert "personal_billboard" in intent.requested_metrics
+    assert frame.family == "simple_ranking"
+    assert frame.answer_contract == "simple_rank_answer"
+
+
+def test_natural_who_ranking_defaults_to_artist() -> None:
+    intent = parse_question_intent("过去一年我真正反复回去听的是谁？")
+
+    assert intent.task_type == "ranking"
+    assert intent.entity_type == "artist"
+    assert "plays" in intent.requested_metrics
 
 
 def test_scoped_artist_catalog_question_uses_artist_scope() -> None:

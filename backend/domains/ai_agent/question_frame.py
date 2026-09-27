@@ -109,6 +109,7 @@ def _is_safety_boundary_question(question: str) -> bool:
             "导入数据",
             "任意 URL",
             "任意URL",
+            "Apple Music",
         ),
     ):
         return True
@@ -172,7 +173,21 @@ def _family(question: str, intent: QuestionIntent) -> QuestionFamily:
         return "taste_profile"
     if _contains_any(
         question,
-        ("收藏", "收藏夹", "已保存", "saved", "liked", "账号", "歌单", "playlist", "关注"),
+        (
+            "收藏",
+            "收藏夹",
+            "已保存",
+            "saved",
+            "liked",
+            "账号",
+            "歌单",
+            "playlist",
+            "关注",
+            "新发现",
+            "首次发现",
+            "长期常听",
+            "后来变成",
+        ),
     ):
         return "account_collection"
     if _contains_any(question, ("是否就代表", "是不是就代表", "等于最喜欢", "代表最喜欢")):

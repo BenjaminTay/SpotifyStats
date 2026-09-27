@@ -149,6 +149,23 @@ def _claimed_rank(sentence: str) -> int | None:
     return None
 
 
+def _claimed_rank_for_entity(
+    sentence: str,
+    entity_name: str,
+    *,
+    default_rank: int | None,
+) -> int | None:
+    """Resolve the rank attached to one entity in a multi-entity sentence."""
+
+    for clause in re.split(r"[，,；;]", sentence):
+        if entity_name not in clause:
+            continue
+        clause_rank = _claimed_rank(clause)
+        if clause_rank is not None:
+            return clause_rank
+    return default_rank
+
+
 def _fact_rank(fact: dict[str, Any]) -> int | None:
     metric_name = str(fact.get("metric_name") or "")
     match = re.search(r"(?:^|\.)top_(\d+)(?:_|$)", metric_name)
@@ -179,21 +196,43 @@ def _semantic_ranking_claims(sentence: str, facts: list[dict[str, Any]]) -> list
     claimed_rank = _claimed_rank(sentence)
     if claimed_rank is None:
         return []
-    claims: list[SemanticClaim] = []
+    facts_by_entity: dict[str, list[dict[str, Any]]] = {}
     for fact in _ranking_facts(facts):
         entity_name = str(fact.get("value") or "")
-        if not entity_name or entity_name not in sentence:
+        if entity_name and entity_name in sentence:
+            facts_by_entity.setdefault(entity_name, []).append(fact)
+    # A ranked track display name commonly contains its artist name.  When
+    # both appear in the catalog, prefer the longest matching entity so the
+    # artist's unrelated artist-chart rank cannot invalidate the track claim.
+    matched_names = sorted(facts_by_entity, key=len, reverse=True)
+    shadowed_names = {
+        shorter
+        for index, longer in enumerate(matched_names)
+        for shorter in matched_names[index + 1 :]
+        if shorter in longer
+    }
+
+    claims: list[SemanticClaim] = []
+    for entity_name, entity_facts in facts_by_entity.items():
+        if entity_name in shadowed_names:
             continue
-        expected_rank = _fact_rank(fact)
-        supported = expected_rank == claimed_rank
+        entity_rank = _claimed_rank_for_entity(
+            sentence,
+            entity_name,
+            default_rank=claimed_rank,
+        )
+        matching = [fact for fact in entity_facts if _fact_rank(fact) == entity_rank]
+        # One entity can legitimately occupy different ranks in different
+        # windows or metrics. A matching fact is sufficient support.
+        supported = bool(matching)
         claims.append(
             SemanticClaim(
                 text=sentence,
                 claim_type="ranking",
                 subject=entity_name,
                 predicate="rank",
-                object=claimed_rank,
-                fact_refs=_fact_ref(fact) if supported else [],
+                object=entity_rank,
+                fact_refs=[ref for fact in matching for ref in _fact_ref(fact)],
                 supported=supported,
             )
         )
@@ -522,7 +561,11 @@ def render_grounded_fallback(facts: list[dict[str, Any]], *, max_facts: int = 12
         value = fact["value"]
         unit = _UNIT_LABELS.get(str(fact.get("unit") or ""), str(fact.get("unit") or ""))
         rendered = f"{value}{unit}" if unit else str(value)
-        lines.append(f"- {fact.get('label') or fact.get('metric_name')}：{rendered}")
+        label = str(fact.get("label") or fact.get("metric_name") or "事实")
+        entity_name = str(fact.get("entity_name") or "").strip()
+        if entity_name and entity_name not in label:
+            label = f"{entity_name} {label}"
+        lines.append(f"- {label}：{rendered}")
 
     effective = {str(item.get("metric_name")): item.get("value") for item in effective_dates}
     start = effective.get("effective_start_date")

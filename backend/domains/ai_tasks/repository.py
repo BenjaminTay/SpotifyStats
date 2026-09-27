@@ -7,6 +7,8 @@ import sqlite3
 from collections.abc import Callable
 from typing import Any, Union
 
+from backend.domains.ai_tasks.execution_context import current_execution_identity
+
 JsonPayload = Union[dict[str, Any], list[Any]]
 TERMINAL_STATUSES = ("done", "error", "cancelled")
 TASK_LEASE_SECONDS = 90
@@ -24,6 +26,32 @@ def _json_load(value: str | None) -> JsonPayload | None:
     return json.loads(value)
 
 
+def report_request_identity(request: dict[str, Any]) -> str:
+    """Canonical identity for one report-generation contract.
+
+    ``force`` controls whether a new run is requested; it is not part of the
+    report's data identity. Defaults are materialized so an older omitted
+    default still matches the equivalent explicit current request.
+    """
+
+    normalized = {
+        "report_type": request.get("report_type"),
+        "action": "generate",
+        "report_mode": request.get("report_mode"),
+        "writer_pipeline": request.get("writer_pipeline"),
+        "week_start": request.get("week_start"),
+        "week_end": request.get("week_end"),
+        "month": request.get("month"),
+        "year": request.get("year"),
+        "min_ms": request.get("min_ms", 30000),
+        "music_only": request.get("music_only", True),
+        "merge_enabled": request.get("merge_enabled", True),
+        "dynamic_threshold": request.get("dynamic_threshold", True),
+        "max_merge_gap_minutes": request.get("max_merge_gap_minutes"),
+    }
+    return json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
 class AiTaskRepository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -36,10 +64,38 @@ class AiTaskRepository:
             "lease_expires_at",
             "attempt_count",
         }.issubset(columns)
+        self._supports_v6 = {
+            "runtime_version",
+            "workflow_version",
+            "event_schema_version",
+            "generation",
+            "lease_generation",
+        }.issubset(columns)
+        self._supports_state_version = "state_version" in columns
+        self._claimed_generation: int | None = None
 
     @property
     def supports_worker_leases(self) -> bool:
         return self._supports_leases
+
+    @property
+    def supports_v6(self) -> bool:
+        return self._supports_v6
+
+    @property
+    def claimed_lease_generation(self) -> int | None:
+        return self._claimed_generation
+
+    def _lease_guard(self, *, alias: str = "") -> tuple[str, tuple[Any, ...]]:
+        identity = current_execution_identity()
+        prefix = f"{alias}." if alias else ""
+        if identity is None or identity.task_id == "" or not self._supports_v6:
+            return "", ()
+        return (
+            f" AND {prefix}task_id = ? AND {prefix}lease_owner = ? "
+            f"AND {prefix}lease_generation = ?",
+            (identity.task_id, identity.lease_owner, identity.lease_generation),
+        )
 
     def _lease_refresh_sql(self) -> str:
         if not self._supports_leases:
@@ -48,6 +104,9 @@ class AiTaskRepository:
             "lease_expires_at = CASE WHEN lease_owner IS NOT NULL "
             f"THEN datetime('now', '+{TASK_LEASE_SECONDS} seconds') ELSE NULL END,"
         )
+
+    def _state_version_sql(self) -> str:
+        return "state_version = state_version + 1," if self._supports_state_version else ""
 
     def create_run(
         self,
@@ -59,12 +118,39 @@ class AiTaskRepository:
         message: str = "",
         request: JsonPayload | None = None,
     ) -> None:
-        self.conn.execute(
-            """INSERT INTO ai_task_runs
-               (task_id, task_type, status, stage, progress_pct, message, request_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (task_id, task_type, status, stage, 0.0, message, _json_dump(request)),
-        )
+        if self._supports_v6:
+            from backend.core.config import AI_AGENT_EXECUTION_PATH
+
+            runtime_version = AI_AGENT_EXECUTION_PATH if task_type.startswith("ai_") else "v5"
+            workflow_version = (
+                "yearly_v6"
+                if task_type == "ai_report_yearly" and runtime_version == "v6"
+                else runtime_version
+            )
+            self.conn.execute(
+                """INSERT INTO ai_task_runs
+                   (task_id, task_type, status, stage, progress_pct, message, request_json,
+                    runtime_version, workflow_version, event_schema_version, generation)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 2, 1)""",
+                (
+                    task_id,
+                    task_type,
+                    status,
+                    stage,
+                    0.0,
+                    message,
+                    _json_dump(request),
+                    runtime_version,
+                    workflow_version,
+                ),
+            )
+        else:
+            self.conn.execute(
+                """INSERT INTO ai_task_runs
+                   (task_id, task_type, status, stage, progress_pct, message, request_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (task_id, task_type, status, stage, 0.0, message, _json_dump(request)),
+            )
         self.conn.commit()
 
     def claim_run(
@@ -81,10 +167,11 @@ class AiTaskRepository:
             ).fetchone()
             return bool(row and str(row[0]) not in TERMINAL_STATUSES)
         modifier = f"+{max(30, int(lease_seconds))} seconds"
+        generation_sql = ", lease_generation = lease_generation + 1" if self._supports_v6 else ""
         cursor = self.conn.execute(
-            """UPDATE ai_task_runs
+            f"""UPDATE ai_task_runs
                SET lease_owner = ?, lease_expires_at = datetime('now', ?),
-                   attempt_count = attempt_count + 1, updated_at = datetime('now')
+                   attempt_count = attempt_count + 1{generation_sql}, updated_at = datetime('now')
                WHERE task_id = ?
                  AND status NOT IN (?, ?, ?)
                  AND (
@@ -94,6 +181,12 @@ class AiTaskRepository:
             (lease_owner, modifier, task_id, *TERMINAL_STATUSES, lease_owner),
         )
         self.conn.commit()
+        if cursor.rowcount > 0 and self._supports_v6:
+            row = self.conn.execute(
+                "SELECT lease_generation FROM ai_task_runs WHERE task_id = ?",
+                (task_id,),
+            ).fetchone()
+            self._claimed_generation = int(row[0]) if row else None
         return cursor.rowcount > 0
 
     def renew_run(
@@ -143,14 +236,16 @@ class AiTaskRepository:
         result: JsonPayload | None = None,
         error: str | None = None,
     ) -> None:
+        guard_sql, guard_params = self._lease_guard()
         self.conn.execute(
             f"""UPDATE ai_task_runs
                SET status = ?, stage = ?, progress_pct = ?, message = ?,
                    result_json = COALESCE(?, result_json),
                    error = ?,
+                   {self._state_version_sql()}
                    {self._lease_refresh_sql()}
                    updated_at = datetime('now')
-               WHERE task_id = ?""",
+               WHERE task_id = ?{guard_sql}""",
             (
                 status,
                 stage,
@@ -159,6 +254,7 @@ class AiTaskRepository:
                 _json_dump(result),
                 error,
                 task_id,
+                *guard_params,
             ),
         )
         self.conn.commit()
@@ -174,14 +270,16 @@ class AiTaskRepository:
         result: JsonPayload | None = None,
         error: str | None = None,
     ) -> bool:
+        guard_sql, guard_params = self._lease_guard()
         cursor = self.conn.execute(
             f"""UPDATE ai_task_runs
                SET status = ?, stage = ?, progress_pct = ?, message = ?,
                    result_json = COALESCE(?, result_json),
                    error = ?,
+                   {self._state_version_sql()}
                    {self._lease_refresh_sql()}
                    updated_at = datetime('now')
-               WHERE task_id = ? AND status NOT IN (?, ?, ?)""",
+               WHERE task_id = ? AND status NOT IN (?, ?, ?){guard_sql}""",
             (
                 status,
                 stage,
@@ -191,6 +289,7 @@ class AiTaskRepository:
                 error,
                 task_id,
                 *TERMINAL_STATUSES,
+                *guard_params,
             ),
         )
         self.conn.commit()
@@ -210,14 +309,16 @@ class AiTaskRepository:
     ) -> bool:
         try:
             self.conn.execute("BEGIN IMMEDIATE")
+            guard_sql, guard_params = self._lease_guard()
             cursor = self.conn.execute(
                 f"""UPDATE ai_task_runs
                    SET status = ?, stage = ?, progress_pct = ?, message = ?,
                        result_json = COALESCE(?, result_json),
                        error = ?,
+                       {self._state_version_sql()}
                        {self._lease_refresh_sql()}
                        updated_at = datetime('now')
-                   WHERE task_id = ? AND status NOT IN (?, ?, ?)""",
+                   WHERE task_id = ? AND status NOT IN (?, ?, ?){guard_sql}""",
                 (
                     status,
                     stage,
@@ -227,6 +328,7 @@ class AiTaskRepository:
                     error,
                     task_id,
                     *TERMINAL_STATUSES,
+                    *guard_params,
                 ),
             )
             if cursor.rowcount == 0:
@@ -249,11 +351,21 @@ class AiTaskRepository:
         message: str = "",
         payload: JsonPayload | None = None,
     ) -> None:
+        guard_sql, guard_params = self._lease_guard(alias="r")
         self.conn.execute(
-            """INSERT INTO ai_task_events
+            f"""INSERT INTO ai_task_events
                (task_id, event_type, stage, message, payload_json)
-               VALUES (?, ?, ?, ?, ?)""",
-            (task_id, event_type, stage, message, _json_dump(payload)),
+               SELECT ?, ?, ?, ?, ?
+               WHERE EXISTS (SELECT 1 FROM ai_task_runs r WHERE r.task_id = ?{guard_sql})""",
+            (
+                task_id,
+                event_type,
+                stage,
+                message,
+                _json_dump(payload),
+                task_id,
+                *guard_params,
+            ),
         )
         self.conn.commit()
 
@@ -334,6 +446,35 @@ class AiTaskRepository:
         result["request"] = _json_load(result.pop("request_json", None))
         result["result"] = _json_load(result.pop("result_json", None))
         return result
+
+    def find_latest_report_run(
+        self,
+        *,
+        task_type: str,
+        request: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        identity = report_request_identity(request)
+        rows = self.conn.execute(
+            """SELECT * FROM ai_task_runs
+               WHERE task_type = ?
+               ORDER BY created_at DESC, rowid DESC
+               LIMIT 200""",
+            (task_type,),
+        ).fetchall()
+        for row in rows:
+            item = dict(row)
+            stored_request = _json_load(item.get("request_json"))
+            if not isinstance(stored_request, dict):
+                continue
+            if stored_request.get("action") != "generate":
+                continue
+            if report_request_identity(stored_request) != identity:
+                continue
+            item["request"] = stored_request
+            item.pop("request_json", None)
+            item["result"] = _json_load(item.pop("result_json", None))
+            return item
+        return None
 
     def list_events(self, task_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -450,7 +591,7 @@ class AiTaskRepository:
         )
         rows = self.conn.execute(
             f"""SELECT * FROM ai_task_runs
-               WHERE task_type = 'ai_chat_agent'
+               WHERE task_type IN ('ai_chat_agent', 'ai_report_yearly')
                  AND status IN ('queued', 'running', 'cancelling')
                  {lease_predicate}
                ORDER BY created_at ASC"""

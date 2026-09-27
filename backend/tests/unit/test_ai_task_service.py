@@ -71,6 +71,16 @@ def ai_task_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
                 started_at TEXT NOT NULL DEFAULT (datetime('now')),
                 completed_at TEXT
             );
+            CREATE TABLE ai_agent_session_inbox (
+                inbox_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                session_id INTEGER,
+                input_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                consumed_at TEXT
+            );
             """
         )
     finally:
@@ -181,6 +191,169 @@ def test_startup_recovery_resumes_queued_agent_task(
 
     assert recovered == 1
     assert observed == [(task["task_id"], {"question": "恢复这个问题"}, True)]
+
+
+def test_recovery_worker_waits_for_previous_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claim_attempts: list[str] = []
+    sleeps: list[float] = []
+    handled: list[tuple[str, dict[str, Any]]] = []
+
+    class DummyConnection:
+        def close(self) -> None:
+            return None
+
+    class LeaseRepository:
+        supports_worker_leases = False
+        claimed_lease_generation = 2
+
+        def __init__(self, conn: DummyConnection):
+            del conn
+
+        def get_run(self, task_id: str) -> dict[str, Any]:
+            return {"task_id": task_id, "status": "running", "runtime_version": "v5"}
+
+        def claim_run(self, task_id: str, *, lease_owner: str) -> bool:
+            del task_id
+            claim_attempts.append(lease_owner)
+            return len(claim_attempts) >= 2
+
+        def release_run(self, task_id: str, *, lease_owner: str) -> bool:
+            del task_id, lease_owner
+            return True
+
+    clock = iter((0.0, 0.0, 0.5))
+    monkeypatch.setattr(ai_task_service, "get_db", lambda readonly=False: DummyConnection())
+    monkeypatch.setattr(ai_task_service, "AiTaskRepository", LeaseRepository)
+    monkeypatch.setattr(ai_task_service.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(ai_task_service.time, "sleep", sleeps.append)
+
+    ai_task_service._run_handler_safely(
+        "recover-me",
+        {"question": "继续"},
+        lambda task_id, request: handled.append((task_id, request)),
+        wait_for_lease_seconds=2,
+    )
+
+    assert len(claim_attempts) == 2
+    assert sleeps == [1.0]
+    assert handled == [("recover-me", {"question": "继续"})]
+
+
+def test_v6_worker_exits_if_task_is_removed_after_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handled: list[str] = []
+    reset_tokens: list[str] = []
+
+    class DummyConnection:
+        def close(self) -> None:
+            return None
+
+    class LeaseRepository:
+        supports_worker_leases = False
+        claimed_lease_generation = 1
+
+        def __init__(self, conn: DummyConnection):
+            del conn
+
+        def get_run(self, task_id: str) -> dict[str, Any]:
+            return {
+                "task_id": task_id,
+                "status": "queued",
+                "runtime_version": "v6",
+            }
+
+        def claim_run(self, task_id: str, *, lease_owner: str) -> bool:
+            del task_id, lease_owner
+            return True
+
+    class MissingRuntimeStore:
+        def __init__(self, conn: DummyConnection, task_id: str):
+            del conn, task_id
+
+        def record_execution_started(self, **kwargs: Any) -> None:
+            del kwargs
+            raise KeyError("removed")
+
+    monkeypatch.setattr(ai_task_service, "get_db", lambda readonly=False: DummyConnection())
+    monkeypatch.setattr(ai_task_service, "AiTaskRepository", LeaseRepository)
+    monkeypatch.setattr(ai_task_service, "RuntimeStore", MissingRuntimeStore)
+    monkeypatch.setattr(ai_task_service, "bind_execution_identity", lambda identity: "token")
+    monkeypatch.setattr(
+        ai_task_service,
+        "reset_execution_identity",
+        reset_tokens.append,
+    )
+
+    ai_task_service._run_handler_safely(
+        "removed-after-claim",
+        {},
+        lambda task_id, request: handled.append(task_id),
+    )
+
+    assert handled == []
+    assert reset_tokens == ["token"]
+
+
+def test_clarification_input_queues_and_resumes_agent(
+    ai_task_db: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del ai_task_db
+    from backend.services import ai_agent_v2_service
+
+    monkeypatch.setattr(ai_task_service.threading, "Thread", SyncThread)
+    observed: list[tuple[str, dict[str, Any], bool]] = []
+
+    def fake_resume(task_id: str, request: dict[str, Any], *, resume: bool = False) -> None:
+        observed.append((task_id, request, resume))
+
+    monkeypatch.setattr(ai_agent_v2_service, "run_chat_agent_task_v2", fake_resume)
+    task = ai_task_service.create_task(
+        task_type="ai_chat_agent",
+        stage="queued",
+        message="等待 Agent",
+        request={"question": "继续分析那个艺人", "session_id": 9},
+    )
+    conn = ai_task_service.get_db(readonly=False)
+    conn.execute(
+        "UPDATE ai_task_runs SET status='awaiting_input', stage='awaiting_input' WHERE task_id=?",
+        (task["task_id"],),
+    )
+    conn.commit()
+    conn.close()
+
+    result = ai_task_service.enqueue_agent_input(
+        task["task_id"],
+        action="followup",
+        content="Artist A",
+    )
+
+    assert result is not None
+    assert result["accepted"] is True
+    assert observed == [
+        (
+            task["task_id"],
+            {"question": "继续分析那个艺人", "session_id": 9},
+            True,
+        )
+    ]
+    stored = ai_task_service.get_task(task["task_id"])
+    assert stored is not None
+    assert stored["status"] == "queued"
+    conn = ai_task_service.get_db(readonly=True)
+    inbox = conn.execute(
+        "SELECT input_type, content, status FROM ai_agent_session_inbox WHERE task_id=?",
+        (task["task_id"],),
+    ).fetchone()
+    conn.close()
+    assert dict(inbox) == {
+        "input_type": "followup",
+        "content": "Artist A",
+        "status": "pending",
+    }
 
 
 def test_handler_exception_does_not_overwrite_cancelled_task(

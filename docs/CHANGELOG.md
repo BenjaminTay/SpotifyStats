@@ -1,5 +1,19 @@
 # 变更日志
 
+## 2026-09-22：AI Agent V6 统一运行时与渐进报告
+
+- 2026-09-27 第六轮收口：确认 `vampire` 旧 v11 搜索快照 381 次来自陈旧派生值，规范事件为主成员 379 次加 L3 附加成员 1 次、合计 380。统计快照提升为 v12 并拒绝旧 builder LKG；完整 Billboard 单成员计数统一从规范加权成员集求和，快照榜单构建复用有效普通周聚合。v12 四变体重建通过；12/12 代表组合与动态/固定阈值各 493/493 多成员 L3 组对账零差异。冻结 11 题真实模型 11/11，Turn/Tool P95 为 11.348s/4.719s。默认完整 fullstack run `20260927T123442.686018Z-e24f493b421d` 八阶段同轮 PASS：backend 3044 passed / 2 skipped、真实 integration 186 passed / 1 skipped、frontend 684 passed / 4 skipped、API 154/154、boundary 113/113，51 组性能端点与 Chromium/Firefox/WebKit 门禁通过。当前为 `LOCAL_PASS`；未 commit、push 或部署。
+- 2026-09-27 第五轮收口：单曲 Agent 快路径的 `total_chart_plays` 只汇总精确 weekly ledger，ledger 无法证明与 summary 完整一致时回退完整 builder；已上榜、未上榜和零播放实体统一返回 `effective_play_count`。完整 builder 修复 L2/L3 版本组总播放并直接使用已发布稳定 Power 排名。五实体同参数事实对账通过，仅保留 Agent 有意不展开 `meta.version_group` 的展示差异；冻结 11 题真实模型批次 11/11，Tool P95 14.813s。默认完整 fullstack run `20260927T104314.568661Z-d61a7589b7da` 八阶段同轮 PASS：backend 3040 passed / 2 skipped、真实 integration 186 passed / 1 skipped、frontend 684 passed / 4 skipped、API 154/154、boundary 113/113，51 组性能端点和 Chromium/Firefox/WebKit 门禁通过。当前本地状态为 `LOCAL_PASS`；未 commit、push 或部署。
+- 2026-09-27 第四轮收口：Billboard 详情工具默认参数与项目设置对齐，单曲 Agent 证据从精确发布 ledger 快速还原完整历史；冻结 11 题 V6 达到 11/11，Tool P95 7.740s，P0-06 目标工具 39ms。音乐搜索仅发布有元数据支持的本地封面 URL，并在读取旧候选代时将失效 URL 清为占位；Chromium/Firefox/WebKit 桌面与手机专项通过。默认完整 fullstack run `20260927T065039.674237Z-e75f34dcf895` 八阶段同轮 PASS：backend 3034 passed / 2 skipped、真实 integration 186 passed / 1 skipped、frontend 684 passed / 4 skipped、API 154/154、boundary 113/113，51 组性能端点与全部浏览器门禁通过。V6 本地状态更新为 `LOCAL_PASS`；未 commit、push 或部署。
+- 2026-09-27 第三轮补修：Chat 恢复按原 logical step/call ID 续跑，已提交响应不重发、部分工具只补缺失项，冻结请求拒绝 provider/schema/参数漂移并把新 steer 延后到下一步；报告研究与章节先重放提交事实，再只对新工作执行累计预算门禁。实际恢复与预算定向集合 81 项通过。当前默认 fullstack 的 preflight、quality、3026 项 seed、186 项真实 integration、API 和浏览器路由通过，但 Quick Open 因验收副本中既有缺失艺人封面 404 在交互阶段失败；补充 inventory 通过，Chromium/WebKit 兼容同样被缺失封面阻断。未伪造资产或放宽门槛。固定配对性能的 48.410s Tool P95 由同合同 Billboard cache miss 冷构建主导，没有证据归因于 V6 恢复路径，未扩修相邻治理或追加抽样，总体仍为 `PARTIAL`。
+- 2026-09-27 第二轮补修：为每次真实模型派发增加持久 reservation、取消/lease/预算门禁和保守 unknown 计账；恢复固定不可变 request descriptor；任务与章节使用 generation/version/sequence 调和 SSE 和轮询。定向回归与真实浏览器断流/撤回通过；当前默认完整 fullstack run `20260926T181037.304893Z-b9a3b8ef2623` 八阶段 PASS。新的 V5/V6 固定批次未满足全部质量及工具耗时门槛，性能与总体状态仍为 `PARTIAL`。
+- 2026-09-24 收口：独立复核重新打开的旧 Worker 污染、年报运行时分叉、上下文漂移、累计预算恢复和刷新找回缺口均已修复；migration 81、同源 V5/V6、真实硬中止恢复和浏览器刷新/断流/错误/取消流补齐证据。
+
+- migration 80/81 为 AI 问答和年度报告补齐版本化 runtime event、执行代次与租约栅栏、原子工具/模型恢复事实、累计预算与执行时间、冻结报告上下文、章节检查点和 artifact 发布资料；Chat、报告研究和章节 writer 共用模型步骤执行器，同时保留各自的事实与质量门禁。
+- `awaiting_input` 成为后端、API、SSE 和前端一致的真实任务状态；SSE cursor v2 支持审核章节渐进读取、刷新重连和 v1 兼容，无数据年度 fail-closed 返回明确空态，不调用模型生成虚假叙事。
+- 隔离 Online Backup 的真实模型验收达到新自由问法 24/24、现行历史集 42/42（45 turns）、固定 12 题连续三轮 12/12；完整年度三组 cold/hot 中位数 54.363s/30.482s，6/6 模型章节、0 回退。完整本地门禁状态见 [最终验收报告](reports/2026-09-22-ai-agent-v6-final-acceptance.md)。未提交、push 或部署。
+- 2026-09-24 补修候选的默认完整 fullstack run `20260924T100812.924811Z-1471d2b787a8` 八个必需阶段同一轮全部 PASS：seed 3010 passed / 2 skipped、真实 integration 186 passed / 1 skipped、前端 674 passed / 4 skipped、API smoke 154/154、边界 113/113、OpenAPI operation/边界无遗漏，Chromium/Firefox/WebKit 全部通过；第二轮补修后该 run 不代表当前候选。未提交、push 或部署。
+
 ## 2026-09-22：无指纹旧库完整替换基线初始化
 
 - 修复升级前数据库已有播放事实、但逐行指纹、generation 和活动来源基线全部缺失时，已确认 full replace 被误判为来源漂移的问题；仅当主库/控制库/恢复状态共同证明是完整 legacy 空基线时，才允许 `baseline_required` 的已确认 replace/auto 初始化。

@@ -147,7 +147,7 @@ def test_taste_profile_builds_only_bounded_taste_evidence(
         )
     )
 
-    assert calls["attach_duration_slices"] is False
+    assert calls["attach_duration_slices"] is True
     assert result.source_range == "2025-06-01..2025-08-31"
     assert result.data["taste_profile"]["primary_styles"]["buckets"][0]["label"] == "流行"
 

@@ -5,6 +5,24 @@ import { AITaskProgress } from '@/features/ai-tasks/AITaskProgress'
 import { AIToolTrace } from '@/features/ai-tasks/AIToolTrace'
 
 describe('AITaskProgress', () => {
+  it('renders a clarification state as waiting for the user', () => {
+    render(
+      <AITaskProgress
+        task={{
+          found: true,
+          status: 'awaiting_input',
+          stage: 'awaiting_input',
+          progress_pct: 0.55,
+          message: '请确认，你指的是 Artist A 吗？',
+        }}
+        events={[]}
+      />,
+    )
+
+    expect(screen.getByText('等待你的回答')).toBeInTheDocument()
+    expect(screen.getByText('请确认，你指的是 Artist A 吗？')).toBeInTheDocument()
+  })
+
   it('renders the current task stage, message, percentage, and completed events', () => {
     render(
       <AITaskProgress

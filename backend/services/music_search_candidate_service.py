@@ -15,6 +15,7 @@ from typing import Any, Literal, cast
 from backend.core.config import MUSIC_SEARCH_CANDIDATE_LKG
 from backend.domains.ai_agent.entity_resolver import EntityType, resolve_entities
 from backend.domains.music_search.contracts import make_music_search_entity_key
+from backend.domains.music_search.covers import sanitize_result_covers
 from backend.domains.music_search.deny_overlay import denied_music_search_entity_keys
 from backend.domains.music_search.index import (
     get_music_search_index_state,
@@ -236,6 +237,10 @@ def search_music_candidates(
     if indexed.status in {"ready", "degraded"}:
         candidate_freshness, active_index_version = _published_candidate_freshness(conn)
         totals = indexed.total_by_kind
+        tracks, albums, artists = sanitize_result_covers(
+            conn,
+            (indexed.tracks, indexed.albums, indexed.artists),
+        )
         response = MusicSearchCandidateResponse(
             query=query,
             normalized_query=analysis.normalized_query,
@@ -255,9 +260,9 @@ def search_music_candidates(
             page_size=page_size,
             total=totals.track + totals.album + totals.artist,
             total_by_kind=totals,
-            tracks=indexed.tracks,
-            albums=indexed.albums,
-            artists=indexed.artists,
+            tracks=tracks,
+            albums=albums,
+            artists=artists,
         )
         with measure_search_phase(timing, "serialize"):
             response.model_dump(mode="json")
@@ -317,6 +322,10 @@ def search_music_candidates(
         album=len(grouped["album"]),
         artist=len(grouped["artist"]),
     )
+    tracks, albums, artists = sanitize_result_covers(
+        conn,
+        (grouped["track"], grouped["album"], grouped["artist"]),
+    )
     response = MusicSearchCandidateResponse(
         query=query,
         normalized_query=analysis.normalized_query,
@@ -332,9 +341,9 @@ def search_music_candidates(
         page_size=page_size,
         total=totals.track + totals.album + totals.artist,
         total_by_kind=totals,
-        tracks=grouped["track"],
-        albums=grouped["album"],
-        artists=grouped["artist"],
+        tracks=tracks,
+        albums=albums,
+        artists=artists,
     )
     with measure_search_phase(timing, "serialize"):
         response.model_dump(mode="json")

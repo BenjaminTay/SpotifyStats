@@ -1,5 +1,9 @@
 # 交付与验证报告索引
 
+- [AI Agent V6 统一运行时与渐进报告最终本地验收](2026-09-22-ai-agent-v6-final-acceptance.md)
+
+- [AI Agent V6 S0 基线与固定评测合同](2026-09-22-ai-agent-v6-s0-baseline.md)
+
 - [数据导入处理与治理 S6 最终验收](2026-09-21-import-governance-final-acceptance.md)
 
 - [数据导入处理与治理 S1–S5 实施报告](2026-09-21-import-remediation-s1-s5.md)

@@ -61,6 +61,18 @@ def _entity_stats_card(item: dict[str, Any], data: dict[str, Any]) -> EvidenceCa
         return None
     name = _entity_name(item, data)
     entity_type = _entity_type(item, data)
+    if entity_type == "album":
+        params_summary = str(item.get("params_summary") or "")
+        artist_name = next(
+            (
+                part.split("=", 1)[1]
+                for part in params_summary.split(", ")
+                if part.startswith("artist_name=")
+            ),
+            None,
+        )
+        if name and artist_name and artist_name not in name:
+            name = f"{name} — {artist_name}"
     metrics: list[EvidenceMetric] = []
     _append_metric(metrics, _metric("total_plays", "播放次数", summary.get("total_plays"), "plays"))
     _append_metric(metrics, _metric("total_hours", "播放时长", summary.get("total_hours"), "hours"))
@@ -214,19 +226,28 @@ def _analysis_charts_card(item: dict[str, Any], data: dict[str, Any]) -> Evidenc
         rank = row.get("rank")
         prefix = f"top_{rank}" if rank is not None else f"top_{len(metrics)}"
         name = _display_row_name(entity_type, row)
-        _append_metric(metrics, _metric(f"{prefix}_name", f"#{rank or '?'}", name))
+        entity_label = {"artist": "艺人", "album": "专辑", "track": "歌曲"}.get(entity_type, "对象")
+        _append_metric(
+            metrics,
+            _metric(f"{prefix}_name", f"第{rank or '?'}名{entity_label}", name),
+        )
         _append_metric(
             metrics,
             _metric(
                 f"{prefix}_{metric}",
-                f"#{rank or '?'} {metric_label}",
+                f"第{rank or '?'}名 {metric_label}",
                 row.get(metric),
                 "plays" if metric == "plays" else "hours",
             ),
         )
         _append_metric(
             metrics,
-            _metric(f"{prefix}_share_pct", f"#{rank or '?'} 占比", row.get("share_pct"), "%"),
+            _metric(
+                f"{prefix}_share_pct",
+                f"第{rank or '?'}名 占比",
+                row.get("share_pct"),
+                "%",
+            ),
         )
     return EvidenceCard(
         card_id=f"{entity_type}:{metric}:{source_range or period_label}:analysis_charts",

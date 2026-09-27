@@ -8,6 +8,7 @@ interface Args {
   taskId: string | null
   sessionId: number | null
   active: boolean
+  awaitingInput?: boolean
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>
   saveMessage: (sessionId: number | null, role: string, content: string) => void
   setError: Dispatch<SetStateAction<string | null>>
@@ -17,6 +18,7 @@ export function useRunningAgentSteering({
   taskId,
   sessionId,
   active,
+  awaitingInput = false,
   setMessages,
   saveMessage,
   setError,
@@ -29,7 +31,11 @@ export function useRunningAgentSteering({
   const steerRunningAgent = useCallback(async (content: string): Promise<boolean> => {
     if (!active || !taskId) return false
     try {
-      const response = await sendInput.mutateAsync({ taskId, action: 'steer', content })
+      const response = await sendInput.mutateAsync({
+        taskId,
+        action: awaitingInput ? 'followup' : 'steer',
+        content,
+      })
       if (!response.accepted) throw new Error('当前 Agent 回合已结束，请重新发送')
       setReceiptState((current) => ({
         taskId,
@@ -44,7 +50,7 @@ export function useRunningAgentSteering({
       setError(error instanceof Error ? error.message : '补充要求发送失败')
     }
     return true
-  }, [active, saveMessage, sendInput, sessionId, setError, setMessages, taskId])
+  }, [active, awaitingInput, saveMessage, sendInput, sessionId, setError, setMessages, taskId])
   return {
     steerRunningAgent,
     steeringInputs: receiptState.taskId === taskId ? receiptState.inputs : [],

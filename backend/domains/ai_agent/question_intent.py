@@ -67,6 +67,11 @@ def _task_type(question: str) -> TaskType:
             "最常听",
             "最喜欢",
             "最爱",
+            "冠军",
+            "榜首",
+            "第一名",
+            "反复回去听",
+            "听的是谁",
             "前十",
             "前 10",
         ),
@@ -120,6 +125,8 @@ def _metrics(question: str, time_scope: str) -> list[str]:
             "最爱",
             "爱听",
             "常听",
+            "反复回去听",
+            "听的是谁",
             "plays",
         ),
     ):
@@ -187,6 +194,11 @@ def _entity_type(
     task_type: TaskType,
     entities: list[str],
 ) -> EntityType:
+    if task_type == "ranking" and _contains_any(
+        question,
+        ("是谁", "哪位", "哪个艺人", "哪个歌手", "谁最", "听的是谁"),
+    ):
+        return "artist"
     if (
         task_type == "ranking"
         and len(entities) == 1

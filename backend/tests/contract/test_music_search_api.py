@@ -36,7 +36,7 @@ def test_music_search_endpoint_returns_grouped_results(client: TestClient) -> No
     assert data["total"] == 1
     assert data["tracks"][0]["label"] == "Alpha Song 4"
     assert data["tracks"][0]["href"] == "/music/tracks/4"
-    assert data["tracks"][0]["cover_url"] == "/covers/albums/1.jpg"
+    assert data["tracks"][0]["cover_url"] is None
     assert data["albums"] == []
     assert data["artists"] == []
     assert response.headers["x-request-id"]
@@ -57,7 +57,7 @@ def test_music_search_endpoint_accepts_kind_filter(client: TestClient) -> None:
     data = response.json()
     assert data["tracks"] == []
     assert data["albums"][0]["href"] == "/music/albums/Alpha%20Debut?artist=Alpha"
-    assert data["albums"][0]["cover_url"] == "/covers/albums/1.jpg"
+    assert data["albums"][0]["cover_url"] is None
     assert data["artists"] == []
 
 

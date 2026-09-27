@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import sqlite3
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
 from backend.core.db import get_db
+from backend.domains.agent_runtime.runtime_store import RuntimeStore
 from backend.domains.ai_reports.visual_artifact_models import VISUAL_YEARLY_REPORT_MODE
 from backend.domains.ai_tasks.cancellation import cancellation_registry
+from backend.domains.ai_tasks.execution_context import (
+    TaskExecutionIdentity,
+    bind_execution_identity,
+    reset_execution_identity,
+)
 from backend.domains.ai_tasks.repository import TASK_LEASE_SECONDS, AiTaskRepository
 from backend.services import ai_insights_service, wikipedia_service
 
@@ -38,6 +46,14 @@ _AGENTIC_STAGE_PROGRESS = {
     "reviewing_visual_artifact": 0.88,
 }
 TASK_LEASE_HEARTBEAT_SECONDS = max(10, TASK_LEASE_SECONDS // 3)
+
+
+def _task_execution_path(task: dict[str, Any] | None) -> str:
+    from backend.core.config import AI_AGENT_EXECUTION_PATH
+
+    if task is not None and task.get("runtime_version") in {"v5", "v6"}:
+        return str(task["runtime_version"])
+    return AI_AGENT_EXECUTION_PATH
 
 
 def new_task_id() -> str:
@@ -72,6 +88,54 @@ def get_agent_trajectory(task_id: str) -> list[dict[str, Any]] | None:
         if repo.get_run(task_id) is None:
             return None
         return repo.list_agent_turn_events(task_id)
+    finally:
+        conn.close()
+
+
+def get_report_sections(
+    task_id: str,
+    *,
+    after_sequence: int | None = None,
+) -> list[dict[str, Any]] | None:
+    conn = get_db(readonly=True)
+    try:
+        repo = AiTaskRepository(conn)
+        task = repo.get_run(task_id)
+        if task is None:
+            return None
+        has_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ai_report_sections'"
+        ).fetchone()
+        if not has_table:
+            return []
+        store = RuntimeStore(conn, task_id)
+        if after_sequence is not None:
+            return store.list_report_section_changes(after_sequence=after_sequence)
+        return store.list_report_sections(validated_only=True)
+    finally:
+        conn.close()
+
+
+def get_report_section_snapshot(task_id: str) -> dict[str, Any] | None:
+    """Return one authoritative section snapshot with a durable watermark."""
+
+    conn = get_db(readonly=True)
+    try:
+        repo = AiTaskRepository(conn)
+        task = repo.get_run(task_id)
+        if task is None:
+            return None
+        has_table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ai_report_sections'"
+        ).fetchone()
+        if not has_table:
+            return {"generation": int(task.get("generation") or 0), "sequence": 0, "sections": []}
+        store = RuntimeStore(conn, task_id)
+        return {
+            "generation": store.identity().generation,
+            "sequence": store.report_section_watermark(),
+            "sections": store.list_report_sections(validated_only=True),
+        }
     finally:
         conn.close()
 
@@ -129,22 +193,64 @@ def _run_handler_safely(
     task_id: str,
     request: dict[str, Any],
     handler: TaskHandler,
+    wait_for_lease_seconds: float = 0,
 ) -> None:
     lease_owner = f"worker:{uuid.uuid4().hex}"
     supports_worker_leases = False
-    conn = get_db(readonly=False)
-    try:
-        repo = AiTaskRepository(conn)
-        supports_worker_leases = repo.supports_worker_leases
-        claimed = repo.claim_run(
-            task_id,
+    claimed_task: dict[str, Any] = {}
+    wait_deadline = time.monotonic() + max(0, wait_for_lease_seconds)
+    while True:
+        conn = get_db(readonly=False)
+        try:
+            repo = AiTaskRepository(conn)
+            supports_worker_leases = repo.supports_worker_leases
+            claimed_task = repo.get_run(task_id) or {}
+            claimed = repo.claim_run(
+                task_id,
+                lease_owner=lease_owner,
+            )
+        finally:
+            conn.close()
+        if claimed:
+            break
+        if str(claimed_task.get("status") or "") in TERMINAL_STATUSES:
+            return
+        remaining = wait_deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(1.0, remaining))
+    execution_token = bind_execution_identity(
+        TaskExecutionIdentity(
+            task_id=task_id,
             lease_owner=lease_owner,
+            lease_generation=int(repo.claimed_lease_generation or 0),
         )
-    finally:
-        conn.close()
-    if not claimed:
-        logger.info("Skipped AI task %s because another worker owns its lease", task_id)
-        return
+    )
+    if str(claimed_task.get("runtime_version") or "") == "v6":
+        conn = get_db(readonly=False)
+        try:
+            try:
+                RuntimeStore(conn, task_id).record_execution_started(
+                    queued_since=(
+                        str(claimed_task.get("updated_at") or claimed_task.get("created_at") or "")
+                        if str(claimed_task.get("status") or "") == "queued"
+                        else None
+                    ),
+                    previous_active_until=(
+                        str(claimed_task.get("lease_expires_at") or "")
+                        if str(claimed_task.get("status") or "") == "running"
+                        else None
+                    ),
+                )
+            except KeyError:
+                # A test fixture or an operator cleanup may remove a task after
+                # its worker lease was claimed.  There is no durable run left to
+                # execute, so end quietly instead of leaking a daemon-thread
+                # exception into the owning process.
+                reset_execution_identity(execution_token)
+                return
+        finally:
+            conn.close()
     heartbeat_stop = threading.Event()
     heartbeat_thread: threading.Thread | None = None
     if supports_worker_leases:
@@ -161,6 +267,15 @@ def _run_handler_safely(
     except Exception as exc:
         mark_task_error(task_id, exc)
     finally:
+        if str(claimed_task.get("runtime_version") or "") == "v6":
+            conn = get_db(readonly=False)
+            try:
+                RuntimeStore(conn, task_id).record_execution_stopped()
+            except Exception:
+                logger.exception("Failed to close V6 execution-time segment for %s", task_id)
+            finally:
+                conn.close()
+        reset_execution_identity(execution_token)
         cancellation_registry.discard(task_id)
         heartbeat_stop.set()
         if heartbeat_thread is not None:
@@ -363,6 +478,19 @@ def start_report_task(request: dict[str, Any]) -> dict[str, Any]:
         request=request,
         handler=run_report_generation_task,
     )
+
+
+def find_report_task(request: dict[str, Any]) -> dict[str, Any] | None:
+    """Find the newest generation task for the exact report/filter contract."""
+
+    conn = get_db(readonly=True)
+    try:
+        return AiTaskRepository(conn).find_latest_report_run(
+            task_type=_task_type_for_report(str(request["report_type"])),
+            request={**request, "action": "generate"},
+        )
+    finally:
+        conn.close()
 
 
 def start_chat_agent_task(request: dict[str, Any]) -> dict[str, Any]:
@@ -631,6 +759,7 @@ def _run_report_generator(
     conn: sqlite3.Connection,
     request: dict[str, Any],
     *,
+    task_id: str | None = None,
     progress_callback: Callable[[str, float, str], bool] | None = None,
     should_continue: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
@@ -691,7 +820,18 @@ def _run_report_generator(
             if progress_callback is not None:
                 progress_callback(stage, progress, message)
 
-        return generate_visual_yearly_artifact(request, emit_event=emit_event)
+        generator_parameters = inspect.signature(generate_visual_yearly_artifact).parameters
+        kwargs: dict[str, Any] = {"emit_event": emit_event}
+        if "should_continue" in generator_parameters:
+            kwargs["should_continue"] = should_continue
+        task = AiTaskRepository(conn).get_run(task_id) if task_id else None
+        if (
+            task_id
+            and _task_execution_path(task) == "v6"
+            and "checkpoint_store" in generator_parameters
+        ):
+            kwargs["checkpoint_store"] = RuntimeStore(conn, task_id)
+        return generate_visual_yearly_artifact(request, **kwargs)
     if _should_use_agentic_yearly_report(request):
         from backend.services.yearly_report_agent_service import generate_agentic_yearly_report
 
@@ -971,6 +1111,7 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
             result = _run_report_generator(
                 conn,
                 request,
+                task_id=task_id,
                 progress_callback=report_progress,
                 should_continue=should_continue,
             )
@@ -980,6 +1121,9 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
                 task_id=task_id,
                 message=str(exc) or exc.__class__.__name__,
             )
+            return
+
+        if not should_continue():
             return
 
         metadata = result.get("metadata") if isinstance(result.get("metadata"), dict) else {}
@@ -995,6 +1139,10 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
                 "section_checkpoints_passed",
             )
         ):
+            if repo.supports_v6:
+                RuntimeStore(conn, task_id).invalidate_report_sections(
+                    reason="final_quality_gate_failed"
+                )
             _mark_report_task_error(
                 repo,
                 task_id=task_id,
@@ -1003,7 +1151,37 @@ def run_report_generation_task(task_id: str, request: dict[str, Any]) -> None:
             )
             return
 
+        if (
+            metadata.get("report_mode") == "visual_yearly_artifact"
+            and int(metadata.get("section_writer_fallback_count") or 0) > 2
+        ):
+            _mark_report_task_error(
+                repo,
+                task_id=task_id,
+                message="超过 2 个章节需要本地补齐，本次报告未通过发布门禁。",
+                result=result,
+            )
+            return
+
         if result.get("success"):
+            if (
+                repo.supports_v6
+                and metadata.get("report_mode") == "visual_yearly_artifact"
+                and isinstance(result.get("artifact"), dict)
+            ):
+                context_key = str(result.get("report_context_key") or "")
+                RuntimeStore(conn, task_id).publish_artifact(
+                    artifact_id=f"{context_key or task_id}:visual_yearly_v1",
+                    context_key=context_key,
+                    artifact=result["artifact"],
+                    publication={
+                        "critic_passed": metadata.get("critic_passed"),
+                        "fact_validation_passed": metadata.get("fact_validation_passed"),
+                        "final_artifact_quality_passed": metadata.get(
+                            "final_artifact_quality_passed"
+                        ),
+                    },
+                )
             cache_written_at = (
                 _report_cache_write_timestamp() if _report_result_is_cacheable(result) else None
             )
@@ -1140,6 +1318,7 @@ def enqueue_agent_input(
         if task.get("task_type") != "ai_chat_agent" or task.get("status") not in {
             "queued",
             "running",
+            "awaiting_input",
         }:
             return {
                 "accepted": False,
@@ -1163,6 +1342,34 @@ def enqueue_agent_input(
             message="Agent 已收到补充要求",
             payload={"inbox_id": inbox_id, "input_type": action},
         )
+        if task.get("status") == "awaiting_input":
+            repo.update_run_if_not_terminal(
+                task_id=task_id,
+                status="queued",
+                stage="queued",
+                progress_pct=float(task.get("progress_pct") or 0.0),
+                message="已收到补充信息，正在继续分析",
+            )
+
+            def resume_after_clarification(
+                resumed_task_id: str,
+                resumed_request: dict[str, Any],
+            ) -> None:
+                from backend.services.ai_agent_v2_service import run_chat_agent_task_v2
+
+                run_chat_agent_task_v2(resumed_task_id, resumed_request, resume=True)
+
+            thread = threading.Thread(
+                target=_run_handler_safely,
+                args=(
+                    task_id,
+                    request if isinstance(request, dict) else {},
+                    resume_after_clarification,
+                ),
+                daemon=True,
+                name=f"ai-task-clarification-{task_id}",
+            )
+            thread.start()
         return {
             "accepted": True,
             "task_id": task_id,
@@ -1179,8 +1386,6 @@ def recover_interrupted_agent_tasks() -> int:
 
     from backend.core.config import AI_AGENT_RUNTIME
 
-    if AI_AGENT_RUNTIME == "legacy":
-        return 0
     conn = get_db(readonly=False)
     try:
         runs = AiTaskRepository(conn).list_recoverable_agent_runs()
@@ -1190,6 +1395,11 @@ def recover_interrupted_agent_tasks() -> int:
     recovered = 0
     for task in runs:
         task_id = str(task["task_id"])
+        task_execution_path = _task_execution_path(task)
+        if task.get("task_type") == "ai_report_yearly" and task_execution_path != "v6":
+            continue
+        if AI_AGENT_RUNTIME == "legacy" and task_execution_path != "v6":
+            continue
         if task.get("status") == "cancelling":
             cancel_task(task_id)
             continue
@@ -1201,7 +1411,11 @@ def recover_interrupted_agent_tasks() -> int:
         def resume_handler(
             recovered_task_id: str,
             recovered_request: dict[str, Any],
+            recovered_task_type: str = str(task.get("task_type") or ""),
         ) -> None:
+            if recovered_task_type == "ai_report_yearly":
+                run_report_generation_task(recovered_task_id, recovered_request)
+                return
             from backend.services.ai_agent_v2_service import run_chat_agent_task_v2
 
             run_chat_agent_task_v2(
@@ -1212,7 +1426,7 @@ def recover_interrupted_agent_tasks() -> int:
 
         thread = threading.Thread(
             target=_run_handler_safely,
-            args=(task_id, request, resume_handler),
+            args=(task_id, request, resume_handler, TASK_LEASE_SECONDS + 5),
             daemon=True,
             name=f"ai-agent-recovery-{task_id}",
         )

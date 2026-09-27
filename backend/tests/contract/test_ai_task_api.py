@@ -8,6 +8,7 @@ from fastapi.routing import APIRoute
 import backend.api.ai_tasks as ai_tasks_api
 from backend.core.db import get_db
 from backend.domains.agent_runtime.event_log import AgentEventLog
+from backend.domains.agent_runtime.runtime_store import RuntimeStore
 from backend.domains.ai_tasks.repository import AiTaskRepository
 from backend.main import app
 
@@ -91,6 +92,51 @@ def test_task_events_for_missing_task_returns_found_false(client):
     assert response.status_code == 200
     assert response.headers["x-request-id"]
     assert response.json() == {"found": False, "events": [], "tool_calls": []}
+
+
+def test_report_sections_return_only_validated_checkpoints(client):
+    _create_task("task-sections", task_type="ai_report_yearly")
+    repo = _repo()
+    try:
+        store = RuntimeStore(repo.conn, "task-sections")
+        store.upsert_report_section(
+            section_id="opening",
+            section_order=1,
+            status="validated",
+            context_key="context-1",
+            plan_version="plan-v1",
+            writer_version="writer-v1",
+            validator_version="validator-v1",
+            source_kind="model",
+            section={"title": "序章", "body": "已审核内容"},
+            audit={"passed": True},
+            usage={"total_tokens": 20},
+            attempt_count=1,
+        )
+        store.upsert_report_section(
+            section_id="ending",
+            section_order=2,
+            status="failed",
+            context_key="context-1",
+            plan_version="plan-v1",
+            writer_version="writer-v1",
+            validator_version="validator-v1",
+            source_kind="model",
+            section={"title": "尾声", "body": "未通过内容"},
+            audit={"passed": False},
+            usage={},
+            attempt_count=1,
+        )
+    finally:
+        _close_repo(repo)
+
+    response = client.get("/api/ai/tasks/task-sections/sections")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["found"] is True
+    assert [section["section_id"] for section in payload["sections"]] == ["opening"]
+    assert payload["sections"][0]["section"]["body"] == "已审核内容"
 
 
 def test_task_events_include_events_and_tool_calls(client):
@@ -340,7 +386,7 @@ def test_task_stream_replays_only_events_after_composite_cursor(client):
     assert first_chunk not in answer_delta_blocks
     assert "SECOND" in answer_delta_blocks
     assert "event: task.completed" in body
-    assert f"id: v1:p{event_id}:t{tool_call_id}:a2" in body
+    assert f"id: v2:p{event_id}:t{tool_call_id}:s0:a2" in body
 
 
 def test_agent_inbox_accepts_running_turn_steering_and_persists_it(client):
@@ -505,6 +551,51 @@ def test_report_task_request_preserves_filter_parameters(client, monkeypatch):
     assert observed["max_merge_gap_minutes"] == 45
     assert observed["report_mode"] == "agentic_longform"
     assert response.json()["result"]["request"]["month"] == "2026-06"
+
+
+def test_report_lookup_matches_exact_generation_contract(client):
+    request = {
+        "report_type": "yearly",
+        "action": "generate",
+        "report_mode": "visual_yearly_artifact",
+        "writer_pipeline": "agent_synthesis_v2",
+        "year": 2026,
+        "min_ms": 30000,
+        "music_only": True,
+        "merge_enabled": True,
+        "dynamic_threshold": True,
+        "max_merge_gap_minutes": None,
+        "force": True,
+    }
+    _create_task(
+        "report-exact",
+        status="running",
+        stage="writing_sections",
+        task_type="ai_report_yearly",
+        request=request,
+    )
+    _create_task(
+        "report-other-filter",
+        status="running",
+        stage="writing_sections",
+        task_type="ai_report_yearly",
+        request={**request, "min_ms": 45000},
+    )
+
+    exact = client.post(
+        "/api/ai/tasks/report/lookup",
+        json={key: value for key, value in request.items() if key != "force"},
+    )
+    missing = client.post(
+        "/api/ai/tasks/report/lookup",
+        json={**request, "year": 2025},
+    )
+
+    assert exact.status_code == 200
+    assert exact.json()["task_id"] == "report-exact"
+    assert exact.json()["status"] == "running"
+    assert missing.status_code == 200
+    assert missing.json() == {"found": False}
 
 
 @pytest.mark.parametrize(

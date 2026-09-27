@@ -7,7 +7,9 @@ from typing import Any, Literal, Union
 from pydantic import BaseModel, Field, model_validator
 
 JsonPayload = Union[dict[str, Any], list[Any]]
-AiTaskStatus = Literal["queued", "running", "cancelling", "done", "error", "cancelled"]
+AiTaskStatus = Literal[
+    "queued", "running", "awaiting_input", "cancelling", "done", "error", "cancelled"
+]
 
 
 class AiTaskRun(BaseModel):
@@ -60,12 +62,36 @@ class AiTaskStatusResponse(BaseModel):
     error: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    generation: int | None = None
+    state_version: int | None = None
 
 
 class AiTaskEventsResponse(BaseModel):
     found: bool
     events: list[AiTaskEvent]
     tool_calls: list[AiToolCall]
+
+
+class AiReportSection(BaseModel):
+    task_id: str
+    generation: int
+    section_id: str
+    section_order: int
+    section_version: int
+    status: Literal["pending", "writing", "validated", "failed", "invalidated"]
+    source_kind: Literal["model", "deterministic"]
+    section: dict[str, Any] | None = None
+    attempt_count: int = 0
+    fallback_reason: str | None = None
+    updated_at: str
+    sequence: int | None = None
+
+
+class AiReportSectionsResponse(BaseModel):
+    found: bool
+    generation: int = 0
+    sequence: int = 0
+    sections: list[AiReportSection]
 
 
 class AiAgentTurnEvent(BaseModel):

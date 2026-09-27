@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from backend.domains.agent_runtime.event_log import AgentEventLog
 from backend.domains.agent_runtime.metrics import RuntimeMetrics, json_size_bytes
 from backend.domains.agent_runtime.observation import compact_observation
-from backend.domains.agent_runtime.serialization import compact_value
+from backend.domains.agent_runtime.runtime_store import RuntimeStore
 from backend.domains.ai_agent.tool_registry import AgentToolRegistry
 from backend.domains.ai_tasks.repository import AiTaskRepository
 
@@ -36,20 +36,21 @@ class ToolOutcome:
     cache_hit: bool = False
 
     def model_payload(self) -> dict[str, Any]:
-        return compact_value(
-            {
-                "status": self.status,
-                "tool_name": self.tool_name,
-                "result_summary": self.result_summary,
-                "source_range": self.source_range,
-                "data": compact_observation(self.data),
-                "error": self.error,
-                "duplicate": self.duplicate,
-                "elapsed_ms": self.elapsed_ms,
-                "result_size_bytes": self.result_size_bytes,
-                "cache_hit": self.cache_hit,
-            }
-        )
+        # ``compact_observation`` already applies the depth/list/string bounds
+        # to domain data.  Re-compacting this envelope would count its wrapper
+        # levels again and erase useful bucket scalars such as genre labels.
+        return {
+            "status": self.status,
+            "tool_name": self.tool_name,
+            "result_summary": self.result_summary,
+            "source_range": self.source_range,
+            "data": compact_observation(self.data),
+            "error": self.error,
+            "duplicate": self.duplicate,
+            "elapsed_ms": self.elapsed_ms,
+            "result_size_bytes": self.result_size_bytes,
+            "cache_hit": self.cache_hit,
+        }
 
     def legacy_payload(self) -> dict[str, Any]:
         return {
@@ -101,6 +102,22 @@ class ToolRuntime:
         self.clock = clock
         self.allowed_tool_names = allowed_tool_names
         self._outcomes_by_identity: dict[str, ToolOutcome] = {}
+        repo_conn = getattr(task_repo, "conn", None)
+        self._runtime_store = None
+        if repo_conn is not None:
+            supports_v6 = repo_conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='ai_runtime_events'"
+            ).fetchone()
+            runtime_row = (
+                repo_conn.execute(
+                    "SELECT runtime_version FROM ai_task_runs WHERE task_id = ?",
+                    (task_id,),
+                ).fetchone()
+                if supports_v6
+                else None
+            )
+            if runtime_row and str(runtime_row[0]) == "v6":
+                self._runtime_store = RuntimeStore(repo_conn, task_id)
 
     def _trace_payload(self, call_id: str, step_index: int) -> dict[str, Any]:
         return {
@@ -109,6 +126,46 @@ class ToolRuntime:
             "tool_call_id": call_id,
             "tool_execution_id": (f"{self.event_log.turn_id}:step:{step_index}:tool:{call_id}"),
         }
+
+    def _commit_outcome(
+        self,
+        outcome: ToolOutcome,
+        *,
+        step_index: int,
+        parallel: bool = False,
+    ) -> None:
+        payload = {
+            **self._trace_payload(outcome.call_id, step_index),
+            "call_id": outcome.call_id,
+            "tool_name": outcome.tool_name,
+            "params": outcome.params,
+            "outcome": outcome.model_payload(),
+        }
+        if parallel:
+            payload["parallel"] = True
+        if self._runtime_store is not None:
+            self._runtime_store.commit_tool_observation(
+                call_id=outcome.call_id,
+                step_id=f"turn:{self.event_log.turn_id}:step:{step_index}",
+                turn_id=self.event_log.turn_id,
+                session_id=self.event_log.session_id,
+                step_index=step_index,
+                tool_name=outcome.tool_name,
+                params=outcome.params,
+                outcome=outcome.model_payload(),
+                legacy_payload=payload,
+            )
+            return
+        self.task_repo.add_tool_call_if_not_terminal(
+            task_id=self.task_id,
+            tool_name=outcome.tool_name,
+            status=outcome.status,
+            params_summary=outcome.params_summary,
+            result_summary=outcome.result_summary,
+            source_range=outcome.source_range,
+            error=outcome.error,
+        )
+        self.event_log.append("tool_result", payload, step_index=step_index)
 
     def seed_outcomes(self, outcomes: list[dict[str, Any]]) -> None:
         """Seed durable completed calls so recovery never executes them twice."""
@@ -182,25 +239,7 @@ class ToolRuntime:
                     elapsed_ms=outcome.elapsed_ms,
                     result_bytes=0,
                 )
-            self.event_log.append(
-                "tool_result",
-                {
-                    **self._trace_payload(call_id, step_index),
-                    "call_id": call_id,
-                    "tool_name": tool_name,
-                    "params": params,
-                    "outcome": outcome.model_payload(),
-                },
-                step_index=step_index,
-            )
-            self.task_repo.add_tool_call_if_not_terminal(
-                task_id=self.task_id,
-                tool_name=tool_name,
-                status="error",
-                params_summary="",
-                result_summary=outcome.result_summary,
-                error=outcome.error,
-            )
+            self._commit_outcome(outcome, step_index=step_index)
             return outcome
         identity = self.identity(tool_name, prepared)
         previous = self._outcomes_by_identity.get(identity)
@@ -302,26 +341,7 @@ class ToolRuntime:
                 result_bytes=outcome.result_size_bytes,
                 cache_hit=outcome.cache_hit,
             )
-        self.task_repo.add_tool_call_if_not_terminal(
-            task_id=self.task_id,
-            tool_name=tool_name,
-            status=outcome.status,
-            params_summary=outcome.params_summary,
-            result_summary=outcome.result_summary,
-            source_range=outcome.source_range,
-            error=outcome.error,
-        )
-        self.event_log.append(
-            "tool_result",
-            {
-                **self._trace_payload(call_id, step_index),
-                "call_id": call_id,
-                "tool_name": tool_name,
-                "params": prepared,
-                "outcome": outcome.model_payload(),
-            },
-            step_index=step_index,
-        )
+        self._commit_outcome(outcome, step_index=step_index)
         return outcome
 
     def _dispatch_prepared(
@@ -378,27 +398,7 @@ class ToolRuntime:
                 cache_hit=outcome.cache_hit,
                 include_wall_time=False,
             )
-        self.task_repo.add_tool_call_if_not_terminal(
-            task_id=self.task_id,
-            tool_name=outcome.tool_name,
-            status=outcome.status,
-            params_summary=outcome.params_summary,
-            result_summary=outcome.result_summary,
-            source_range=outcome.source_range,
-            error=outcome.error,
-        )
-        self.event_log.append(
-            "tool_result",
-            {
-                **self._trace_payload(outcome.call_id, step_index),
-                "call_id": outcome.call_id,
-                "tool_name": outcome.tool_name,
-                "params": outcome.params,
-                "outcome": outcome.model_payload(),
-                "parallel": True,
-            },
-            step_index=step_index,
-        )
+        self._commit_outcome(outcome, step_index=step_index, parallel=True)
 
     def execute_batch(
         self,

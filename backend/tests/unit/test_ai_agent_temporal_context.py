@@ -69,6 +69,35 @@ def test_temporal_guard_corrects_wrong_last_summer_tool_range() -> None:
     assert guarded_plan[1]["params"]["year"] == 2025
 
 
+def test_temporal_guard_interprets_past_year_as_rolling_window() -> None:
+    context = build_temporal_context(
+        {
+            "question_time": "2026-09-22T18:47:00+08:00",
+            "timezone": "Asia/Shanghai",
+        },
+        data_range={"data_start_date": "2022-07-01", "data_end_date": "2026-09-19"},
+    )
+
+    guarded_plan, guard = apply_temporal_guard(
+        "过去一年我真正反复回去听的是谁？",
+        context,
+        [
+            {
+                "tool_name": "analysis_charts",
+                "params": {"period": "lifetime", "entity": "artist", "metric": "plays"},
+            }
+        ],
+    )
+
+    interpretation = guard["time_interpretation"]
+    assert interpretation["start_date"] == "2025-09-22"
+    assert interpretation["end_date"] == "2026-09-19"
+    assert interpretation["coverage_clipped"] is True
+    assert guarded_plan[0]["params"]["period"] == "custom"
+    assert guarded_plan[0]["params"]["start_date"] == "2025-09-22"
+    assert guarded_plan[0]["params"]["end_date"] == "2026-09-19"
+
+
 def test_temporal_guard_leaves_explicit_year_question_unchanged() -> None:
     context = build_temporal_context(
         {

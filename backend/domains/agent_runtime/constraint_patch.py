@@ -76,6 +76,8 @@ _DIMENSION_TOKENS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("track_ranking", ("歌曲榜", "单曲榜", "歌曲排行", "track ranking")),
     ("artist_ranking", ("艺人榜", "歌手榜", "艺人排行", "artist ranking")),
     ("time_of_day", ("深夜", "凌晨", "时段", "几点", "time of day")),
+    ("language", ("语言", "语种", "华语", "中文", "英文", "language")),
+    ("genre", ("流派", "曲风", "风格", "genre")),
     ("ranking", ("排名", "排行", "top")),
     ("external_context", ("外部", "联网", "网页", "市场", "external")),
 )

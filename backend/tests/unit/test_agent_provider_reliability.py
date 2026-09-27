@@ -125,6 +125,39 @@ def test_retry_replays_only_failed_model_step_with_identical_tool_evidence() -> 
     assert all(attempt.elapsed_ms >= 0 for attempt in result.attempts)
 
 
+def test_control_boundary_before_retry_stops_without_fallback() -> None:
+    class DispatchCancelledError(RuntimeError):
+        pass
+
+    primary = SequencedModel([ProviderNetworkError("primary", "temporary")])
+    fallback = SequencedModel([LLMCompletion(content="must not run")])
+    dispatches = 0
+
+    def before_dispatch(_provider_id: str, _provider_attempt: int, _total: int) -> str:
+        nonlocal dispatches
+        dispatches += 1
+        if dispatches > 1:
+            raise DispatchCancelledError("cancelled after first dispatch")
+        return "dispatch-1"
+
+    executor = ModelStepExecutor(
+        primary=ProviderCandidate("primary", primary),
+        fallbacks=(ProviderCandidate("fallback", fallback),),
+    )
+    with pytest.raises(DispatchCancelledError, match="cancelled"):
+        executor.execute(
+            messages=[{"role": "user", "content": "question"}],
+            tools=[],
+            thinking=False,
+            budget=_budget(),
+            before_dispatch=before_dispatch,
+        )
+
+    assert dispatches == 2
+    assert len(primary.calls) == 1
+    assert fallback.calls == []
+
+
 def test_non_retryable_primary_failure_uses_first_fallback_deterministically() -> None:
     primary = SequencedModel([ProviderHTTPError("primary", "bad request", 400)])
     fallback_one = SequencedModel([LLMCompletion(content="fallback one")])

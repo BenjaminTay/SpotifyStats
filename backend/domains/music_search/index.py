@@ -29,6 +29,12 @@ from backend.domains.metadata.track_presentation import (
     resolve_track_presentations,
 )
 from backend.domains.music_search.contracts import make_music_search_entity_key
+from backend.domains.music_search.covers import (
+    CoverKind,
+    available_cover_entity_ids,
+    local_cover_url,
+    validated_cover_url,
+)
 from backend.domains.music_search.normalization import (
     SEARCH_NORMALIZATION_VERSION,
     cjk_search_ngrams,
@@ -37,7 +43,7 @@ from backend.domains.music_search.normalization import (
 from backend.domains.music_search.revisions import get_music_search_revision_state
 from backend.domains.playback.album_projects import get_album_project_revision
 
-INDEX_SCHEMA_VERSION = "music_search_candidate_index_v4_l1"
+INDEX_SCHEMA_VERSION = "music_search_candidate_index_v5_cover_availability"
 
 
 @dataclass(frozen=True)
@@ -258,10 +264,6 @@ def _document_content_digest(documents: list[dict[str, Any]]) -> str:
         )
         digest.update(b"\n")
     return digest.hexdigest()
-
-
-def _cover_url(kind: str, entity_id: int | None) -> str | None:
-    return f"/covers/{kind}/{entity_id}.jpg" if entity_id else None
 
 
 def _album_href(album_name: str, artist_name: str | None) -> str:
@@ -560,6 +562,10 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
         track_ids=active_track_ids,
         album_ids=active_album_ids,
     )
+    available_covers: dict[CoverKind, set[int]] = {
+        "albums": available_cover_entity_ids(conn, "albums"),
+        "artists": available_cover_entity_ids(conn, "artists"),
+    }
     if active_project_ids:
         active_artist_ids.update(
             int(row["artist_id"])
@@ -721,9 +727,9 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                     popularity=0,
                     href=f"/music/tracks/{entity_id}",
                     cover_url=(
-                        presentation.cover_url
+                        validated_cover_url(presentation.cover_url, available_covers)
                         if presentation is not None
-                        else _cover_url("albums", album_id)
+                        else local_cover_url("albums", album_id, available_covers["albums"])
                     ),
                     track_id=entity_id,
                     album_id=album_id,
@@ -779,7 +785,7 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 aliases=None,
                 popularity=0,
                 href=_album_href(album_name, artist_name),
-                cover_url=_cover_url("albums", album_id),
+                cover_url=local_cover_url("albums", album_id, available_covers["albums"]),
                 album_id=album_id,
                 artist_id=artist_id,
                 album_name=album_name,
@@ -847,9 +853,10 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                         ],
                         popularity=0,
                         href=_album_project_href(project_id),
-                        cover_url=_cover_url(
+                        cover_url=local_cover_url(
                             "albums",
                             int(row["primary_album_id"]) if row["primary_album_id"] else None,
+                            available_covers["albums"],
                         ),
                         album_id=(
                             int(row["primary_album_id"]) if row["primary_album_id"] else None
@@ -878,7 +885,7 @@ def build_music_search_documents(conn: sqlite3.Connection) -> list[dict[str, Any
                 aliases=[alias for alias in aliases if alias != display_name],
                 popularity=0,
                 href=f"/music/artists/{quote(display_name, safe='')}",
-                cover_url=_cover_url("artists", canonical_id),
+                cover_url=local_cover_url("artists", canonical_id, available_covers["artists"]),
                 artist_id=canonical_id,
                 artist_name=display_name,
             )

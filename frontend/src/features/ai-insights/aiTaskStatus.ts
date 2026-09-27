@@ -1,7 +1,7 @@
 import type { AiTaskRun } from '@/types/ai-tasks'
 
 export function isActiveAiTask(status: AiTaskRun['status'] | null | undefined): boolean {
-  return status === 'queued' || status === 'running' || status === 'cancelling'
+  return status === 'queued' || status === 'running' || status === 'awaiting_input' || status === 'cancelling'
 }
 
 export function isTerminalAiTask(status: AiTaskRun['status'] | null | undefined): boolean {

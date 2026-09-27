@@ -74,15 +74,19 @@ def l3_startup_reconcile_enabled() -> bool:
     return _get_bool("SPOTIFY_STATS_L3_STARTUP_RECONCILE", True)
 
 
-# AI Agent V2 is the default chat runtime. ``legacy`` remains available as a
-# rollback switch while the new runtime is being exercised in production.
+# ``AI_AGENT_RUNTIME=v2`` is the historical native-tool protocol label.
+# V6 selects the durable execution contract without renaming that public value.
 AI_AGENT_RUNTIME = _get("AI_AGENT_RUNTIME", "v2").strip().lower()
+AI_AGENT_EXECUTION_PATH = _get("AI_AGENT_EXECUTION_PATH", "v6").strip().lower()
+if AI_AGENT_EXECUTION_PATH not in {"v5", "v6"}:
+    AI_AGENT_EXECUTION_PATH = "v6"
+AI_REPORT_PROGRESSIVE_SECTIONS = _get_bool("AI_REPORT_PROGRESSIVE_SECTIONS", True)
 AI_AGENT_MAX_STEPS = max(1, int(_get("AI_AGENT_MAX_STEPS", "6")))
 AI_AGENT_MAX_TOOL_CALLS = max(1, int(_get("AI_AGENT_MAX_TOOL_CALLS", "12")))
 AI_AGENT_TURN_TIMEOUT_SECONDS = max(10, int(_get("AI_AGENT_TURN_TIMEOUT_SECONDS", "90")))
 AI_AGENT_LLM_TIMEOUT_SECONDS = max(10, int(_get("AI_AGENT_LLM_TIMEOUT_SECONDS", "45")))
 AI_AGENT_LLM_RETRIES = max(0, int(_get("AI_AGENT_LLM_RETRIES", "1")))
-AI_AGENT_CONTEXT_SOURCE = _get("AI_AGENT_CONTEXT_SOURCE", "memory").strip().lower()
+AI_AGENT_CONTEXT_SOURCE = _get("AI_AGENT_CONTEXT_SOURCE", "event_log").strip().lower()
 if AI_AGENT_CONTEXT_SOURCE not in {"memory", "event_log"}:
     AI_AGENT_CONTEXT_SOURCE = "memory"
 

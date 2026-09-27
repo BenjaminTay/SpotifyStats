@@ -478,7 +478,7 @@ def test_billboard_entity_detail_dispatches_with_default_billboard_bounds(
     db_observed = _patch_readonly_db(monkeypatch)
     service_observed: dict[str, Any] = {}
 
-    def fake_get_album_chart_detail(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    def fake_get_album_detail_view(*args: Any, **kwargs: Any) -> dict[str, Any]:
         service_observed["args"] = args
         service_observed["kwargs"] = kwargs
         return {
@@ -490,9 +490,9 @@ def test_billboard_entity_detail_dispatches_with_default_billboard_bounds(
         }
 
     monkeypatch.setattr(
-        tools.billboard_details,
-        "get_album_chart_detail",
-        fake_get_album_chart_detail,
+        tools.billboard_detail_views,
+        "get_album_detail_view",
+        fake_get_album_detail_view,
     )
 
     result = tool_registry.dispatch_tool(
@@ -526,10 +526,51 @@ def test_billboard_entity_detail_dispatches_with_default_billboard_bounds(
         2026,
     )
     assert service_observed["kwargs"] == {
-        "dynamic_threshold": True,
-        "max_merge_gap_minutes": 5,
-        "merge_level": 3,
+        "view": "full",
     }
+    assert service_observed["args"][11:] == (True, 5, True, 3, False)
+
+
+def test_billboard_entity_detail_uses_configured_bounds_only_when_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_readonly_db(monkeypatch)
+    observed: list[tuple[Any, ...]] = []
+
+    class ConfiguredSettings:
+        def __init__(self, _conn: FakeReadonlyConn) -> None:
+            pass
+
+        def load_all(self) -> dict[str, Any]:
+            return {**tools.SETTINGS_DEFAULTS, "bb_week_start_hour": 12}
+
+    def fake_get_track_detail_view(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        assert kwargs == {"view": "agent"}
+        observed.append(args)
+        return {
+            "found": True,
+            "track_name": "vampire",
+            "summary": {"weeks_on_chart": 37, "peak_position": 1},
+        }
+
+    monkeypatch.setattr(tools, "SettingsRepository", ConfiguredSettings)
+    monkeypatch.setattr(
+        tools.billboard_detail_views,
+        "get_track_detail_view",
+        fake_get_track_detail_view,
+    )
+
+    tool_registry.dispatch_tool(
+        "billboard_entity_detail",
+        {"entity": "track", "track_id": 1493},
+    )
+    tool_registry.dispatch_tool(
+        "billboard_entity_detail",
+        {"entity": "track", "track_id": 1493, "bb_week_start_hour": 0},
+    )
+
+    assert observed[0][7] == 12
+    assert observed[1][7] == 0
 
 
 def test_billboard_album_detail_summary_uses_album_chart_fields(
@@ -537,7 +578,7 @@ def test_billboard_album_detail_summary_uses_album_chart_fields(
 ) -> None:
     _patch_readonly_db(monkeypatch)
 
-    def fake_get_album_chart_detail(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    def fake_get_album_detail_view(*args: Any, **kwargs: Any) -> dict[str, Any]:
         del args, kwargs
         return {
             "found": True,
@@ -557,9 +598,9 @@ def test_billboard_album_detail_summary_uses_album_chart_fields(
         }
 
     monkeypatch.setattr(
-        tools.billboard_details,
-        "get_album_chart_detail",
-        fake_get_album_chart_detail,
+        tools.billboard_detail_views,
+        "get_album_detail_view",
+        fake_get_album_detail_view,
     )
 
     result = tool_registry.dispatch_tool(

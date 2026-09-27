@@ -70,7 +70,7 @@ def test_resume_checkpoint_only_replays_unfinished_tool_calls() -> None:
     assert [item.call_id for item in checkpoint.pending_tool_calls] == ["pending-call"]
     assert checkpoint.pending_tool_calls[0].params == {"limit": 5}
     assert checkpoint.recovered_tool_results[0]["data"] == {"play_count": 100}
-    assert checkpoint.next_step == 2
+    assert checkpoint.next_step == 1
 
 
 def test_completed_turn_is_never_resumed() -> None:

@@ -107,6 +107,7 @@ def build_resume_checkpoint(events: list[dict[str, Any]]) -> AgentResumeCheckpoi
         call_id = str(payload.get("call_id") or "")
         recovered_tool_results.append(
             {
+                "call_id": call_id,
                 "tool_name": str(outcome.get("tool_name") or payload.get("tool_name") or ""),
                 "status": str(outcome.get("status") or "error"),
                 "params": executed_params.get(call_id, {}),
@@ -130,11 +131,44 @@ def build_resume_checkpoint(events: list[dict[str, Any]]) -> AgentResumeCheckpoi
     pending = [
         call for call_id, call in calls.items() if call_id not in projection.completed_call_ids
     ]
+    current_step = max(1, projection.current_step)
+    completed_event_types = {"step_ended", "guardrail_retry", "clarification_requested"}
+    step_has_completion_event = any(
+        event.get("event_type") in completed_event_types
+        and int(event.get("step_index") or 0) == projection.current_step
+        for event in events
+    )
+    # A tool-producing model step is complete once every requested observation
+    # is durable, even if the worker died before appending its cosmetic
+    # ``step_ended`` marker. A final text response is intentionally replayed in
+    # the same step so deterministic validation/publication can finish.
+    current_step_call_ids: set[str] = set()
+    for event in events:
+        if (
+            event.get("event_type") != "model_message"
+            or int(event.get("step_index") or 0) != projection.current_step
+        ):
+            continue
+        payload = event.get("payload")
+        message = payload.get("message") if isinstance(payload, dict) else None
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        for item in message.get("tool_calls") or []:
+            if isinstance(item, dict) and item.get("id"):
+                current_step_call_ids.add(str(item["id"]))
+    all_requested_tools_committed = bool(current_step_call_ids) and current_step_call_ids.issubset(
+        projection.completed_call_ids
+    )
+    next_step = (
+        current_step + 1
+        if (step_has_completion_event or all_requested_tools_committed)
+        else current_step
+    )
     return AgentResumeCheckpoint(
         resumable=True,
         reason="incomplete_turn",
         messages=[*projection.messages, *recovered_model_messages],
-        next_step=max(1, projection.current_step + 1),
+        next_step=next_step,
         completed_call_ids=projection.completed_call_ids,
         pending_tool_calls=pending,
         recovered_tool_results=recovered_tool_results,

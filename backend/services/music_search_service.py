@@ -11,6 +11,7 @@ import pandas as pd
 
 from backend.core.db import load_plays_for_artists
 from backend.domains.ai_agent.entity_resolver import EntityType, resolve_entities
+from backend.domains.music_search.covers import sanitize_result_covers
 from backend.domains.music_search.timing import MusicSearchTiming, measure_search_phase
 from backend.models.music_search import (
     MusicSearchChartSummary,
@@ -668,11 +669,15 @@ def search_music_entities(
                     rows.append(item)
         grouped[kind] = rows
 
+    tracks, albums, artists = sanitize_result_covers(
+        conn,
+        (grouped["track"], grouped["album"], grouped["artist"]),
+    )
     return MusicSearchResponse(
         query=query,
         limit_per_type=bounded_limit,
         total=sum(len(items) for items in grouped.values()),
-        tracks=grouped["track"],
-        albums=grouped["album"],
-        artists=grouped["artist"],
+        tracks=tracks,
+        albums=albums,
+        artists=artists,
     )

@@ -12,7 +12,10 @@ def compact_observation(data: dict[str, Any]) -> dict[str, Any]:
 
     compacted = compact_value(
         data,
-        max_depth=5,
+        # Tool envelopes add two levels before domain payloads.  Seven keeps
+        # scalar fields inside common ``...buckets[].label/hours`` rows while
+        # still bounding unexpectedly deep provider payloads.
+        max_depth=7,
         max_list_items=12,
         max_string_chars=1200,
     )

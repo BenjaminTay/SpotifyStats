@@ -1,5 +1,11 @@
 # SpotifyStats 文档地图
 
+- [AI Agent V6 优化规划与本地验收进度](plans/2026-09-22-ai-agent-v6-optimization-plan.md)
+
+- [AI Agent V6 统一运行时与渐进报告最终本地验收](reports/2026-09-22-ai-agent-v6-final-acceptance.md)
+
+- [AI Agent V6 当前运行规则](reference/ai-agent-runtime-v6.md)
+
 - [数据导入处理与治理 S6 最终验收](reports/2026-09-21-import-governance-final-acceptance.md)
 
 - [数据导入处理与治理 S1–S5 实施报告](reports/2026-09-21-import-remediation-s1-s5.md)
@@ -92,6 +98,7 @@
 
 `reference/` 是当前统计和数据契约的权威入口。代码、测试或部署运行手册若与这里冲突，应先核对实际实现和证据，再更新规则文档。
 
+- [`reference/ai-agent-runtime-v6.md`](reference/ai-agent-runtime-v6.md)：AI 问答与年度报告的事件事实源、任务代次、租约、逐章恢复、发布和 SSE v2 当前规则
 - [`reference/playback-stats-rules.md`](reference/playback-stats-rules.md)：逻辑播放事件、收听时长、版本合并、专辑项目和 Billboard 统计
 - [`reference/backend-test-isolation.md`](reference/backend-test-isolation.md)：Backend pytest 导入前隔离、临时数据库/派生缓存与 fail-closed 规则
 - [`reference/track-identity-index-migration.md`](reference/track-identity-index-migration.md)：migration 74 的 fallback 唯一性、原子修复和失败回滚合同

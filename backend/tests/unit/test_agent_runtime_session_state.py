@@ -91,6 +91,18 @@ def test_session_state_mixed_steering_excludes_only_negative_clause() -> None:
     assert "播放时长" in effective
 
 
+def test_session_state_tracks_language_and_genre_steering_dimensions() -> None:
+    update = apply_session_input(
+        _initial_state(),
+        input_type="steer",
+        content="补充要求：只看华语，并排除流派维度。",
+        temporal_context=TEMPORAL_CONTEXT,
+    )
+
+    assert "language" in update.state.dimensions
+    assert "genre" in update.state.excluded_dimensions
+
+
 def test_session_state_replace_task_resets_old_constraints() -> None:
     state = apply_session_input(
         _initial_state(),

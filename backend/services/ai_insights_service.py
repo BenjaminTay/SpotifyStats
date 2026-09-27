@@ -412,16 +412,15 @@ def _llm_text_completion(
 ) -> Optional[LLMTextCompletion]:
     """Send one text turn and retain provider-neutral, public-safe diagnostics."""
     cfg = _get_config()
-    llm = _get_llm(cfg)
-    if llm is None:
+    resolved = _get_llm(cfg)
+    if resolved is None:
         return None
-
     try:
-        return llm.complete_text(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
+        from backend.services.ai_agent_v2_service import ConfiguredNativeToolModel
+
+        return ConfiguredNativeToolModel(resolved_llm=resolved).complete_text(
+            system_prompt,
+            user_content,
             temperature=temperature,
             max_tokens=max_tokens,
             thinking=thinking,
@@ -430,11 +429,7 @@ def _llm_text_completion(
         # Keep the provider boundary diagnostic useful without logging the
         # prompt, API key, raw provider response, or exception detail.
         logger.warning("LLM text completion failed with an unexpected provider error")
-        return LLMTextCompletion(
-            provider=llm.provider,
-            model=llm.model,
-            empty_reason="provider_error",
-        )
+        return LLMTextCompletion(empty_reason="provider_error")
 
 
 def _llm_chat(

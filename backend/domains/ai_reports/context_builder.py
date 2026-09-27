@@ -230,7 +230,19 @@ def _context_fragment(tool_name: str, data: dict[str, Any]) -> dict[str, Any]:
     if tool_name == "report_period_context":
         return {"reporting_period": data}
     if tool_name == "yearly_overview":
-        return data
+        hero = dict(data.get("hero") or {})
+        for key in (
+            "total_plays",
+            "total_minutes",
+            "unique_tracks",
+            "unique_artists",
+            "active_days",
+        ):
+            hero.setdefault(key, 0)
+        # report_period_context is authoritative for the requested calendar
+        # window.  A no-data yearly overview carries an empty period and must
+        # not erase that explicit range.
+        return {"hero": hero}
     if tool_name == "yearly_top_entities":
         return {
             "top_artists": data.get("top_artists") or [],

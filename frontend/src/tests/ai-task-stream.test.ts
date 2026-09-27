@@ -59,6 +59,36 @@ describe('AI task SSE transport', () => {
     }))
   })
 
+  it('parses validated report sections with the v2 composite cursor', async () => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(
+          'id: v2:p2:t1:s7:a0\nevent: task.section\ndata: '
+          + '{"task_id":"task-1","generation":1,"section_id":"opening",'
+          + '"section_order":0,"section_version":1,"status":"validated",'
+          + '"source_kind":"model","section":{"heading":"开场","prose":"正文"},'
+          + '"attempt_count":1,"updated_at":"2026-09-22 10:00:00","sequence":7}\n\n',
+        ))
+        controller.close()
+      },
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    })))
+    const events: Array<{ type: string; data: unknown; id?: string }> = []
+
+    await streamAiTask('task-1', { onEvent: (event) => events.push(event) }, new AbortController().signal)
+
+    expect(events[0].type).toBe('task.section')
+    expect(events[0].id).toBe('v2:p2:t1:s7:a0')
+    expect(events[0].data).toEqual(expect.objectContaining({
+      section_id: 'opening',
+      status: 'validated',
+    }))
+  })
+
   it('rejects non-SSE responses so callers can fall back to polling', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', {
       status: 200,

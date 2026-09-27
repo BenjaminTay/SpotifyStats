@@ -8,6 +8,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from backend.domains.agent_runtime.provider_reliability import (
+    BudgetCaps,
+    DynamicAgentBudget,
+    ModelStepExecutor,
+    ProviderCandidate,
+    dynamic_agent_budget,
+)
 from backend.domains.agent_runtime.serialization import compact_json
 from backend.providers.llm.client import LLMCompletion, LLMToolCall
 
@@ -20,6 +27,10 @@ class NativeToolModel(Protocol):
         *,
         thinking: bool,
     ) -> LLMCompletion: ...
+
+
+class NativeLoopCancelledError(RuntimeError):
+    """Raised at a safe boundary after the owning durable task is cancelled."""
 
 
 @dataclass(frozen=True)
@@ -68,7 +79,15 @@ def tool_message(call: LLMToolCall, payload: dict[str, Any]) -> dict[str, Any]:
         "role": "tool",
         "tool_call_id": call.call_id,
         "name": call.name,
-        "content": compact_json(payload),
+        # Tool payloads have their own domain-level bounds.  The envelope adds
+        # several structural levels, so the generic context depth would erase
+        # leaf scalars such as ``taste_profile.*.buckets[].label``.
+        "content": compact_json(
+            payload,
+            max_depth=10,
+            max_list_items=12,
+            max_string_chars=1200,
+        ),
     }
 
 
@@ -82,15 +101,31 @@ class NativeObservationLoop:
         schemas: list[dict[str, Any]],
         thinking: bool,
         clock: Callable[[], float] = time.monotonic,
+        model_executor: ModelStepExecutor | None = None,
+        budget: DynamicAgentBudget | None = None,
     ) -> None:
         self.model = model
         self.schemas = schemas
         self.thinking = thinking
         self.clock = clock
+        provider_id = str(getattr(model, "provider_id", f"native:{model.__class__.__name__}"))
+        self.model_executor = model_executor or ModelStepExecutor(
+            primary=ProviderCandidate(provider_id, model),
+            clock=clock,
+        )
+        self.budget = budget or dynamic_agent_budget(
+            {},
+            caps=BudgetCaps(max_steps=7, max_tool_calls=12),
+        )
 
     def complete_step(self, messages: list[dict[str, Any]]) -> ModelObservationStep:
         started_at = self.clock()
-        completion = self.model.complete(messages, self.schemas, thinking=self.thinking)
+        completion = self.model_executor.execute(
+            messages=messages,
+            tools=self.schemas,
+            thinking=self.thinking,
+            budget=self.budget,
+        ).completion
         return ModelObservationStep(
             completion=completion,
             assistant_message=assistant_message(completion),
@@ -105,11 +140,16 @@ class NativeObservationLoop:
         max_steps: int,
         max_tool_calls: int,
         on_step: Callable[[int, int], None] | None = None,
+        should_continue: Callable[[], bool] | None = None,
     ) -> NativeLoopResult:
         observations: list[dict[str, Any]] = []
         tool_call_count = 0
         for step in range(1, max_steps + 1):
+            if should_continue is not None and not should_continue():
+                raise NativeLoopCancelledError("年度报告任务已取消")
             model_step = self.complete_step(messages)
+            if should_continue is not None and not should_continue():
+                raise NativeLoopCancelledError("年度报告任务已取消")
             completion = model_step.completion
             messages.append(model_step.assistant_message)
             if not completion.tool_calls:
@@ -122,6 +162,8 @@ class NativeObservationLoop:
                     stop_reason="final_answer",
                 )
             for call in completion.tool_calls:
+                if should_continue is not None and not should_continue():
+                    raise NativeLoopCancelledError("年度报告任务已取消")
                 if tool_call_count >= max_tool_calls:
                     return NativeLoopResult(
                         content="",

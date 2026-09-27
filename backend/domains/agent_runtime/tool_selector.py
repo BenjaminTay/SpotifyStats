@@ -9,7 +9,12 @@ from typing import Any
 from backend.domains.ai_agent.tool_registry import AgentToolRegistry
 
 _FAMILY_TOOLS: dict[str, tuple[str, ...]] = {
-    "simple_ranking": ("analysis_charts", "analysis_stats", "wrapped_yearly"),
+    "simple_ranking": (
+        "analysis_charts",
+        "entity_stats",
+        "analysis_stats",
+        "wrapped_yearly",
+    ),
     "scoped_ranking": (
         "entity_stats",
         "resolve_entity",

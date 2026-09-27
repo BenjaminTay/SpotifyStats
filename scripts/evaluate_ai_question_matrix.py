@@ -22,7 +22,7 @@ DEFAULT_GOLDEN_PATH = ROOT / "backend" / "tests" / "fixtures" / "ai_agent_golden
 _TABLE_ROW_RE = re.compile(r"^\|\s*([^|]+?)\s*\|")
 _CASE_ID_RE = re.compile(r"^[A-Z][A-Z0-9-]*-\d+$|^P0-\d+$")
 _REQUIRED_P0_IDS = {f"P0-{index:02d}" for index in range(1, 13)}
-_TERMINAL_STATUSES = {"done", "error", "cancelled"}
+_TERMINAL_STATUSES = {"done", "error", "cancelled", "awaiting_input"}
 _MULTITURN_RE = re.compile(
     r"第[一二三四五六七八九十\d]+轮[:：]\s*(.*?)(?=第[一二三四五六七八九十\d]+轮[:：]|$)"
 )
@@ -287,6 +287,20 @@ def _tool_names(result: dict[str, Any], events_payload: dict[str, Any]) -> list[
     return []
 
 
+def _tool_outcomes(events_payload: dict[str, Any], tool_name: str) -> list[dict[str, Any]]:
+    outcomes: list[dict[str, Any]] = []
+    for event in _as_list(events_payload.get("trajectory")):
+        if not isinstance(event, dict) or event.get("event_type") != "tool_result":
+            continue
+        payload = _as_dict(event.get("payload"))
+        if payload.get("tool_name") != tool_name:
+            continue
+        outcome = _as_dict(payload.get("outcome"))
+        if outcome:
+            outcomes.append(outcome)
+    return outcomes
+
+
 def _contains_any(text: str, tokens: tuple[str, ...]) -> bool:
     lowered = text.casefold()
     return any(token.casefold() in lowered for token in tokens)
@@ -332,6 +346,39 @@ def _p0_specific_issues(
             fail.append("去年夏天时间范围不是 2025-06-01..2025-08-31")
         if "2024" in answer and "2025" not in answer:
             fail.append("回答疑似仍把去年夏天解释为 2024")
+        taste_outcomes = _tool_outcomes(events_payload, "taste_profile")
+        style_labels: list[str] = []
+        taste_total_hours: float | None = None
+        if taste_outcomes:
+            taste_data = _as_dict(taste_outcomes[-1].get("data"))
+            profile = _as_dict(taste_data.get("taste_profile"))
+            primary_styles = _as_dict(profile.get("primary_styles"))
+            raw_total = primary_styles.get("total_hours")
+            if isinstance(raw_total, (int, float)) and not isinstance(raw_total, bool):
+                taste_total_hours = float(raw_total)
+            for bucket in _as_list(primary_styles.get("buckets")):
+                label = _as_dict(bucket).get("label")
+                if isinstance(label, str) and label.strip():
+                    style_labels.append(label.strip())
+        if not style_labels:
+            fail.append("曲风工具证据没有保留可读的类型标签")
+        elif not any(label.casefold() in answer.casefold() for label in style_labels):
+            fail.append("回答没有给出曲风证据中的任何具体类型")
+        stats_outcomes = _tool_outcomes(events_payload, "analysis_stats")
+        if taste_total_hours is not None and stats_outcomes:
+            stats_data = _as_dict(stats_outcomes[-1].get("data"))
+            summary = _as_dict(stats_data.get("summary"))
+            raw_stats_hours = summary.get("total_hours")
+            if isinstance(raw_stats_hours, (int, float)) and not isinstance(
+                raw_stats_hours, bool
+            ):
+                stats_hours = float(raw_stats_hours)
+                tolerance = max(1.0, stats_hours * 0.1)
+                if abs(taste_total_hours - stats_hours) > tolerance:
+                    fail.append(
+                        "曲风画像时长与同窗口播放统计不一致："
+                        f"{taste_total_hours:g}h vs {stats_hours:g}h"
+                    )
     elif case.case_id == "P0-02":
         if question_frame.get("family") != "scoped_ranking":
             fail.append("Ariana Grande 问题未进入 scoped_ranking")
@@ -706,7 +753,18 @@ def _percentile(values: list[float], percentile: float) -> float | None:
 
 
 def _performance_summary(payload: dict[str, Any]) -> dict[str, Any]:
-    results = [item for item in payload.get("results", []) if isinstance(item, dict)]
+    cases = [item for item in payload.get("results", []) if isinstance(item, dict)]
+    # Multi-turn matrix entries are graded as one behavioural case but their
+    # latency is recorded on each concrete turn.  Use those leaf turns for the
+    # performance population instead of treating the metric-less wrapper as a
+    # missing sample.
+    results: list[dict[str, Any]] = []
+    for item in cases:
+        turns = item.get("turns")
+        if isinstance(turns, list) and turns:
+            results.extend(turn for turn in turns if isinstance(turn, dict))
+        else:
+            results.append(item)
     metrics = [
         item.get("runtime_metrics")
         for item in results
@@ -724,6 +782,7 @@ def _performance_summary(payload: dict[str, Any]) -> dict[str, Any]:
     passed = sum(1 for item in results if item.get("grade") == "Pass")
     return {
         "schema_version": "ai_question_performance_v1",
+        "case_count": len(cases),
         "sample_count": total,
         "metrics_sample_count": len(metrics),
         "pass_rate": round(passed / max(1, total), 4),

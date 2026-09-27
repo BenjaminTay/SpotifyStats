@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MusicSearchResults } from '@/features/music/search/MusicSearchResults'
 import { HighlightedSearchText } from '@/features/music/search/HighlightedSearchText'
+import { CoverCell } from '@/components/shared/CoverCell'
 import { setChineseStyle } from '@/lib/chinese'
 import type { MusicSearchCandidateResponse, MusicSearchContextResponse } from '@/types/music-search'
 
@@ -401,5 +402,28 @@ describe('MusicSearchResults', () => {
       '/music/tracks/42?title=%E8%AA%8D%E4%BA%86%E5%90%A7',
     )
     expect(screen.getByRole('img', { name: '认了吧 封面' })).toBeInTheDocument()
+  })
+})
+
+describe('CoverCell', () => {
+  it('keeps a failed URL on the placeholder across ordinary rerenders', async () => {
+    const view = render(<CoverCell index={0} coverUrl="/covers/albums/stale.jpg" label="Stale" />)
+    fireEvent.error(screen.getByRole('img', { name: 'Stale 封面' }))
+
+    await waitFor(() => expect(screen.queryByRole('img', { name: 'Stale 封面' })).not.toBeInTheDocument())
+    view.rerender(<CoverCell index={1} coverUrl="/covers/albums/stale.jpg" label="Stale" />)
+
+    expect(screen.queryByRole('img', { name: 'Stale 封面' })).not.toBeInTheDocument()
+    expect(screen.getByText('🎵')).toBeInTheDocument()
+  })
+
+  it('retries only after the cover URL changes', async () => {
+    const view = render(<CoverCell index={0} coverUrl="/covers/albums/old.jpg" label="Cover" />)
+    fireEvent.error(screen.getByRole('img', { name: 'Cover 封面' }))
+    await waitFor(() => expect(screen.queryByRole('img', { name: 'Cover 封面' })).not.toBeInTheDocument())
+
+    view.rerender(<CoverCell index={0} coverUrl="/covers/albums/new.jpg" label="Cover" />)
+
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Cover 封面' })).toHaveAttribute('src', '/covers/albums/new.jpg'))
   })
 })

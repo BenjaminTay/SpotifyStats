@@ -331,6 +331,7 @@ export const queryKeys = {
     all: ["ai-tasks"] as const,
     task: (taskId: string) => ["ai-tasks", "task", taskId] as const,
     events: (taskId: string) => ["ai-tasks", "events", taskId] as const,
+    sections: (taskId: string) => ["ai-tasks", "sections", taskId] as const,
   },
 
   versionMerge: {

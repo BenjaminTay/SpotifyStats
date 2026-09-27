@@ -129,6 +129,7 @@ describe('AiInsightsExperience report task flow', () => {
     const client = createClient()
     const getSpy = mockCommonGet()
     const postSpy = vi.spyOn(api, 'post').mockImplementation((path: string, body?: unknown) => {
+      if (path === '/ai/tasks/report/lookup') return Promise.resolve({ found: false })
       if (path !== '/ai/tasks/report') {
         return Promise.reject(new Error(`unexpected POST ${path}`))
       }
@@ -166,7 +167,7 @@ describe('AiInsightsExperience report task flow', () => {
 
     await screen.findByRole('button', { name: '生成报告' })
     expect(screen.queryByText('该时间段暂无听歌数据')).not.toBeInTheDocument()
-    expect(postSpy).toHaveBeenCalledTimes(1)
+    expect(postSpy).toHaveBeenCalledTimes(2)
     expect(postSpy).toHaveBeenLastCalledWith('/ai/tasks/report', {
       report_type: 'weekly',
       action: 'cache_only',
@@ -182,7 +183,7 @@ describe('AiInsightsExperience report task flow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '生成报告' }))
 
-    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(3))
     expect(postSpy).toHaveBeenLastCalledWith('/ai/tasks/report', {
       report_type: 'weekly',
       action: 'generate',
@@ -228,6 +229,7 @@ describe('AiInsightsExperience report task flow', () => {
     const client = createClient()
     mockCommonGet('缓存命中的周报', { cached_at: '2026-06-28T12:00:00Z' })
     const postSpy = vi.spyOn(api, 'post').mockImplementation((path: string, body?: unknown) => {
+      if (path === '/ai/tasks/report/lookup') return Promise.resolve({ found: false })
       if (path !== '/ai/tasks/report') {
         return Promise.reject(new Error(`unexpected POST ${path}`))
       }
@@ -267,7 +269,7 @@ describe('AiInsightsExperience report task flow', () => {
     expect(screen.getByText('12 小时前')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '刷新报告' }))
 
-    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(3))
     expect(postSpy).toHaveBeenLastCalledWith('/ai/tasks/report', {
       report_type: 'weekly',
       action: 'generate',
@@ -282,8 +284,8 @@ describe('AiInsightsExperience report task flow', () => {
     })
     expect(await screen.findByText('刚刚')).toBeInTheDocument()
     expect(screen.getByText('缓存命中的周报')).toBeInTheDocument()
-    expect(screen.queryByText('AI 任务进度')).not.toBeInTheDocument()
-    expect(screen.queryByText('报告生成完成')).not.toBeInTheDocument()
+    expect(screen.getByText('AI 任务进度')).toBeInTheDocument()
+    expect(screen.getByText('报告生成完成')).toBeInTheDocument()
   })
 
   it('cancels an in-flight report generation task', async () => {
@@ -330,6 +332,7 @@ describe('AiInsightsExperience report task flow', () => {
       return Promise.reject(new Error(`unexpected GET ${path}`))
     })
     const postSpy = vi.spyOn(api, 'post').mockImplementation((path: string, body?: unknown) => {
+      if (path === '/ai/tasks/report/lookup') return Promise.resolve({ found: false })
       if (path === '/ai/tasks/task-generate/cancel') {
         return Promise.resolve({
           found: true,
@@ -386,6 +389,101 @@ describe('AiInsightsExperience report task flow', () => {
     expect(calledLegacyReportEndpoint(getSpy)).toBe(false)
   })
 
+  it('restores an exact failed generation task and keeps validated sections after refresh', async () => {
+    const client = createClient()
+    vi.spyOn(api, 'get').mockImplementation((path: string) => {
+      if (path === '/analysis/stats') {
+        return Promise.resolve({
+          period: { start_date: '2026-01-01', end_date: '2026-06-23' },
+        })
+      }
+      if (path === '/chat/sessions') return Promise.resolve({ success: true, data: [] })
+      if (path === '/ai/tasks/task-restored') {
+        return Promise.resolve({
+          found: true,
+          task_id: 'task-restored',
+          task_type: 'ai_report_weekly',
+          status: 'error',
+          stage: 'error',
+          progress_pct: 1,
+          message: '章节写作中断',
+          result: null,
+          error: '上游服务暂时不可用',
+          created_at: '2026-06-28T00:00:00',
+          updated_at: '2026-06-28T00:00:01',
+        })
+      }
+      if (path === '/ai/tasks/task-restored/events') {
+        return Promise.resolve({ found: true, events: [], tool_calls: [] })
+      }
+      if (path === '/ai/tasks/task-restored/sections') {
+        return Promise.resolve({
+          found: true,
+          sections: [{
+            task_id: 'task-restored',
+            generation: 1,
+            section_id: 'opening',
+            section_order: 0,
+            section_version: 2,
+            status: 'validated',
+            source_kind: 'model',
+            section: { heading: '已恢复章节', prose: '刷新后仍然可见的正文。' },
+            attempt_count: 1,
+            updated_at: '2026-06-28T00:00:01',
+          }],
+        })
+      }
+      return Promise.reject(new Error(`unexpected GET ${path}`))
+    })
+    const postSpy = vi.spyOn(api, 'post').mockImplementation((path: string, body?: unknown) => {
+      if (path === '/ai/tasks/report/lookup') {
+        const payload = body as { report_type?: string }
+        if (payload.report_type !== 'yearly') return Promise.resolve({ found: false })
+        return Promise.resolve({
+          found: true,
+          task_id: 'task-restored',
+          task_type: 'ai_report_yearly',
+          status: 'error',
+          stage: 'error',
+          progress_pct: 1,
+          message: '章节写作中断',
+          result: null,
+          error: '上游服务暂时不可用',
+        })
+      }
+      if (path === '/ai/tasks/report') {
+        return Promise.resolve({
+          task_id: 'task-cache',
+          status: 'done',
+          stage: 'done',
+          progress_pct: 1,
+          message: '缓存检查完成',
+          result: {
+            cached: false,
+            report: null,
+            cached_at: null,
+            entities: null,
+            needs_generation: true,
+          },
+        })
+      }
+      return Promise.reject(new Error(`unexpected POST ${path}`))
+    })
+
+    render(<AiInsightsExperience />, { wrapper: wrapperFor(client) })
+
+    await screen.findByRole('button', { name: '生成报告' })
+    fireEvent.click(screen.getByRole('button', { name: '年度叙事' }))
+    expect(await screen.findByText('已恢复章节')).toBeInTheDocument()
+    expect(screen.getByText('刷新后仍然可见的正文。')).toBeInTheDocument()
+    expect(screen.getAllByText('上游服务暂时不可用')).toHaveLength(2)
+    expect(postSpy).toHaveBeenCalledTimes(3)
+    expect(postSpy).toHaveBeenCalledWith(
+      '/ai/tasks/report/lookup',
+      expect.objectContaining({ report_type: 'weekly', action: 'generate' }),
+    )
+  })
+
   it('uses settings dynamic_threshold=false for cache-only report payload', async () => {
     settingsState.settings = {
       ...settingsState.settings,
@@ -411,7 +509,7 @@ describe('AiInsightsExperience report task flow', () => {
     render(<AiInsightsExperience />, { wrapper: wrapperFor(client) })
 
     await screen.findByRole('button', { name: '生成报告' })
-    expect(postSpy).toHaveBeenCalledTimes(1)
+    expect(postSpy).toHaveBeenCalledTimes(2)
     expect(postSpy).toHaveBeenLastCalledWith('/ai/tasks/report', expect.objectContaining({
       action: 'cache_only',
       dynamic_threshold: false,
@@ -442,7 +540,7 @@ describe('AiInsightsExperience report task flow', () => {
       render(<AiInsightsExperience />, { wrapper: wrapperFor(client) })
 
       await screen.findByRole('button', { name: '生成报告' })
-      expect(postSpy).toHaveBeenCalledTimes(1)
+      expect(postSpy).toHaveBeenCalledTimes(2)
       expect(postSpy).toHaveBeenLastCalledWith('/ai/tasks/report', expect.objectContaining({
         action: 'cache_only',
         dynamic_threshold: false,
@@ -455,6 +553,7 @@ describe('AiInsightsExperience report task flow', () => {
     mockCommonGet()
     const actions: string[] = []
     const postSpy = vi.spyOn(api, 'post').mockImplementation((path: string, body?: unknown) => {
+      if (path === '/ai/tasks/report/lookup') return Promise.resolve({ found: false })
       if (path !== '/ai/tasks/report') {
         return Promise.reject(new Error(`unexpected POST ${path}`))
       }
@@ -487,7 +586,7 @@ describe('AiInsightsExperience report task flow', () => {
     expect(await screen.findByText('cache check failed')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '重试' }))
 
-    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(3))
     expect(await screen.findByRole('button', { name: '生成报告' })).toBeInTheDocument()
     expect(actions).toEqual(['cache_only', 'cache_only'])
     expect(actions).not.toContain('generate')
@@ -514,6 +613,7 @@ describe('AiInsightsExperience report task flow', () => {
     const client = createClient()
     mockCommonGet()
     const postSpy = vi.spyOn(api, 'post').mockImplementation((path: string) => {
+      if (path === '/ai/tasks/report/lookup') return Promise.resolve({ found: false })
       if (path !== '/ai/tasks/report') {
         return Promise.reject(new Error(`unexpected POST ${path}`))
       }
@@ -536,10 +636,10 @@ describe('AiInsightsExperience report task flow', () => {
     render(<AiInsightsExperience />, { wrapper: wrapperFor(client) })
 
     await screen.findByRole('button', { name: '生成报告' })
-    expect(postSpy).toHaveBeenCalledTimes(1)
+    expect(postSpy).toHaveBeenCalledTimes(2)
 
     fireEvent.click(screen.getByRole('button', { name: '月报' }))
-    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(4))
     expect(postSpy).toHaveBeenLastCalledWith('/ai/tasks/report', {
       report_type: 'monthly',
       action: 'cache_only',
@@ -553,7 +653,7 @@ describe('AiInsightsExperience report task flow', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: '上月' }))
-    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(postSpy).toHaveBeenCalledTimes(6))
     expect(postSpy).toHaveBeenLastCalledWith('/ai/tasks/report', {
       report_type: 'monthly',
       action: 'cache_only',
@@ -571,6 +671,7 @@ describe('AiInsightsExperience report task flow', () => {
     const client = createClient()
     mockCommonGet()
     const postSpy = vi.spyOn(api, 'post').mockImplementation((path: string, body?: unknown) => {
+      if (path === '/ai/tasks/report/lookup') return Promise.resolve({ found: false })
       if (path !== '/ai/tasks/report') {
         return Promise.reject(new Error(`unexpected POST ${path}`))
       }

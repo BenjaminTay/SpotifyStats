@@ -195,6 +195,17 @@ def infer_time_interpretation(
         }
 
     recent_months = _RECENT_MONTHS_PATTERN.search(question)
+    if any(token in question for token in ("过去一年", "最近一年", "近一年")):
+        start = anchor_date - timedelta(days=365)
+        return _interpretation_payload(
+            label="过去一年",
+            anchor=anchor,
+            start_date=start.isoformat(),
+            end_date=anchor,
+            expected_year=anchor_date.year,
+            confidence="high",
+        )
+
     if recent_months:
         count = _parse_chinese_number(recent_months.group(1))
         if count is not None and 1 <= count <= 24:

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useLatestListeningRange } from '@/hooks/useAiInsights'
-import { useAiTask, useCancelAiTask, useStartReportTask } from '@/hooks/useAiTasks'
+import {
+  useAiTask,
+  useCancelAiTask,
+  useLookupReportTask,
+  useStartReportTask,
+} from '@/hooks/useAiTasks'
 import type { ReportTaskRequest } from '@/hooks/useAiTasks'
 import type { ReportEntities, ReportType } from '@/types/ai-insights'
 import type { AiTaskCreatePayload } from '@/types/ai-tasks'
@@ -22,6 +27,7 @@ import {
 import { REPORT_DESCRIPTIONS, REPORT_LABELS } from './aiInsightsData'
 import { buildAiTaskFilterPayload } from './aiTaskFilters'
 import { ReportCard } from './ReportCard'
+import { ProgressiveReportSections } from './ProgressiveReportSections'
 
 interface ReportTaskResult {
   success?: boolean
@@ -39,6 +45,7 @@ interface CurrentReportTaskState {
   key: string
   mode: 'cache' | 'generate'
   taskId: string | null
+  status: string | null
   result: ReportTaskResult | null
   error: string | null
 }
@@ -102,10 +109,12 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
   const [monthPickerOpen, setMonthPickerOpen] = useState(false)
 
   const { mutateAsync: startReportTask, isPending: startingReportTask } = useStartReportTask()
+  const { mutateAsync: lookupReportTask } = useLookupReportTask()
   const cancelReportTask = useCancelAiTask()
   const [currentReportTask, setCurrentReportTask] = useState<CurrentReportTaskState | null>(null)
   const [activeReportTaskId, setActiveReportTaskId] = useState<string | null>(null)
   const reportPayloadKeyRef = useRef<string | null>(null)
+  const restoredReportPayloadKeyRef = useRef<string | null>(null)
   const activeReportTask = useAiTask(activeReportTaskId)
 
   useEffect(() => {
@@ -164,7 +173,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
     const key = reportPayloadKey
     reportPayloadKeyRef.current = key
     setActiveReportTaskId(null)
-    setCurrentReportTask({ key, mode: 'cache', taskId: null, result: null, error: null })
+    setCurrentReportTask({ key, mode: 'cache', taskId: null, status: null, result: null, error: null })
 
     try {
       const response = await startReportTask({ ...reportPayload, action: 'cache_only' })
@@ -173,12 +182,13 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
         key,
         mode: 'cache',
         taskId: response.task_id,
+        status: response.status,
         result: reportResultFromPayload(response.result),
         error: null,
       })
     } catch (error) {
       if (reportPayloadKeyRef.current !== key) return
-      setCurrentReportTask({ key, mode: 'cache', taskId: null, result: null, error: errorMessage(error) })
+      setCurrentReportTask({ key, mode: 'cache', taskId: null, status: 'error', result: null, error: errorMessage(error) })
     } finally {
       setInitialLoading(false)
     }
@@ -188,7 +198,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
     const key = reportPayloadKey
     reportPayloadKeyRef.current = key
     setActiveReportTaskId(null)
-    setCurrentReportTask({ key, mode: 'generate', taskId: null, result: null, error: null })
+    setCurrentReportTask({ key, mode: 'generate', taskId: null, status: null, result: null, error: null })
 
     try {
       const response: AiTaskCreatePayload = await startReportTask({
@@ -202,37 +212,87 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
         key,
         mode: 'generate',
         taskId: response.task_id,
+        status: response.status,
         result: reportResultFromPayload(response.result),
         error: null,
       })
     } catch (error) {
       if (reportPayloadKeyRef.current !== key) return
-      setCurrentReportTask({ key, mode: 'generate', taskId: null, result: null, error: errorMessage(error) })
+      setCurrentReportTask({ key, mode: 'generate', taskId: null, status: 'error', result: null, error: errorMessage(error) })
     }
   }, [reportPayload, reportPayloadKey, startReportTask])
 
+  const restoreReportOrCheckCache = useCallback(async () => {
+    const key = reportPayloadKey
+    reportPayloadKeyRef.current = key
+    setActiveReportTaskId(null)
+    setCurrentReportTask(null)
+    setInitialLoading(true)
+    try {
+      const existing = await lookupReportTask({ ...reportPayload, action: 'generate' })
+      if (reportPayloadKeyRef.current !== key) return
+      if (existing.found && existing.task_id) {
+        const taskError = existing.status === 'error'
+          ? existing.error || '报告生成失败'
+          : existing.status === 'cancelled'
+            ? '报告生成已取消'
+            : null
+        setActiveReportTaskId(existing.task_id)
+        setCurrentReportTask({
+          key,
+          mode: 'generate',
+          taskId: existing.task_id,
+          status: existing.status ?? null,
+          result: reportResultFromPayload(existing.result),
+          error: taskError,
+        })
+        setInitialLoading(false)
+        return
+      }
+      await startCacheCheck()
+    } catch (error) {
+      if (reportPayloadKeyRef.current !== key) return
+      setCurrentReportTask({
+        key,
+        mode: 'generate',
+        taskId: null,
+        status: 'error',
+        result: null,
+        error: errorMessage(error),
+      })
+      setInitialLoading(false)
+    }
+  }, [lookupReportTask, reportPayload, reportPayloadKey, startCacheCheck])
+
   useEffect(() => {
-    if (reportsReady) void startCacheCheck()
-  }, [reportsReady, startCacheCheck])
+    if (!reportsReady || restoredReportPayloadKeyRef.current === reportPayloadKey) return
+    restoredReportPayloadKeyRef.current = reportPayloadKey
+    void restoreReportOrCheckCache()
+  }, [reportPayloadKey, reportsReady, restoreReportOrCheckCache])
 
   useEffect(() => {
     if (!activeReportTaskId || !activeReportTask.task) return
-    const taskResult = reportResultFromPayload(activeReportTask.task.result)
-    const taskError = activeReportTask.task.status === 'error'
-      ? activeReportTask.task.error || activeReportTask.error
+    const task = activeReportTask.task
+    const taskResult = reportResultFromPayload(task.result)
+    const taskError = task.status === 'error'
+      ? task.error || activeReportTask.error
       : null
 
     setCurrentReportTask((previous) => {
       if (!previous || previous.taskId !== activeReportTaskId) return previous
-      return { ...previous, result: taskResult ?? previous.result, error: taskError }
+      if (
+        (previous.status === 'done' || previous.status === 'error' || previous.status === 'cancelled')
+        && (task.status === 'queued' || task.status === 'running' || task.status === 'cancelling')
+      ) {
+        return previous
+      }
+      return {
+        ...previous,
+        status: task.status ?? previous.status,
+        result: taskResult ?? previous.result,
+        error: taskError ?? previous.error,
+      }
     })
-    if (
-      activeReportTask.task.status === 'done'
-      || activeReportTask.task.status === 'error'
-      || activeReportTask.task.status === 'cancelled'
-    ) {
-      setActiveReportTaskId(null)
-    }
   }, [activeReportTask.error, activeReportTask.task, activeReportTaskId])
 
   const weeklyQuickValue = `${weekStart}_${weekEnd}`
@@ -310,6 +370,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
         if (!previous || previous.taskId !== activeReportTaskId) return previous
         return {
           ...previous,
+          status: task.status ?? previous.status,
           result: taskResult ?? previous.result,
           error: task.status === 'cancelled'
             ? '报告生成已取消'
@@ -318,9 +379,6 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
               : null,
         }
       })
-      if (task.status === 'done' || task.status === 'error' || task.status === 'cancelled') {
-        setActiveReportTaskId(null)
-      }
     } catch (error) {
       setCurrentReportTask((previous) => previous
         ? { ...previous, error: errorMessage(error) }
@@ -341,8 +399,9 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
     && (
       startingReportTask
         || activeReportTask.loading
-        || activeReportTask.task?.status === 'queued'
-        || activeReportTask.task?.status === 'running'
+        || currentReportTask?.status === 'queued'
+        || currentReportTask?.status === 'running'
+        || currentReportTask?.status === 'cancelling'
     )
   const reportNeedsGeneration = reportTaskResult?.needs_generation === true
   const reportEmptyError = reportTaskResult?.success === false && reportTaskResult.error
@@ -350,7 +409,7 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
     : null
   const showTaskProgress = reportTaskMatchesCurrentPayload
     && currentReportTask?.mode === 'generate'
-    && Boolean(activeReportTaskId)
+    && Boolean(currentReportTask.taskId)
   const canCancelReport = showTaskProgress && generatingReport
   const reportTitle = reportType === 'weekly'
     ? `${REPORT_LABELS.weekly} · ${weekStart} ~ ${weekEnd}`
@@ -427,6 +486,9 @@ export function AiReportsPanel({ settings, onFollowUp }: AiReportsPanelProps) {
         <div className="space-y-4">
           {showTaskProgress && (
             <AITaskProgress task={activeReportTask.task} events={activeReportTask.events} />
+          )}
+          {showTaskProgress && reportType === 'yearly' && (
+            <ProgressiveReportSections sections={activeReportTask.sections} />
           )}
           <ReportCard
             reportType={reportType}

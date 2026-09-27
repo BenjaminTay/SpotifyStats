@@ -159,10 +159,15 @@ FallbackCallback = Callable[
     [SectionWritePlan, tuple[SectionAttempt, ...]],
     dict[str, Any],
 ]
+SectionCommittedCallback = Callable[[SectionWriteResult], None]
 
 
 class SectionWriterError(RuntimeError):
     """Raised when the deterministic orchestration contract cannot be fulfilled."""
+
+
+class SectionWriterCancelledError(SectionWriterError):
+    """Raised when the owning report task stops at a safe section boundary."""
 
 
 def write_report_sections(
@@ -174,6 +179,9 @@ def write_report_sections(
     fallback: FallbackCallback,
     max_workers: int = MAX_SECTION_WORKERS,
     max_attempts: int = MAX_SECTION_ATTEMPTS,
+    resume_results: dict[str, SectionWriteResult] | None = None,
+    on_result: SectionCommittedCallback | None = None,
+    should_continue: Callable[[], bool] | None = None,
 ) -> SectionWriterRun:
     """Write exactly six report sections with isolated retries and fallback.
 
@@ -185,22 +193,61 @@ def write_report_sections(
     normalized_plans = tuple(plans)
     _validate_options(normalized_plans, max_workers=max_workers, max_attempts=max_attempts)
 
-    indexed_results: dict[int, SectionWriteResult] = {}
-    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="section-writer") as pool:
-        futures = {
-            pool.submit(
-                _write_section,
+    resumable = resume_results or {}
+    indexed_results: dict[int, SectionWriteResult] = {
+        index: resumable[plan.section_id]
+        for index, plan in enumerate(normalized_plans)
+        if plan.section_id in resumable
+    }
+    pending = [
+        (index, plan) for index, plan in enumerate(normalized_plans) if index not in indexed_results
+    ]
+    if should_continue is not None and not should_continue():
+        raise SectionWriterCancelledError("年度报告任务已取消")
+    if max_workers == 1:
+        # Durable report callbacks share one task-scoped SQLite connection.
+        # A one-worker executor still moves completion work to another thread,
+        # and returning to the owner thread after commit can invalidate the
+        # driver's active cursor.  Run genuinely inline for the durable path.
+        for index, plan in pending:
+            result = _write_section(
                 plan,
                 complete=complete,
                 parse=parse,
                 audit=audit,
                 fallback=fallback,
                 max_attempts=max_attempts,
-            ): index
-            for index, plan in enumerate(normalized_plans)
-        }
-        for future in as_completed(futures):
-            indexed_results[futures[future]] = future.result()
+                should_continue=should_continue,
+            )
+            if should_continue is not None and not should_continue():
+                raise SectionWriterCancelledError("年度报告任务已取消")
+            indexed_results[index] = result
+            if on_result is not None:
+                on_result(result)
+    else:
+        with ThreadPoolExecutor(
+            max_workers=max_workers, thread_name_prefix="section-writer"
+        ) as pool:
+            futures = {
+                pool.submit(
+                    _write_section,
+                    plan,
+                    complete=complete,
+                    parse=parse,
+                    audit=audit,
+                    fallback=fallback,
+                    max_attempts=max_attempts,
+                    should_continue=should_continue,
+                ): index
+                for index, plan in pending
+            }
+            for future in as_completed(futures):
+                result = future.result()
+                if should_continue is not None and not should_continue():
+                    raise SectionWriterCancelledError("年度报告任务已取消")
+                indexed_results[futures[future]] = result
+                if on_result is not None:
+                    on_result(result)
 
     results = tuple(indexed_results[index] for index in range(len(normalized_plans)))
     return SectionWriterRun(results=results, metadata=_build_metadata(results))
@@ -214,11 +261,14 @@ def _write_section(
     audit: AuditCallback,
     fallback: FallbackCallback,
     max_attempts: int,
+    should_continue: Callable[[], bool] | None,
 ) -> SectionWriteResult:
     section_started = time.perf_counter()
     attempts: list[SectionAttempt] = []
 
     for attempt_number in range(1, max_attempts + 1):
+        if should_continue is not None and not should_continue():
+            raise SectionWriterCancelledError("年度报告任务已取消")
         attempt_started = time.perf_counter()
         try:
             completion = complete(plan, attempt_number)
@@ -232,6 +282,8 @@ def _write_section(
                 )
             )
             continue
+        if should_continue is not None and not should_continue():
+            raise SectionWriterCancelledError("年度报告任务已取消")
 
         if not isinstance(completion, SectionCompletion):
             attempts.append(

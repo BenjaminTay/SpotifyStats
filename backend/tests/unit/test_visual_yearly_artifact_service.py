@@ -152,6 +152,87 @@ def test_visual_yearly_artifact_service_generates_artifact(monkeypatch):
     }
 
 
+def test_visual_yearly_artifact_resume_uses_frozen_context_after_source_drift(monkeypatch):
+    from backend.domains.ai_reports import visual_yearly_artifact_service as svc
+
+    frozen_context = {
+        **_quality_polish_context(),
+        "hero": {"active_days": 174, "total_minutes": 29882, "total_plays": 7860},
+    }
+    chart_specs = svc._default_chart_specs()
+    chart_data = _chart_data_with_observations(
+        {
+            "artist_monthly_trend": "Taylor Swift 在固定统计期内保持领先。",
+            "highlight_day_timeline": "固定高光日仍为 2026-04-03。",
+            "playback_billboard_matrix": "Opalite 仍是固定快照中的核心作品。",
+        }
+    )
+
+    class FrozenStore:
+        def get_report_generation_context(self, **versions):
+            assert versions["contract_version"] == svc.VISUAL_YEARLY_CONTRACT_VERSION
+            return {
+                "context_key": "frozen-context-key",
+                "source_key": "source-before-drift",
+                "evidence": [{"tool_name": "yearly_overview", "params": {"year": 2026}}],
+                "context": frozen_context,
+                "precomputed": {
+                    "snapshot_metadata": {"snapshot_key": "source-before-drift"},
+                    "narrative": svc._minimal_narrative(frozen_context),
+                    "visual": {},
+                    "chart_specs": chart_specs,
+                    "chart_data": chart_data,
+                },
+                "plan": [],
+            }
+
+        def list_report_sections(self, *, validated_only=False):
+            return []
+
+        def get_report_research(self, **kwargs):
+            return None
+
+    monkeypatch.setattr(
+        svc,
+        "_run_visual_research",
+        lambda *args, **kwargs: pytest.fail(
+            "resume must not rebuild from a source that may have drifted"
+        ),
+    )
+    observed = {}
+
+    def fake_agent(**kwargs):
+        observed.update(kwargs)
+        return _default_agent_sections()
+
+    monkeypatch.setattr(svc, "run_report_agent", fake_agent)
+    monkeypatch.setattr(
+        svc,
+        "_validate_visual_fact_safety",
+        lambda report, artifact, context: {"ok": True, "issues": []},
+    )
+    monkeypatch.setattr(
+        svc,
+        "critique_visual_yearly_artifact",
+        lambda artifact, context: {"ok": True, "issues": [], "repair_instructions": []},
+    )
+    monkeypatch.setattr(
+        svc,
+        "evaluate_final_artifact_quality",
+        lambda artifact: {"ok": True, "issues": [], "visible_text_length": 1800},
+    )
+
+    result = svc.generate_visual_yearly_artifact(
+        {"year": 2026, "writer_pipeline": "deterministic_visual_v1"},
+        checkpoint_store=FrozenStore(),
+    )
+
+    assert result["success"] is True
+    assert result["report_context_key"] == "frozen-context-key"
+    assert observed["research_context"]["hero"]["total_plays"] == 7860
+    assert observed["chart_data"] == chart_data
+
+
 def test_visual_yearly_artifact_service_uses_agent_synthesis_writer(monkeypatch):
     from backend.domains.ai_reports import visual_yearly_artifact_service as svc
 
@@ -798,6 +879,7 @@ def test_visual_yearly_artifact_service_partial_year_avoids_full_year_labels(mon
     assert "全年陪伴密度" not in visible_payload
     assert "年度高光日" not in visible_payload
     assert "年度声音线索" not in visible_payload
+    assert "这一年" not in visible_payload
     assert "阶段陪伴密度" in visible_payload
 
 
@@ -1414,6 +1496,43 @@ def test_visual_yearly_artifact_service_blocks_visual_critic_failure(monkeypatch
     assert result["report"] is not None
     assert result["metadata"]["critic_passed"] is False
     assert result["metadata"]["fallback_level"] == "visual_critic_failed"
+
+
+def test_visual_yearly_artifact_no_data_skips_model_and_returns_empty_state(monkeypatch):
+    from backend.domains.ai_reports import visual_yearly_artifact_service as svc
+
+    context = {
+        "year": 2010,
+        "reporting_period": {
+            "year": 2010,
+            "start_date": "2010-01-01",
+            "end_date": "2010-12-31",
+            "is_partial_year": False,
+        },
+        "hero": {"total_plays": 0, "total_minutes": 0, "active_days": 0},
+        "top_artists": [],
+        "top_tracks": [],
+        "top_albums": [],
+    }
+    monkeypatch.setattr(
+        svc,
+        "_run_visual_research",
+        lambda request, emit_event=None: ([], context),
+    )
+    monkeypatch.setattr(
+        svc,
+        "run_report_agent",
+        lambda **kwargs: pytest.fail("no-data reports must not call the model writer"),
+    )
+
+    result = svc.generate_visual_yearly_artifact({"year": 2010})
+
+    assert result["success"] is True
+    assert result["report"] is None
+    assert result["artifact"] is None
+    assert result["metadata"]["data_status"] == "empty"
+    assert result["metadata"]["critic_passed"] is True
+    assert result["runtime_metrics"]["provider_calls"] == []
 
 
 def test_clean_user_text_keeps_partial_year_and_replaces_ambiguous_entities():

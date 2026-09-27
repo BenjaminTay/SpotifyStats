@@ -204,13 +204,15 @@ def build_consumer_taste_profile(
     plays: pd.DataFrame,
 ) -> dict[str, Any]:
     """Build the shared consumer style, scene, and language view for a play set."""
-    if plays.empty or not {"track_id", "ms_played"}.issubset(plays.columns):
+    duration_slices = plays.attrs.get("listening_duration_slices")
+    duration_source = duration_slices if isinstance(duration_slices, pd.DataFrame) else plays
+    if duration_source.empty or not {"track_id", "ms_played"}.issubset(duration_source.columns):
         artist_ms: dict[int, int] = {}
         excluded_ms = 0
     else:
         artist_ms, excluded_ms = build_primary_artist_ms(
             conn,
-            plays.loc[:, ["track_id", "ms_played"]],
+            duration_source.loc[:, ["track_id", "ms_played"]],
         )
 
     language_dist = compute_artist_language_distribution(

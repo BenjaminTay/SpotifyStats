@@ -54,6 +54,8 @@ function parseArgs(argv) {
     python: DEFAULT_PYTHON,
     headed: false,
     includeDetailRoutes: false,
+    searchQuery: 'love',
+    expectedSearchFallbacks: [],
     routes: null,
   }
 
@@ -73,6 +75,10 @@ function parseArgs(argv) {
     else if (arg === '--output') args.output = argv[++i]
     else if (arg === '--python') args.python = argv[++i]
     else if (arg === '--headed') args.headed = true
+    else if (arg === '--search-query') args.searchQuery = argv[++i]
+    else if (arg === '--expect-search-fallbacks') {
+      args.expectedSearchFallbacks = argv[++i].split(',').map((value) => value.trim()).filter(Boolean)
+    }
     else if (arg === '--route' || arg === '--routes') {
       args.routes = argv[++i].split(',').map((route) => route.trim()).filter(Boolean)
     }
@@ -121,6 +127,8 @@ Options:
   --wait-ms <ms>                Max wait for route/text assertions, default ${DEFAULT_WAIT_MS}; dynamic detail routes use at least ${DYNAMIC_ROUTE_WAIT_MS}
   --max-scroll-overflow <px>    Allowed horizontal overflow over viewport width, default ${DEFAULT_MAX_SCROLL_OVERFLOW}
   --include-detail-routes       Resolve and append music/community detail routes from local API data
+  --search-query <query>        Query used by Quick Open and phone search; default love
+  --expect-search-fallbacks <a,b> Require named results to render without broken cover requests
   --route <path,...>            Run only the selected configured routes
   --output <path>               Write JSON results to a file
   --python <path>               Python executable with playwright.sync_api, default ${DEFAULT_PYTHON}
@@ -212,7 +220,7 @@ import os
 import re
 import sys
 import time
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import quote, urljoin, urlparse, urlunparse
 
 from playwright.sync_api import sync_playwright
 
@@ -226,6 +234,8 @@ WAIT_MS = int(os.environ["FRONTEND_WAIT_MS"])
 DYNAMIC_ROUTE_WAIT_MS = int(os.environ["FRONTEND_DYNAMIC_ROUTE_WAIT_MS"])
 SLOW_PAGE_WAIT_MS = max(WAIT_MS, 20000)
 SEARCH_WAIT_MS = max(WAIT_MS, 30000)
+SEARCH_QUERY = os.environ.get("FRONTEND_SEARCH_QUERY", "love")
+EXPECTED_SEARCH_FALLBACKS = json.loads(os.environ.get("FRONTEND_EXPECTED_SEARCH_FALLBACKS", "[]"))
 YEARLY_REVIEW_WAIT_MS = max(WAIT_MS, 120000)
 MAX_SCROLL_OVERFLOW = int(os.environ["FRONTEND_MAX_SCROLL_OVERFLOW"])
 HEADED = os.environ.get("FRONTEND_HEADED") == "1"
@@ -496,10 +506,23 @@ def route_should_have_mobile_bottom_nav(path: str) -> bool:
     return normalized.startswith("/analysis/") or normalized == "/analysis" or normalized.startswith("/billboard/") or normalized == "/billboard"
 
 
-def assert_page_health(page, console_messages, page_errors, viewport_name=None, route_path=None):
-    state = page_state(page)
-    if state["rootTextLength"] <= 20:
-        raise SmokeFailure(f"Root text too short: {state['rootTextLength']}")
+def assert_page_health(
+    page,
+    console_messages,
+    page_errors,
+    viewport_name=None,
+    route_path=None,
+    timeout_ms: int | None = None,
+):
+    def ready_state():
+        state = page_state(page)
+        return state if state["rootTextLength"] > 20 else None
+
+    state = wait_for_condition(
+        ready_state,
+        "Route body did not become ready for health checks",
+        timeout_ms=timeout_ms,
+    )
     if state["hasFatalText"]:
         raise SmokeFailure("Fatal text found in page body")
     overflow = max(0, state["scrollOverflow"])
@@ -612,7 +635,14 @@ def run_route_markers(browser):
                             time.sleep(0.15)
                         if not yearly_state or not (yearly_state["hasYearlyV2"] or yearly_state["hasYearlyV2Loading"]):
                             raise SmokeFailure("Desktop Yearly Review V2 did not become ready")
-                assert_page_health(page, console_messages, page_errors, viewport_name, route["path"])
+                assert_page_health(
+                    page,
+                    console_messages,
+                    page_errors,
+                    viewport_name,
+                    route["path"],
+                    timeout_ms=route_wait_ms,
+                )
                 print(f"PASS route-markers {viewport_name} {route['path']}")
             finally:
                 close_page(page)
@@ -625,6 +655,32 @@ def expect_url(page, pattern: str):
             return
         time.sleep(0.15)
     raise SmokeFailure(f"Expected URL pattern {pattern}, got {page.url}")
+
+
+def assert_search_cover_health(page):
+    for label in EXPECTED_SEARCH_FALLBACKS:
+        wait_for_text(page, label, timeout_ms=SEARCH_WAIT_MS)
+    state = wait_for_condition(
+        lambda: page.evaluate(
+            """() => {
+                const covers = Array.from(document.querySelectorAll('img[src*="/covers/"]'));
+                const loaded = covers.filter((image) => image.complete && image.naturalWidth > 0);
+                return loaded.length > 0
+                    ? { total: covers.length, loaded: loaded.length }
+                    : null;
+            }"""
+        ),
+        "Search did not render any valid cover image",
+        timeout_ms=SEARCH_WAIT_MS,
+    )
+    broken = page.evaluate(
+        """() => Array.from(document.querySelectorAll('img[src*="/covers/"]'))
+            .filter((image) => image.complete && image.naturalWidth === 0)
+            .map((image) => image.getAttribute('src'))"""
+    )
+    if broken:
+        raise SmokeFailure(f"Search rendered broken cover images: {broken}")
+    return state
 
 
 def run_analysis_tabs(browser):
@@ -837,9 +893,8 @@ def run_core_interactions(browser):
 def run_music_search(browser):
     page, console_messages, page_errors = new_page(browser, "desktop")
     try:
-        page.goto(absolute_url("/music/search"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
-        wait_for_text(page, "音乐查找")
-        page.get_by_role("heading", name="音乐查找").click(timeout=WAIT_MS)
+        page.goto(absolute_url("/"), wait_until="domcontentloaded", timeout=WAIT_MS + 10000)
+        page.get_by_role("button", name="搜索音乐详情").wait_for(state="visible", timeout=WAIT_MS)
         shortcut = "Meta+k" if sys.platform == "darwin" else "Control+k"
         page.keyboard.press(shortcut)
         dialog = page.get_by_role("dialog")
@@ -847,8 +902,10 @@ def run_music_search(browser):
         combobox = dialog.get_by_role("combobox", name="搜索歌曲、专辑或艺人")
         if combobox.get_attribute("aria-activedescendant") is not None:
             raise SmokeFailure("Quick Open selected a result before keyboard navigation")
-        combobox.fill("love")
+        combobox.fill(SEARCH_QUERY)
         wait_for_text(page, "查看全部", timeout_ms=SEARCH_WAIT_MS)
+        if EXPECTED_SEARCH_FALLBACKS:
+            assert_search_cover_health(page)
         if combobox.get_attribute("aria-activedescendant") is not None:
             raise SmokeFailure("Quick Open selected the first result after loading")
         wait_for_condition(
@@ -872,8 +929,26 @@ def run_music_search(browser):
         dialog.wait_for(state="hidden", timeout=WAIT_MS)
         if page.evaluate("() => document.activeElement?.getAttribute('aria-label')") != "搜索音乐详情":
             raise SmokeFailure("Quick Open did not restore focus to its trigger")
+
+        page.keyboard.press(shortcut)
+        dialog.wait_for(state="visible", timeout=WAIT_MS)
+        combobox = dialog.get_by_role("combobox", name="搜索歌曲、专辑或艺人")
+        combobox.fill(SEARCH_QUERY)
+        wait_for_text(page, "查看全部", timeout_ms=SEARCH_WAIT_MS)
+        view_all = dialog.get_by_role("link", name="查看全部结果")
+        expected_href = f"/music/search?q={quote(SEARCH_QUERY)}"
+        wait_for_condition(
+            lambda: view_all if view_all.get_attribute("href") == expected_href else None,
+            f"Quick Open full-results link did not settle to {expected_href}",
+            timeout_ms=SEARCH_WAIT_MS,
+        )
+        view_all.click(timeout=SEARCH_WAIT_MS)
+        expect_url(page, rf"/music/search\\?q={re.escape(SEARCH_QUERY)}")
+        wait_for_text(page, "音乐查找", timeout_ms=SEARCH_WAIT_MS)
+        if EXPECTED_SEARCH_FALLBACKS:
+            assert_search_cover_health(page)
         assert_page_health(page, console_messages, page_errors, "desktop", "/music/search")
-        print("PASS music-search desktop shortcut-focus")
+        print("PASS music-search desktop shortcut-focus-results")
     finally:
         close_page(page)
 
@@ -892,8 +967,10 @@ def run_music_search(browser):
             raise SmokeFailure("Explicit phone search entry did not focus the searchbox")
         if page.evaluate("() => Boolean(history.state?.usr?.autofocusSearch)"):
             raise SmokeFailure("One-shot phone autofocus intent was not cleared")
-        searchbox.fill("love")
+        searchbox.fill(SEARCH_QUERY)
         wait_for_text(page, "查看全部", timeout_ms=SEARCH_WAIT_MS)
+        if EXPECTED_SEARCH_FALLBACKS:
+            assert_search_cover_health(page)
         undersized_tabs = page.evaluate(
             """() => Array.from(document.querySelectorAll('[role=tab]'))
                 .filter((el) => {
@@ -1033,6 +1110,8 @@ async function main() {
           FRONTEND_DYNAMIC_ROUTE_WAIT_MS: String(Math.max(args.waitMs, DYNAMIC_ROUTE_WAIT_MS)),
           FRONTEND_MAX_SCROLL_OVERFLOW: String(args.maxScrollOverflow),
           FRONTEND_HEADED: args.headed ? '1' : '0',
+          FRONTEND_SEARCH_QUERY: args.searchQuery,
+          FRONTEND_EXPECTED_SEARCH_FALLBACKS: JSON.stringify(args.expectedSearchFallbacks),
         },
       })
       results.push({

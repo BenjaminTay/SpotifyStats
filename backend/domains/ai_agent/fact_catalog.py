@@ -214,6 +214,65 @@ def _tool_result_facts(tool_results: list[dict[str, Any]]) -> list[AgentFact]:
 
     facts: list[AgentFact] = []
 
+    def add_taste_profile_facts(
+        data: dict[str, Any],
+        *,
+        tool_name: str,
+        evidence_ref: str,
+        source_range: str,
+    ) -> None:
+        profile = data.get("taste_profile")
+        if not isinstance(profile, dict):
+            return
+        # Keep the leading, already-ranked buckets from each governed axis.
+        # Named facts make deterministic fallbacks useful and consume far
+        # fewer slots than recursively flattening every unlabeled number.
+        for axis_name, default_label, limit in (
+            ("primary_styles", "主曲风", 4),
+            ("regional_pop", "地区流行", 2),
+            ("language_dist", "语种", 3),
+        ):
+            axis = profile.get(axis_name)
+            if not isinstance(axis, dict):
+                continue
+            axis_label = str(axis.get("label") or default_label).strip()
+            buckets = axis.get("buckets")
+            if not isinstance(buckets, list):
+                continue
+            for bucket_index, bucket in enumerate(buckets[:limit]):
+                if not isinstance(bucket, dict):
+                    continue
+                bucket_label = bucket.get("label")
+                if not isinstance(bucket_label, str) or not bucket_label.strip():
+                    continue
+                bucket_label = bucket_label.strip()
+                for metric_key, metric_label, unit in (
+                    ("hours", "播放时长", "hours"),
+                    ("share_pct", "占比", "%"),
+                    ("artist_count", "艺人数", None),
+                ):
+                    value = bucket.get(metric_key)
+                    if (
+                        not isinstance(value, (int, float))
+                        or isinstance(value, bool)
+                        or len(facts) >= _MAX_FALLBACK_TOOL_FACTS
+                    ):
+                        continue
+                    metric_name = f"taste_profile.{axis_name}.buckets.{bucket_index}.{metric_key}"
+                    facts.append(
+                        AgentFact(
+                            fact_id=_fact_id(evidence_ref, metric_name, bucket_label, value),
+                            evidence_ref=evidence_ref,
+                            tool_name=tool_name,
+                            source_range=source_range,
+                            metric_name=metric_name,
+                            label=f"{axis_label}「{bucket_label}」{metric_label}",
+                            value=value,
+                            unit=unit,
+                            entity_name=bucket_label,
+                        )
+                    )
+
     def add_community_post_facts(
         data: dict[str, Any],
         *,
@@ -308,6 +367,10 @@ def _tool_result_facts(tool_results: list[dict[str, Any]]) -> list[AgentFact]:
             for key, item in value.items():
                 if len(facts) >= _MAX_FALLBACK_TOOL_FACTS:
                     break
+                if key == "taste_profile":
+                    # A compact named extractor above handles this deeply
+                    # nested structure without crowding out other tool facts.
+                    continue
                 next_path = (*path, str(key))
                 spec = _TOOL_METRIC_SPECS.get(str(key))
                 if (
@@ -356,18 +419,26 @@ def _tool_result_facts(tool_results: list[dict[str, Any]]) -> list[AgentFact]:
         tool_name = str(result.get("tool_name") or "")
         evidence_ref = f"tool_result:{index}:{tool_name}"
         data = result.get("data")
+        source_range = str(result.get("source_range") or "")
+        if tool_name == "taste_profile" and isinstance(data, dict):
+            add_taste_profile_facts(
+                data,
+                tool_name=tool_name,
+                evidence_ref=evidence_ref,
+                source_range=source_range,
+            )
         if tool_name == "community_feed_search" and isinstance(data, dict):
             add_community_post_facts(
                 data,
                 tool_name=tool_name,
                 evidence_ref=evidence_ref,
-                source_range=str(result.get("source_range") or ""),
+                source_range=source_range,
             )
         visit(
             data,
             tool_name=tool_name,
             evidence_ref=evidence_ref,
-            source_range=str(result.get("source_range") or ""),
+            source_range=source_range,
             path=(),
         )
     return facts

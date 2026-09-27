@@ -14,6 +14,7 @@ from backend.models.ai_tasks import (
     AiAgentInboxRequest,
     AiAgentInboxResponse,
     AiAgentTrajectoryResponse,
+    AiReportSectionsResponse,
     AiTaskCreateResponse,
     AiTaskEventsResponse,
     AiTaskStatusResponse,
@@ -26,7 +27,10 @@ from backend.models.ai_tasks import (
 from backend.services.ai_task_service import (
     cancel_task,
     enqueue_agent_input,
+    find_report_task,
     get_agent_trajectory,
+    get_report_section_snapshot,
+    get_report_sections,
     get_task,
     get_task_events,
     start_album_enrichment_task,
@@ -61,14 +65,17 @@ def _sse(event: str, data: dict[str, Any], *, event_id: str | None = None) -> st
     return "\n".join(lines) + "\n"
 
 
-_STREAM_CURSOR_RE = re.compile(r"^v1:p(?P<progress>\d+):t(?P<tool>\d+):a(?P<answer>\d+)$")
+_STREAM_CURSOR_RE = re.compile(
+    r"^v2:p(?P<progress>\d+):t(?P<tool>\d+):s(?P<section>\d+):a(?P<answer>\d+)$"
+)
+_STREAM_CURSOR_V1_RE = re.compile(r"^v1:p(?P<progress>\d+):t(?P<tool>\d+):a(?P<answer>\d+)$")
 
 
-def _stream_cursor(progress: int, tool: int, answer: int) -> str:
-    return f"v1:p{max(0, progress)}:t{max(0, tool)}:a{max(0, answer)}"
+def _stream_cursor(progress: int, tool: int, section: int, answer: int) -> str:
+    return f"v2:p{max(0, progress)}:t{max(0, tool)}:s{max(0, section)}:a{max(0, answer)}"
 
 
-def _parse_stream_cursor(value: str | None) -> tuple[int, int, int]:
+def _parse_stream_cursor(value: str | None) -> tuple[int, int, int, int, bool]:
     """Parse current composite cursors and legacy single-channel event ids."""
 
     raw = (value or "").strip()
@@ -77,14 +84,25 @@ def _parse_stream_cursor(value: str | None) -> tuple[int, int, int]:
         return (
             int(match.group("progress")),
             int(match.group("tool")),
+            int(match.group("section")),
             int(match.group("answer")),
+            True,
+        )
+    legacy = _STREAM_CURSOR_V1_RE.fullmatch(raw)
+    if legacy:
+        return (
+            int(legacy.group("progress")),
+            int(legacy.group("tool")),
+            0,
+            int(legacy.group("answer")),
+            True,
         )
     for prefix, index in (("progress-", 0), ("tool-", 1), ("answer-", 2)):
         if raw.startswith(prefix) and raw[len(prefix) :].isdigit():
             cursor = [0, 0, 0]
             cursor[index] = int(raw[len(prefix) :])
-            return cursor[0], cursor[1], cursor[2]
-    return 0, 0, 0
+            return cursor[0], cursor[1], 0, cursor[2], True
+    return 0, 0, 0, 0, not bool(raw)
 
 
 def _stream_task_payload(task: dict[str, Any]) -> dict[str, Any]:
@@ -102,6 +120,8 @@ def _stream_task_payload(task: dict[str, Any]) -> dict[str, Any]:
         "error": task["error"],
         "created_at": task["created_at"],
         "updated_at": task["updated_at"],
+        "generation": int(task.get("generation") or 0),
+        "state_version": int(task.get("state_version") or 0),
     }
 
 
@@ -137,16 +157,33 @@ def _safe_agent_state_payload(item: dict[str, Any]) -> dict[str, Any] | None:
 
 async def _task_event_stream(task_id: str, request: Request):
     cursor_value = request.headers.get("last-event-id") or request.query_params.get("cursor")
-    last_event_id, last_tool_call_id, last_answer_chunk = _parse_stream_cursor(cursor_value)
+    (
+        last_event_id,
+        last_tool_call_id,
+        last_section_sequence,
+        last_answer_chunk,
+        cursor_valid,
+    ) = _parse_stream_cursor(cursor_value)
     last_snapshot = ""
     yield "retry: 1000\n\n"
     yield _sse(
         "stream.connected",
         {
             "task_id": task_id,
-            "cursor": _stream_cursor(last_event_id, last_tool_call_id, last_answer_chunk),
+            "cursor": _stream_cursor(
+                last_event_id,
+                last_tool_call_id,
+                last_section_sequence,
+                last_answer_chunk,
+            ),
         },
     )
+    if not cursor_valid:
+        yield _sse(
+            "stream.resync",
+            {"task_id": task_id, "reason": "unknown_cursor", "action": "reload_snapshot"},
+        )
+        return
 
     while not await request.is_disconnected():
         task = get_task(task_id)
@@ -188,6 +225,7 @@ async def _task_event_stream(task_id: str, request: Request):
                     event_id=_stream_cursor(
                         last_event_id,
                         last_tool_call_id,
+                        last_section_sequence,
                         last_answer_chunk,
                     ),
                 )
@@ -213,9 +251,30 @@ async def _task_event_stream(task_id: str, request: Request):
                     event_id=_stream_cursor(
                         last_event_id,
                         last_tool_call_id,
+                        last_section_sequence,
                         last_answer_chunk,
                     ),
                 )
+
+        section_changes = get_report_sections(
+            task_id,
+            after_sequence=last_section_sequence,
+        )
+        for section in section_changes or []:
+            last_section_sequence = max(
+                last_section_sequence,
+                int(section.get("sequence") or 0),
+            )
+            yield _sse(
+                "task.section",
+                section,
+                event_id=_stream_cursor(
+                    last_event_id,
+                    last_tool_call_id,
+                    last_section_sequence,
+                    last_answer_chunk,
+                ),
+            )
 
         if is_terminal:
             # Only publish answer chunks after the validator has accepted and
@@ -233,6 +292,7 @@ async def _task_event_stream(task_id: str, request: Request):
                     event_id=_stream_cursor(
                         last_event_id,
                         last_tool_call_id,
+                        last_section_sequence,
                         last_answer_chunk,
                     ),
                 )
@@ -242,6 +302,7 @@ async def _task_event_stream(task_id: str, request: Request):
                 event_id=_stream_cursor(
                     last_event_id,
                     last_tool_call_id,
+                    last_section_sequence,
                     last_answer_chunk,
                 ),
             )
@@ -266,6 +327,8 @@ def _status_payload(task: dict[str, Any] | None) -> dict[str, Any]:
         "error": task["error"],
         "created_at": task["created_at"],
         "updated_at": task["updated_at"],
+        "generation": int(task.get("generation") or 0),
+        "state_version": int(task.get("state_version") or 0),
     }
 
 
@@ -276,6 +339,15 @@ def _status_payload(task: dict[str, Any] | None) -> dict[str, Any]:
 )
 def create_report_task(body: ReportTaskRequest):
     return start_report_task(body.model_dump())
+
+
+@router.post(
+    "/report/lookup",
+    response_model=AiTaskStatusResponse,
+    response_model_exclude_none=True,
+)
+def lookup_report_task(body: ReportTaskRequest):
+    return _status_payload(find_report_task(body.model_dump()))
 
 
 @router.post(
@@ -325,6 +397,22 @@ def get_ai_task_events(task_id: str):
         return {"found": False, "events": [], "tool_calls": []}
     events, tool_calls = payload
     return {"found": True, "events": events, "tool_calls": tool_calls}
+
+
+@router.get(
+    "/{task_id}/sections",
+    response_model=AiReportSectionsResponse,
+    response_model_exclude_none=True,
+)
+def get_ai_report_sections(task_id: str):
+    from backend.core.config import AI_REPORT_PROGRESSIVE_SECTIONS
+
+    if not AI_REPORT_PROGRESSIVE_SECTIONS:
+        return {"found": True, "generation": 0, "sequence": 0, "sections": []}
+    snapshot = get_report_section_snapshot(task_id)
+    if snapshot is None:
+        return {"found": False, "generation": 0, "sequence": 0, "sections": []}
+    return {"found": True, **snapshot}
 
 
 @router.get(

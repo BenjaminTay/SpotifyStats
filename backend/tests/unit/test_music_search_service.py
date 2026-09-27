@@ -106,6 +106,22 @@ def test_search_music_entities_can_filter_entity_types() -> None:
     assert result.albums[0].cover_url == "/covers/albums/10.jpg"
 
 
+def test_search_music_entities_returns_no_cover_without_local_or_provider_metadata() -> None:
+    conn = _conn()
+    conn.execute("UPDATE artists SET image_path=NULL, image_url=NULL WHERE artist_id=1")
+    conn.execute("UPDATE albums SET image_path=NULL, image_url=NULL WHERE album_id=10")
+
+    track = search_music_entities(
+        conn, query="vamp", kinds=("track",), limit_per_type=5, use_filtered_counts=False
+    )
+    artist = search_music_entities(
+        conn, query="olivia", kinds=("artist",), limit_per_type=5, use_filtered_counts=False
+    )
+
+    assert track.tracks[0].cover_url is None
+    assert artist.artists[0].cover_url is None
+
+
 def test_search_music_entities_returns_empty_for_blank_query_without_db_work() -> None:
     result = search_music_entities(_conn(), query="   ", limit_per_type=5)
 

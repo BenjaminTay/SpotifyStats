@@ -24,13 +24,14 @@ from backend.domains.ai_agent.tool_cache import (
     make_cache_key,
 )
 from backend.domains.ai_agent.tool_registry import AgentToolDefinition, AgentToolResult
-from backend.domains.billboard import details as billboard_details
+from backend.domains.billboard import detail_views as billboard_detail_views
 from backend.domains.community import feed_generator as community_feed_generator
 from backend.domains.community.post_types import HIGHLIGHT_POST_TYPES
 from backend.domains.metadata.genre_display_taxonomy import build_consumer_taste_profile
 from backend.domains.music_search.context import build_music_search_filter_context
 from backend.domains.music_search.normalization import normalize_search_text
 from backend.domains.music_search.snapshot import get_serving_music_search_snapshot
+from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
 from backend.services import (
     analysis_records_service,
     analysis_stats_service,
@@ -152,7 +153,9 @@ class BillboardEntityDetailParams(BaseModel):
     year_end: int | None = Field(default=None, ge=2000, le=2100)
     dynamic_threshold: bool = True
     max_merge_gap_minutes: int | None = Field(default=5, ge=1, le=240)
+    merge_enabled: bool = True
     merge_level: int = Field(default=2, ge=2, le=3)
+    include_compilations: bool = False
 
     @model_validator(mode="after")
     def validate_entity_identifier(self) -> BillboardEntityDetailParams:
@@ -701,7 +704,9 @@ def taste_profile_handler(params: BaseModel) -> AgentToolResult:
             parsed.end_date,
             dynamic_threshold=parsed.dynamic_threshold,
             max_merge_gap_minutes=parsed.max_merge_gap_minutes,
-            attach_duration_slices=False,
+            # Taste is a duration-based view.  Keep exact wall-clock slices so
+            # a scoped query cannot inherit the full lifetime duration frame.
+            attach_duration_slices=True,
         )
         data = {
             "period": resolved,
@@ -955,6 +960,26 @@ def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
     )
     conn = get_db(readonly=True)
     try:
+        settings = SettingsRepository(conn).load_all()
+        setting_fields = (
+            "min_ms",
+            "music_only",
+            "merge_enabled",
+            "max_merge_gap_minutes",
+            "bb_top_n",
+            "bb_album_top_n",
+            "bb_artist_top_n",
+            "bb_week_start_dow",
+            "bb_week_start_hour",
+            "include_compilations",
+        )
+        configured = {
+            field: settings.get(field, SETTINGS_DEFAULTS[field])
+            for field in setting_fields
+            if field not in parsed.model_fields_set
+        }
+        if configured:
+            parsed = parsed.model_copy(update=configured)
         cache_key = make_cache_key(
             conn,
             tool_name="billboard_entity_detail",
@@ -966,7 +991,7 @@ def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
         if parsed.entity == "album" and parsed.merge_level > 1 and not _album_projects_ready(conn):
             return _album_projects_unavailable("billboard_entity_detail")
         if parsed.entity == "track":
-            data = billboard_details.get_track_history(
+            data = billboard_detail_views.get_track_detail_view(
                 int(parsed.track_id or 0),
                 parsed.min_ms,
                 parsed.music_only,
@@ -977,12 +1002,15 @@ def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
                 parsed.bb_week_start_hour,
                 parsed.year_start,
                 parsed.year_end,
-                dynamic_threshold=parsed.dynamic_threshold,
-                max_merge_gap_minutes=parsed.max_merge_gap_minutes,
-                merge_level=parsed.merge_level,
+                parsed.dynamic_threshold,
+                parsed.max_merge_gap_minutes,
+                parsed.merge_enabled,
+                parsed.merge_level,
+                parsed.include_compilations,
+                view="agent",
             )
         elif parsed.entity == "album":
-            data = billboard_details.get_album_chart_detail(
+            data = billboard_detail_views.get_album_detail_view(
                 parsed.album_name or "",
                 parsed.artist_name,
                 parsed.min_ms,
@@ -994,12 +1022,15 @@ def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
                 parsed.bb_week_start_hour,
                 parsed.year_start,
                 parsed.year_end,
-                dynamic_threshold=parsed.dynamic_threshold,
-                max_merge_gap_minutes=parsed.max_merge_gap_minutes,
-                merge_level=parsed.merge_level,
+                parsed.dynamic_threshold,
+                parsed.max_merge_gap_minutes,
+                parsed.merge_enabled,
+                parsed.merge_level,
+                parsed.include_compilations,
+                view="full",
             )
         else:
-            data = billboard_details.get_artist_chart_detail(
+            data = billboard_detail_views.get_artist_detail_view(
                 parsed.artist_name or "",
                 parsed.min_ms,
                 parsed.music_only,
@@ -1010,8 +1041,12 @@ def billboard_entity_detail_handler(params: BaseModel) -> AgentToolResult:
                 parsed.bb_week_start_hour,
                 parsed.year_start,
                 parsed.year_end,
-                dynamic_threshold=parsed.dynamic_threshold,
-                max_merge_gap_minutes=parsed.max_merge_gap_minutes,
+                parsed.dynamic_threshold,
+                parsed.max_merge_gap_minutes,
+                parsed.merge_enabled,
+                parsed.merge_level,
+                parsed.include_compilations,
+                view="full",
             )
     finally:
         conn.close()

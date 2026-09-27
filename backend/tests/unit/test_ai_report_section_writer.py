@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import Counter
+from typing import Any, cast
 
 import pytest
 
@@ -10,6 +11,7 @@ from backend.domains.ai_reports.section_writer import (
     SectionAuditResult,
     SectionCompletion,
     SectionWritePlan,
+    SectionWriterCancelledError,
     SectionWriterError,
     write_report_sections,
 )
@@ -76,6 +78,28 @@ def test_writer_limits_concurrency_and_preserves_plan_order() -> None:
     assert run.metadata.fallback_count == 0
     assert run.metadata.attempt_count == 6
     assert all(item["accepted"] is True for item in run.metadata.sections)
+
+
+def test_single_worker_runs_callbacks_inline_for_task_scoped_storage() -> None:
+    owner = threading.get_ident()
+    callback_threads: list[int] = []
+
+    def complete(_plan: SectionWritePlan, _attempt: int) -> SectionCompletion:
+        callback_threads.append(threading.get_ident())
+        return SectionCompletion(content="valid")
+
+    run = write_report_sections(
+        _plans(),
+        complete=complete,
+        parse=_parse,
+        audit=_accept,
+        fallback=_fallback,
+        max_workers=1,
+        on_result=lambda _result: callback_threads.append(threading.get_ident()),
+    )
+
+    assert run.metadata.model_accepted_count == 6
+    assert callback_threads == [owner] * 12
 
 
 def test_empty_completion_retries_only_affected_section() -> None:
@@ -203,7 +227,7 @@ def test_writer_rejects_invalid_bounded_configuration(
             parse=_parse,
             audit=_accept,
             fallback=_fallback,
-            **options,
+            **cast(Any, options),
         )
 
 
@@ -216,3 +240,26 @@ def test_invalid_fallback_fails_closed() -> None:
             audit=_accept,
             fallback=lambda _plan, _attempts: {},
         )
+
+
+def test_writer_does_not_publish_section_after_cancellation() -> None:
+    active = True
+    published: list[str] = []
+
+    def complete(_plan: SectionWritePlan, _attempt: int) -> SectionCompletion:
+        nonlocal active
+        active = False
+        return SectionCompletion(content="late content")
+
+    with pytest.raises(SectionWriterCancelledError):
+        write_report_sections(
+            _plans(),
+            complete=complete,
+            parse=_parse,
+            audit=_accept,
+            fallback=_fallback,
+            on_result=lambda result: published.append(result.plan.section_id),
+            should_continue=lambda: active,
+        )
+
+    assert published == []

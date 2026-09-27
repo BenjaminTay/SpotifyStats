@@ -115,6 +115,31 @@ def test_exact_snapshot_prevents_repeated_heavy_context_build(monkeypatch):
     assert len(cold.payload["evidence"]) == len(context_builder.REPORT_RESEARCH_TOOLS)
 
 
+def test_no_data_overview_preserves_period_and_exposes_explicit_zero_hero() -> None:
+    context = {}
+    context.update(
+        context_builder._context_fragment(
+            "report_period_context",
+            {
+                "year": 2010,
+                "start_date": "2010-01-01",
+                "end_date": "2010-12-31",
+                "is_partial_year": False,
+            },
+        )
+    )
+    context.update(
+        context_builder._context_fragment(
+            "yearly_overview",
+            {"reporting_period": {}, "hero": {}},
+        )
+    )
+
+    assert context["reporting_period"]["year"] == 2010
+    assert context["hero"]["total_plays"] == 0
+    assert context["hero"]["active_days"] == 0
+
+
 _REQUEST_JSON = (
     '{"dynamic_threshold":true,"max_merge_gap_minutes":5,"merge_enabled":true,'
     '"min_ms":30000,"music_only":true,"year":2025}'

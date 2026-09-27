@@ -160,6 +160,81 @@ def test_critic_allows_missing_claim_for_partial_compare_missing_entity() -> Non
     assert critique["issues"] == []
 
 
+def test_critic_allows_dimension_scoped_limitation_when_core_compare_is_found() -> None:
+    critique = critique_answer(
+        answer=(
+            "eternal sunshine 的播放次数和时长都更高。"
+            "本次比较未返回可用的强度指标，因此无法确定哪张专辑在单位时间内更集中；"
+            "这一维度缺少证据。"
+        ),
+        final_payload={
+            "coverage": {
+                "comparison": {"compare_entities": "found"},
+                "entities": {
+                    "eternal sunshine": {"compare_entities": "found"},
+                    "thank u, next": {"compare_entities": "found"},
+                },
+            },
+            "evidence_cards": [],
+        },
+    )
+
+    assert critique["ok"] is True
+    assert critique["issues"] == []
+
+
+@pytest.mark.parametrize(
+    "limitation",
+    [
+        "目前只覆盖累计播放这一个维度，缺少收听行为层面的证据。",
+        "缺少更细的近期趋势证据，例如逐月变化，因此无法确定差距扩大还是收窄。",
+        "缺少更细的近期趋势（recency）证据，因此无法确定偏好是否持续上升。",
+    ],
+)
+def test_critic_allows_optional_behavior_or_trend_limit_after_found_compare(
+    limitation: str,
+) -> None:
+    critique = critique_answer(
+        answer=f"GUTS 的播放次数和时长均高于 SOUR。{limitation}",
+        final_payload={
+            "coverage": {
+                "comparison": {"compare_entities": "found"},
+                "entities": {
+                    "GUTS": {"compare_entities": "found"},
+                    "SOUR": {"compare_entities": "found"},
+                },
+            },
+            "evidence_cards": [],
+        },
+    )
+
+    assert critique["ok"] is True
+    assert critique["issues"] == []
+
+
+def test_critic_allows_dimension_scoped_strength_with_insufficient_other_axis() -> None:
+    critique = critique_answer(
+        answer=(
+            "在累计播放这一维度上，eternal sunshine 明显领先。"
+            "强度维度证据不足，因此不能推广为全面偏好结论。"
+        ),
+        final_payload={
+            "evidence_sufficiency": {"sufficient": False},
+            "coverage": {
+                "comparison": {"compare_entities": "found"},
+                "entities": {
+                    "eternal sunshine": {"compare_entities": "found"},
+                    "thank u, next": {"compare_entities": "found"},
+                },
+            },
+            "evidence_cards": [],
+        },
+    )
+
+    assert critique["ok"] is True
+    assert critique["issues"] == []
+
+
 def test_critic_rejects_analytical_brief_forbidden_claims() -> None:
     critique = critique_answer(
         answer="GUTS 在你的记录里市场影响力更大，所以它是更成功的专辑。",

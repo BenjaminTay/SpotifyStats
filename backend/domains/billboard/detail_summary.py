@@ -10,6 +10,7 @@ the legacy full builder to remain the compatibility fallback.
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 from typing import Any
 
 from backend.core.db import get_db
@@ -226,6 +227,7 @@ def _document_track_attribution(conn: sqlite3.Connection, document: sqlite3.Row)
         ).fetchone()
         project_name = str(row[0]) if row is not None else None
     return {
+        "canonical_track_id": document["track_id"],
         "album_project_id": document["album_project_id"],
         "album_project_name": project_name,
         "display_album_id": document["album_id"],
@@ -292,6 +294,109 @@ def _chart_summary(row: sqlite3.Row) -> dict | None:
         "power_score": int(row["power_score"] or 0),
         "power_rank": int(row["power_rank"]) if row["power_rank"] is not None else None,
     }
+
+
+def _track_history(
+    conn: sqlite3.Connection,
+    *,
+    snapshot_key: str,
+    entity_key: str,
+    top_n: int,
+    peak_position: int | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Rehydrate one entity's lossless weekly facts from the published ledger."""
+
+    rows = conn.execute(
+        """SELECT week, rank, play_count
+             FROM music_search_weekly_chart_context
+            WHERE snapshot_key=? AND family='track' AND entity_key=?
+            ORDER BY week""",
+        (snapshot_key, entity_key),
+    ).fetchall()
+    history: list[dict[str, Any]] = []
+    x_values: list[str | None] = []
+    y_values: list[int | None] = []
+    texts: list[str | None] = []
+    previous_week: date | None = None
+    previous_rank: int | None = None
+    running_peak: int | None = None
+    running_peak_weeks = 0
+    for index, row in enumerate(rows, start=1):
+        week_text = str(row["week"])
+        week = date.fromisoformat(week_text)
+        rank = int(row["rank"])
+        play_count = int(row["play_count"])
+        if previous_week is None:
+            change = "NEW"
+        elif (week - previous_week).days > 8:
+            change = "RE"
+        else:
+            difference = int(previous_rank or rank) - rank
+            change = (
+                f"▲{difference}"
+                if difference > 0
+                else f"▼{abs(difference)}"
+                if difference < 0
+                else "─"
+            )
+        if running_peak is None or rank < running_peak:
+            running_peak = rank
+            running_peak_weeks = 1
+        elif rank == running_peak:
+            running_peak_weeks += 1
+        if previous_week is not None and (week - previous_week).days > 9:
+            x_values.append(None)
+            y_values.append(None)
+            texts.append(None)
+        x_values.append(week_text)
+        y_values.append(rank)
+        texts.append(f"#{rank} · {play_count}次")
+        history.append(
+            {
+                "week": week_text,
+                "rank": rank,
+                "play_count": play_count,
+                "change": change,
+                "running_peak": int(running_peak),
+                "running_wks": index,
+                "running_peak_wks": running_peak_weeks,
+            }
+        )
+        previous_week = week
+        previous_rank = rank
+    chart_data: dict[str, Any] = {
+        "x": x_values,
+        "y": y_values,
+        "texts": texts,
+        "top_n": top_n,
+    }
+    if peak_position is not None:
+        chart_data["peak_position"] = peak_position
+    return history, chart_data
+
+
+def _track_history_matches_summary(
+    chart: dict[str, Any] | None,
+    history: list[dict[str, Any]],
+) -> bool:
+    """Prove that the ranked ledger is complete for its published summary."""
+    if chart is None:
+        return not history
+    if len(history) != int(chart["weeks_on_chart"]):
+        return False
+    ranks = [int(row["rank"]) for row in history]
+    if not ranks:
+        return False
+    peak = min(ranks)
+    peak_rows = [row for row in history if int(row["rank"]) == peak]
+    return (
+        peak == int(chart["peak_position"])
+        and len(peak_rows) == int(chart["peak_weeks"])
+        and sum(int(row["rank"]) == 1 for row in history) == int(chart["no1_weeks"])
+        and str(history[0]["week"]) == str(chart["first_week"])
+        and str(history[-1]["week"]) == str(chart["latest_week"])
+        and str(peak_rows[0]["week"]) == str(chart["first_peak_week"])
+    )
 
 
 def _year_end_fields(
@@ -417,21 +522,17 @@ def build_track_detail_summary(args: tuple) -> dict | None:
         primary = resolve_artist_id(conn, int(raw["artist_id"])).display_name
         artist_names = credits or [primary]
         chart = _chart_summary(context)
+        history, chart_data = _track_history(
+            conn,
+            snapshot_key=snapshot_key,
+            entity_key=str(document["entity_key"]),
+            top_n=int(values["bb_top_n"]),
+            peak_position=(int(chart["peak_position"]) if chart is not None else None),
+        )
+        if not _track_history_matches_summary(chart, history):
+            return None
         summary = None
         if chart is not None:
-            total_chart_plays = conn.execute(
-                """WITH ranked AS (
-                       SELECT l1_id, play_count,
-                              ROW_NUMBER() OVER (
-                                  PARTITION BY billboard_week
-                                  ORDER BY play_count DESC, total_ms DESC, l1_id ASC
-                              ) AS chart_rank
-                       FROM agg_weekly_tracks
-                   )
-                   SELECT COALESCE(SUM(play_count), 0) FROM ranked
-                   WHERE l1_id=? AND chart_rank<=?""",
-                (track_id, int(values["bb_top_n"])),
-            ).fetchone()[0]
             summary = {
                 "peak_position": chart["peak_position"],
                 "weeks_on_chart": chart["weeks_on_chart"],
@@ -439,7 +540,10 @@ def build_track_detail_summary(args: tuple) -> dict | None:
                 "first_week": chart["first_week"],
                 "last_week": chart["latest_week"],
                 "first_peak_week": chart["first_peak_week"],
-                "total_chart_plays": int(total_chart_plays or 0),
+                # The exact snapshot ledger is the authority for ranked weeks.
+                # Reading the global aggregate here silently crossed filter,
+                # revision and L2/L3 identity contracts.
+                "total_chart_plays": sum(int(row["play_count"]) for row in history),
                 "total_plays": int(context["play_events"]),
                 "weeks_at_no1": chart["no1_weeks"],
                 "power_score": chart["power_score"],
@@ -448,6 +552,7 @@ def build_track_detail_summary(args: tuple) -> dict | None:
         return {
             "found": True,
             "chart_status": "charted" if chart else "not_charted",
+            "effective_play_count": int(context["play_events"]),
             "track_id": track_id,
             "l1_id": track_id,
             "representative_track_id": representative_track_id,
@@ -459,8 +564,8 @@ def build_track_detail_summary(args: tuple) -> dict | None:
             "album_attribution": _document_track_attribution(conn, document),
             "meta": _track_meta(conn, track_id),
             "summary": summary,
-            "history": [],
-            "chart_data": {},
+            "history": history,
+            "chart_data": chart_data,
             **unavailable_year_end_fields(),
         }
     finally:

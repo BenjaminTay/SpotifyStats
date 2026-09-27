@@ -29,6 +29,8 @@ def test_frontend_cross_browser_smoke_script_exposes_reusable_cli():
     assert "--browser" in result.stdout
     assert "--scenario" in result.stdout
     assert "--include-detail-routes" in result.stdout
+    assert "--search-query" in result.stdout
+    assert "--expect-search-fallbacks" in result.stdout
     assert "--python" in result.stdout
     assert "--output" in result.stdout
 
@@ -98,6 +100,9 @@ def test_frontend_cross_browser_smoke_script_covers_browser_families_and_flows()
     assert "FRONTEND_DYNAMIC_ROUTE_WAIT_MS" in source
     assert "SEARCH_WAIT_MS = max(WAIT_MS, 30000)" in source
     assert "timeout_ms=SEARCH_WAIT_MS" in source
+    assert "assert_search_cover_health" in source
+    assert "image.naturalWidth === 0" in source
+    assert "FRONTEND_EXPECTED_SEARCH_FALLBACKS" in source
     assert "def wait_ms_for_route(route)" in source
 
 
@@ -153,6 +158,8 @@ def test_frontend_cross_browser_smoke_can_cover_dynamic_detail_routes():
     assert "Legacy album route did not resolve to a stable album-project URL" in source
     assert "location.pathname.startsWith('/music/album-projects/')" in source
     assert 'wait_for_text(page, "有效播放", timeout_ms=route_wait_ms)' in source
+    assert "def ready_state():" in source
+    assert "timeout_ms=route_wait_ms" in source
     assert "/api/billboard/entity-lists" in source
     assert "/api/community/feed" in source
     for marker in [

@@ -61,6 +61,38 @@ def _events():
     }
 
 
+def _p0_taste_events(*, label="Pop", taste_hours=225.0, stats_hours=225.1):
+    events = _events()
+    events["trajectory"].extend(
+        [
+            {
+                "event_type": "tool_result",
+                "payload": {
+                    "tool_name": "taste_profile",
+                    "outcome": {
+                        "data": {
+                            "taste_profile": {
+                                "primary_styles": {
+                                    "total_hours": taste_hours,
+                                    "buckets": [{"label": label, "hours": 88.5}],
+                                }
+                            }
+                        }
+                    },
+                },
+            },
+            {
+                "event_type": "tool_result",
+                "payload": {
+                    "tool_name": "analysis_stats",
+                    "outcome": {"data": {"summary": {"total_hours": stats_hours}}},
+                },
+            },
+        ]
+    )
+    return events
+
+
 def test_live_quality_gate_fails_unsupported_numeric_claims() -> None:
     case = MatrixCase("AI-01", "问题", "预期", [])
     task = _task_result(
@@ -139,6 +171,33 @@ def test_performance_summary_and_gate_use_nearest_rank_p95() -> None:
     )
 
 
+def test_performance_summary_uses_leaf_turns_for_multiturn_cases() -> None:
+    metric = {
+        "total_elapsed_ms": 1_000,
+        "model_elapsed_ms": 600,
+        "tool_elapsed_ms": 300,
+    }
+    summary = _performance_summary(
+        {
+            "results": [
+                {"grade": "Pass", "runtime_metrics": metric},
+                {
+                    "grade": "Pass",
+                    "turns": [
+                        {"grade": "Pass", "runtime_metrics": metric},
+                        {"grade": "Pass", "runtime_metrics": metric},
+                    ],
+                },
+            ]
+        }
+    )
+
+    assert summary["case_count"] == 2
+    assert summary["sample_count"] == 3
+    assert summary["metrics_sample_count"] == 3
+    assert summary["pass_rate"] == 1.0
+
+
 def test_performance_gate_rejects_missing_samples_and_slow_p95() -> None:
     summary = _performance_summary(
         {
@@ -163,3 +222,35 @@ def test_performance_gate_rejects_missing_samples_and_slow_p95() -> None:
     )
 
     assert len(failures) == 4
+
+
+def test_p0_taste_gate_requires_named_style_and_same_window_duration() -> None:
+    case = MatrixCase("P0-01", "去年夏天我最常听什么类型的音乐？", "预期", [])
+    task = _task_result(
+        answer="2025-06-01 至 2025-08-31 最常听的是 Pop。",
+        temporal_guard={
+            "time_interpretation": {
+                "effective_start_date": "2025-06-01",
+                "effective_end_date": "2025-08-31",
+            }
+        },
+        tools=[
+            {"tool_name": "taste_profile", "status": "ok"},
+            {"tool_name": "analysis_stats", "status": "ok"},
+        ],
+    )
+
+    assert _grade_case(case, task, _p0_taste_events())["grade"] == "Pass"
+
+    missing_label = _task_result(
+        answer="2025-06-01 至 2025-08-31 有完整曲风数据。",
+        temporal_guard=task["result"]["temporal_guard"],
+        tools=task["result"]["tools"],
+    )
+    missing_label_grade = _grade_case(case, missing_label, _p0_taste_events())
+    assert missing_label_grade["grade"] == "Fail"
+    assert any("任何具体类型" in issue for issue in missing_label_grade["issues"])
+
+    wrong_window = _grade_case(case, task, _p0_taste_events(taste_hours=4306.77))
+    assert wrong_window["grade"] == "Fail"
+    assert any("时长与同窗口" in issue for issue in wrong_window["issues"])

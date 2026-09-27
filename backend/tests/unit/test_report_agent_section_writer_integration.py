@@ -144,3 +144,209 @@ def test_report_agent_strips_unsupported_numeric_sentence_before_accepting(monke
     assert metadata["model_accepted_count"] == 6
     assert metadata["fallback_count"] == 0
     assert all("999" not in section["prose"] for section in sections)
+
+
+def test_report_agent_routes_resume_checkpoints_to_section_writer(monkeypatch):
+    resume_sections = [{"section_id": "section_0", "status": "validated"}]
+    commits: list[str] = []
+    observed: dict[str, object] = {}
+    fallbacks = [
+        {
+            "id": f"section_{index}",
+            "role": "opening",
+            "heading": f"默认章节 {index}",
+            "deck": "",
+            "prose": "确定性回退正文。" * 80,
+            "chart_refs": [],
+            "evidence_refs": [],
+        }
+        for index in range(6)
+    ]
+
+    monkeypatch.setattr(
+        report_agent,
+        "_native_report_research",
+        lambda **_kwargs: ("研究摘要", []),
+    )
+
+    def write_sections(**kwargs):
+        observed.update(kwargs)
+        return fallbacks, {"model_accepted_count": 1, "fallback_count": 0}
+
+    monkeypatch.setattr(report_agent, "_write_sections_v2", write_sections)
+    monkeypatch.setattr(
+        report_agent,
+        "audit_report_sections",
+        lambda sections, **_kwargs: (
+            sections,
+            [
+                {"section_index": index, "status": "pass", "issues": []}
+                for index in range(len(sections))
+            ],
+            [],
+        ),
+    )
+
+    result = report_agent.run_report_agent(
+        year=2025,
+        is_partial_year=False,
+        end_date="2025-12-31",
+        min_ms=30000,
+        music_only=True,
+        merge_enabled=True,
+        dynamic_threshold=True,
+        max_merge_gap_minutes=None,
+        chart_data={},
+        chart_specs=[],
+        research_context={},
+        fallback_sections=fallbacks,
+        resume_sections=resume_sections,
+        on_section_committed=commits.append,
+    )
+
+    assert len(result["sections"]) == 6
+    assert observed["resume_sections"] is resume_sections
+    assert observed["on_section_committed"] == commits.append
+
+
+def test_report_section_resume_reuses_later_committed_retry_without_provider_call(monkeypatch):
+    fallbacks = [
+        {
+            "id": f"section_{index}",
+            "role": "opening",
+            "heading": f"默认章节 {index}",
+            "deck": "",
+            "prose": "确定性回退正文。" * 80,
+            "chart_refs": [],
+            "evidence_refs": [],
+        }
+        for index in range(6)
+    ]
+
+    class LaterRetryStore:
+        def __init__(self):
+            self.lookups: list[str] = []
+            self.budget_checks = 0
+
+        def get_committed_model_response(self, call_id):
+            self.lookups.append(call_id)
+            if call_id.endswith(":attempt:2"):
+                section_id = call_id.split(":")[2]
+                return {
+                    "content": json.dumps(
+                        {
+                            "heading": section_id,
+                            "prose": "已提交的第二次模型响应。" * 40,
+                            "chart_refs": [],
+                            "evidence_refs": [],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    "finish_reason": "stop",
+                    "usage": {"input_tokens": 10, "output_tokens": 10},
+                    "provider_id": "fake:replayed",
+                }
+            return None
+
+        def assert_budget_available(self, **_kwargs):
+            self.budget_checks += 1
+
+    store = LaterRetryStore()
+    monkeypatch.setattr(
+        report_agent,
+        "audit_report_sections",
+        lambda sections, **_kwargs: (
+            sections,
+            [{"section_index": 0, "status": "pass", "issues": []}],
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        ai_insights_service,
+        "_llm_text_completion",
+        lambda *_args, **_kwargs: pytest.fail("committed retry must not call provider"),
+    )
+
+    sections, metadata = report_agent._write_sections_v2(
+        fallback_sections=fallbacks,
+        research_text="固定研究",
+        all_tool_results=[],
+        chart_data={},
+        chart_specs=[],
+        year=2025,
+        end_date="2025-12-31",
+        runtime_metrics=None,
+        emit_event=None,
+        checkpoint_store=store,
+    )
+
+    assert len(sections) == 6
+    assert metadata["model_accepted_count"] == 6
+    assert store.budget_checks == 0
+    assert all(
+        any(f"report:section:section_{index}:attempt:2" == item for item in store.lookups)
+        for index in range(6)
+    )
+
+
+def test_report_agent_reuses_research_without_new_model_or_tool_calls(monkeypatch):
+    fallbacks = [
+        {
+            "id": f"section_{index}",
+            "role": "opening",
+            "heading": f"默认章节 {index}",
+            "deck": "",
+            "prose": "确定性回退正文。" * 80,
+            "chart_refs": [],
+            "evidence_refs": ["yearly_overview"],
+        }
+        for index in range(6)
+    ]
+    checkpoint = {
+        "research_summary": "已持久化研究",
+        "evidence": [{"_tool_name": "yearly_overview", "result_summary": "播放 3 次"}],
+    }
+    committed: list[object] = []
+    monkeypatch.setattr(
+        report_agent,
+        "_native_report_research",
+        lambda **_kwargs: pytest.fail("恢复时不应重新调用研究模型"),
+    )
+    monkeypatch.setattr(
+        report_agent,
+        "_write_sections_v2",
+        lambda **kwargs: (fallbacks, {"research": kwargs["research_text"]}),
+    )
+    monkeypatch.setattr(
+        report_agent,
+        "audit_report_sections",
+        lambda sections, **_kwargs: (
+            sections,
+            [
+                {"section_index": index, "status": "pass", "issues": []}
+                for index in range(len(sections))
+            ],
+            [],
+        ),
+    )
+
+    result = report_agent.run_report_agent(
+        year=2025,
+        is_partial_year=False,
+        end_date="2025-12-31",
+        min_ms=30000,
+        music_only=True,
+        merge_enabled=True,
+        dynamic_threshold=True,
+        max_merge_gap_minutes=None,
+        chart_data={},
+        chart_specs=[],
+        research_context={},
+        fallback_sections=fallbacks,
+        resume_research=checkpoint,
+        on_research_committed=lambda *_args: committed.append(True),
+    )
+
+    assert result["research_summary"] == "已持久化研究"
+    assert result["evidence"] == checkpoint["evidence"]
+    assert committed == []

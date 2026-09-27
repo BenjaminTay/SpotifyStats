@@ -200,6 +200,11 @@ TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
         "backend/tests/contract/test_ai_task_api.py",
         "AI report task creation and request validation are covered by contract tests.",
     ),
+    ("POST", "/api/ai/tasks/report/lookup"): OperationEvidence(
+        "targeted_contract",
+        "backend/tests/contract/test_ai_task_api.py",
+        "Exact report-generation task restoration and filter isolation are covered by contract tests.",
+    ),
     ("POST", "/api/ai/tasks/chat"): OperationEvidence(
         "targeted_contract",
         "backend/tests/contract/test_ai_agent_task_contract.py",

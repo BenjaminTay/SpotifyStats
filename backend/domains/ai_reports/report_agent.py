@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import json
 import logging
+import time
+from dataclasses import asdict
 from typing import Any
 
 from backend.domains.agent_runtime.native_loop import (
     NativeObservationLoop,
     NativeToolObservation,
+    assistant_message,
+    tool_message,
 )
 from backend.domains.ai_reports.agentic_tools import (
     REPORT_TOOL_NAMES,
@@ -25,13 +29,19 @@ from backend.domains.ai_reports.report_section_protocol import (
     strip_unsupported_numeric_sentences,
 )
 from backend.domains.ai_reports.section_writer import (
+    SECTION_WRITER_VERSION,
     SectionAuditResult,
     SectionCompletion,
     SectionWritePlan,
+    SectionWriteResult,
     write_report_sections,
 )
+from backend.providers.llm.client import LLMCompletion, LLMTextCompletion, LLMToolCall
 
 logger = logging.getLogger(__name__)
+REPORT_RESEARCH_VERSION = "report_research_v1"
+REPORT_PROMPT_VERSION = "yearly_report_prompt_v2"
+REPORT_SECTION_PROMPT_VERSION = "yearly_report_section_prompt_v2"
 
 # ── Agent prompts ─────────────────────────────────────────────────────────────
 
@@ -152,14 +162,25 @@ def _native_report_research(
     end_date: str,
     research_context: dict[str, Any],
     emit_event: Any,
+    should_continue: Any = None,
+    checkpoint_store: Any = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     """Run report research through the same native observation loop as chat."""
 
     from backend.core.config import AI_AGENT_MAX_STEPS, AI_AGENT_MAX_TOOL_CALLS
-    from backend.services.ai_agent_v2_service import ConfiguredNativeToolModel
+    from backend.services.ai_agent_v2_service import ConfiguredNativeToolModel, _dynamic_budget
 
     schemas = report_tool_schemas()
-    model = ConfiguredNativeToolModel()
+    budget = _dynamic_budget(
+        {
+            "question_intent": {
+                "task_type": "comparison",
+                "entities": ["yearly_report", str(year)],
+                "requested_metrics": ["plays", "duration", "trend"],
+            }
+        }
+    )
+    model = ConfiguredNativeToolModel(budget)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": planner_prompt},
         {"role": "user", "content": planner_user},
@@ -231,19 +252,513 @@ def _native_report_research(
                 },
             )
 
-    loop_result = NativeObservationLoop(
+    loop = NativeObservationLoop(
         model=model,
         schemas=schemas,
         thinking=True,
-    ).run(
+        budget=budget,
+    )
+    if checkpoint_store is not None:
+        return _run_durable_report_research(
+            loop=loop,
+            messages=messages,
+            execute_tool=execute_tool,
+            max_steps=AI_AGENT_MAX_STEPS,
+            max_tool_calls=AI_AGENT_MAX_TOOL_CALLS,
+            on_step=on_step,
+            should_continue=should_continue,
+            checkpoint_store=checkpoint_store,
+            results=results,
+        )
+    loop_result = loop.run(
         messages=messages,
         execute_tool=execute_tool,
         max_steps=AI_AGENT_MAX_STEPS,
         max_tool_calls=AI_AGENT_MAX_TOOL_CALLS,
         on_step=on_step,
+        should_continue=should_continue,
     )
     research = loop_result.content or _compile_research_from_tools(results)
     return research, results
+
+
+def _completion_payload(
+    completion: LLMCompletion, *, provider_id: str, attempts: Any
+) -> dict[str, Any]:
+    return {
+        "message": assistant_message(completion),
+        "content": completion.content,
+        "tool_calls": [
+            {"call_id": call.call_id, "name": call.name, "arguments": call.arguments}
+            for call in completion.tool_calls
+        ],
+        "finish_reason": completion.finish_reason,
+        "usage": dict(completion.usage),
+        "provider_id": provider_id,
+        "attempts": [asdict(item) for item in attempts],
+    }
+
+
+def _completion_from_payload(payload: dict[str, Any]) -> LLMCompletion:
+    return LLMCompletion(
+        content=str(payload.get("content") or ""),
+        tool_calls=[
+            LLMToolCall(
+                call_id=str(item.get("call_id") or ""),
+                name=str(item.get("name") or ""),
+                arguments=dict(item.get("arguments") or {}),
+            )
+            for item in payload.get("tool_calls") or []
+            if isinstance(item, dict)
+        ],
+        finish_reason=str(payload.get("finish_reason") or ""),
+        usage=dict(payload.get("usage") or {}),
+    )
+
+
+class _ConfiguredReportTextModel:
+    """Expose configured text completion through the shared model-step executor."""
+
+    def __init__(
+        self,
+        configured_model: Any,
+        *,
+        temperature: float,
+        max_tokens: int,
+        thinking: bool,
+    ) -> None:
+        self.configured_model = configured_model
+        self.provider_id = str(configured_model.provider_id)
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.thinking = thinking
+
+    def complete(
+        self,
+        messages: list[dict[str, Any]],
+        _tools: list[dict[str, Any]],
+        *,
+        thinking: bool,
+    ) -> LLMCompletion:
+        completion = self.configured_model.llm.complete_text(
+            messages,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            thinking=thinking or self.thinking,
+        )
+        return LLMCompletion(
+            content=completion.content,
+            finish_reason=completion.finish_reason,
+            usage=dict(completion.usage),
+        )
+
+
+def _durable_text_completion(
+    *,
+    system_prompt: str,
+    user_content: str,
+    temperature: float,
+    max_tokens: int,
+    thinking: bool,
+    checkpoint_store: Any,
+    call_id: str,
+    step_id: str,
+    prompt_version: str,
+    section_retry: bool = False,
+    should_continue: Any = None,
+) -> LLMTextCompletion | None:
+    """Run or replay one exact text-only request under the V6 durable contract."""
+
+    from backend.services.ai_insights_service import _llm_text_completion
+
+    if checkpoint_store is None:
+        return _llm_text_completion(
+            system_prompt,
+            user_content,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            thinking=thinking,
+        )
+
+    from backend.core.config import (
+        AI_AGENT_LLM_RETRIES,
+        AI_AGENT_LLM_TIMEOUT_SECONDS,
+        AI_AGENT_MAX_STEPS,
+        AI_AGENT_MAX_TOOL_CALLS,
+        AI_AGENT_TURN_TIMEOUT_SECONDS,
+    )
+    from backend.domains.agent_runtime.native_loop import NativeLoopCancelledError
+    from backend.domains.agent_runtime.provider_reliability import (
+        BudgetCaps,
+        ModelStepExecutor,
+        ModelStepExhaustedError,
+        ProviderCandidate,
+        dynamic_agent_budget,
+    )
+    from backend.services.ai_agent_v2_service import ConfiguredNativeToolModel
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_content},
+    ]
+    response = checkpoint_store.get_committed_model_response(call_id)
+    if response is None:
+        if should_continue is not None and not should_continue():
+            raise NativeLoopCancelledError("年度报告任务已取消")
+        existing_request = checkpoint_store.get_prepared_model_request(call_id)
+        checkpoint_store.assert_budget_available(
+            max_steps=AI_AGENT_MAX_STEPS + 12,
+            max_model_calls=AI_AGENT_MAX_STEPS + 12,
+            max_tool_calls=AI_AGENT_MAX_TOOL_CALLS,
+            max_active_elapsed_ms=300_000,
+            check_tool_calls=False,
+            check_steps=existing_request is None,
+        )
+        budget = dynamic_agent_budget(
+            {
+                "question_intent": {
+                    "task_type": "comparison",
+                    "entities": ["yearly_report", step_id],
+                    "requested_metrics": ["plays", "duration", "trend"],
+                }
+            },
+            caps=BudgetCaps(
+                max_steps=AI_AGENT_MAX_STEPS,
+                max_tool_calls=AI_AGENT_MAX_TOOL_CALLS,
+                turn_timeout_seconds=AI_AGENT_TURN_TIMEOUT_SECONDS,
+                model_timeout_seconds=AI_AGENT_LLM_TIMEOUT_SECONDS,
+                max_model_retries=AI_AGENT_LLM_RETRIES,
+                max_output_tokens=max_tokens,
+            ),
+        )
+        configured = ConfiguredNativeToolModel(budget)
+        model = _ConfiguredReportTextModel(
+            configured,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            thinking=thinking,
+        )
+        prepared = checkpoint_store.prepare_model_request(
+            call_id=call_id,
+            step_id=step_id,
+            payload={
+                "messages": messages,
+                "tool_schemas": [],
+                "provider_id": model.provider_id,
+                "parameters": {
+                    "temperature": temperature,
+                    "max_output_tokens": max_tokens,
+                    "thinking": thinking,
+                },
+                "prompt_version": prompt_version,
+            },
+            max_steps=AI_AGENT_MAX_STEPS + 12,
+        )
+        descriptor = prepared.descriptor
+        stored_provider_id = str(descriptor.get("provider_id") or "")
+        if stored_provider_id != model.provider_id:
+            from backend.domains.agent_runtime.runtime_store import IncompatibleModelRequestError
+
+            raise IncompatibleModelRequestError(
+                f"模型请求绑定的 provider/model 当前不可用：{stored_provider_id or 'unknown'}"
+            )
+        stored_messages = descriptor.get("messages")
+        stored_tools = descriptor.get("tool_schemas")
+        stored_parameters = descriptor.get("parameters")
+        if not isinstance(stored_messages, list) or not isinstance(stored_tools, list):
+            from backend.domains.agent_runtime.runtime_store import IncompatibleModelRequestError
+
+            raise IncompatibleModelRequestError("模型请求 descriptor 缺少可恢复消息或工具定义")
+        if not isinstance(stored_parameters, dict):
+            stored_parameters = {}
+        stored_thinking = bool(stored_parameters.get("thinking", thinking))
+        model = _ConfiguredReportTextModel(
+            configured,
+            temperature=float(stored_parameters.get("temperature", temperature)),
+            max_tokens=int(stored_parameters.get("max_output_tokens", max_tokens)),
+            thinking=stored_thinking,
+        )
+
+        def reserve_dispatch(provider_id: str, _provider_attempt: int, _total: int) -> str:
+            if should_continue is not None and not should_continue():
+                raise NativeLoopCancelledError("年度报告任务已取消")
+            return checkpoint_store.reserve_model_dispatch(
+                call_id=call_id,
+                step_id=step_id,
+                provider_id=provider_id,
+                max_model_calls=AI_AGENT_MAX_STEPS + 12,
+            )
+
+        started = time.monotonic()
+        try:
+            result = ModelStepExecutor(primary=ProviderCandidate(model.provider_id, model)).execute(
+                messages=stored_messages,
+                tools=stored_tools,
+                thinking=stored_thinking,
+                budget=budget,
+                before_dispatch=reserve_dispatch,
+                on_dispatch_failure=lambda dispatch_id, exc, elapsed_ms: (
+                    checkpoint_store.mark_model_dispatch_failed(
+                        dispatch_id=dispatch_id,
+                        error_type=exc.__class__.__name__,
+                        elapsed_ms=elapsed_ms,
+                    )
+                ),
+            )
+        except ModelStepExhaustedError as exc:
+            checkpoint_store.commit_model_failure(
+                call_id=call_id,
+                step_id=step_id,
+                attempts=[asdict(item) for item in exc.attempts],
+                elapsed_ms=round((time.monotonic() - started) * 1000),
+            )
+            raise
+        if should_continue is not None and not should_continue():
+            raise NativeLoopCancelledError("年度报告任务已取消")
+        response = checkpoint_store.commit_model_response(
+            call_id=call_id,
+            step_id=step_id,
+            payload=_completion_payload(
+                result.completion,
+                provider_id=result.provider_id,
+                attempts=result.attempts,
+            ),
+            elapsed_ms=round((time.monotonic() - started) * 1000),
+            attempt_count=max(1, len(result.attempts)),
+            section_retry=section_retry,
+            successful_dispatch_id=result.successful_dispatch_id,
+        )
+    completion = _completion_from_payload(response)
+    provider_id = str(response.get("provider_id") or "")
+    provider, _, model_name = provider_id.partition(":")
+    return LLMTextCompletion(
+        content=completion.content,
+        provider=provider,
+        model=model_name,
+        finish_reason=completion.finish_reason,
+        usage=completion.usage,
+    )
+
+
+def _run_durable_report_research(
+    *,
+    loop: NativeObservationLoop,
+    messages: list[dict[str, Any]],
+    execute_tool: Any,
+    max_steps: int,
+    max_tool_calls: int,
+    on_step: Any,
+    should_continue: Any,
+    checkpoint_store: Any,
+    results: list[dict[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Run report research from committed requests, responses and observations."""
+
+    tool_count = 0
+    for step in range(1, max_steps + 1):
+        model_call_id = f"report:research:step:{step}:model"
+        response = checkpoint_store.get_committed_model_response(model_call_id)
+        if response is None:
+            if should_continue is not None and not should_continue():
+                from backend.domains.agent_runtime.native_loop import NativeLoopCancelledError
+
+                raise NativeLoopCancelledError("年度报告任务已取消")
+            existing_request = checkpoint_store.get_prepared_model_request(model_call_id)
+            checkpoint_store.assert_budget_available(
+                max_steps=max_steps + 12,
+                max_model_calls=max_steps + 12,
+                max_tool_calls=max_tool_calls,
+                max_active_elapsed_ms=300_000,
+                check_tool_calls=False,
+                check_steps=existing_request is None,
+            )
+            prepared = checkpoint_store.prepare_model_request(
+                call_id=model_call_id,
+                step_id=f"report:research:step:{step}",
+                payload={
+                    "messages": messages,
+                    "tool_schemas": loop.schemas,
+                    "provider_id": getattr(loop.model, "provider_id", ""),
+                    "parameters": {
+                        "thinking": True,
+                        "max_output_tokens": loop.budget.max_output_tokens,
+                    },
+                    "prompt_version": REPORT_PROMPT_VERSION,
+                    "step": step,
+                },
+                max_steps=max_steps + 12,
+            )
+            descriptor = prepared.descriptor
+            provider_id = str(descriptor.get("provider_id") or "")
+            current_provider_id = str(getattr(loop.model, "provider_id", ""))
+            if provider_id != current_provider_id:
+                from backend.domains.agent_runtime.runtime_store import (
+                    IncompatibleModelRequestError,
+                )
+
+                raise IncompatibleModelRequestError(
+                    f"年度研究请求绑定的 provider/model 当前不可用：{provider_id or 'unknown'}"
+                )
+            stored_messages = descriptor.get("messages")
+            stored_tools = descriptor.get("tool_schemas")
+            stored_parameters = descriptor.get("parameters")
+            if not isinstance(stored_messages, list) or not isinstance(stored_tools, list):
+                from backend.domains.agent_runtime.runtime_store import (
+                    IncompatibleModelRequestError,
+                )
+
+                raise IncompatibleModelRequestError("年度研究请求 descriptor 不完整")
+            if stored_tools != loop.schemas:
+                from backend.domains.agent_runtime.runtime_store import (
+                    IncompatibleModelRequestError,
+                )
+
+                raise IncompatibleModelRequestError("年度研究请求绑定的工具 schema 已不兼容")
+            stored_thinking = bool(
+                stored_parameters.get("thinking", True)
+                if isinstance(stored_parameters, dict)
+                else True
+            )
+
+            def reserve_dispatch(
+                candidate_provider_id: str,
+                _provider_attempt: int,
+                _total: int,
+            ) -> str:
+                if should_continue is not None and not should_continue():
+                    from backend.domains.agent_runtime.native_loop import NativeLoopCancelledError
+
+                    raise NativeLoopCancelledError("年度报告任务已取消")
+                return checkpoint_store.reserve_model_dispatch(
+                    call_id=model_call_id,
+                    step_id=f"report:research:step:{step}",
+                    provider_id=candidate_provider_id,
+                    max_model_calls=max_steps + 12,
+                )
+
+            started = time.monotonic()
+            try:
+                model_step = loop.model_executor.execute(
+                    messages=stored_messages,
+                    tools=stored_tools,
+                    thinking=stored_thinking,
+                    budget=loop.budget,
+                    before_dispatch=reserve_dispatch,
+                    on_dispatch_failure=lambda dispatch_id, exc, elapsed_ms: (
+                        checkpoint_store.mark_model_dispatch_failed(
+                            dispatch_id=dispatch_id,
+                            error_type=exc.__class__.__name__,
+                            elapsed_ms=elapsed_ms,
+                        )
+                    ),
+                )
+            except Exception as exc:
+                from backend.domains.agent_runtime.provider_reliability import (
+                    ModelStepExhaustedError,
+                )
+
+                if isinstance(exc, ModelStepExhaustedError):
+                    checkpoint_store.commit_model_failure(
+                        call_id=model_call_id,
+                        step_id=f"report:research:step:{step}",
+                        attempts=[asdict(item) for item in exc.attempts],
+                        elapsed_ms=round((time.monotonic() - started) * 1000),
+                    )
+                raise
+            if should_continue is not None and not should_continue():
+                from backend.domains.agent_runtime.native_loop import NativeLoopCancelledError
+
+                raise NativeLoopCancelledError("年度报告任务已取消")
+            response = checkpoint_store.commit_model_response(
+                call_id=model_call_id,
+                step_id=f"report:research:step:{step}",
+                payload=_completion_payload(
+                    model_step.completion,
+                    provider_id=model_step.provider_id,
+                    attempts=model_step.attempts,
+                ),
+                elapsed_ms=round((time.monotonic() - started) * 1000),
+                attempt_count=max(1, len(model_step.attempts)),
+                successful_dispatch_id=model_step.successful_dispatch_id,
+            )
+        completion = _completion_from_payload(response)
+        if completion.tool_calls:
+            frozen_request = checkpoint_store.get_prepared_model_request(model_call_id)
+            if frozen_request is None:
+                from backend.domains.agent_runtime.runtime_store import (
+                    IncompatibleModelRequestError,
+                )
+
+                raise IncompatibleModelRequestError("年度研究已提交响应缺少原始 request descriptor")
+            frozen_tools = frozen_request.descriptor.get("tool_schemas")
+            if not isinstance(frozen_tools, list) or frozen_tools != loop.schemas:
+                from backend.domains.agent_runtime.runtime_store import (
+                    IncompatibleModelRequestError,
+                )
+
+                raise IncompatibleModelRequestError("年度研究请求绑定的工具 schema 已不兼容")
+        messages.append(assistant_message(completion))
+        if not completion.tool_calls:
+            if should_continue is not None and not should_continue():
+                from backend.domains.agent_runtime.native_loop import NativeLoopCancelledError
+
+                raise NativeLoopCancelledError("年度报告任务已取消")
+            return completion.content.strip() or _compile_research_from_tools(results), results
+        for call in completion.tool_calls:
+            durable_call_id = f"{model_call_id}:tool:{call.call_id}"
+            committed = checkpoint_store.get_committed_tool_observation(durable_call_id)
+            if committed is None:
+                if should_continue is not None and not should_continue():
+                    from backend.domains.agent_runtime.native_loop import NativeLoopCancelledError
+
+                    raise NativeLoopCancelledError("年度报告任务已取消")
+                checkpoint_store.assert_budget_available(
+                    max_steps=max_steps + 12,
+                    max_model_calls=max_steps + 12,
+                    max_tool_calls=max_tool_calls,
+                    max_active_elapsed_ms=300_000,
+                )
+                started = time.monotonic()
+                observation = execute_tool(call, step)
+                committed = checkpoint_store.commit_report_tool_observation(
+                    call_id=durable_call_id,
+                    step_id=f"report:research:step:{step}",
+                    tool_name=call.name,
+                    params=dict(call.arguments),
+                    outcome={
+                        **observation.result_payload,
+                        "model_payload": observation.model_payload,
+                        "provider_call_id": call.call_id,
+                        "_counted": observation.counted,
+                    },
+                    elapsed_ms=round((time.monotonic() - started) * 1000),
+                    counted=observation.counted,
+                )
+                if observation.counted:
+                    tool_count += 1
+            else:
+                outcome = dict(committed.get("outcome") or {})
+                model_payload = dict(outcome.get("model_payload") or outcome)
+                result_payload = {
+                    key: value
+                    for key, value in outcome.items()
+                    if key not in {"model_payload", "provider_call_id", "_counted"}
+                }
+                if result_payload and result_payload not in results:
+                    results.append(result_payload)
+                observation = NativeToolObservation(
+                    model_payload=model_payload,
+                    result_payload=result_payload,
+                    counted=False,
+                )
+            messages.append(tool_message(call, observation.model_payload))
+        if on_step:
+            if should_continue is not None and not should_continue():
+                from backend.domains.agent_runtime.native_loop import NativeLoopCancelledError
+
+                raise NativeLoopCancelledError("年度报告任务已取消")
+            on_step(step, tool_count)
+    return _compile_research_from_tools(results), results
 
 
 def run_report_agent(
@@ -262,13 +777,17 @@ def run_report_agent(
     runtime_metrics: Any = None,
     fallback_sections: list[dict[str, Any]] | None = None,
     emit_event: Any = None,
+    resume_sections: list[dict[str, Any]] | None = None,
+    on_section_committed: Any = None,
+    resume_research: dict[str, Any] | None = None,
+    on_research_committed: Any = None,
+    should_continue: Any = None,
+    checkpoint_store: Any = None,
 ) -> dict[str, Any]:
     """Run the multi-turn agent loop to research and write a yearly report.
 
     Returns: {"sections": [...], "research_summary": str, "evidence": [...]}
     """
-    from backend.services.ai_insights_service import _llm_chat
-
     # ── Build tool description for the planner ──
     tools_desc = "\n".join(
         f"- **{item['name']}**: {item['description']}" for item in list_report_tools()
@@ -311,7 +830,18 @@ def run_report_agent(
 
     from backend.core.config import AI_AGENT_RUNTIME
 
-    if AI_AGENT_RUNTIME != "legacy":
+    if resume_research is not None:
+        research_text = str(resume_research.get("research_summary") or "")
+        all_tool_results = [
+            dict(item) for item in resume_research.get("evidence") or [] if isinstance(item, dict)
+        ]
+        if emit_event:
+            emit_event(
+                "report_research_reused",
+                "已复用版本匹配的年度研究结果",
+                {"stage": "researching", "progress_pct": 0.80},
+            )
+    elif AI_AGENT_RUNTIME != "legacy":
         research_text, all_tool_results = _native_report_research(
             planner_prompt=planner_prompt,
             planner_user=planner_user,
@@ -320,9 +850,13 @@ def run_report_agent(
             end_date=end_date,
             research_context=research_context or {},
             emit_event=emit_event,
+            should_continue=should_continue,
+            checkpoint_store=checkpoint_store,
         )
     else:
         # Explicit rollback path for providers without native tool calling.
+        from backend.services.ai_insights_service import _llm_chat
+
         all_tool_results = []
         research_text = ""
         for round_num in range(1, 6):
@@ -385,6 +919,8 @@ def run_report_agent(
     # If no research text from planner, compile from tool results
     if not research_text:
         research_text = _compile_research_from_tools(all_tool_results)
+    if resume_research is None and on_research_committed is not None:
+        on_research_committed(research_text, all_tool_results)
 
     # ── Phase 2: Write the report directly from all collected data ──
     if emit_event:
@@ -422,6 +958,10 @@ def run_report_agent(
             end_date=end_date,
             runtime_metrics=runtime_metrics,
             emit_event=emit_event,
+            resume_sections=resume_sections,
+            on_section_committed=on_section_committed,
+            should_continue=should_continue,
+            checkpoint_store=checkpoint_store,
         )
     else:
         sections = _write_full_report_legacy(
@@ -466,9 +1006,12 @@ def run_report_agent(
                     },
                 )
             try:
-                repair_response = _llm_chat(
-                    "你是年度报告章节修复器。只能使用给定证据，禁止新增数字或实体。只输出单节 JSON。",
-                    json.dumps(
+                repair_completion = _durable_text_completion(
+                    system_prompt=(
+                        "你是年度报告章节修复器。只能使用给定证据，禁止新增数字或实体。"
+                        "只输出单节 JSON。"
+                    ),
+                    user_content=json.dumps(
                         {
                             "section": sections[index],
                             "checkpoint": checkpoint,
@@ -484,7 +1027,15 @@ def run_report_agent(
                     )[:14000],
                     temperature=0.0,
                     max_tokens=2048,
+                    thinking=False,
+                    checkpoint_store=checkpoint_store,
+                    call_id=f"report:section:{index}:audit-repair:1",
+                    step_id=f"report:section:{index}:audit-repair",
+                    prompt_version=REPORT_SECTION_PROMPT_VERSION,
+                    section_retry=True,
+                    should_continue=should_continue,
                 )
+                repair_response = repair_completion.content if repair_completion else ""
             except Exception as exc:
                 logger.warning("Report section repair failed at index %s: %s", index, exc)
                 repair_response = ""
@@ -605,10 +1156,13 @@ def _write_sections_v2(
     end_date: str,
     runtime_metrics: Any,
     emit_event: Any,
+    resume_sections: list[dict[str, Any]] | None = None,
+    on_section_committed: Any = None,
+    should_continue: Any = None,
+    checkpoint_store: Any = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Write six isolated sections with bounded concurrency and local fallback."""
     from backend.core.config import AI_REPORT_SECTION_WRITER_CONCURRENCY
-    from backend.services.ai_insights_service import _llm_text_completion
 
     plans = tuple(
         SectionWritePlan(
@@ -624,6 +1178,20 @@ def _write_sections_v2(
         for index, section in enumerate(fallback_sections)
     )
     chart_summary = _summarize_chart_data(chart_data, chart_specs)
+
+    def durable_call_id(section_id: str, attempt: int) -> str:
+        requested = f"report:section:{section_id}:attempt:{attempt}"
+        if checkpoint_store is None:
+            return requested
+        # A previous process may have committed a later successful retry but
+        # crashed before the validated section row. Reuse that response while
+        # rebuilding the deterministic parse/audit projection; never replay an
+        # earlier provider attempt merely because the section commit is absent.
+        for candidate in range(attempt, 3):
+            call_id = f"report:section:{section_id}:attempt:{candidate}"
+            if checkpoint_store.get_committed_model_response(call_id) is not None:
+                return call_id
+        return requested
 
     def complete(plan: SectionWritePlan, attempt: int) -> SectionCompletion:
         fallback = dict(plan.payload["fallback"])
@@ -661,10 +1229,12 @@ def _write_sections_v2(
             ensure_ascii=False,
             default=str,
         )[:16000]
-        completion = _llm_text_completion(
-            "你是 SpotifyStats 年度报告分章节作者。只输出 JSON："
-            '{"heading":"...","prose":"...","chart_refs":[],"evidence_refs":[]}。',
-            prompt,
+        completion = _durable_text_completion(
+            system_prompt=(
+                "你是 SpotifyStats 年度报告分章节作者。只输出 JSON："
+                '{"heading":"...","prose":"...","chart_refs":[],"evidence_refs":[]}。'
+            ),
+            user_content=prompt,
             temperature=0.35,
             # Reasoning-capable providers may spend roughly 1.8k completion
             # tokens before emitting visible JSON. A 1.8k ceiling therefore
@@ -672,6 +1242,13 @@ def _write_sections_v2(
             # room for that internal work plus the requested 500-800 Chinese
             # characters while still bounding one section independently.
             max_tokens=4096,
+            thinking=False,
+            checkpoint_store=checkpoint_store,
+            call_id=durable_call_id(plan.section_id, attempt),
+            step_id=f"report:section:{plan.section_id}",
+            prompt_version=REPORT_SECTION_PROMPT_VERSION,
+            section_retry=attempt > 1,
+            should_continue=should_continue,
         )
         if completion is None:
             return SectionCompletion(empty_reason="provider_unavailable")
@@ -752,17 +1329,28 @@ def _write_sections_v2(
                 "section_count": len(plans),
             },
         )
-    run = write_report_sections(
-        plans,
-        complete=complete,
-        parse=parse,
-        audit=audit,
-        fallback=fallback,
-        max_workers=AI_REPORT_SECTION_WRITER_CONCURRENCY,
-        max_attempts=2,
-    )
-    if emit_event:
-        for result in run.results:
+    plan_by_id = {plan.section_id: plan for plan in plans}
+    restored: dict[str, SectionWriteResult] = {}
+    for checkpoint in resume_sections or []:
+        section_id = str(checkpoint.get("section_id") or "")
+        plan = plan_by_id.get(section_id)
+        section = checkpoint.get("section")
+        if plan is None or checkpoint.get("status") != "validated" or not isinstance(section, dict):
+            continue
+        source_kind = str(checkpoint.get("source_kind") or "model")
+        restored[section_id] = SectionWriteResult(
+            plan=plan,
+            status="accepted" if source_kind == "model" else "fallback",
+            section=dict(section),
+            attempts=(),
+            elapsed_ms=0,
+            fallback_reason=checkpoint.get("fallback_reason"),
+        )
+
+    def persist_result(result: SectionWriteResult) -> None:
+        if on_section_committed is not None:
+            on_section_committed(result)
+        if emit_event:
             emit_event(
                 "report_section_written",
                 f"章节完成：{result.plan.heading}",
@@ -772,8 +1360,35 @@ def _write_sections_v2(
                     "section_id": result.plan.section_id,
                     "status": result.status,
                     "attempt_count": len(result.attempts),
+                    "writer_version": SECTION_WRITER_VERSION,
                 },
             )
+
+    run = write_report_sections(
+        plans,
+        complete=complete,
+        parse=parse,
+        audit=audit,
+        fallback=fallback,
+        # A task-scoped SQLite connection is not shared across writer threads.
+        # Durable report execution is sequential; non-durable compatibility
+        # calls retain the configured bounded concurrency.
+        max_workers=(1 if checkpoint_store is not None else AI_REPORT_SECTION_WRITER_CONCURRENCY),
+        max_attempts=2,
+        resume_results=restored,
+        on_result=persist_result,
+        should_continue=should_continue,
+    )
+    if emit_event and restored:
+        emit_event(
+            "report_sections_reused",
+            f"已复用 {len(restored)} 个通过审核的章节",
+            {
+                "stage": "writing_sections",
+                "progress_pct": 0.90,
+                "section_ids": sorted(restored),
+            },
+        )
     return list(run.sections), run.metadata.to_dict()
 
 

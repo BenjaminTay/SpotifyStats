@@ -7,10 +7,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pytest
 from pydantic import BaseModel
 
+from backend.core.migrations import migrate_080, migrate_081, migrate_082
 from backend.domains.agent_runtime.event_log import AgentEventLog
 from backend.domains.agent_runtime.observation import compact_observation
+from backend.domains.agent_runtime.tool_runtime import ToolOutcome
 from backend.domains.agent_runtime.tool_selector import (
     select_agent_profile,
     tool_schemas_for_profile,
@@ -247,7 +250,7 @@ def test_agent_v2_runs_observation_loop_and_persists_replayable_events(
         if row["event_type"] == "context_projection_shadow"
     ]
     assert len(shadow_payloads) == 1
-    assert shadow_payloads[0]["source"] == "memory"
+    assert shadow_payloads[0]["source"] == "event_log"
     assert shadow_payloads[0]["matches"] is True
 
 
@@ -347,6 +350,314 @@ def test_v2_grounded_fallback_preserves_requested_markdown_ranking_table() -> No
     assert "| 年份 | 排名 | 艺人 | 播放次数 |" in answer
     assert "| 2025 | 5 | Artist 5 | 95 |" in answer
     assert not any("无法追溯" in issue for issue in issues)
+
+
+def test_v2_generic_ranking_fallback_satisfies_informative_contract() -> None:
+    request = {"question": "过去一年我反复回去听的是谁？"}
+    tool_results = [
+        {
+            "tool_name": "analysis_charts",
+            "status": "ok",
+            "source_range": "2025-09-22..2026-09-19",
+            "data": {
+                "period": {"label": "自定义"},
+                "entity": "artist",
+                "metric": "plays",
+                "total": 1,
+                "rows": [
+                    {
+                        "rank": 1,
+                        "artist_name": "Taylor Swift",
+                        "plays": 2897,
+                        "share_pct": 16.2,
+                    }
+                ],
+            },
+        }
+    ]
+    final_payload = ai_agent_service._final_payload(request, tool_results)
+
+    answer, issues, used = ai_agent_v2_service._ensure_v2_grounded_answer(
+        "模型声称有 999 次播放",
+        final_payload,
+        ["回答包含无法追溯到事实目录的数字：999"],
+        request=request,
+        tool_results=tool_results,
+    )
+
+    assert used is True
+    assert "第1名艺人：Taylor Swift" in answer
+    assert not any("排行回答必须给出实际排名实体及排序指标" in issue for issue in issues)
+
+
+def test_semantic_fallback_compares_weekday_and_weekend_per_day() -> None:
+    answer = ai_agent_v2_service._semantic_evidence_fallback(
+        {"question": "我周末和工作日听歌习惯差得明显吗？"},
+        [
+            {
+                "tool_name": "analysis_stats",
+                "data": {
+                    "weekday_distribution": [
+                        {"day": "周一", "plays": 10},
+                        {"day": "周二", "plays": 10},
+                        {"day": "周三", "plays": 10},
+                        {"day": "周四", "plays": 10},
+                        {"day": "周五", "plays": 10},
+                        {"day": "周六", "plays": 30},
+                        {"day": "周日", "plays": 30},
+                    ]
+                },
+            }
+        ],
+    )
+
+    assert answer is not None
+    assert "周末更多" in answer
+    assert "每天平均" in answer
+
+
+def test_semantic_fallback_refuses_unsupported_language_time_cross() -> None:
+    answer = ai_agent_v2_service._semantic_evidence_fallback(
+        {"question": "按语言和时段交叉看，晚上最突出的语言是什么？"},
+        [],
+    )
+
+    assert answer is not None
+    assert "语言与时段" in answer
+    assert "不能" in answer
+
+
+def test_preflight_clarifies_1989_rerecording_identity() -> None:
+    clarification = ai_agent_v2_service._preflight_clarification(
+        {"question": "比较 1989 和同名重录版。"}
+    )
+
+    assert clarification is not None
+    assert "1989 (Taylor's Version)" in clarification
+
+
+def test_required_entity_followup_uses_album_leader_for_internal_tracks() -> None:
+    followup = ai_agent_v2_service._required_entity_followup(
+        {"question": "找出去年最常听的专辑；再列其中最常听的三首歌。"},
+        [
+            {
+                "tool_name": "analysis_charts",
+                "params": {
+                    "entity": "album",
+                    "metric": "plays",
+                    "period": "custom",
+                    "start_date": "2025-01-01",
+                    "end_date": "2025-12-31",
+                },
+                "data": {
+                    "entity": "album",
+                    "metric": "plays",
+                    "rows": [
+                        {
+                            "rank": 1,
+                            "album_name": "The Life of a Showgirl",
+                            "artist_name": "Taylor Swift",
+                        }
+                    ],
+                },
+            }
+        ],
+    )
+
+    assert followup is not None
+    assert followup[0] == "entity_stats"
+    assert followup[1]["entity"] == "album"
+    assert followup[1]["album_name"] == "The Life of a Showgirl"
+
+
+def test_semantic_fallback_reads_album_track_breakdown() -> None:
+    answer = ai_agent_v2_service._semantic_evidence_fallback(
+        {"question": "找出去年最常听的专辑；再列其中最常听的三首歌。"},
+        [
+            {
+                "tool_name": "analysis_charts",
+                "data": {
+                    "entity": "album",
+                    "metric": "plays",
+                    "rows": [{"album_name": "Album A", "artist_name": "Artist A"}],
+                },
+            },
+            {
+                "tool_name": "entity_stats",
+                "data": {
+                    "track_breakdown": [
+                        {"track_name": "Track 1"},
+                        {"track_name": "Track 2"},
+                        {"track_name": "Track 3"},
+                    ]
+                },
+            },
+        ],
+    )
+
+    assert answer is not None
+    assert "Track 1、Track 2、Track 3" in answer
+
+
+def test_semantic_fallback_renders_scoped_artist_albums_and_tracks() -> None:
+    answer = ai_agent_v2_service._semantic_evidence_fallback(
+        {"question": "我最喜欢的 Ariana Grande 的专辑和歌曲是什么？"},
+        [
+            {
+                "tool_name": "entity_stats",
+                "data": {
+                    "top_albums": [{"album_name": "eternal sunshine"}],
+                    "top_tracks": [{"track_name": "Santa Tell Me"}],
+                },
+            }
+        ],
+    )
+
+    assert answer is not None
+    assert "eternal sunshine" in answer
+    assert "Santa Tell Me" in answer
+    assert "播放次数排行" in answer
+
+
+def test_ranking_table_fallback_supports_late_night_tracks() -> None:
+    answer = ai_agent_v2_service._ranking_table_fallback(
+        {"question": "整理成表格。"},
+        [
+            {
+                "tool_name": "listening_hours",
+                "data": {
+                    "view": "late_night_tracks",
+                    "items": {
+                        "tracks": [
+                            {
+                                "rank": 1,
+                                "track_name": "vampire",
+                                "artist_name": "Olivia Rodrigo",
+                                "plays": 33,
+                            }
+                        ]
+                    },
+                },
+            }
+        ],
+    )
+
+    assert answer is not None
+    assert "| 排名 | 歌曲 | 艺人 | 播放次数 |" in answer
+    assert "| 1 | vampire | Olivia Rodrigo | 33 |" in answer
+
+
+def test_comparison_fallback_labels_recent_half_year() -> None:
+    answer = ai_agent_v2_service._comparison_fallback(
+        [
+            {
+                "tool_name": "compare_entities",
+                "params": {"period": "last_6_months"},
+                "data": {
+                    "includes_personal_billboard": False,
+                    "winner_by_cumulative_plays": "GUTS",
+                    "winner_by_total_hours": "GUTS",
+                    "winner_by_intensity": "GUTS",
+                    "entities": [
+                        {"name": "GUTS", "found": True, "plays": 10, "hours": 1},
+                        {"name": "SOUR", "found": True, "plays": 5, "hours": 0.5},
+                    ],
+                },
+            }
+        ]
+    )
+
+    assert answer is not None
+    assert "最近半年" in answer
+
+
+def test_optional_boundary_followup_question_does_not_pause_task() -> None:
+    answer = (
+        "当前只读工具存在关键缺口，因此无法给出事实结论。"
+        + "现有结果只能说明时段分布，不能形成语言与时段交叉。" * 12
+        + "需要我按其中哪个方向继续？"
+    )
+
+    assert (
+        ai_agent_v2_service._clarification_needed(
+            answer,
+            [{"tool_name": "listening_hours", "data": {"view": "heatmap"}}],
+        )
+        is False
+    )
+
+
+def test_optional_retry_offer_does_not_pause_completed_evidence_answer() -> None:
+    answer = (
+        "工具已经返回去年夏天的汇总，但具体曲风名称在压缩结果中被截断。"
+        + "目前仍能确认总时长、曲风覆盖数和语言覆盖率。" * 12
+        + "如果你希望拿到具体曲风排名，可以缩小范围后再查。需要我重试吗？"
+    )
+
+    assert (
+        ai_agent_v2_service._clarification_needed(
+            answer,
+            [{"tool_name": "taste_profile", "data": {"genre_count": 13}}],
+        )
+        is False
+    )
+
+    alternate_offer = answer.rsplit("需要我重试吗？", 1)[0] + "需要我按哪种方式重试？"
+    assert (
+        ai_agent_v2_service._clarification_needed(
+            alternate_offer,
+            [{"tool_name": "taste_profile", "data": {"genre_count": 13}}],
+        )
+        is False
+    )
+
+    capability_offer = (
+        "当前只读工具不能跨全部专辑形成个人榜单与收听时长的交叉筛选。" * 8
+        + "这里列出的候选只是名称匹配，不能回答原问题。需要我按哪种方式继续？"
+    )
+    assert (
+        ai_agent_v2_service._clarification_needed(
+            capability_offer,
+            [
+                {
+                    "tool_name": "resolve_entity",
+                    "data": {"candidates": [{"name": "A"}, {"name": "B"}]},
+                }
+            ],
+        )
+        is False
+    )
+
+
+def test_album_billboard_duration_cross_filter_has_precise_capability_boundary() -> None:
+    answer = ai_agent_v2_service._semantic_evidence_fallback(
+        {"question": "找出榜单成绩高但实际收听时长不高的专辑。"},
+        [],
+    )
+
+    assert answer is not None
+    assert "个人 Billboard" in answer
+    assert "收听时长" in answer
+    assert "指定专辑" in answer
+
+
+def test_reference_metric_switch_fallback_uses_current_duration_evidence_only() -> None:
+    answer = ai_agent_v2_service._semantic_evidence_fallback(
+        {"question": "刚才第一位艺人，按时长再看一次。"},
+        [
+            {
+                "tool_name": "analysis_charts",
+                "data": {
+                    "entity": "artist",
+                    "metric": "hours",
+                    "rows": [{"rank": 1, "artist_name": "Taylor Swift", "hours": 176.93}],
+                },
+            }
+        ],
+    )
+
+    assert answer == "按当前同一时间范围的收听时长排行，第一名艺人是Taylor Swift。"
+    assert "两种口径" not in answer
 
 
 def test_v2_grounded_fallback_has_non_numeric_last_resort(monkeypatch) -> None:
@@ -608,6 +919,34 @@ def test_agent_v2_safety_boundary_does_not_call_model(tmp_path, monkeypatch):
     assert result["tool_call_count"] == 0
     assert model.calls == 0
     assert "只读" in result["answer"]
+
+
+def test_agent_v2_rejects_unsupported_apple_music_scope_without_tools(tmp_path, monkeypatch):
+    db_path = tmp_path / "agent-apple-music-safety.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+    model = FakeModel()
+
+    AgentRuntime(model=model, registry=AgentToolRegistry()).run(
+        "task-v2",
+        {"question": "我在 Apple Music 上最常听什么？", "session_id": 1},
+    )
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    result = json.loads(task["result_json"])
+    conn.close()
+
+    assert task["status"] == "done"
+    assert result["stop_reason"] == "safety_boundary"
+    assert result["tool_call_count"] == 0
+    assert model.calls == 0
+    assert "Apple Music" in result["answer"]
+    assert "Spotify" in result["answer"]
 
 
 def test_agent_v2_stops_repeated_identical_tool_loop(tmp_path, monkeypatch):
@@ -965,6 +1304,52 @@ def test_compact_observation_bounds_large_rows_without_invalid_json() -> None:
     assert json.loads(json.dumps(observation, ensure_ascii=False)) == observation
 
 
+def test_compact_observation_preserves_nested_taste_bucket_scalars() -> None:
+    observation = compact_observation(
+        {
+            "status": "ok",
+            "data": {
+                "taste_profile": {
+                    "primary_styles": {
+                        "buckets": [
+                            {
+                                "key": "pop",
+                                "label": "Pop",
+                                "hours": 88.5,
+                                "share_pct": 42.1,
+                            }
+                        ]
+                    }
+                }
+            },
+        }
+    )
+
+    bucket = observation["data"]["taste_profile"]["primary_styles"]["buckets"][0]
+    assert bucket == {
+        "key": "pop",
+        "label": "Pop",
+        "hours": 88.5,
+        "share_pct": 42.1,
+    }
+
+
+def test_tool_outcome_does_not_recompact_nested_observation() -> None:
+    outcome = ToolOutcome(
+        call_id="call-taste",
+        tool_name="taste_profile",
+        status="ok",
+        params={},
+        params_summary="{}",
+        result_summary="styles=1",
+        source_range="2025-06-01..2025-08-31",
+        data={"taste_profile": {"primary_styles": {"buckets": [{"label": "Pop", "hours": 88.5}]}}},
+    )
+
+    bucket = outcome.model_payload()["data"]["taste_profile"]["primary_styles"]["buckets"][0]
+    assert bucket == {"label": "Pop", "hours": 88.5}
+
+
 def test_agent_executes_two_independent_readonly_tools_in_parallel_with_stable_order(
     tmp_path,
     monkeypatch,
@@ -1072,6 +1457,70 @@ def test_agent_executes_two_independent_readonly_tools_in_parallel_with_stable_o
     ]
 
 
+def test_v6_chat_cancellation_during_retry_prevents_second_provider_dispatch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "agent-v6-cancel-retry.db"
+    _create_runtime_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    migrate_080(conn)
+    migrate_081(conn)
+    migrate_082(conn)
+    conn.execute(
+        """UPDATE ai_task_runs
+           SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
+               status='queued'
+           WHERE task_id='task-v2'"""
+    )
+    conn.commit()
+    conn.close()
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class CancelOnFirstFailure:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            self.calls += 1
+            cancelling = factory()
+            cancelling.execute(
+                """UPDATE ai_task_runs
+                   SET status='cancelled', stage='cancelled', state_version=state_version+1
+                   WHERE task_id='task-v2'"""
+            )
+            cancelling.commit()
+            cancelling.close()
+            raise ProviderNetworkError("fake", "retryable failure after cancellation")
+
+    model = CancelOnFirstFailure()
+    AgentRuntime(model=model, registry=_chart_registry(), max_steps=4).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？", "session_id": 1},
+    )
+
+    conn = factory()
+    task = conn.execute("SELECT status FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    dispatches = conn.execute(
+        "SELECT status FROM ai_model_dispatch_attempts WHERE task_id='task-v2'"
+    ).fetchall()
+    usage = conn.execute(
+        "SELECT model_call_count, usage_unknown_count FROM ai_runtime_budget_usage "
+        "WHERE task_id='task-v2'"
+    ).fetchone()
+    conn.close()
+
+    assert task["status"] == "cancelled"
+    assert model.calls == 1
+    assert len(dispatches) == 1
+    assert usage["model_call_count"] == 1
+    assert usage["usage_unknown_count"] == 1
+
+
 def test_agent_consumes_session_inbox_before_next_model_step(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "agent-inbox.db"
     _create_runtime_db(db_path)
@@ -1122,6 +1571,83 @@ def test_agent_consumes_session_inbox_before_next_model_step(tmp_path, monkeypat
     assert public_payload["state"]["time_range"]["period"] == "custom"
     assert "active_question" not in public_payload["state"]
     assert "pending_requirements" not in public_payload["state"]
+
+
+def test_agent_persists_clarification_as_awaiting_input(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "agent-clarification.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class ClarificationModel(FakeModel):
+        def complete(self, messages, tools, *, thinking):
+            self.calls += 1
+            if self.calls == 1:
+                return LLMCompletion(
+                    tool_calls=[
+                        LLMToolCall(
+                            call_id="clarify-source",
+                            name="analysis_charts",
+                            arguments={"entity": "artist", "metric": "plays"},
+                        )
+                    ],
+                    finish_reason="tool_calls",
+                )
+            return LLMCompletion(content="请确认，你指的是 Artist A 吗？", finish_reason="stop")
+
+    AgentRuntime(model=ClarificationModel(), registry=_chart_registry(), max_steps=4).run(
+        "task-v2",
+        {"question": "继续分析那个艺人", "session_id": 1},
+    )
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, stage, message, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    event_types = [
+        row[0]
+        for row in conn.execute(
+            "SELECT event_type FROM ai_agent_turn_events ORDER BY sequence"
+        ).fetchall()
+    ]
+    conn.close()
+
+    assert task["status"] == "awaiting_input"
+    assert task["stage"] == "awaiting_input"
+    assert task["message"] == "请确认，你指的是 Artist A 吗？"
+    assert json.loads(task["result_json"])["runtime_contract"] == "v6"
+    assert "clarification_requested" in event_types
+    assert "turn_ended" not in event_types
+
+
+def test_agent_preflight_clarifies_missing_same_name_album_before_model(
+    tmp_path, monkeypatch
+) -> None:
+    db_path = tmp_path / "agent-preflight-clarification.db"
+    _create_runtime_db(db_path)
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class UnexpectedModel(FakeModel):
+        def complete(self, messages, tools, *, thinking):
+            raise AssertionError("preflight clarification must not call the model")
+
+    AgentRuntime(model=UnexpectedModel(), registry=_chart_registry(), max_steps=4).run(
+        "task-v2",
+        {"question": "我更常听哪一个同名专辑？"},
+    )
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    conn.close()
+    result = json.loads(task["result_json"])
+
+    assert task["status"] == "awaiting_input"
+    assert "专辑名" in result["clarification_question"]
 
 
 def test_steering_invalidates_tool_evidence_from_old_constraints(tmp_path, monkeypatch) -> None:
@@ -1187,6 +1713,10 @@ def test_steering_invalidates_tool_evidence_from_old_constraints(tmp_path, monke
     assert len(result["tools"]) == 1
     assert json.loads(invalidated["payload_json"])["invalidated_result_count"] == 1
     assert json.loads(latest_tool_call["payload_json"])["params"]["period"] == "custom"
+    interpretation = result["temporal_guard"]["time_interpretation"]
+    assert interpretation["label"] == "今年"
+    assert interpretation["effective_start_date"] == "2026-01-01"
+    assert interpretation["effective_end_date"] == "2026-08-30"
 
 
 def _chart_registry() -> AgentToolRegistry:
@@ -1302,3 +1832,614 @@ def test_agent_resume_reuses_completed_tool_result_without_dispatch(tmp_path, mo
     assert task["status"] == "done"
     assert resumed == 1
     assert dispatch_count == 0
+
+
+def test_v6_chat_resume_rejects_provider_change_for_unfinished_model_step(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A process crash must resume the original logical request, not skip it."""
+
+    db_path = tmp_path / "agent-v6-unfinished-model-step.db"
+    _create_runtime_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    migrate_080(conn)
+    migrate_081(conn)
+    migrate_082(conn)
+    conn.execute(
+        """UPDATE ai_task_runs
+           SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
+               status='running'
+           WHERE task_id='task-v2'"""
+    )
+    conn.commit()
+    conn.close()
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class SimulatedProcessTermination(BaseException):
+        pass
+
+    class InterruptedModel:
+        provider_id = "original:model"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            self.calls += 1
+            raise SimulatedProcessTermination("worker terminated after dispatch")
+
+    interrupted = InterruptedModel()
+    with pytest.raises(SimulatedProcessTermination):
+        AgentRuntime(model=interrupted, registry=_chart_registry(), max_steps=4).run(
+            "task-v2",
+            {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        )
+
+    class ChangedModel:
+        provider_id = "changed:model"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            self.calls += 1
+            raise AssertionError("changed provider must not receive the frozen request")
+
+    changed = ChangedModel()
+    AgentRuntime(model=changed, registry=_chart_registry(), max_steps=4).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        resume=True,
+    )
+
+    conn = factory()
+    task = conn.execute("SELECT status, error FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    requests = conn.execute(
+        """SELECT call_id FROM ai_runtime_events
+           WHERE task_id='task-v2' AND event_type='model_request_started'
+           ORDER BY sequence"""
+    ).fetchall()
+    dispatches = conn.execute(
+        """SELECT call_id, provider_id FROM ai_model_dispatch_attempts
+           WHERE task_id='task-v2' ORDER BY attempt_index"""
+    ).fetchall()
+    conn.close()
+
+    assert interrupted.calls == 1
+    assert changed.calls == 0
+    assert task["status"] == "error"
+    assert "provider/model" in str(task["error"])
+    assert [row["call_id"] for row in requests] == [requests[0]["call_id"]]
+    assert len(dispatches) == 1
+    assert dispatches[0]["provider_id"] == "original:model"
+
+
+def test_v6_chat_resume_retries_same_logical_call_with_original_provider(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "agent-v6-original-call-retry.db"
+    _create_runtime_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    migrate_080(conn)
+    migrate_081(conn)
+    migrate_082(conn)
+    conn.execute(
+        """UPDATE ai_task_runs
+           SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
+               status='running'
+           WHERE task_id='task-v2'"""
+    )
+    conn.commit()
+    conn.close()
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class SimulatedProcessTermination(BaseException):
+        pass
+
+    class InterruptedModel:
+        provider_id = "stable:model"
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            raise SimulatedProcessTermination("terminated with dispatch outcome unknown")
+
+    with pytest.raises(SimulatedProcessTermination):
+        AgentRuntime(model=InterruptedModel(), registry=_chart_registry(), max_steps=3).run(
+            "task-v2",
+            {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        )
+
+    class ResumedModel:
+        provider_id = "stable:model"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del tools, thinking
+            self.calls += 1
+            if self.calls == 1:
+                assert not any(item.get("role") == "tool" for item in messages)
+                return LLMCompletion(
+                    tool_calls=[
+                        LLMToolCall(
+                            call_id="stable-tool-call",
+                            name="analysis_charts",
+                            arguments={"entity": "artist", "metric": "plays"},
+                        )
+                    ]
+                )
+            assert any(item.get("role") == "tool" for item in messages)
+            return LLMCompletion(
+                content=(
+                    "Artist A 是第一名，共 12 次，占 30%。数据范围为 2020-01-01 至 2026-08-30。"
+                )
+            )
+
+    resumed = ResumedModel()
+    AgentRuntime(model=resumed, registry=_chart_registry(), max_steps=3).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        resume=True,
+    )
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    request_rows = conn.execute(
+        """SELECT call_id, COUNT(*) AS count FROM ai_runtime_events
+           WHERE task_id='task-v2' AND event_type='model_request_started'
+           GROUP BY call_id ORDER BY call_id"""
+    ).fetchall()
+    dispatch_rows = conn.execute(
+        """SELECT call_id, attempt_index, provider_id FROM ai_model_dispatch_attempts
+           WHERE task_id='task-v2' ORDER BY call_id, attempt_index"""
+    ).fetchall()
+    usage = conn.execute(
+        """SELECT step_count, model_call_count, usage_unknown_count
+           FROM ai_runtime_budget_usage WHERE task_id='task-v2'"""
+    ).fetchone()
+    conn.close()
+
+    result = json.loads(task["result_json"])
+    assert task["status"] == "done"
+    assert result["steps"] == 2
+    assert resumed.calls == 2
+    assert [row["count"] for row in request_rows] == [1, 1]
+    first_call_id = request_rows[0]["call_id"]
+    first_dispatches = [row for row in dispatch_rows if row["call_id"] == first_call_id]
+    assert [row["attempt_index"] for row in first_dispatches] == [1, 2]
+    assert {row["provider_id"] for row in first_dispatches} == {"stable:model"}
+    assert usage["step_count"] == 2
+    assert usage["model_call_count"] == 3
+    assert usage["usage_unknown_count"] >= 1
+
+
+@pytest.mark.parametrize("mismatch", ["tool_schema", "parameters"])
+def test_v6_chat_resume_rejects_incompatible_frozen_request_contract(
+    tmp_path,
+    monkeypatch,
+    mismatch,
+) -> None:
+    db_path = tmp_path / f"agent-v6-{mismatch}-mismatch.db"
+    _create_runtime_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    migrate_080(conn)
+    migrate_081(conn)
+    migrate_082(conn)
+    conn.execute(
+        """UPDATE ai_task_runs
+           SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
+               status='running'
+           WHERE task_id='task-v2'"""
+    )
+    conn.commit()
+    conn.close()
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class SimulatedProcessTermination(BaseException):
+        pass
+
+    class InterruptedModel:
+        provider_id = "stable:model"
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            raise SimulatedProcessTermination("terminated after request freeze")
+
+    with pytest.raises(SimulatedProcessTermination):
+        AgentRuntime(model=InterruptedModel(), registry=_chart_registry(), max_steps=3).run(
+            "task-v2",
+            {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        )
+
+    registry = _chart_registry()
+    if mismatch == "tool_schema":
+        registry = AgentToolRegistry()
+        registry.register(
+            AgentToolDefinition(
+                name="analysis_charts",
+                description="Changed rankings contract",
+                read_only=True,
+                params_model=ChartParams,
+                handler=_chart_handler,
+            )
+        )
+    else:
+        conn = factory()
+        row = conn.execute(
+            """SELECT event_id, payload_json FROM ai_runtime_events
+               WHERE task_id='task-v2' AND event_type='model_request_started'"""
+        ).fetchone()
+        descriptor = json.loads(row["payload_json"])
+        descriptor["parameters"]["temperature"] = 0.7
+        conn.execute(
+            "UPDATE ai_runtime_events SET payload_json=? WHERE event_id=?",
+            (json.dumps(descriptor, ensure_ascii=False), row["event_id"]),
+        )
+        conn.commit()
+        conn.close()
+
+    class NoDispatchModel:
+        provider_id = "stable:model"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            self.calls += 1
+            raise AssertionError("incompatible frozen request must not dispatch")
+
+    model = NoDispatchModel()
+    AgentRuntime(model=model, registry=registry, max_steps=3).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        resume=True,
+    )
+
+    conn = factory()
+    task = conn.execute("SELECT status, error FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    dispatch_count = conn.execute(
+        "SELECT COUNT(*) FROM ai_model_dispatch_attempts WHERE task_id='task-v2'"
+    ).fetchone()[0]
+    conn.close()
+
+    assert model.calls == 0
+    assert task["status"] == "error"
+    assert ("schema" if mismatch == "tool_schema" else "参数") in task["error"]
+    assert dispatch_count == 1
+
+
+def test_v6_chat_resume_defers_new_steering_until_after_frozen_retry(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "agent-v6-deferred-steering.db"
+    _create_runtime_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    migrate_080(conn)
+    migrate_081(conn)
+    migrate_082(conn)
+    conn.execute(
+        """UPDATE ai_task_runs
+           SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
+               status='running'
+           WHERE task_id='task-v2'"""
+    )
+    conn.commit()
+    conn.close()
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class SimulatedProcessTermination(BaseException):
+        pass
+
+    class InterruptedModel:
+        provider_id = "stable:model"
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            raise SimulatedProcessTermination("terminated after frozen dispatch")
+
+    with pytest.raises(SimulatedProcessTermination):
+        AgentRuntime(model=InterruptedModel(), registry=_chart_registry(), max_steps=4).run(
+            "task-v2",
+            {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        )
+    conn = factory()
+    conn.execute(
+        """INSERT INTO ai_agent_session_inbox
+           (task_id, session_id, input_type, content)
+           VALUES ('task-v2', 1, 'steer', '只看今年，不要全部时间')"""
+    )
+    conn.commit()
+    conn.close()
+
+    class SteeringAwareModel:
+        provider_id = "stable:model"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del tools, thinking
+            self.calls += 1
+            has_steering = any("只看今年" in str(item.get("content") or "") for item in messages)
+            if self.calls == 1:
+                assert has_steering is False
+                return LLMCompletion(
+                    tool_calls=[
+                        LLMToolCall(
+                            call_id="original-scope-call",
+                            name="analysis_charts",
+                            arguments={"entity": "artist", "metric": "plays"},
+                        )
+                    ]
+                )
+            if self.calls == 2:
+                assert has_steering is True
+                return LLMCompletion(
+                    tool_calls=[
+                        LLMToolCall(
+                            call_id="steered-scope-call",
+                            name="analysis_charts",
+                            arguments={
+                                "entity": "artist",
+                                "metric": "plays",
+                                "period": "this_year",
+                            },
+                        )
+                    ]
+                )
+            assert has_steering is True
+            return LLMCompletion(
+                content=(
+                    "今年 Artist A 是第一名，共 12 次，占 30%。"
+                    "数据范围为 2020-01-01 至 2026-08-30。"
+                )
+            )
+
+    model = SteeringAwareModel()
+    AgentRuntime(model=model, registry=_chart_registry(), max_steps=4).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        resume=True,
+    )
+
+    conn = factory()
+    task = conn.execute("SELECT status FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    inbox = conn.execute(
+        "SELECT status FROM ai_agent_session_inbox ORDER BY inbox_id DESC LIMIT 1"
+    ).fetchone()
+    consumed_step = conn.execute(
+        """SELECT step_index FROM ai_agent_turn_events
+           WHERE event_type='session_input_consumed' ORDER BY event_id DESC LIMIT 1"""
+    ).fetchone()
+    conn.close()
+
+    assert task["status"] == "done"
+    assert model.calls == 3
+    assert inbox["status"] == "consumed"
+    assert consumed_step["step_index"] == 2
+
+
+def test_v6_chat_resume_replays_committed_response_and_only_missing_tool(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "agent-v6-partial-tools.db"
+    _create_runtime_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    migrate_080(conn)
+    migrate_081(conn)
+    migrate_082(conn)
+    conn.execute(
+        """UPDATE ai_task_runs
+           SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
+               status='running'
+           WHERE task_id='task-v2'"""
+    )
+    conn.commit()
+    conn.close()
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class SimulatedProcessTermination(BaseException):
+        pass
+
+    counts = {"artist": 0, "album": 0}
+
+    def crash_second_tool_once(params: BaseModel) -> AgentToolResult:
+        parsed = ChartParams.model_validate(params)
+        counts[parsed.entity] += 1
+        if parsed.entity == "album" and counts[parsed.entity] == 1:
+            raise SimulatedProcessTermination("terminated during second tool")
+        return _chart_handler(parsed)
+
+    registry = AgentToolRegistry()
+    registry.register(
+        AgentToolDefinition(
+            name="analysis_charts",
+            description="Read rankings",
+            read_only=True,
+            params_model=ChartParams,
+            handler=crash_second_tool_once,
+            supports_parallel=False,
+        )
+    )
+
+    class TwoToolModel:
+        provider_id = "stable:model"
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            return LLMCompletion(
+                tool_calls=[
+                    LLMToolCall(
+                        call_id="artist-call",
+                        name="analysis_charts",
+                        arguments={"entity": "artist", "metric": "plays"},
+                    ),
+                    LLMToolCall(
+                        call_id="album-call",
+                        name="analysis_charts",
+                        arguments={"entity": "album", "metric": "plays"},
+                    ),
+                ]
+            )
+
+    with pytest.raises(SimulatedProcessTermination):
+        AgentRuntime(model=TwoToolModel(), registry=registry, max_steps=3).run(
+            "task-v2",
+            {"question": "比较我的艺人与专辑排行", "session_id": 1},
+        )
+
+    class FinalModel:
+        provider_id = "stable:model"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del tools, thinking
+            self.calls += 1
+            tool_ids = {item.get("tool_call_id") for item in messages if item.get("role") == "tool"}
+            assert tool_ids == {"artist-call", "album-call"}
+            return LLMCompletion(
+                content=(
+                    "艺人与专辑排行均已查询；Artist A 为艺人第一名，共 12 次。"
+                    "数据范围为 2020-01-01 至 2026-08-30。"
+                )
+            )
+
+    final_model = FinalModel()
+    AgentRuntime(model=final_model, registry=registry, max_steps=3).run(
+        "task-v2",
+        {"question": "比较我的艺人与专辑排行", "session_id": 1},
+        resume=True,
+    )
+
+    conn = factory()
+    task = conn.execute("SELECT status FROM ai_task_runs WHERE task_id='task-v2'").fetchone()
+    response_count = conn.execute(
+        """SELECT COUNT(*) FROM ai_runtime_events
+           WHERE task_id='task-v2' AND event_type='model_response_committed'
+             AND call_id LIKE '%:step:1:model'"""
+    ).fetchone()[0]
+    observations = conn.execute(
+        """SELECT call_id, COUNT(*) AS count FROM ai_runtime_events
+           WHERE task_id='task-v2' AND event_type='tool_observation_committed'
+           GROUP BY call_id ORDER BY call_id"""
+    ).fetchall()
+    conn.close()
+
+    assert task["status"] == "done"
+    assert final_model.calls == 1
+    assert counts == {"artist": 1, "album": 2}
+    assert response_count == 1
+    assert {row["call_id"]: row["count"] for row in observations} == {
+        "album-call": 1,
+        "artist-call": 1,
+    }
+
+
+def test_v6_chat_last_step_replays_committed_answer_without_new_provider_call(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "agent-v6-final-step-publish.db"
+    _create_runtime_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    migrate_080(conn)
+    migrate_081(conn)
+    migrate_082(conn)
+    conn.execute(
+        """UPDATE ai_task_runs
+           SET runtime_version='v6', workflow_version='v6', event_schema_version=2,
+               status='running'
+           WHERE task_id='task-v2'"""
+    )
+    conn.commit()
+    conn.close()
+    factory = _connection_factory(db_path)
+    monkeypatch.setattr(ai_agent_v2_service, "get_db", factory)
+    monkeypatch.setattr(ai_agent_service, "get_db", factory)
+
+    class SimulatedProcessTermination(BaseException):
+        pass
+
+    class FinalStepModel(FakeModel):
+        provider_id = "stable:model"
+
+    original_final_payload = ai_agent_v2_service._final_payload
+    final_payload_calls = 0
+
+    def terminate_before_publish(request, tool_results):
+        nonlocal final_payload_calls
+        final_payload_calls += 1
+        if final_payload_calls == 1:
+            raise SimulatedProcessTermination("terminated after final response commit")
+        return original_final_payload(request, tool_results)
+
+    monkeypatch.setattr(ai_agent_v2_service, "_final_payload", terminate_before_publish)
+    initial_model = FinalStepModel()
+    with pytest.raises(SimulatedProcessTermination):
+        AgentRuntime(model=initial_model, registry=_chart_registry(), max_steps=2).run(
+            "task-v2",
+            {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        )
+    assert initial_model.calls == 2
+
+    class NoDispatchModel:
+        provider_id = "stable:model"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def complete(self, messages, tools, *, thinking):
+            del messages, tools, thinking
+            self.calls += 1
+            raise AssertionError("committed final-step response must be replayed")
+
+    resumed_model = NoDispatchModel()
+    AgentRuntime(model=resumed_model, registry=_chart_registry(), max_steps=2).run(
+        "task-v2",
+        {"question": "谁是我听得最多的艺人？", "session_id": 1},
+        resume=True,
+    )
+
+    conn = factory()
+    task = conn.execute(
+        "SELECT status, result_json FROM ai_task_runs WHERE task_id='task-v2'"
+    ).fetchone()
+    usage = conn.execute(
+        """SELECT step_count, model_call_count FROM ai_runtime_budget_usage
+           WHERE task_id='task-v2'"""
+    ).fetchone()
+    conn.close()
+
+    assert task["status"] == "done"
+    assert json.loads(task["result_json"])["steps"] == 2
+    assert resumed_model.calls == 0
+    assert usage["step_count"] == 2
+    assert usage["model_call_count"] == 2

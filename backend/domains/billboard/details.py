@@ -19,6 +19,7 @@ from backend.domains.metadata.album_detail_meta import resolve_album_detail_meta
 from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
 from backend.domains.metadata.track_presentation import resolve_track_presentation
+from backend.domains.playback.track_groups import resolve_track_aggregation_scope
 
 
 def _stable_detail_track_sort(
@@ -146,6 +147,26 @@ def _load_detail_access_stats(
 
 def _effective_play_count(stats: dict) -> int:
     return int((stats.get("summary") or {}).get("total_plays") or 0)
+
+
+def _grouped_track_play_count(
+    track_id: int,
+    merge_level: int,
+    weighted_frame: pd.DataFrame | None,
+    *,
+    fallback: int,
+) -> int:
+    """Count the effective events owned by one L2/L3 song identity."""
+    if weighted_frame is None or not {"track_id", "play_count"} <= set(weighted_frame.columns):
+        return fallback
+    conn = get_db(readonly=True)
+    try:
+        scope = resolve_track_aggregation_scope(conn, track_id, merge_level)
+    finally:
+        conn.close()
+    members = set(scope.member_track_ids)
+    scoped = weighted_frame[weighted_frame["track_id"].isin(members)]
+    return int(scoped["play_count"].sum()) if not scoped.empty else fallback
 
 
 def _load_detail_weighted_frame(
@@ -1309,15 +1330,27 @@ def get_track_history(
     track_hist = track_hist.sort_values("billboard_week")
     ts_row = track_summary[track_summary["track_id"] == track_id]
     info = ts_row.iloc[0].to_dict() if not ts_row.empty else {}
+    track_meta = _get_track_spotify_meta(track_id, merge_level, detail_weighted_frame)
+    version_group = track_meta.get("version_group") if isinstance(track_meta, dict) else None
+    # The chart summary's raw frame is still L1-grained.  A grouped L2/L3
+    # entity must expose the combined logical-event count already calculated
+    # for its version group; ungrouped entities retain the chart summary count.
+    effective_play_count = int(
+        version_group.get("total_plays", info.get("total_plays", 0))
+        if isinstance(version_group, dict)
+        else _grouped_track_play_count(
+            track_id,
+            merge_level,
+            detail_weighted_frame,
+            fallback=int(info.get("total_plays", 0)),
+        )
+    )
 
     tp = power_scores[power_scores["track_id"] == track_id]
     power_score = int(tp.iloc[0]["power_score"]) if not tp.empty else 0
-    power_scores_sorted = power_scores.sort_values("power_score", ascending=False).reset_index(
-        drop=True
-    )
     power_rank = (
-        int(power_scores_sorted[power_scores_sorted["track_id"] == track_id].index[0]) + 1
-        if not tp.empty
+        int(tp.iloc[0]["power_rank"])
+        if not tp.empty and pd.notna(tp.iloc[0].get("power_rank"))
         else None
     )
 
@@ -1338,6 +1371,7 @@ def get_track_history(
     return {
         "found": True,
         "chart_status": "charted",
+        "effective_play_count": effective_play_count,
         "track_id": track_id,
         **_track_identity_fields(int(track_id)),
         "track_name": str(track_hist.iloc[0]["track_name"]),
@@ -1347,7 +1381,7 @@ def get_track_history(
         "cover_url": presentation_fields["cover_url"]
         or (cover_url if pd.notna(cover_url) else None),
         "album_attribution": presentation_fields["album_attribution"],
-        "meta": _get_track_spotify_meta(track_id, merge_level, detail_weighted_frame),
+        "meta": track_meta,
         "summary": {
             "peak_position": int(info.get("peak_position", 0)),
             "weeks_on_chart": int(info.get("weeks_on_chart", 0)),
@@ -1358,7 +1392,11 @@ def get_track_history(
             if pd.notna(info.get("first_peak_week"))
             else None,
             "total_chart_plays": int(info.get("total_chart_plays", 0)),
-            "total_plays": int(info.get("total_plays", 0)),
+            "total_plays": (
+                effective_play_count
+                if year_start is None and year_end is None
+                else int(info.get("total_plays", 0))
+            ),
             "weeks_at_no1": int(info.get("weeks_at_no1", 0)),
             "power_score": power_score,
             "power_rank": power_rank,

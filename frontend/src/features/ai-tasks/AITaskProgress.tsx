@@ -25,6 +25,7 @@ const STAGE_LABELS: Record<string, string> = {
   reviewing_sections: '逐章核对事实证据',
   reviewing_visual_artifact: '检查文风与事实口径',
   agent_recovering: '恢复 Agent 任务',
+  awaiting_input: '等待你的回答',
   selecting_artists: '选择待补全艺人',
   fetching_external_data: '获取外部资料',
   saving_suggestions: '保存 genre 建议',

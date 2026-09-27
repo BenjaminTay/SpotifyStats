@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 79
+LATEST_SCHEMA_VERSION = 82
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4037,6 +4037,164 @@ def migrate_079(conn: sqlite3.Connection):
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_playback_import_runs_publication "
         "ON playback_import_runs(publication_id)"
+    )
+
+
+@migration(80, "ai_agent_v6_runtime_and_report_checkpoints")
+def migrate_080(conn: sqlite3.Connection):
+    """Add V6 task generations, replay facts, and durable report sections."""
+
+    run_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(ai_task_runs)")}
+    for column, declaration in (
+        ("runtime_version", "TEXT NOT NULL DEFAULT 'v5'"),
+        ("workflow_version", "TEXT NOT NULL DEFAULT 'v5'"),
+        ("event_schema_version", "INTEGER NOT NULL DEFAULT 1"),
+        ("generation", "INTEGER NOT NULL DEFAULT 1"),
+        ("lease_generation", "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        if column not in run_columns:
+            conn.execute(f"ALTER TABLE ai_task_runs ADD COLUMN {column} {declaration}")
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS ai_runtime_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            generation INTEGER NOT NULL,
+            sequence INTEGER NOT NULL,
+            schema_version INTEGER NOT NULL DEFAULT 2,
+            event_type TEXT NOT NULL,
+            step_id TEXT,
+            call_id TEXT,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(task_id, generation, sequence)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_runtime_events_replay
+            ON ai_runtime_events(task_id, generation, sequence);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_runtime_events_call_fact
+            ON ai_runtime_events(task_id, generation, event_type, call_id)
+            WHERE call_id IS NOT NULL AND event_type IN (
+                'model_response_committed', 'tool_observation_committed'
+            );
+
+        CREATE TABLE IF NOT EXISTS ai_report_sections (
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            generation INTEGER NOT NULL,
+            section_id TEXT NOT NULL,
+            section_order INTEGER NOT NULL,
+            section_version INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL CHECK(status IN ('pending', 'writing', 'validated', 'failed', 'invalidated')),
+            context_key TEXT NOT NULL,
+            plan_version TEXT NOT NULL,
+            writer_version TEXT NOT NULL,
+            validator_version TEXT NOT NULL,
+            source_kind TEXT NOT NULL DEFAULT 'model' CHECK(source_kind IN ('model', 'deterministic')),
+            section_json TEXT,
+            audit_json TEXT NOT NULL DEFAULT '{}',
+            usage_json TEXT NOT NULL DEFAULT '{}',
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            fallback_reason TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY(task_id, generation, section_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_report_sections_progress
+            ON ai_report_sections(task_id, generation, status, section_order);
+
+        CREATE TABLE IF NOT EXISTS ai_report_artifacts (
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            generation INTEGER NOT NULL,
+            artifact_id TEXT NOT NULL,
+            context_key TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('candidate', 'published', 'rejected')),
+            artifact_json TEXT NOT NULL,
+            publication_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            published_at TEXT,
+            PRIMARY KEY(task_id, generation, artifact_id)
+        );
+        """
+    )
+
+
+@migration(81, "ai_agent_v6_frozen_report_context_and_budget")
+def migrate_081(conn: sqlite3.Connection):
+    """Persist one report generation's immutable inputs and cumulative budget."""
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS ai_report_generation_contexts (
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            generation INTEGER NOT NULL,
+            context_key TEXT NOT NULL,
+            source_key TEXT NOT NULL,
+            contract_version TEXT NOT NULL,
+            plan_version TEXT NOT NULL,
+            prompt_version TEXT NOT NULL,
+            writer_version TEXT NOT NULL,
+            validator_version TEXT NOT NULL,
+            request_json TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            context_json TEXT NOT NULL,
+            precomputed_json TEXT NOT NULL,
+            plan_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY(task_id, generation)
+        );
+
+        CREATE TABLE IF NOT EXISTS ai_runtime_budget_usage (
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            generation INTEGER NOT NULL,
+            step_count INTEGER NOT NULL DEFAULT 0,
+            model_call_count INTEGER NOT NULL DEFAULT 0,
+            tool_call_count INTEGER NOT NULL DEFAULT 0,
+            model_retry_count INTEGER NOT NULL DEFAULT 0,
+            section_retry_count INTEGER NOT NULL DEFAULT 0,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            usage_unknown_count INTEGER NOT NULL DEFAULT 0,
+            active_elapsed_ms INTEGER NOT NULL DEFAULT 0,
+            waiting_input_elapsed_ms INTEGER NOT NULL DEFAULT 0,
+            queued_elapsed_ms INTEGER NOT NULL DEFAULT 0,
+            active_started_at TEXT,
+            waiting_started_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY(task_id, generation)
+        );
+        """
+    )
+
+
+@migration(82, "ai_agent_v6_model_dispatch_attempts")
+def migrate_082(conn: sqlite3.Connection):
+    """Reserve every external model dispatch before network I/O."""
+
+    run_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(ai_task_runs)")}
+    if "state_version" not in run_columns:
+        conn.execute("ALTER TABLE ai_task_runs ADD COLUMN state_version INTEGER NOT NULL DEFAULT 1")
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS ai_model_dispatch_attempts (
+            task_id TEXT NOT NULL REFERENCES ai_task_runs(task_id) ON DELETE CASCADE,
+            generation INTEGER NOT NULL,
+            dispatch_id TEXT NOT NULL,
+            call_id TEXT NOT NULL,
+            attempt_index INTEGER NOT NULL,
+            provider_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'reserved'
+                CHECK(status IN ('reserved', 'failed', 'committed')),
+            error_type TEXT,
+            elapsed_ms INTEGER NOT NULL DEFAULT 0,
+            usage_json TEXT NOT NULL DEFAULT '{}',
+            reserved_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT,
+            PRIMARY KEY(task_id, generation, dispatch_id),
+            UNIQUE(task_id, generation, call_id, attempt_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_model_dispatch_call
+            ON ai_model_dispatch_attempts(task_id, generation, call_id, attempt_index);
+        """
     )
 
 

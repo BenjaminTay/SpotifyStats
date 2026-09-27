@@ -460,8 +460,8 @@ def _context_with_temporal_guarded_recipe(
     interpretation = temporal_guard.get("time_interpretation")
     if not isinstance(interpretation, dict):
         return context
-    start_date = interpretation.get("start_date")
-    end_date = interpretation.get("end_date")
+    start_date = interpretation.get("effective_start_date") or interpretation.get("start_date")
+    end_date = interpretation.get("effective_end_date") or interpretation.get("end_date")
     if not isinstance(start_date, str) or not isinstance(end_date, str):
         return context
     recipe = context.get("evidence_recipe")
@@ -1458,6 +1458,13 @@ def _safety_boundary_answer(request: dict[str, Any]) -> str:
     question = str(request.get("question") or "")
     lowered = question.casefold()
     compact = "".join(lowered.split())
+    if "applemusic" in compact:
+        return (
+            "我无法读取或查询你的 Apple Music 收听记录。当前 SpotifyStats 只分析"
+            "本地导入的 Spotify Extended Streaming History；如果没有另行导入且受支持的"
+            "数据源，就不能把本地 Spotify 排行当作 Apple Music 排行。"
+            "你可以改为问我本地 Spotify 数据里最常听的歌曲、艺人或专辑。"
+        )
     if "sql" in compact:
         return (
             "我不能调用任意 SQL 或直接查询数据库。当前 AI 问答只允许使用后端 "

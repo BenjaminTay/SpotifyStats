@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import sqlite3
+from typing import cast
+
+import pandas as pd
 import pytest
 
 from backend.domains.metadata.artist_genres import ResolvedArtistGenres
 from backend.domains.metadata.genre_display_taxonomy import (
     GENRE_DISPLAY_TAXONOMY_VERSION,
     build_consumer_axis_distribution,
+    build_consumer_taste_profile,
     display_style_keys,
 )
 
@@ -81,3 +86,33 @@ def test_role_never_enters_primary_style_distribution() -> None:
 
     assert [bucket["key"] for bucket in result["buckets"]] == ["unknown"]
     assert GENRE_DISPLAY_TAXONOMY_VERSION == "consumer_v1"
+
+
+def test_taste_profile_prefers_scoped_duration_slices(monkeypatch) -> None:
+    events = pd.DataFrame([{"track_id": 1, "ms_played": 9_999_000}])
+    events.attrs["listening_duration_slices"] = pd.DataFrame(
+        [{"track_id": 2, "ms_played": 120_000}]
+    )
+    captured: dict[str, list[int]] = {}
+
+    def fake_primary_artist_ms(_conn, frame):
+        captured["track_ids"] = frame["track_id"].astype(int).tolist()
+        captured["milliseconds"] = frame["ms_played"].astype(int).tolist()
+        return {}, 120_000
+
+    monkeypatch.setattr(
+        "backend.domains.metadata.genre_display_taxonomy.build_primary_artist_ms",
+        fake_primary_artist_ms,
+    )
+    monkeypatch.setattr(
+        "backend.domains.metadata.genre_display_taxonomy.compute_artist_language_distribution",
+        lambda _conn, _artist_ms, *, excluded_ms: {
+            "eligible_hours": excluded_ms / 3_600_000,
+            "buckets": [],
+        },
+    )
+
+    profile = build_consumer_taste_profile(cast(sqlite3.Connection, object()), events)
+
+    assert captured == {"track_ids": [2], "milliseconds": [120_000]}
+    assert profile["language_dist"]["eligible_hours"] == pytest.approx(1 / 30)

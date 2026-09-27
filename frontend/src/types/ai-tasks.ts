@@ -1,4 +1,4 @@
-export type AiTaskStatus = 'queued' | 'running' | 'cancelling' | 'done' | 'error' | 'cancelled'
+export type AiTaskStatus = 'queued' | 'running' | 'awaiting_input' | 'cancelling' | 'done' | 'error' | 'cancelled'
 
 export type AiTaskJsonPayload = Record<string, unknown> | unknown[]
 
@@ -42,6 +42,8 @@ export interface AiTaskRun {
   error?: string | null
   created_at?: string | null
   updated_at?: string | null
+  generation?: number | null
+  state_version?: number | null
 }
 
 export interface AiTaskEvent {
@@ -71,6 +73,28 @@ export interface AiTaskEventsPayload {
   found: boolean
   events: AiTaskEvent[]
   tool_calls: AiToolCall[]
+}
+
+export interface AiReportSection {
+  task_id: string
+  generation: number
+  section_id: string
+  section_order: number
+  section_version: number
+  status: 'pending' | 'writing' | 'validated' | 'failed' | 'invalidated'
+  source_kind: 'model' | 'deterministic'
+  section?: Record<string, unknown> | null
+  attempt_count: number
+  fallback_reason?: string | null
+  updated_at: string
+  sequence?: number | null
+}
+
+export interface AiReportSectionsPayload {
+  found: boolean
+  generation?: number
+  sequence?: number
+  sections: AiReportSection[]
 }
 
 export interface AiAgentTurnEvent {

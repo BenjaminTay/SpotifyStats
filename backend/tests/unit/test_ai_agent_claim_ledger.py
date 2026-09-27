@@ -186,3 +186,114 @@ def test_community_post_facts_render_named_grounded_fallback() -> None:
     assert content in answer
     assert ledger["unsupported_literals"] == []
     assert ledger["unsupported_semantic_claims"] == []
+
+
+def test_taste_profile_facts_keep_ranked_bucket_names_in_fallback() -> None:
+    facts = build_fact_catalog(
+        [],
+        tool_results=[
+            {
+                "tool_name": "taste_profile",
+                "status": "done",
+                "source_range": "2025-06-01..2025-08-31",
+                "data": {
+                    "taste_profile": {
+                        "primary_styles": {
+                            "label": "主曲风",
+                            "buckets": [
+                                {
+                                    "label": "Pop",
+                                    "hours": 88.5,
+                                    "share_pct": 42.1,
+                                    "artist_count": 12,
+                                }
+                            ],
+                        }
+                    }
+                },
+            }
+        ],
+    )
+
+    by_metric = {item["metric_name"]: item for item in facts}
+    hours = by_metric["taste_profile.primary_styles.buckets.0.hours"]
+    assert hours["label"] == "主曲风「Pop」播放时长"
+    assert hours["entity_name"] == "Pop"
+    assert "Pop" in render_grounded_fallback(facts)
+
+
+def test_grounded_fallback_prefixes_entity_name_for_generic_metrics() -> None:
+    facts = build_fact_catalog(_comparison_cards())
+
+    answer = render_grounded_fallback(facts)
+
+    assert "Olivia Rodrigo 播放次数：889次" in answer
+    assert "Taylor Swift 播放次数：854次" in answer
+
+
+def test_ranking_claim_accepts_matching_rank_across_multiple_windows() -> None:
+    facts = [
+        {
+            "fact_id": "first-window",
+            "metric_name": "top_2_name",
+            "label": "第2名艺人",
+            "value": "Taylor Swift",
+        },
+        {
+            "fact_id": "second-window",
+            "metric_name": "top_1_name",
+            "label": "第1名艺人",
+            "value": "Taylor Swift",
+        },
+    ]
+
+    ledger = build_claim_ledger("第2名艺人：Taylor Swift。", facts)
+
+    assert ledger["unsupported_semantic_claims"] == []
+    assert ledger["semantic_coverage"] == 1.0
+
+
+def test_ranking_claim_maps_each_entity_to_its_clause_rank() -> None:
+    facts = [
+        {
+            "fact_id": "first",
+            "metric_name": "top_1_name",
+            "label": "第1名艺人",
+            "value": "Taylor Swift",
+        },
+        {
+            "fact_id": "second",
+            "metric_name": "top_2_name",
+            "label": "第2名艺人",
+            "value": "Olivia Rodrigo",
+        },
+    ]
+
+    ledger = build_claim_ledger(
+        "Taylor Swift 以 1410 次位居第一，第二名 Olivia Rodrigo 为 1010 次。",
+        facts,
+    )
+
+    assert ledger["unsupported_semantic_claims"] == []
+    assert ledger["semantic_coverage"] == 1.0
+
+
+def test_track_ranking_claim_ignores_embedded_artist_rank() -> None:
+    facts = [
+        {
+            "fact_id": "track-second",
+            "metric_name": "top_2_name",
+            "label": "第2名歌曲",
+            "value": "Chasing Midnight - ROLE MODEL",
+        },
+        {
+            "fact_id": "artist-fourth",
+            "metric_name": "top_4_name",
+            "label": "第4名艺人",
+            "value": "ROLE MODEL",
+        },
+    ]
+
+    ledger = build_claim_ledger("第2名歌曲：Chasing Midnight - ROLE MODEL。", facts)
+
+    assert ledger["unsupported_semantic_claims"] == []

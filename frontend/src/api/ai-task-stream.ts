@@ -1,10 +1,12 @@
-import type { AiTaskEvent, AiTaskRun, AiToolCall } from '@/types/ai-tasks'
+import type { AiReportSection, AiTaskEvent, AiTaskRun, AiToolCall } from '@/types/ai-tasks'
 
 export type AiTaskStreamEvent =
-  | { type: 'stream.connected'; data: { task_id: string } }
+  | { type: 'stream.connected'; data: { task_id: string; cursor?: string } }
+  | { type: 'stream.resync'; data: { task_id: string; reason: string; action: string } }
   | { type: 'task.snapshot'; data: AiTaskRun }
   | { type: 'task.progress'; data: AiTaskEvent }
   | { type: 'task.tool'; data: AiToolCall }
+  | { type: 'task.section'; data: AiReportSection }
   | { type: 'task.answer_delta'; data: { task_id: string; delta: string } }
   | { type: 'task.completed'; data: AiTaskRun }
   | { type: 'stream.error'; data: { code: string; message: string } }

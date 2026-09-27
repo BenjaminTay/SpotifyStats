@@ -61,9 +61,10 @@ def test_user_approved_identity_groups_have_audit_external_ids_search_and_counts
             for artist_id in (canonical_id, alias_id):
                 link = conn.execute(
                     """SELECT external_id, verified FROM artist_identity_external_ids
-                       WHERE artist_id=? AND provider='spotify'""",
-                    (artist_id,),
+                       WHERE artist_id=? AND provider='spotify' AND external_id=?""",
+                    (artist_id, spotify_id),
                 ).fetchone()
+                assert link is not None
                 assert tuple(link) == (spotify_id, 1)
                 raw_name = conn.execute(
                     "SELECT artist_name FROM artists WHERE artist_id=?", (artist_id,)

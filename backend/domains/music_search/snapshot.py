@@ -237,11 +237,7 @@ def get_serving_music_search_snapshot(
     if (
         active is None
         or str(active[1] or "") not in {"ready", "stale"}
-        or str(active[2] or "")
-        not in {
-            MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
-            "music_search_snapshot_v10_all_duration",
-        }
+        or str(active[2] or "") != MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
         or not bool(active[3])
     ):
         return {
@@ -914,6 +910,19 @@ def _shared_chart_lookups(
             week_start_hour=representative.bb_week_start_hour,
             duration_frame=primary_duration,
         )
+        track_pre_agg = weighted
+        album_weighted = weighted
+        if ordinary_uses_aggregates and not primary_events.empty:
+            from backend.core.db import (
+                load_agg_weekly_albums,
+                load_agg_weekly_track_sources,
+                load_agg_weekly_tracks,
+            )
+
+            track_pre_agg = load_agg_weekly_tracks(conn)
+            album_weighted = load_agg_weekly_track_sources(conn)
+            if album_weighted.empty:
+                album_weighted = load_agg_weekly_albums(conn)
         artist_pre_agg: pd.DataFrame | None = None
         if ordinary_uses_aggregates and not artist_events.empty:
             if {"billboard_week", "play_count", "total_ms"} <= set(artist_events.columns):
@@ -935,6 +944,8 @@ def _shared_chart_lookups(
             week_start_hour=representative.bb_week_start_hour,
         )
         weighted = keep_complete_billboard_weeks(weighted, open_week=open_week)
+        track_pre_agg = keep_complete_billboard_weeks(track_pre_agg, open_week=open_week)
+        album_weighted = keep_complete_billboard_weeks(album_weighted, open_week=open_week)
         artist_weighted = keep_complete_billboard_weeks(artist_weighted, open_week=open_week)
         if compact:
             # Interval slicing is complete. Ranking/project joins need these
@@ -962,8 +973,7 @@ def _shared_chart_lookups(
             ]
         if artist_pre_agg is not None:
             artist_pre_agg = artist_weighted
-        album_weighted = weighted
-        if compact:
+        if compact and not ordinary_uses_aggregates:
             from backend.domains.music_search.invocation import compact_album_facts
 
             album_weighted = compact_album_facts(weighted, weekly=True)
@@ -972,7 +982,7 @@ def _shared_chart_lookups(
                 compute_weekly_rankings(
                     weighted,
                     context.bb_top_n,
-                    pre_agg=weighted,
+                    pre_agg=track_pre_agg,
                     merge_level=context.merge_level,
                 )
                 if not weighted.empty
@@ -1001,8 +1011,8 @@ def _shared_chart_lookups(
             data = {
                 "weekly": weekly.to_dict("records"),
                 "track_summary": (
-                    compute_track_summary(weekly, weighted).to_dict("records")
-                    if not weighted.empty
+                    compute_track_summary(weekly, track_pre_agg).to_dict("records")
+                    if not track_pre_agg.empty
                     else []
                 ),
                 "weekly_album": weekly_album.to_dict("records"),

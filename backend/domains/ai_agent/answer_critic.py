@@ -227,6 +227,10 @@ def _has_unnegated_insufficient_confidence(sentence: str) -> bool:
                 break
             if _sentence_has_unnegated_token(sentence, token):
                 extended_context = sentence[max(0, index - 18) : index + len(token)]
+                scoped_context = sentence[max(0, index - 32) : index + len(token) + 16]
+                if any(scope in scoped_context for scope in DIMENSION_SCOPED_STRENGTH_TOKENS):
+                    start = index + len(token)
+                    continue
                 if token == "确定" and any(
                     negation in extended_context for negation in NEGATION_TOKENS
                 ):
@@ -300,6 +304,29 @@ def _global_missing_claim_conflicts_with_found(
     sentence: str,
     evidence_sufficiency: dict[str, Any],
 ) -> bool:
+    # ``compare_entities=found`` means the entities and at least the core
+    # comparison metrics were found.  It does not promise that every optional
+    # dimension (for example intensity or personal Billboard) is present.
+    # Keep an explicitly dimension-scoped limitation from being mistaken for
+    # a claim that the whole comparison is unavailable.
+    if any(
+        token in sentence
+        for token in (
+            "这一维度",
+            "该维度",
+            "这个维度",
+            "强度指标",
+            "近期维度",
+            "榜单维度",
+            "这一个维度",
+            "行为层面",
+            "时段分布",
+            "趋势证据",
+            "趋势",
+            "逐月变化",
+        )
+    ):
+        return False
     if any(token in sentence for token in HARD_MISSING_DATA_TOKENS):
         return True
     if "证据不足" in sentence and evidence_sufficiency.get("sufficient") is not False:
@@ -372,7 +399,10 @@ def _check_insufficient_evidence_contract(
     issues: list[str] = []
     if not _contains_any(answer, LIMITATION_TOKENS):
         issues.append("evidence_sufficiency.sufficient=false，但回答没有说明限制或证据不足。")
-    for sentence in _sentences(answer):
+    confidence_clauses = answer
+    for punctuation in ("。", "；", ";", "\n"):
+        confidence_clauses = confidence_clauses.replace(punctuation, "\n")
+    for sentence in (part.strip() for part in confidence_clauses.splitlines() if part.strip()):
         if _has_unnegated_insufficient_confidence(sentence):
             issues.append("证据不足时回答使用了强确定单一结论。")
             break

@@ -58,5 +58,20 @@ def compact_value(
     return str(value)
 
 
-def compact_json(value: Any) -> str:
-    return json.dumps(compact_value(value), ensure_ascii=False, separators=(",", ":"))
+def compact_json(
+    value: Any,
+    *,
+    max_depth: int = 6,
+    max_list_items: int = 30,
+    max_string_chars: int = 4000,
+) -> str:
+    return json.dumps(
+        compact_value(
+            value,
+            max_depth=max_depth,
+            max_list_items=max_list_items,
+            max_string_chars=max_string_chars,
+        ),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )

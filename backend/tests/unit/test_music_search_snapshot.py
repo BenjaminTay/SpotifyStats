@@ -1366,6 +1366,52 @@ def test_shared_metric_maps_use_qualified_events_and_all_attached_duration(
     assert artist_metrics == {3: (1, 60_000), 4: (0, 10_000)}
 
 
+def test_shared_metric_maps_sum_each_l3_member_event_without_inventing_an_extra_count(
+    monkeypatch,
+) -> None:
+    conn = _conn()
+    context = _context(merge_level=3, dynamic_threshold=True)
+    primary = pd.DataFrame(
+        {
+            "track_id": [1493, 48498],
+            "ms_played": [219_724, 215_640],
+            "_logical_event_id": ["event:1493", "event:48498"],
+        }
+    )
+    duration = pd.DataFrame(
+        {
+            "track_id": [1493, 48498],
+            "ms_played": [219_724, 215_640],
+        }
+    )
+    attach_listening_duration_frame(primary, duration)
+    group_keys = pd.DataFrame(
+        {
+            "track_id": [1493, 48498],
+            "track_agg_id": [1493, 1493],
+        }
+    )
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot.load_track_group_keys",
+        lambda *_args, **_kwargs: group_keys,
+    )
+    monkeypatch.setattr(
+        "backend.domains.music_search.snapshot.compute_album_project_plays",
+        lambda *_args, **_kwargs: pd.DataFrame(
+            columns=["album_project_id", "play_count", "total_ms"]
+        ),
+    )
+
+    maps = _shared_metric_maps(
+        conn,
+        (context,),
+        shared_frames={True: (primary, pd.DataFrame())},
+    )
+
+    track_metrics, _album_metrics, _artist_metrics = maps[(3, True)]
+    assert track_metrics == {1493: (2, 435_364)}
+
+
 def test_context_rows_keep_duration_only_entities() -> None:
     rows = _context_rows(
         _conn(),
@@ -1715,6 +1761,79 @@ def test_shared_chart_frames_match_billboard_source_album_schema(monkeypatch) ->
         for frame in (events, duration):
             assert frame["track_album_id"].tolist() == [10, 20]
             assert frame["album_name"].tolist() == ["Track Album", "Playback Source Album"]
+
+
+def test_shared_chart_uses_valid_ordinary_track_and_album_aggregates(monkeypatch) -> None:
+    from backend.core import db
+    from backend.domains.music_search import snapshot as snapshot_module
+
+    context = _context(merge_level=3, dynamic_threshold=True)
+    primary = pd.DataFrame(
+        {
+            "track_id": [1493],
+            "track_name": ["vampire"],
+            "artist_name": ["Olivia Rodrigo"],
+            "album_name": ["GUTS"],
+            "ms_played": [219_724],
+        }
+    )
+    agg_tracks = pd.DataFrame(
+        {
+            "billboard_week": ["2026-05-29"],
+            "track_id": [1493],
+            "track_name": ["vampire"],
+            "artist_name": ["Olivia Rodrigo"],
+            "album_name": ["GUTS"],
+            "play_count": [4],
+            "total_ms": [659_172],
+        }
+    )
+    agg_sources = agg_tracks.assign(
+        source_album_id=1,
+        ts_date="2026-05-29",
+        ts="2026-05-29",
+    )
+    captured: dict[str, pd.DataFrame] = {}
+
+    monkeypatch.setattr(snapshot_module, "_ordinary_chart_uses_aggregates", lambda *_: True)
+    monkeypatch.setattr(
+        snapshot_module, "_ordinary_album_chart_has_track_fallback", lambda *_: True
+    )
+    monkeypatch.setattr(db, "load_agg_weekly_tracks", lambda _conn: agg_tracks.copy())
+    monkeypatch.setattr(db, "load_agg_weekly_track_sources", lambda _conn: agg_sources.copy())
+    monkeypatch.setattr(db, "load_agg_weekly_albums", lambda _conn: pd.DataFrame())
+    monkeypatch.setattr(
+        snapshot_module,
+        "build_billboard_weighted_frame",
+        lambda frame, **_kwargs: frame.assign(
+            billboard_week="2026-05-29", play_count=1, total_ms=219_724
+        ),
+    )
+    monkeypatch.setattr(snapshot_module, "current_open_billboard_week", lambda **_: None)
+    monkeypatch.setattr(snapshot_module, "keep_complete_billboard_weeks", lambda frame, **_: frame)
+
+    def track_rank(_frame, _top_n, *, pre_agg, **_kwargs):
+        captured["track"] = pre_agg.copy()
+        return pd.DataFrame()
+
+    def album_rank(_frame, _top_n, *, pre_agg, **_kwargs):
+        captured["album"] = pre_agg.copy()
+        return pd.DataFrame()
+
+    monkeypatch.setattr(snapshot_module, "compute_weekly_rankings", track_rank)
+    monkeypatch.setattr(snapshot_module, "compute_album_weekly_rankings", album_rank)
+    monkeypatch.setattr(
+        snapshot_module, "compute_track_summary", lambda *_args, **_kwargs: pd.DataFrame()
+    )
+
+    snapshot_module._shared_chart_lookups(
+        _conn(),
+        (context,),
+        {True: (primary, pd.DataFrame())},
+    )
+
+    assert captured["track"]["play_count"].tolist() == [4]
+    assert captured["album"]["play_count"].tolist() == [4]
 
 
 def test_shared_chart_skips_unloaded_primary_or_artist_family(monkeypatch) -> None:
@@ -2142,6 +2261,43 @@ def test_legacy_ready_snapshot_is_fail_closed_when_builder_version_mismatches() 
         entity_keys=["track:1"],
     )
     assert response.snapshot_status == "stale"
+    assert response.items == {}
+
+
+def test_previous_builder_active_snapshot_cannot_serve_as_lkg() -> None:
+    conn = _conn()
+    migrate_061(conn)
+    conn.execute(
+        """INSERT INTO music_search_snapshot_meta(
+               snapshot_key, filter_fingerprint, source_revision, status,
+               semantic_base_key, merge_level, dynamic_threshold, builder_version
+           ) VALUES ('v11-active', 'v11-active', 'source', 'ready',
+                     'base', 3, 1, 'music_search_snapshot_v11_shared_contract')"""
+    )
+    conn.execute(
+        """INSERT INTO music_search_entity_context(
+               snapshot_key, entity_key, play_events, total_ms
+           ) VALUES ('v11-active', 'track:1493', 381, 81522727)"""
+    )
+    conn.execute(
+        """INSERT OR REPLACE INTO music_search_snapshot_variant_state(
+               merge_level, dynamic_threshold, active_snapshot_key,
+               active_filter_fingerprint, target_filter_fingerprint,
+               maintenance_status
+           ) VALUES (3, 1, 'v11-active', 'v11-active', 'v12-target', 'building')"""
+    )
+    conn.commit()
+
+    response = lookup_music_search_context(
+        conn,
+        filter_fingerprint="v12-target",
+        entity_keys=["track:1493"],
+        merge_level=3,
+        dynamic_threshold=True,
+    )
+
+    assert response.snapshot_status == "unavailable"
+    assert response.statistics_freshness == "unavailable"
     assert response.items == {}
 
 

@@ -268,6 +268,7 @@ class ModelStepAttempt:
     retryable: bool = False
     error_type: str = ""
     elapsed_ms: int = 0
+    dispatch_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -275,6 +276,13 @@ class ModelStepResult:
     completion: LLMCompletion
     provider_id: str
     attempts: tuple[ModelStepAttempt, ...]
+
+    @property
+    def successful_dispatch_id(self) -> str | None:
+        for attempt in reversed(self.attempts):
+            if attempt.outcome == "success":
+                return attempt.dispatch_id
+        return None
 
 
 class ModelStepExhaustedError(RuntimeError):
@@ -304,6 +312,8 @@ class ModelStepExecutor:
         tools: list[dict[str, Any]],
         thinking: bool,
         budget: DynamicAgentBudget,
+        before_dispatch: Callable[[str, int, int], str | None] | None = None,
+        on_dispatch_failure: Callable[[str, BaseException, int], None] | None = None,
     ) -> ModelStepResult:
         # Freeze the observed state once. Each provider receives an isolated
         # copy, while completed tool observations/evidence remain unchanged.
@@ -325,6 +335,14 @@ class ModelStepExecutor:
                         )
                     )
                     break
+                # This callback is deliberately outside the provider try/except.
+                # Cancellation, lease loss, and durable budget exhaustion are
+                # control flow and must never fall through to retry/fallback.
+                dispatch_id = (
+                    before_dispatch(candidate.provider_id, provider_attempt, total_calls + 1)
+                    if before_dispatch is not None
+                    else None
+                )
                 total_calls += 1
                 started_at = self.clock()
                 try:
@@ -336,6 +354,9 @@ class ModelStepExecutor:
                 except Exception as exc:
                     retryable = retryable_model_error(exc)
                     self.circuit_breaker.record_failure(candidate.provider_id)
+                    elapsed_ms = max(0, round((self.clock() - started_at) * 1000))
+                    if dispatch_id is not None and on_dispatch_failure is not None:
+                        on_dispatch_failure(dispatch_id, exc, elapsed_ms)
                     attempts.append(
                         ModelStepAttempt(
                             provider_id=candidate.provider_id,
@@ -343,7 +364,8 @@ class ModelStepExecutor:
                             outcome="failed",
                             retryable=retryable,
                             error_type=exc.__class__.__name__,
-                            elapsed_ms=max(0, round((self.clock() - started_at) * 1000)),
+                            elapsed_ms=elapsed_ms,
+                            dispatch_id=dispatch_id,
                         )
                     )
                     if not retryable:
@@ -356,6 +378,7 @@ class ModelStepExecutor:
                         attempt=provider_attempt,
                         outcome="success",
                         elapsed_ms=max(0, round((self.clock() - started_at) * 1000)),
+                        dispatch_id=dispatch_id,
                     )
                 )
                 return ModelStepResult(

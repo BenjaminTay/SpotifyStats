@@ -9,6 +9,7 @@ seed database or a local development database.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sqlite3
@@ -441,6 +442,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         expected_json={"found": False, "events": [], "tool_calls": []},
     ),
     SmokeCase(
+        "ai_report_sections_missing",
+        "/api/ai/tasks/nonexistent-smoke-task/sections",
+        expected_json={"found": False, "generation": 0, "sequence": 0, "sections": []},
+    ),
+    SmokeCase(
         "ai_agent_trajectory_missing",
         "/api/ai/tasks/nonexistent-smoke-task/trajectory",
         expected_json={"found": False, "events": []},
@@ -632,6 +638,32 @@ def _configure_database_path(value: str | None) -> None:
     db_mod.DB_PATH = str(resolved)
 
 
+def _prepare_required_analysis_snapshots() -> None:
+    """Build the two exact lifetime publications required by the GET matrix.
+
+    The full-stack storage guard gives this command a fresh derived-cache
+    directory.  Preparing these snapshots synchronously keeps the smoke result
+    independent of whether startup maintenance wins a race with the first GET.
+    """
+
+    from backend.core.db import get_db
+    from backend.services.analysis_snapshot_service import rebuild, request_context
+
+    for family in ("analysis_stats", "analysis_records"):
+        conn = get_db(readonly=True)
+        try:
+            params, key, revision, _ = request_context(conn, family, {"period": "lifetime"})
+        finally:
+            conn.close()
+        started_at = time.perf_counter()
+        rebuild(family, json.dumps(params, sort_keys=True), key, revision)
+        print(
+            f"PREPARE {family} lifetime "
+            f"duration_ms={(time.perf_counter() - started_at) * 1000:.1f}",
+            flush=True,
+        )
+
+
 def main() -> int:
     args = _parse_args()
     _configure_database_path(args.db_path)
@@ -639,6 +671,7 @@ def main() -> int:
 
     from backend.main import app
 
+    _prepare_required_analysis_snapshots()
     with TestClient(app) as client:
         results = run_cases(client, progress=True)
     coverage = get_openapi_get_coverage(app)

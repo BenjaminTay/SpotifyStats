@@ -149,6 +149,56 @@ def test_current_candidates_use_current_active_generation_without_snapshot() -> 
     assert result.total == 1
 
 
+def test_indexed_candidates_publish_no_cover_without_metadata() -> None:
+    conn = _indexed_conn()
+
+    result = search_music_candidates(
+        conn,
+        query="card",
+        kinds=("track",),
+        eligibility="current",
+    )
+
+    assert result.tracks[0].cover_url is None
+
+
+def test_indexed_candidates_keep_valid_metadata_backed_cover() -> None:
+    conn = _conn()
+    conn.execute("ALTER TABLE artists ADD COLUMN image_path TEXT")
+    conn.execute("ALTER TABLE artists ADD COLUMN image_url TEXT")
+    conn.execute("ALTER TABLE albums ADD COLUMN image_path TEXT")
+    conn.execute("ALTER TABLE albums ADD COLUMN image_url TEXT")
+    conn.execute("UPDATE artists SET image_url='https://example.test/taylor.jpg'")
+    conn.execute("UPDATE albums SET image_path='covers/albums/10.jpg'")
+    migrate_032(conn)
+    migrate_034(conn)
+    migrate_035(conn)
+    migrate_060(conn)
+    rebuild_music_search_index(conn)
+
+    track = search_music_candidates(conn, query="card", kinds=("track",), eligibility="current")
+    artist = search_music_candidates(conn, query="taylor", kinds=("artist",), eligibility="current")
+
+    assert track.tracks[0].cover_url == "/covers/albums/10.jpg"
+    assert artist.artists[0].cover_url == "/covers/artists/1.jpg"
+
+
+def test_indexed_candidates_sanitize_stale_persisted_cover_without_rebuild() -> None:
+    conn = _indexed_conn()
+    generation_id = conn.execute(
+        "SELECT active_generation_id FROM music_search_index_state WHERE state_id=1"
+    ).fetchone()[0]
+    conn.execute(
+        """UPDATE music_search_documents SET cover_url='/covers/albums/10.jpg'
+           WHERE generation_id=? AND entity_key='track:100'""",
+        (generation_id,),
+    )
+
+    result = search_music_candidates(conn, query="card", kinds=("track",), eligibility="current")
+
+    assert result.tracks[0].cover_url is None
+
+
 def test_private_any_local_returns_clickable_candidate_without_context_metrics(
     monkeypatch,
 ) -> None:

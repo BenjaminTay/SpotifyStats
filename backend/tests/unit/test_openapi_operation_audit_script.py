@@ -58,6 +58,8 @@ def test_openapi_operation_audit_records_evidence_for_high_risk_operations():
     assert "test_ai_insights_contract.py" in operations[("POST", "/api/ai-insights/ask")].evidence
     assert operations[("POST", "/api/ai/tasks/report")].category == "targeted_contract"
     assert "test_ai_task_api.py" in operations[("POST", "/api/ai/tasks/report")].evidence
+    assert operations[("POST", "/api/ai/tasks/report/lookup")].category == "targeted_contract"
+    assert "test_ai_task_api.py" in operations[("POST", "/api/ai/tasks/report/lookup")].evidence
     assert operations[("POST", "/api/ai/tasks/chat")].category == "targeted_contract"
     assert "test_ai_agent_task_contract.py" in operations[("POST", "/api/ai/tasks/chat")].evidence
     assert operations[("POST", "/api/ai/tasks/enrichment/artist")].category == ("targeted_contract")
@@ -104,6 +106,12 @@ def test_ai_task_missing_routes_are_safe_get_smoke_cases():
         "found": False,
         "events": [],
         "tool_calls": [],
+    }
+    assert smoke_cases["/api/ai/tasks/nonexistent-smoke-task/sections"].expected_json == {
+        "found": False,
+        "generation": 0,
+        "sequence": 0,
+        "sections": [],
     }
 
 
