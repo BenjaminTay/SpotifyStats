@@ -121,6 +121,11 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         "/api/music-metadata/track-credits/manual-changes",
     ),
     SmokeCase("cover_missing", "/covers/albums/999999999.jpg", expected_statuses=(404,)),
+    SmokeCase(
+        "cover_thumbnail_missing",
+        "/covers/albums/999999999.thumb.webp",
+        expected_statuses=(307, 404),
+    ),
     SmokeCase("analysis_overview", "/api/analysis/overview", DEFAULT_FILTERS),
     SmokeCase("analysis_stats", "/api/analysis/stats", {**DEFAULT_FILTERS, "period": "lifetime"}),
     SmokeCase(

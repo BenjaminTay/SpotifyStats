@@ -1,5 +1,6 @@
 import { Fragment, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
+import { coverThumbnailUrl } from '@/lib/cover-thumbnail'
 import { Crown } from 'lucide-react'
 
 import { ENTITY_COLORS } from '@/features/billboard/versus/versusData'
@@ -101,7 +102,7 @@ export function MobileVersusScoreboard({
                     <th key={`${entity.name}:${index}`} scope="col" className="mobile-versus-matrix-entity" style={entityStyle(index)}>
                       <span className="mobile-versus-matrix-entity-index">对决 {String(index + 1).padStart(2, '0')}</span>
                       <div className="mobile-versus-matrix-entity-main">
-                        {entity.cover_url && <img src={entity.cover_url} alt="" loading="lazy" />}
+                        {entity.cover_url && <img src={coverThumbnailUrl(entity.cover_url)} alt="" loading="lazy" />}
                         <div>
                           {detailLinks[index] ? <Link to={detailLinks[index] ?? '#'} title={title}>{title}</Link> : <strong title={title}>{title}</strong>}
                           {subtitle && <small>{subtitle}</small>}

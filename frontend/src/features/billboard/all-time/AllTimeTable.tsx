@@ -16,6 +16,7 @@ import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import { RankNumber } from '@/components/shared/RankNumber'
 import { billboardDetailLink, primaryArtistName } from '@/lib/navigation'
+import { coverThumbnailUrl } from '@/lib/cover-thumbnail'
 import type {
   AllTimeRow,
   ColumnDef,
@@ -78,7 +79,7 @@ function CoverImg({ url }: { url?: string | null }) {
   if (url && failedUrl !== url) {
     return (
       <img
-        src={url}
+        src={coverThumbnailUrl(url)}
         alt=""
         className="h-10 w-10 shrink-0 rounded-[8px] object-cover"
         onError={() => setFailedUrl(url)}

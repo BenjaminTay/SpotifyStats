@@ -254,13 +254,13 @@ describe("VersionMergeSection unified workspace", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Style 封面" })).toHaveAttribute(
       "src",
-      "/covers/albums/10.jpg",
+      "/covers/albums/10.thumb.webp",
     );
     fireEvent.click(screen.getByRole("button", { name: "查看成员" }));
     expect(await screen.findAllByText(/Taylor Swift · #10[12]/)).toHaveLength(2);
     expect(
       screen.getByRole("img", { name: "Style (Taylor's Version) 封面" }),
-    ).toHaveAttribute("src", "/covers/albums/11.jpg");
+    ).toHaveAttribute("src", "/covers/albums/11.thumb.webp");
 
     fireEvent.click(screen.getByRole("button", { name: "手动创建" }));
     expect(

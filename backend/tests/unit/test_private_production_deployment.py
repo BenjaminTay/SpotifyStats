@@ -156,8 +156,8 @@ def test_public_gateway_keeps_defence_in_depth_rules() -> None:
     assert "include /etc/nginx/includes/showcase-access.conf" in public_nginx
     assert "location = /api/health" in public_nginx
     assert "auth_basic off" in public_nginx
-    assert "proxy_hide_header Cache-Control" in public_nginx
-    assert 'add_header Cache-Control "private, max-age=604800' in public_nginx
+    assert "location /covers/" in public_nginx
+    assert "proxy_hide_header Cache-Control" not in public_nginx
 
     access_entrypoint = (PRODUCTION / "showcase-access-entrypoint.sh").read_text()
     assert 'mode="${SHOWCASE_ACCESS_MODE:-protected}"' in access_entrypoint

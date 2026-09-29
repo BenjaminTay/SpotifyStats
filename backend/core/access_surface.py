@@ -169,6 +169,7 @@ PUBLIC_DISABLED_PREFIXES = (
 PUBLIC_SAFE_GET_TEMPLATES = frozenset(
     {
         "/covers/{cover_type}/{entity_id}.jpg",
+        "/covers/{cover_type}/{entity_id}.thumb.webp",
         "/api/health",
         "/api/runtime/capabilities",
         "/api/settings",

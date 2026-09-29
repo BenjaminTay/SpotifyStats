@@ -101,6 +101,18 @@ Quick Tunnel 只用于临时测试：URL 在隧道重启后可能变化，官方
 后仍可被绕过访问的旧副本。若未来使用可编程清理的正式 CDN，再单独开启共享
 封面缓存。`/api/` 个人统计仍不由 Service Worker 持久化。
 
+列表封面使用持久化的 160px WebP 缩略图，详情仍使用原图。新下载的封面会
+同时生成缩略图；已有封面在首次发布此功能后，于服务器的
+`/opt/spotify-stats` 目录运行一次：
+
+```bash
+docker compose -f compose.yml exec -T backend python scripts/backfill_cover_thumbnails.py
+```
+
+脚本只读取原图并在 `data/covers/thumbnails/` 写入派生文件，不修改 SQLite；
+重复运行会跳过当前版本。补建完成前，缩略图地址会暂时返回原图并使用
+60 秒私有缓存。两种运行面的网关透传后端的缓存头。
+
 ## 首次部署
 
 1. 在服务器创建 `/opt/spotify-stats/{data,backups}`，目录权限设为 `700`。

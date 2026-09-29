@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { coverThumbnailUrl } from '@/lib/cover-thumbnail'
 import type { EntityListItem, VersusEntityData } from '@/types/billboard'
 import { ENTITY_COLORS, MAX_QUEUE_SIZE } from './versusData'
 import { displayName, useDisplayName, useChineseTextVersion } from '@/lib/chinese'
@@ -43,7 +44,7 @@ export function VersusEntityCard({
     >
       {entity.cover_url && (
         <img
-          src={entity.cover_url}
+          src={coverThumbnailUrl(entity.cover_url)}
           alt=""
           className="h-12 w-12 flex-shrink-0 rounded-lg object-cover"
         />

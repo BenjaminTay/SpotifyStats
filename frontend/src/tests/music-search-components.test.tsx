@@ -123,7 +123,7 @@ describe('MusicSearchResults', () => {
     expect(within(trackGroup).getByRole('link', { name: '查看全部 8 个' })).toBeInTheDocument()
     expect(screen.getByText('查看全部 3 个')).toBeInTheDocument()
     expect(within(trackGroup).getByRole('link', { name: /Cruel Summer/ })).toHaveAttribute('href', '/music/tracks/42')
-    expect(within(trackGroup).getByRole('img', { name: 'Cruel Summer 封面' })).toHaveAttribute('src', '/covers/albums/42.jpg')
+    expect(within(trackGroup).getByRole('img', { name: 'Cruel Summer 封面' })).toHaveAttribute('src', '/covers/albums/42.thumb.webp')
     expect(within(trackGroup).getByText('17 次播放')).toBeInTheDocument()
     expect(within(trackGroup).getByText('PK #1')).toBeInTheDocument()
     expect(within(trackGroup).getByText('在榜 12周')).toBeInTheDocument()
@@ -406,6 +406,13 @@ describe('MusicSearchResults', () => {
 })
 
 describe('CoverCell', () => {
+  it('uses the small variant for a local entity cover', () => {
+    render(<CoverCell index={0} coverUrl="/covers/albums/42.jpg" label="Cover" />)
+    expect(screen.getByRole('img', { name: 'Cover 封面' })).toHaveAttribute(
+      'src', '/covers/albums/42.thumb.webp',
+    )
+  })
+
   it('keeps a failed URL on the placeholder across ordinary rerenders', async () => {
     const view = render(<CoverCell index={0} coverUrl="/covers/albums/stale.jpg" label="Stale" />)
     fireEvent.error(screen.getByRole('img', { name: 'Stale 封面' }))

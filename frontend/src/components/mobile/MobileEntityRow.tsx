@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { rankToneClass } from '@/lib/rank-tone'
 import { cn } from '@/lib/utils'
+import { coverThumbnailUrl } from '@/lib/cover-thumbnail'
 
 export type MobileEntityType = 'track' | 'album' | 'artist'
 
@@ -42,7 +43,7 @@ export function MobileEntityArtwork({ type, coverUrl }: { type: MobileEntityType
   return (
     <span className={cn('mobile-entity-artwork', `mobile-entity-artwork-${type}`)}>
       {coverUrl && !failed
-        ? <img src={coverUrl} alt="" loading="lazy" onError={() => setFailed(true)} />
+        ? <img src={coverThumbnailUrl(coverUrl)} alt="" loading="lazy" onError={() => setFailed(true)} />
         : fallback}
     </span>
   )

@@ -553,15 +553,21 @@ def _etag_matches(if_none_match: str, etag: str) -> bool:
     )
 
 
-def _local_cover_response(request: Request, filepath: str) -> Response:
+def _local_cover_response(
+    request: Request,
+    filepath: str,
+    *,
+    media_type: str = "image/jpeg",
+    cache_control: str = _COVER_BROWSER_CACHE_CONTROL,
+) -> Response:
     """Return a local cover with explicit browser caching and 304 support."""
 
     stat_result = os.stat(filepath)
     response = FileResponse(
         filepath,
-        media_type="image/jpeg",
+        media_type=media_type,
         stat_result=stat_result,
-        headers={"Cache-Control": _COVER_BROWSER_CACHE_CONTROL},
+        headers={"Cache-Control": cache_control},
     )
     etag = response.headers["etag"]
     if_none_match = request.headers.get("if-none-match")
@@ -569,7 +575,7 @@ def _local_cover_response(request: Request, filepath: str) -> Response:
         return Response(
             status_code=304,
             headers={
-                "Cache-Control": _COVER_BROWSER_CACHE_CONTROL,
+                "Cache-Control": cache_control,
                 "ETag": etag,
                 "Last-Modified": response.headers["last-modified"],
             },
@@ -727,6 +733,28 @@ def _search_spotify_cover(cover_type: str, entity_id: int) -> str | None:
         return None
 
 
+@app.get("/covers/{cover_type}/{entity_id}.thumb.webp")
+async def get_cover_thumbnail(request: Request, cover_type: str, entity_id: int):
+    """Serve a persisted list thumbnail, falling back to the original cover."""
+    from backend.services.cover_thumbnail_service import thumbnail_is_current, thumbnail_path
+
+    if cover_type not in ("albums", "artists"):
+        raise HTTPException(status_code=404)
+
+    original = os.path.join(_covers_dir(), cover_type, f"{entity_id}.jpg")
+    thumbnail = thumbnail_path(_covers_dir(), cover_type, entity_id)
+    if os.path.isfile(original):
+        if thumbnail_is_current(original, thumbnail):
+            return _local_cover_response(request, str(thumbnail), media_type="image/webp")
+        # Backfill can run after release without broken images or long-lived
+        # full-size responses cached under the thumbnail URL.
+        return _local_cover_response(request, original, cache_control="private, max-age=60")
+    return RedirectResponse(
+        url=f"/covers/{cover_type}/{entity_id}.jpg",
+        headers={"Cache-Control": "private, max-age=60"},
+    )
+
+
 @app.get("/covers/{cover_type}/{entity_id}.jpg")
 async def get_cover(request: Request, cover_type: str, entity_id: int):
     """封面图片服务，四级回退链：
@@ -774,7 +802,7 @@ async def get_cover(request: Request, cover_type: str, entity_id: int):
                 target_revision=source_hash,
             )
             get_job_queue().enqueue_if_not_pending(job)
-        return RedirectResponse(url=cdn_url)
+        return RedirectResponse(url=cdn_url, headers={"Cache-Control": "private, max-age=60"})
 
     # ④ 无数据
     raise HTTPException(status_code=404)

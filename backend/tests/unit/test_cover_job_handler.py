@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from io import BytesIO
 
 import pytest
+from PIL import Image
 
 from backend.core.job_queue import Job
 
@@ -125,6 +127,31 @@ def test_cover_handler_publishes_file_and_ready_state_with_matching_source(cover
     conn.close()
     assert album == ("covers/albums/1.jpg",)
     assert state == (_source_hash(provider_url), _source_hash(provider_url), "ready", None)
+
+
+def test_cover_handler_also_publishes_list_thumbnail(cover_db, monkeypatch):
+    from backend.jobs.handlers import handle_cover_download
+
+    provider_url = "https://cdn.example/cover.jpg"
+    _insert_album_state(cover_db, image_url=provider_url)
+    image = BytesIO()
+    Image.new("RGB", (640, 640), "purple").save(image, format="JPEG")
+    _stub_http(monkeypatch, body=image.getvalue())
+
+    handle_cover_download(
+        Job.create(
+            "cover_download",
+            "albums",
+            "1",
+            cdn_url=provider_url,
+            source_url_hash=_source_hash(provider_url),
+        )
+    )
+
+    thumbnail = cover_db.parent / "covers" / "thumbnails" / "albums" / "1.webp"
+    with Image.open(thumbnail) as result:
+        assert result.format == "WEBP"
+        assert result.size == (160, 160)
 
 
 def test_stale_cover_job_cannot_overwrite_newer_target(cover_db, monkeypatch):

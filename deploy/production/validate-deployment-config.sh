@@ -47,8 +47,11 @@ grep -q 'include /etc/nginx/includes/showcase-access.conf' \
   "$DEPLOY_DIR/public-nginx.conf.template"
 grep -q 'location = /api/health' "$DEPLOY_DIR/public-nginx.conf.template"
 grep -q 'auth_basic off' "$DEPLOY_DIR/public-nginx.conf.template"
-grep -q 'add_header Cache-Control "private, max-age=604800' \
-  "$DEPLOY_DIR/public-nginx.conf.template"
+grep -q 'location /covers/' "$DEPLOY_DIR/public-nginx.conf.template"
+if grep -q 'proxy_hide_header Cache-Control' "$DEPLOY_DIR/public-nginx.conf.template"; then
+  echo "Public covers must forward backend private cache headers." >&2
+  exit 1
+fi
 grep -q './secrets/showcase.htpasswd:/etc/nginx/auth/showcase.htpasswd:ro' \
   "$COMPOSE_FILE"
 grep -q './showcase-access-entrypoint.sh:/docker-entrypoint.d/15-showcase-access.sh:ro' \

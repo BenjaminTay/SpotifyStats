@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
+import { coverThumbnailUrl } from '@/lib/cover-thumbnail'
 import { useQueries } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
@@ -216,7 +217,7 @@ export function VersusScoreboardSection({
                     style={{ color: ENTITY_COLORS[i % ENTITY_COLORS.length] }}
                   >
                     {e.cover_url && (
-                      <img src={e.cover_url} alt="" className="h-10 w-10 mx-auto rounded-lg object-cover mb-1.5" />
+                      <img src={coverThumbnailUrl(e.cover_url)} alt="" className="h-10 w-10 mx-auto rounded-lg object-cover mb-1.5" />
                     )}
                     {detailLinks[i] ? (
                       <Link

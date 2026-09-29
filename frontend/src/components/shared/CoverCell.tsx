@@ -1,4 +1,5 @@
 import { memo, useState, useEffect } from 'react'
+import { coverThumbnailUrl } from '@/lib/cover-thumbnail'
 
 const COVER_COLORS = [
   'oklch(0.563 0.18 28.2)',
@@ -30,7 +31,7 @@ function CoverCellInner({
     if (coverUrl && !imgError) {
       return (
         <img
-          src={coverUrl}
+          src={coverThumbnailUrl(coverUrl)}
           alt={coverAlt}
           className={`${className} rounded-[8px] object-cover`}
           onError={() => setImgError(true)}
@@ -49,7 +50,7 @@ function CoverCellInner({
   if (coverUrl && !imgError) {
     return (
       <img
-        src={coverUrl}
+        src={coverThumbnailUrl(coverUrl)}
         alt={coverAlt}
         className={`${className} rounded-[8px] object-cover`}
         onError={() => setImgError(true)}

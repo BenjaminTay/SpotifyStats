@@ -12,6 +12,7 @@ import {
 } from '@/components/mobile/MobileRecordTable'
 import { mobileRecordTitle } from '@/components/mobile/mobileRecordUtils'
 import { cn } from '@/lib/utils'
+import { coverThumbnailUrl } from '@/lib/cover-thumbnail'
 import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { billboardDetailLink } from '@/lib/navigation'
 import { useViewportMode } from '@/hooks/useViewportMode'
@@ -42,14 +43,14 @@ export function CoverImg({ url, size = 'md' }: { url?: string | null; size?: 'sm
   const className = isSmall
     ? 'h-5 w-5 shrink-0 rounded-[4px] object-cover'
     : 'h-10 w-10 shrink-0 rounded-[8px] object-cover'
-  if (url && failedUrl !== url) return <img src={url} alt="" className={className} onError={() => setFailedUrl(url)} loading="lazy" />
+  if (url && failedUrl !== url) return <img src={coverThumbnailUrl(url)} alt="" className={className} onError={() => setFailedUrl(url)} loading="lazy" />
   return <div className={cn(className, 'flex items-center justify-center bg-muted', isSmall ? 'text-[9px]' : 'text-base')}>🎵</div>
 }
 
 export function ArtistCoverImg({ url, size }: { url?: string | null; size?: 'sm' | 'md' }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const cls = size === 'sm' ? 'h-10 w-10' : 'h-14 w-14'
-  if (url && failedUrl !== url) return <img src={url} alt="" className={cn(cls, 'shrink-0 rounded-full object-cover')} onError={() => setFailedUrl(url)} loading="lazy" />
+  if (url && failedUrl !== url) return <img src={coverThumbnailUrl(url)} alt="" className={cn(cls, 'shrink-0 rounded-full object-cover')} onError={() => setFailedUrl(url)} loading="lazy" />
   return <div className={cn(cls, 'flex shrink-0 items-center justify-center rounded-full bg-muted text-base')}>🎤</div>
 }
 
@@ -153,7 +154,7 @@ export function FeaturedRecord({ label, value, unit, caption, linkTo, coverUrl, 
   const content = (
     <div className={cn('rounded-[12px] border border-border bg-muted/20 p-5', linkTo && 'transition-colors hover:bg-muted/40', isPhone && 'mobile-record-featured')}>
       <div className="flex items-start gap-4">
-        {coverUrl && <img src={coverUrl} alt="" className={cn('h-14 w-14 shrink-0 object-cover', coverRound ? 'rounded-full' : 'rounded-[10px]')} />}
+        {coverUrl && <img src={coverThumbnailUrl(coverUrl)} alt="" className={cn('h-14 w-14 shrink-0 object-cover', coverRound ? 'rounded-full' : 'rounded-[10px]')} />}
         <div className="min-w-0">
           <p className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-[1.2px] text-muted-foreground">{label}</p>
           <p className="font-serif text-[40px] font-bold leading-[1.1] tracking-[-1px] tabular-nums">

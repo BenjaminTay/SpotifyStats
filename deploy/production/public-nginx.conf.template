@@ -117,10 +117,8 @@ server {
         limit_except GET HEAD OPTIONS {
             deny all;
         }
-        proxy_hide_header Cache-Control;
-        # Keep browser reuse independent from shared edge caches. This ensures
-        # switching public back to protected cannot leave an old CDN copy open.
-        add_header Cache-Control "private, max-age=604800, stale-while-revalidate=2592000" always;
+        # Forward backend private cache headers, including the short fallback
+        # lifetime while a thumbnail is awaiting backfill.
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
         proxy_pass http://backend:8000/covers/;

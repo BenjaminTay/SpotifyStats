@@ -71,6 +71,11 @@ def handle_cover_download(job: Job):
             logger.info("Skipping stale cover job: %s/%s", cover_type, entity_id)
             return
         temp_path = None
+        from backend.services.cover_thumbnail_service import generate_downloaded_thumbnail
+
+        generate_downloaded_thumbnail(
+            os.path.dirname(os.path.dirname(filepath)), cover_type, entity_id
+        )
         logger.info("Cover downloaded: %s/%s", cover_type, entity_id)
     except Exception as exc:
         if source_hash and cover_type in {"albums", "artists"}:

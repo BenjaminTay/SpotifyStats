@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { getChartColors } from '@/lib/theme'
 import { billboardDetailLink } from '@/lib/navigation'
+import { coverThumbnailUrl } from '@/lib/cover-thumbnail'
 import { formatNumber } from './numberOnesData'
 
 export function CoverImg({ url }: { url?: string | null }) {
@@ -19,7 +20,7 @@ export function CoverImg({ url }: { url?: string | null }) {
   if (url && !imgError) {
     return (
       <img
-        src={url}
+        src={coverThumbnailUrl(url)}
         alt=""
         className="h-10 w-10 shrink-0 rounded-[8px] object-cover"
         onError={() => setImgError(true)}
