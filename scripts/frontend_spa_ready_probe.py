@@ -8,10 +8,11 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
-from playwright.sync_api import Page, Response, sync_playwright
+if TYPE_CHECKING:
+    from playwright.sync_api import Page, Response
 
 ROUTES: dict[str, dict[str, Any]] = {
     "/": {
@@ -223,6 +224,8 @@ def _visit(
 
 
 def main() -> int:
+    from playwright.sync_api import sync_playwright
+
     args = _parse_args()
     if not _loopback(args.base_url):
         raise ValueError("--base-url must be loopback")
@@ -232,10 +235,7 @@ def main() -> int:
     proven_api: dict[str, dict[str, Any]] = {}
     probe_started = time.perf_counter()
     with sync_playwright() as playwright:
-        launch = {"headless": True}
-        if args.chrome:
-            launch["executable_path"] = args.chrome
-        browser = playwright.chromium.launch(**launch)
+        browser = playwright.chromium.launch(headless=True, executable_path=args.chrome or None)
         context = browser.new_context(viewport={"width": 1280, "height": 900})
         page = context.new_page()
 
