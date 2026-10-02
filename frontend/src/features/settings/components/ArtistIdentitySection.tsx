@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { useState, type ComponentProps } from 'react'
 import { AlertTriangle, Check, Link2, Loader2, Plus, Search, ShieldCheck, UserRound, X } from 'lucide-react'
 
@@ -14,9 +15,9 @@ function Input({ className, ...props }: ComponentProps<'input'>) {
 }
 
 function ArtistAvatar({ candidate, name }: { candidate?: { cover_url: string | null }; name: string }) {
-  const [failed, setFailed] = useState(false)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   useChineseTextVersion()
-  if (!candidate?.cover_url || failed) {
+  if (!candidate?.cover_url || candidate.cover_url === failedUrl) {
     return (
       <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-foreground/10 font-serif text-sm font-bold text-accent-foreground">
         {localizedName(name).trim().slice(0, 1).toUpperCase() || <UserRound className="size-4" />}
@@ -25,10 +26,11 @@ function ArtistAvatar({ candidate, name }: { candidate?: { cover_url: string | n
   }
   return (
     <img
-      src={candidate.cover_url}
+      loading="lazy" decoding="async"
+      src={coverDisplayUrl(candidate.cover_url)}
       alt=""
       className="size-10 shrink-0 rounded-full object-cover"
-      onError={() => setFailed(true)}
+      onError={() => setFailedUrl(candidate.cover_url)}
     />
   )
 }

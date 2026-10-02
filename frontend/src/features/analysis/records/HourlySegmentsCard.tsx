@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useViewportMode } from '@/hooks/useViewportMode'
@@ -55,7 +56,8 @@ function EntityArtwork({ row, entity }: { row: PlaybackRecordRow; entity: Entity
       {entity === 'artist' ? '🎤' : '🎵'}
       {row.cover_url && (
         <img
-          src={row.cover_url}
+          key={row.cover_url}
+          src={coverDisplayUrl(row.cover_url)}
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
           loading="lazy"

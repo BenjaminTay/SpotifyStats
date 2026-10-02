@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { memo, useCallback, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -111,7 +112,8 @@ function PostCardInner({ post }: PostCardProps) {
             onClick={goToDetail}
           >
             <img
-              src={images[0]}
+              decoding="async"
+              src={coverDisplayUrl(images[0], 320)}
               alt=""
               className="w-full h-full object-cover"
               loading="lazy"
@@ -126,7 +128,8 @@ function PostCardInner({ post }: PostCardProps) {
             {images.slice(0, 4).map((url, i) => (
               <div key={i} className="aspect-square overflow-hidden">
                 <img
-                  src={url}
+                  decoding="async"
+                  src={coverDisplayUrl(url, 320)}
                   alt=""
                   className="w-full h-full object-cover"
                   loading="lazy"

@@ -133,6 +133,8 @@ export function SpotifyConnectionSection({
         <div className="mb-5 flex items-center gap-4 rounded-xl border border-border bg-muted/30 p-4">
           {profile.images.length > 0 && (
             <img
+          loading="lazy"
+          decoding="async"
               src={profile.images[0].url}
               alt={profile.display_name}
               className="size-14 rounded-full border-2 border-border"

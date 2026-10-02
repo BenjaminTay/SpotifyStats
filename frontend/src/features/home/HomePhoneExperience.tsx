@@ -15,7 +15,7 @@ function PhoneEntityLeader({ label, metric }: { label: string; metric: HomeEntit
   if (!metric) return null
   return (
     <HomeEntityLink entity={metric.entity} className="home-phone-entity-row">
-      <HomeEntityArtwork entity={metric.entity} />
+      <HomeEntityArtwork artworkSize="small" entity={metric.entity} />
       <span><small>{label}</small><strong>{displayName(metric.entity.name)}</strong><em>{displayName(metric.entity.artist_name ?? '')}</em></span>
       <b>{formatHomeNumber(metric.plays)}<small>次</small></b>
     </HomeEntityLink>
@@ -35,7 +35,7 @@ function PhoneChartChampion({ label, champion }: { label: string; champion: Home
   return (
     <HomeEntityLink entity={champion.entity} className="home-phone-chart-row">
       <span className="home-phone-chart-no">01</span>
-      <HomeEntityArtwork entity={champion.entity} />
+      <HomeEntityArtwork artworkSize="small" entity={champion.entity} />
       <span><small>{label}</small><strong>{displayName(champion.entity.name)}</strong><em>{displayName(champion.entity.artist_name ?? '')}</em></span>
       <b>{phoneMovement(champion)}</b>
     </HomeEntityLink>
@@ -60,7 +60,7 @@ export function HomePhoneExperience({ data }: { data: HomeOverviewResponse }) {
       <section className="home-phone-hero">
         <div className="home-phone-hero-art">
           <div className="home-phone-record" aria-hidden="true" />
-          <HomeEntityArtwork entity={data.headline.entity} eager />
+          <HomeEntityArtwork artworkSize="large" entity={data.headline.entity} eager />
         </div>
         <span>Your listening headline</span>
         <h1>{displayName(data.headline.title)}</h1>
@@ -115,13 +115,13 @@ export function HomePhoneExperience({ data }: { data: HomeOverviewResponse }) {
         <Link to="/yearly-review" className="home-phone-yearly">
           <span>{data.yearly_review.year ?? 'YEAR'}</span>
           <div><small>年度音乐年鉴</small><h3>{displayName(data.yearly_review.headline ?? '打开属于你的年度档案')}</h3><p>{displayName(data.yearly_review.statement ?? '完整八章，重读这一年的音乐生活。')}</p></div>
-          <HomeEntityArtwork entity={data.yearly_review.entity} />
+          <HomeEntityArtwork artworkSize="large" entity={data.yearly_review.entity} />
           <ArrowRight aria-hidden="true" />
         </Link>
         {data.rediscovery && (
           <HomeEntityLink entity={data.rediscovery.entity} className="home-phone-rediscovery">
             <div><Sparkles aria-hidden="true" /><span>从记忆中重逢</span></div>
-            <HomeEntityArtwork entity={data.rediscovery.entity} />
+            <HomeEntityArtwork artworkSize="small" entity={data.rediscovery.entity} />
             <span><strong>{displayName(data.rediscovery.entity.name)}</strong><small>{displayName(data.rediscovery.entity.artist_name ?? '')}</small><em>{data.rediscovery.days_since_last_play} 天未播放</em></span>
             <ArrowRight aria-hidden="true" />
           </HomeEntityLink>

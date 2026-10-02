@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 /** 探索与品味 */
 
 import { Compass } from 'lucide-react'
@@ -28,7 +29,8 @@ function SameNameArtistVersions({ row }: { row: PlaybackRecordRow }) {
               {displayName(name).slice(0, 1).toUpperCase()}
               {coverUrl && (
                 <img
-                  src={coverUrl}
+                  key={coverUrl}
+                  src={coverDisplayUrl(coverUrl)}
                   alt=""
                   className="absolute inset-0 h-full w-full object-cover"
                   loading="lazy"

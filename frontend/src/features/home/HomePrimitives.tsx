@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import type { ReactNode } from 'react'
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -35,10 +36,12 @@ export function HomeSectionHeading({
 export function HomeEntityArtwork({
   entity,
   eager = false,
+  artworkSize,
   className,
 }: {
   entity: HomeEntityRef | null
   eager?: boolean
+  artworkSize: 'small' | 'medium' | 'large'
   className?: string
 }) {
   useChineseTextVersion()
@@ -48,7 +51,9 @@ export function HomeEntityArtwork({
       <span aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
       {entity?.cover_url && (
         <img
-          src={entity.cover_url}
+          decoding="async"
+          key={entity.cover_url}
+          src={coverDisplayUrl(entity.cover_url, artworkSize === 'small' ? 160 : artworkSize === 'medium' ? 320 : 640)}
           alt=""
           loading={eager ? 'eager' : 'lazy'}
           fetchPriority={eager ? 'high' : 'auto'}

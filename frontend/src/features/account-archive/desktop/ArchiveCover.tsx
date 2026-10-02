@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { Link } from 'react-router-dom'
 import { ArrowDown, Disc3 } from 'lucide-react'
 
@@ -18,7 +19,7 @@ function ArchiveSleeve({ item, index }: { item: ArchiveFeaturedItem; index: numb
   const content = (
     <>
       <span className="archive-sleeve-art">
-        {item.cover_url ? <img src={item.cover_url} alt="" /> : <Disc3 aria-hidden="true" />}
+        {item.cover_url ? <img loading="lazy" decoding="async" src={coverDisplayUrl(item.cover_url, 640)} alt="" /> : <Disc3 aria-hidden="true" />}
       </span>
       <span className="archive-sleeve-caption">
         <small>{ROLE_LABELS[item.role]}</small>

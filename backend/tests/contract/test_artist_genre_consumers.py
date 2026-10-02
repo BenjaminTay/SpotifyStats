@@ -35,8 +35,8 @@ def artist_genre_consumer_conn(tmp_path) -> Generator[sqlite3.Connection, None, 
 
     db_mod._load_plays_cached.cache_clear()
     db_mod._load_plays_for_artists_cached.cache_clear()
-    db_mod.get_track_artist_names_map.cache_clear()
-    db_mod.get_track_all_artists_map.cache_clear()
+    getattr(db_mod.get_track_artist_names_map, "cache_clear")()
+    getattr(db_mod.get_track_all_artists_map, "cache_clear")()
     get_wrapped_full.__globals__["_get_wrapped_full_cached"].cache_clear()
 
     conn = db_mod.get_db(readonly=False)

@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { ArrowDown, Disc3 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -24,7 +25,7 @@ export function PhoneArchiveCover({ overview }: { overview: ArchiveOverview }) {
         {featured.map((item, index) => {
           const content = (
             <>
-              <span>{item.cover_url ? <img src={item.cover_url} alt="" /> : <Disc3 />}</span>
+              <span>{item.cover_url ? <img loading="lazy" decoding="async" src={coverDisplayUrl(item.cover_url, 320)} alt="" /> : <Disc3 />}</span>
               <small>{ROLES[item.role]}</small>
               <strong>{displayName(item.track_name)}</strong>
               <em>{displayName(item.artist_name)}</em>

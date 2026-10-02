@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { useState, type RefObject } from 'react'
 import { ArrowUpRight, Disc3, Mic2, Music2, Share2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -35,11 +36,11 @@ function EntityFallback({ type }: { type: MobileEntityType }) {
 }
 
 function EntityDetailArtwork({ type, coverUrl }: { type: MobileEntityType; coverUrl?: string | null }) {
-  const [failed, setFailed] = useState(false)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   return (
     <div className="mobile-detail-artwork">
-      {coverUrl && !failed
-        ? <img src={coverUrl} alt="" onError={() => setFailed(true)} />
+      {coverUrl && coverUrl !== failedUrl
+        ? <img decoding="async" src={coverDisplayUrl(coverUrl, 320)} alt="" onError={() => setFailedUrl(coverUrl)} />
         : <EntityFallback type={type} />}
     </div>
   )

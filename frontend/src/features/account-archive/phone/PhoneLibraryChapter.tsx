@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Disc3, Search, SlidersHorizontal, X } from 'lucide-react'
@@ -32,7 +33,7 @@ function PhoneLibraryRow({ item, index }: { item: ArchiveLibraryItem; index: num
   const content = (
     <>
       <span className="phone-library-number">{String(index).padStart(3, '0')}</span>
-      <span className="phone-library-art">{detail.cover ? <img src={detail.cover} alt="" loading="lazy" /> : <Disc3 />}</span>
+      <span className="phone-library-art">{detail.cover ? <img decoding="async" src={coverDisplayUrl(detail.cover)} alt="" loading="lazy" /> : <Disc3 />}</span>
       <span className="phone-library-copy"><strong>{displayEntityName}</strong><small>{displaySecondary}</small></span>
       <em>{detail.meta}</em>
     </>

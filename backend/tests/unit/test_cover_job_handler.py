@@ -129,7 +129,7 @@ def test_cover_handler_publishes_file_and_ready_state_with_matching_source(cover
     assert state == (_source_hash(provider_url), _source_hash(provider_url), "ready", None)
 
 
-def test_cover_handler_also_publishes_list_thumbnail(cover_db, monkeypatch):
+def test_cover_handler_also_publishes_all_fixed_variants(cover_db, monkeypatch):
     from backend.jobs.handlers import handle_cover_download
 
     provider_url = "https://cdn.example/cover.jpg"
@@ -152,6 +152,10 @@ def test_cover_handler_also_publishes_list_thumbnail(cover_db, monkeypatch):
     with Image.open(thumbnail) as result:
         assert result.format == "WEBP"
         assert result.size == (160, 160)
+    for size in (320, 640):
+        with Image.open(thumbnail.with_name(f"1.{size}.webp")) as result:
+            assert result.format == "WEBP"
+            assert result.size == (size, size)
 
 
 def test_stale_cover_job_cannot_overwrite_newer_target(cover_db, monkeypatch):

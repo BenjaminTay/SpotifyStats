@@ -170,6 +170,8 @@ PUBLIC_SAFE_GET_TEMPLATES = frozenset(
     {
         "/covers/{cover_type}/{entity_id}.jpg",
         "/covers/{cover_type}/{entity_id}.thumb.webp",
+        "/covers/{cover_type}/{entity_id}.320.webp",
+        "/covers/{cover_type}/{entity_id}.640.webp",
         "/api/health",
         "/api/runtime/capabilities",
         "/api/settings",

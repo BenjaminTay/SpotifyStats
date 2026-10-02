@@ -23,7 +23,7 @@ function MobileEntityShelf({ title, entities }: { title: string; entities: Yearl
             entity={entity}
             className="mobile-yearly-v2-epilogue-entity"
           >
-            <EntityCover entity={entity} size="small" />
+            <EntityCover entity={entity} size="small" artworkSize={640} />
             <span>
               <strong>{displayYearlyText(entity.name)}</strong>
               <small>{entity.artist_name ? displayYearlyText(entity.artist_name) : ENTITY_LABELS[entity.entity_type]}</small>

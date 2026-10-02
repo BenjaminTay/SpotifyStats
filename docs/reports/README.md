@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [全站封面优化实施与验收](2026-10-03-cover-image-optimization-acceptance.md)
+
 - [合作曲排行实施与验收](2026-10-02-collaboration-ranking-acceptance.md)
 
 - [AI Agent V6 本地提交与主分支集成](2026-09-27-ai-agent-v6-local-integration.md)

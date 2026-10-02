@@ -477,7 +477,7 @@ def test_l1_artist_projection_is_not_corrupted_by_numeric_id_collisions(
     conn.close()
 
     monkeypatch.setattr(db_mod, "DB_PATH", str(path))
-    db_mod.get_track_artist_names_map.cache_clear()
+    getattr(db_mod.get_track_artist_names_map, "cache_clear")()
     try:
         projected = db_mod.get_track_artist_names_map()
         assert projected[5] == ["Artist C"]
@@ -486,7 +486,7 @@ def test_l1_artist_projection_is_not_corrupted_by_numeric_id_collisions(
         assert raw[5] == ["Artist B"]
         assert raw[9] == ["Artist C"]
     finally:
-        db_mod.get_track_artist_names_map.cache_clear()
+        getattr(db_mod.get_track_artist_names_map, "cache_clear")()
 
 
 def test_l1_album_projection_is_not_corrupted_by_numeric_id_collisions(

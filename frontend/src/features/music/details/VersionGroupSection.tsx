@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { ChevronDown, ChevronUp, Disc, Layers } from 'lucide-react'
@@ -141,7 +142,8 @@ export function VersionGroupSection({ kind, data, sourceBreakdown, collapsible =
                     <div className="flex items-center gap-2">
                       {row.cover && (
                         <img
-                          src={row.cover}
+                          decoding="async"
+                          src={coverDisplayUrl(row.cover)}
                           alt=""
                           className="w-8 h-8 rounded object-cover flex-shrink-0"
                           loading="lazy"

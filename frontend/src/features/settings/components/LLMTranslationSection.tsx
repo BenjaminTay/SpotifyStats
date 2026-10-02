@@ -76,6 +76,8 @@ function ProviderLogoAvatar({ label, provider }: { label: string; provider: stri
     return (
       <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-border">
         <img
+          loading="lazy"
+          decoding="async"
           src={avatar.logoUrl}
           alt={ariaLabel}
           className="size-7 object-contain"

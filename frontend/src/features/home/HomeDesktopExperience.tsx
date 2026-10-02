@@ -38,9 +38,9 @@ function HeroCollage({ data }: { data: HomeOverviewResponse }) {
     <div className="home-hero-collage" aria-hidden="true">
       <div className="home-hero-orbit home-hero-orbit-one" />
       <div className="home-hero-orbit home-hero-orbit-two" />
-      <HomeEntityArtwork entity={data.headline.entity} eager className="home-hero-cover-main" />
-      {sideEntities[0] && <HomeEntityArtwork entity={sideEntities[0]} className="home-hero-cover-side home-hero-cover-side-one" />}
-      {sideEntities[1] && <HomeEntityArtwork entity={sideEntities[1]} className="home-hero-cover-side home-hero-cover-side-two" />}
+      <HomeEntityArtwork artworkSize="large" entity={data.headline.entity} eager className="home-hero-cover-main" />
+      {sideEntities[0] && <HomeEntityArtwork artworkSize="medium" entity={sideEntities[0]} className="home-hero-cover-side home-hero-cover-side-one" />}
+      {sideEntities[1] && <HomeEntityArtwork artworkSize="medium" entity={sideEntities[1]} className="home-hero-cover-side home-hero-cover-side-two" />}
       <span className="home-hero-collage-caption">Your listening archive</span>
     </div>
   )
@@ -51,7 +51,7 @@ function RecentLeader({ kind, metric }: { kind: string; metric: HomeEntityMetric
   const entity = metric.entity
   return (
     <HomeEntityLink entity={entity} className="home-recent-leader">
-      <HomeEntityArtwork entity={entity} />
+      <HomeEntityArtwork artworkSize="small" entity={entity} />
       <span className="home-recent-leader-copy">
         <small>{kind}</small>
         <strong>{displayName(entity.name)}</strong>
@@ -119,7 +119,7 @@ function ChartChampion({ label, champion }: { label: string; champion: HomeChart
   return (
     <HomeEntityLink entity={champion.entity} className="home-chart-champion">
       <div className="home-chart-rank"><small>{label}</small><strong>01</strong></div>
-      <HomeEntityArtwork entity={champion.entity} />
+      <HomeEntityArtwork artworkSize="large" entity={champion.entity} />
       <div className="home-chart-copy">
         <strong>{displayName(champion.entity.name)}</strong>
         <span>{displayName(champion.entity.artist_name ?? '')}</span>
@@ -168,12 +168,12 @@ function LongMemory({ data }: { data: HomeOverviewResponse }) {
             <small>{displayName(yearly.statement ?? '完整八章，重读这一年的音乐生活。')}</small>
             <strong>翻开年鉴 <ArrowRight aria-hidden="true" /></strong>
           </div>
-          <HomeEntityArtwork entity={yearly.entity} />
+          <HomeEntityArtwork artworkSize="large" entity={yearly.entity} />
         </Link>
         {rediscovery ? (
           <HomeEntityLink entity={rediscovery.entity} className="home-rediscovery">
             <div className="home-rediscovery-label"><Sparkles aria-hidden="true" /> 从记忆中重逢</div>
-            <HomeEntityArtwork entity={rediscovery.entity} />
+            <HomeEntityArtwork artworkSize="large" entity={rediscovery.entity} />
             <div>
               <h3>{displayName(rediscovery.entity.name)}</h3>
               <p>{displayName(rediscovery.entity.artist_name ?? '')}</p>

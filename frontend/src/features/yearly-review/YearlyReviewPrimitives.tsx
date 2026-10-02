@@ -1,3 +1,4 @@
+import { coverDisplayUrl, type CoverArtworkSize } from '@/lib/cover-thumbnail'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -59,7 +60,7 @@ export function EntityLink({
   )
 }
 
-export function EntityCover({ entity, size = 'medium' }: { entity: YearlyEntityRef; size?: 'small' | 'medium' }) {
+export function EntityCover({ entity, size = 'medium', artworkSize }: { entity: YearlyEntityRef; size?: 'small' | 'medium'; artworkSize?: CoverArtworkSize }) {
   useChineseTextVersion()
   const displayEntityName = displayName(entity.name)
   return (
@@ -70,7 +71,9 @@ export function EntityCover({ entity, size = 'medium' }: { entity: YearlyEntityR
       <span aria-hidden="true">{displayEntityName.slice(0, 1).toUpperCase()}</span>
       {entity.cover_url && (
         <img
-          src={entity.cover_url}
+          decoding="async"
+          key={entity.cover_url}
+          src={coverDisplayUrl(entity.cover_url, artworkSize ?? (size === 'small' ? 160 : 320))}
           alt=""
           loading="lazy"
           onError={(event) => { event.currentTarget.hidden = true }}
