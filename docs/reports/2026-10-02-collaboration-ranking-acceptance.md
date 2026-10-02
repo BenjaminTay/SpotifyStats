@@ -85,4 +85,8 @@ S1 副本基线、S2 共用事实、S3 修订/缓存/年度、S4 页面及规则
 
 播放记录专项 25 passed；前端全量 693 passed / 4 skipped；构建、改动文件 ESLint 与 diff 检查通过。使用上轮隔离副本的真实浏览器，在桌面和 390×844 实际点击 Sabrina Carpenter 进入其艺人详情并返回；360/390/430/768/1280 视口横向溢出均为 0，手机嵌套链接 0，console error/warning 0。截图 `output/playwright/collab-artist-links-{desktop,phone}.png` 已视觉检查，浏览器及临时服务已关闭。
 
-用户已授权提交并部署。本地补修验收通过，正式发布及生产交互验证待登记；此前 `fa683d97` 的发布结论不自动代表本次补修已上线。
+实施提交 `3a4e63105d70e2a59653f32defd23d6c7fc63e5b` 已提交、推送并正式发布。[发布流水线](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37033411857)全部 success，含完整质量检查、三种部署模式门禁、镜像构建和正式部署。两个运行面及三容器均为此 SHA，三个容器 healthy；服务器独立执行 `verify.sh` 通过，继续保持 dual / public，schema 85、搜索四变体和语义门禁正常。
+
+发布保护点为服务器 `backups/spotify-stats-pre-release-3a4e63105d70-20261002T164008Z.db`，预检报告 `backups/music-search-preflight-3a4e63105d70-20261002T164008Z.json`。发布前后五张来源表的行数保持 94,760 / 10,026 / 10,496 / 8,970 / 34，发布后 `integrity_check=ok`；没有新增迁移或统计重算需求，合作播放仍为 6,518 / 9.6%。
+
+通过仅本机 loopback SSH 通道，在服务器实际公开只读页面验收 1280×800、390×844：分别实际点击 Sabrina Carpenter，进入对应艺人详情并返回；名字用 ` · ` 分隔，手机完整榜单中《For Good》六位艺人都有独立链接并可换行，页面横向溢出 0、嵌套链接 0、console error/warning 0。生产截图 `output/playwright/collab-artist-production-{desktop,phone,phone-full}.png` 已视觉检查。浏览器会话和临时通道已关闭；未改变外部 HTTPS、入口或访问控制。这是服务器浏览器视口验收，不代表物理手机或外部 HTTPS 验收。
