@@ -342,6 +342,166 @@ def test_key_canonical_defaults_and_variants(isolated):
         c.close()
 
 
+def test_records_contract_bump_does_not_reuse_title_based_publication(isolated, monkeypatch):
+    from backend.services import analysis_records_service as records
+
+    new_contract = records.PLAYBACK_RECORDS_SORT_CONTRACT_VERSION
+    monkeypatch.setattr(
+        records, "PLAYBACK_RECORDS_SORT_CONTRACT_VERSION", "2026-09-01-all-duration-v3"
+    )
+    params, old_key, revision, version = context("analysis_records")
+    store.publish("analysis_records", old_key, revision, version, {"old_title_based": True})
+    monkeypatch.setattr(records, "PLAYBACK_RECORDS_SORT_CONTRACT_VERSION", new_contract)
+    assert context("analysis_records")[1] != old_key
+    conn = db.get_db(readonly=True)
+    try:
+        with pytest.raises(Exception) as raised:
+            service.read_snapshot(conn, "analysis_records", **params)
+        assert raised.value.status_code == 503
+        assert raised.value.detail["error"] == "snapshot_unavailable"
+    finally:
+        conn.close()
+    build("analysis_records")
+    conn = db.get_db(readonly=True)
+    try:
+        assert (
+            service.read_snapshot(conn, "analysis_records", **params)["snapshot"]["freshness"]
+            == "current"
+        )
+    finally:
+        conn.close()
+
+
+def test_records_contract_bump_separates_in_process_lru(isolated, monkeypatch):
+    from backend.services import analysis_records_service as records
+
+    calls = []
+
+    def counted(**kwargs):
+        calls.append(records.PLAYBACK_RECORDS_SORT_CONTRACT_VERSION)
+        return {"rule": calls[-1]}
+
+    monkeypatch.setattr(records, "_get_analysis_records_uncached", counted)
+    new_contract = records.PLAYBACK_RECORDS_SORT_CONTRACT_VERSION
+    conn = db.get_db(readonly=True)
+    try:
+        params = service.default_params(conn, "analysis_records")
+        monkeypatch.setattr(
+            records, "PLAYBACK_RECORDS_SORT_CONTRACT_VERSION", "2026-09-01-all-duration-v3"
+        )
+        old = records.get_analysis_records(conn, **params)
+        assert records.get_analysis_records(conn, **params) == old
+        monkeypatch.setattr(records, "PLAYBACK_RECORDS_SORT_CONTRACT_VERSION", new_contract)
+        new = records.get_analysis_records(conn, **params)
+        assert new["rule"] == new_contract
+        assert new != old
+        assert records.get_analysis_records(conn, **params) == new
+        assert len(calls) == 2
+    finally:
+        conn.close()
+
+
+def test_automatic_and_manual_credit_membership_invalidate_records_publication(isolated):
+    params, key, previous, version = build("analysis_records")
+    with sqlite3.connect(isolated[0]) as writer:
+        track_id = writer.execute("SELECT MIN(track_id) FROM tracks").fetchone()[0]
+        artist_id = writer.execute("SELECT MAX(artist_id) FROM artists").fetchone()[0]
+        canonical_artist_id = writer.execute("SELECT MIN(artist_id) FROM artists").fetchone()[0]
+        spotify_track_id = writer.execute(
+            "SELECT spotify_track_id FROM spotify_track_meta LIMIT 1"
+        ).fetchone()[0]
+        writer.execute(
+            """INSERT INTO spotify_track_credit_sets
+               (spotify_track_id, artist_count, credit_signature, fetched_at)
+               VALUES (?, 1, 'signature', '2026-10-02')""",
+            (spotify_track_id,),
+        )
+    # Provider observations alone are not effective credits.
+    assert context("analysis_records")[2] == previous
+    mutations = [
+        (
+            "INSERT INTO spotify_auto_track_credits VALUES (?, ?, ?, 'revision-artist', 'credit', 0)",
+            (track_id, artist_id, spotify_track_id),
+        ),
+        ("DELETE FROM spotify_auto_track_credits WHERE track_id=?", (track_id,)),
+        (
+            """INSERT INTO track_credit_overrides
+            (track_id,artist_id,action,role,reason,revision)
+            VALUES (?,?,'add','primary','test',1)""",
+            (track_id, artist_id),
+        ),
+        ("UPDATE track_credit_overrides SET action='remove',role=NULL WHERE reason='test'", ()),
+        ("UPDATE track_credit_overrides SET active=0 WHERE reason='test'", ()),
+        (
+            "INSERT INTO artist_identity_aliases(alias_artist_id,canonical_artist_id,reason) VALUES (?,?,'test')",
+            (artist_id, canonical_artist_id),
+        ),
+        ("DELETE FROM artist_identity_aliases WHERE reason='test'", ()),
+    ]
+    for sql, args in mutations:
+        with sqlite3.connect(isolated[0]) as writer:
+            writer.execute(sql, args)
+        current = context("analysis_records")[2]
+        assert current != previous
+        previous = current
+        conn = db.get_db(readonly=True)
+        try:
+            result = service.read_snapshot(conn, "analysis_records", **params)
+            assert result["snapshot"]["freshness"] == "last_known_good"
+            assert result["snapshot"]["target_revision"] == current
+        finally:
+            conn.close()
+    # A controlled rebuild publishes against the final effective facts.
+    build("analysis_records")
+    conn = db.get_db(readonly=True)
+    try:
+        assert (
+            service.read_snapshot(conn, "analysis_records", **params)["snapshot"]["freshness"]
+            == "current"
+        )
+    finally:
+        conn.close()
+
+
+def test_migration_85_repairs_existing_tracking_preserves_source_and_search(isolated, monkeypatch):
+    from backend.core.migrations import migrate_085, run_migrations
+    from backend.domains.music_search.index import music_search_source_revision
+    from backend.services import analysis_snapshot_revision as revision
+
+    new_common = revision.COMMON
+    monkeypatch.setattr(
+        revision, "COMMON", tuple(t for t in new_common if t != "spotify_auto_track_credits")
+    )
+    with sqlite3.connect(isolated[0]) as writer:
+        writer.execute("DELETE FROM schema_migrations WHERE version=85")
+        revision.install_revision_tracking(writer)
+    monkeypatch.setattr(revision, "COMMON", new_common)
+    with sqlite3.connect(isolated[0]) as reader:
+        original_rows = {
+            table: reader.execute(f'SELECT * FROM "{table}"').fetchall()
+            for table in ("plays", "tracks", "track_artists", "spotify_auto_track_credits")
+        }
+        search_revision = music_search_source_revision(reader)
+        with pytest.raises(ValueError, match="private migration or repair"):
+            revision.source_revision(reader, "analysis_records")
+    run_migrations()
+    with sqlite3.connect(isolated[0]) as writer:
+        assert (
+            writer.execute("SELECT name FROM schema_migrations WHERE version=85").fetchone()[0]
+            == "analysis_spotify_automatic_credit_revisions"
+        )
+        assert music_search_source_revision(writer) == search_revision
+        assert {
+            table: writer.execute(f'SELECT * FROM "{table}"').fetchall() for table in original_rows
+        } == original_rows
+        ready_revision = revision.source_revision(writer, "analysis_records")
+        migrate_085(writer)
+        assert not writer.in_transaction
+        assert revision.source_revision(writer, "analysis_records") == ready_revision
+    run_migrations()
+    assert context("analysis_records")[2] == ready_revision
+
+
 @pytest.mark.parametrize("family", service.VERSIONS)
 @pytest.mark.parametrize(
     "overrides",

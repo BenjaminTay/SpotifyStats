@@ -623,11 +623,80 @@ describe('播放记录 UI', () => {
     expect(screen.queryByText('合作曲播放')).not.toBeInTheDocument()
     expect(screen.getByRole('meter', { name: '合作歌曲合作曲播放次数' }).querySelector('[data-value-bar-fill]')).toHaveStyle({ width: '100%' })
     expect((screen.getByRole('meter', { name: '合作歌曲二合作曲播放次数' }).querySelector('[data-value-bar-fill]') as HTMLElement).style.width).toMatch(/^49\./)
-    const featCard = screen.getByText('合作曲排行 · Feat Ranking').parentElement?.parentElement?.parentElement as HTMLElement
+    const featCard = screen.getByText('合作曲排行 · Collaboration Ranking').parentElement?.parentElement?.parentElement as HTMLElement
     fireEvent.click(within(featCard).getByRole('tab', { name: '专辑' }))
     expect(within(featCard).getByRole('meter', { name: '合作专辑合作曲播放次数' })).toBeInTheDocument()
     fireEvent.click(within(featCard).getByRole('tab', { name: '艺人' }))
-    expect(within(featCard).getByRole('meter', { name: '合作艺人合作曲播放次数' })).toBeInTheDocument()
+    expect(within(featCard).getByRole('meter', { name: '合作艺人合作曲参与播放次数' })).toBeInTheDocument()
+  })
+
+  it.each(['desktop', 'phone'] as const)('%s 合作曲展示完整署名，稳定区分同名歌曲，并说明全部参与艺人的次数', (viewport) => {
+    const matchMedia = vi.mocked(window.matchMedia)
+    matchMedia.mockImplementation((query: string) => ({
+      matches: viewport === 'phone' && query.includes('max-width: 767px'),
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    const data: PlaybackDiscoveryRecords = {
+      discovery_day: emptyFamily(),
+      longest_no_repeat: emptyFamily(),
+      album_completionist: emptyFamily(),
+      same_name_diff_artist: [],
+      feat_lover: {
+        track: [
+          row('合作曲播放占比', 50, { rank: 0, unit: '%', secondary_value: 7 }),
+          row('We Found Love', 5, { entity_id: 'track/rihanna', artist_name: 'Rihanna', artist_names: ['Rihanna', 'Calvin Harris', 'A Third Artist With A Complete Long Name'], cover_url: '/covers/albums/rihanna.jpg' }),
+          row('We Found Love', 2, { entity_id: 'track/other', artist_name: 'Other Artist', artist_names: ['Other Artist', 'Collaborator'] }),
+        ],
+        album: [row('Talk That Talk', 5, { artist_name: 'Rihanna' })],
+        artist: [row('Rihanna', 5), row('Calvin Harris', 5)],
+      },
+    }
+    try {
+      render(<MemoryRouter><DiscoverySection data={data} /></MemoryRouter>)
+      const heading = screen.getByRole('heading', { name: viewport === 'phone' ? '合作曲排行' : '合作曲排行 · Collaboration Ranking' })
+      const card = heading.closest(viewport === 'phone' ? '.mobile-record-card' : '.rounded-\\[16px\\]') as HTMLElement
+      expect(within(card).getByText('两位及以上艺人共同署名的歌曲，按有效播放次数排行')).toBeInTheDocument()
+      const trackLinks = within(card).getAllByRole('link', { name: 'We Found Love' })
+      expect(trackLinks.map((link) => link.getAttribute('href'))).toEqual(['/music/tracks/track%2Frihanna', '/music/tracks/track%2Fother'])
+      expect(within(card).getByText('Rihanna、Calvin Harris、A Third Artist With A Complete Long Name')).toHaveClass('whitespace-normal')
+      expect(within(card).getByText('Other Artist、Collaborator')).toBeInTheDocument()
+      const cover = card.querySelector('img')
+      expect(cover).toHaveAttribute('src', '/covers/albums/rihanna.jpg')
+      expect(within(card).getByLabelText('合作曲播放摘要')).toHaveTextContent('50%')
+      fireEvent.click(within(card).getByRole('tab', { name: '艺人' }))
+      expect(within(card).getByText('合作曲参与艺人：统计全部参与者，次数代表其参与的合作曲播放')).toBeInTheDocument()
+      expect(within(card).getByRole('link', { name: 'Rihanna' })).toHaveAttribute('href', '/music/artists/Rihanna')
+      expect(within(card).getByRole('link', { name: 'Calvin Harris' })).toHaveAttribute('href', '/music/artists/Calvin%20Harris')
+      expect(within(card).getAllByText('参与播放次数').length).toBeGreaterThan(0)
+      fireEvent.click(within(card).getByRole('tab', { name: '专辑' }))
+      expect(within(card).getByRole('link', { name: 'Talk That Talk' })).toHaveAttribute('href', '/music/albums/Talk%20That%20Talk?artist=Rihanna')
+      expect(within(card).getByText('两位及以上艺人共同署名的歌曲，按有效播放次数排行')).toBeInTheDocument()
+    } finally {
+      matchMedia.mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList)
+    }
+  })
+
+  it('没有合作曲时保留零占比摘要和空排行，允许切换所有实体', () => {
+    const data: PlaybackDiscoveryRecords = {
+      discovery_day: emptyFamily(),
+      longest_no_repeat: emptyFamily(),
+      album_completionist: emptyFamily(),
+      same_name_diff_artist: [],
+      feat_lover: { ...emptyFamily(), track: [row('合作曲播放占比', 0, { rank: 0, unit: '%', secondary_value: 0 })] },
+    }
+    render(<MemoryRouter><DiscoverySection data={data} /></MemoryRouter>)
+    const card = screen.getByRole('heading', { name: '合作曲排行 · Collaboration Ranking' }).closest('.rounded-\\[16px\\]') as HTMLElement
+    expect(within(card).getByLabelText('合作曲播放摘要')).toHaveTextContent('0%')
+    expect(within(card).getByText('暂无数据')).toBeInTheDocument()
+    fireEvent.click(within(card).getByRole('tab', { name: '艺人' }))
+    expect(within(card).getByText('暂无数据')).toBeInTheDocument()
+    expect(within(card).getByText('合作曲参与艺人：统计全部参与者，次数代表其参与的合作曲播放')).toBeInTheDocument()
   })
 
   it('播放里程碑显示封面、完整数字和“第 N 次播放”文案', () => {

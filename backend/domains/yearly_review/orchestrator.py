@@ -11,6 +11,7 @@ from typing import Any, Callable, TypeVar, cast
 import pandas as pd
 
 from backend.core.db import load_plays
+from backend.domains.playback.counting import assign_logical_event_id
 from backend.domains.playback.logical_timeline import (
     attach_listening_duration_frame,
     get_listening_duration_frame,
@@ -221,6 +222,9 @@ def build_yearly_review_artifact(
             dynamic_threshold=context.dynamic_threshold,
             max_merge_gap_minutes=context.max_merge_gap_minutes,
         )
+    # Establish event keys on the history before annual slices, so a repeated
+    # source play ID keeps the same ordinal in all preloaded entity frames.
+    event_frame = assign_logical_event_id(event_frame)
     annual_duration = listening_duration_slices(event_frame, year=year)
     baseline_year_duration = listening_duration_slices(event_frame, year=year - 1)
     annual_events = with_listening_duration_slices(

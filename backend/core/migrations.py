@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 84
+LATEST_SCHEMA_VERSION = 85
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4257,6 +4257,14 @@ def migrate_084(conn: sqlite3.Connection):
             ON ai_model_dispatch_attempts(task_id, generation, call_id, attempt_index);
         """
     )
+
+
+@migration(85, "analysis_spotify_automatic_credit_revisions")
+def migrate_085(conn: sqlite3.Connection):
+    """Track automatic artist membership without rewriting source music data."""
+    from backend.services.analysis_snapshot_revision import install_revision_tracking
+
+    install_revision_tracking(conn)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

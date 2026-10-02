@@ -3,10 +3,14 @@
 import { Compass } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { displayName, useChineseTextVersion } from '@/lib/chinese'
-import type { PlaybackDiscoveryRecords, PlaybackRecordRow } from '@/types/analysis'
+import type { EntityRecordType, PlaybackDiscoveryRecords, PlaybackRecordRow } from '@/types/analysis'
 import { EntityRecordCard, RecordCard, MiniRankTable, RankNum, TrackCell, ArtistCell, AlbumCell, SectionHeader, ValueBar } from './PlaybackRecordsPrimitives'
 
 interface Props { data: PlaybackDiscoveryRecords }
+
+const collaborationDescription = (entity: EntityRecordType) => entity === 'artist'
+  ? '合作曲参与艺人：统计全部参与者，次数代表其参与的合作曲播放'
+  : '两位及以上艺人共同署名的歌曲，按有效播放次数排行'
 
 function SameNameArtistVersions({ row }: { row: PlaybackRecordRow }) {
   useChineseTextVersion()
@@ -79,7 +83,7 @@ export function DiscoverySection({ data }: Props) {
           { header: '曲目覆盖', width: '110px', align: 'right', mobileRole: 'fact', render: (row) => <span className="font-sans text-[12px] text-muted-foreground">{row.secondary_value}{displayName(row.secondary_unit ?? '')}</span> },
           { header: '总播放', width: '100px', align: 'right', mobileRole: 'fact', render: (row) => <span className="font-sans text-[12px] text-muted-foreground">{row.total_plays ?? '—'} 次</span> },
         ]} />
-      <EntityRecordCard title="合作曲排行 · Feat Ranking" subtitle="按播放次数查看你最常听的合作歌曲、专辑与合作艺人"
+      <EntityRecordCard title="合作曲排行 · Collaboration Ranking" subtitle={collaborationDescription} mobileSubtitle={collaborationDescription}
           headerExtra={featSummaryRow ? (
             <div aria-label="合作曲播放摘要" className="flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-[8px] border border-accent-foreground/20 bg-accent-foreground/[0.05] px-3 py-1.5 font-sans text-[10px] text-muted-foreground">
               <span>播放次数 <strong className="ml-1 font-serif text-[15px] font-semibold tabular-nums text-foreground">{Number(featSummaryRow.secondary_value ?? 0).toLocaleString('zh-CN')}</strong></span>
@@ -94,11 +98,11 @@ export function DiscoverySection({ data }: Props) {
             return [
             { header: '#', width: '48px', align: 'center', render: (_, i) => <RankNum rank={i + 1} /> },
             entity === 'track'
-              ? { header: '歌曲', mobileRole: 'entity' as const, render: (row: PlaybackRecordRow) => <TrackCell trackId={row.entity_id} name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} /> }
+              ? { header: '歌曲', mobileRole: 'entity' as const, render: (row: PlaybackRecordRow) => <TrackCell trackId={row.entity_id} name={row.name} artistName={row.artist_name} artistNames={row.artist_names} coverUrl={row.cover_url} /> }
               : entity === 'album'
                 ? { header: '专辑', mobileRole: 'entity' as const, render: (row: PlaybackRecordRow) => <AlbumCell name={row.name} artistName={row.artist_name} coverUrl={row.cover_url} /> }
-                : { header: '艺人', mobileRole: 'entity' as const, render: (row: PlaybackRecordRow) => <ArtistCell name={row.name} coverUrl={row.cover_url} /> },
-            { header: '播放次数', width: '156px', align: 'right', mobileRole: 'primary' as const, render: (row) => <ValueBar value={row.value} max={max} suffix="次" label={`${displayName(row.name)}合作曲播放次数`} /> },
+                : { header: '合作曲参与艺人', mobileRole: 'entity' as const, render: (row: PlaybackRecordRow) => <ArtistCell name={row.name} coverUrl={row.cover_url} /> },
+            { header: entity === 'artist' ? '参与播放次数' : '播放次数', width: '156px', align: 'right', mobileRole: 'primary' as const, render: (row) => <ValueBar value={row.value} max={max} suffix="次" label={`${displayName(row.name)}合作曲${entity === 'artist' ? '参与' : ''}播放次数`} /> },
             ]
           }} />
       <RecordCard title="同名异曲 · Same Name, Different Artist" subtitle="比较同一个歌名下不同艺人的版本">

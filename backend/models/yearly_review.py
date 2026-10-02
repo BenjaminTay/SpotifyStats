@@ -349,7 +349,7 @@ class YearlyAppendix(BaseModel):
 
 
 class YearlyMethodology(BaseModel):
-    content_version: str = "yearly_review_v2_16"
+    content_version: str = "yearly_review_v2_17"
     relationship_policy_version: str = "relationship_policy_v2"
     highlight_policy_version: str = "highlight_policy_v3"
     season_stage_policy_version: str = "season_stage_v2"
@@ -412,7 +412,7 @@ class YearlyReviewGenerationResponse(BaseModel):
 
 
 class YearlyReviewRecordsPage(BaseModel):
-    content_version: str = "yearly_review_v2_16"
+    content_version: str = "yearly_review_v2_17"
     year: int = Field(ge=2000)
     filter_fingerprint: str
     page: int = Field(ge=1)

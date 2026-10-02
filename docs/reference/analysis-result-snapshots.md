@@ -40,6 +40,8 @@
 | Album Project membership、L3 attribution、可靠发行日期 | 未调用这些投影 | 是 |
 | approved 流派/语言、taxonomy/语言 registry version | 是 | 否 |
 
+migration 85 将 `spotify_auto_track_credits` 的曲目、艺人和角色语义列纳入现有来源修订触发器，覆盖仅改变自动署名、未新增艺人或人工覆盖的写入。它只扩充派生快照的 tracking 合同，不改写原始播放或署名，也不改变音乐搜索的统计来源 fingerprint。Records 的合作曲口径升级同时提升 `PLAYBACK_RECORDS_SORT_CONTRACT_VERSION`；年度共用消费通过年度 content version 失效，GET 继续只读。
+
 旧库首次安装 tracking 时分配新的 epoch，将既有事实纳入新的来源代际；没有 tracking 时公开读取明确 unavailable，私有迁移或启动修复后才可读取。触发器、列合同或计数器缺失时拒绝读取；修复重新分配 epoch，避免遗漏写入后复用旧 exact。身份和项目的管理计数也会因显示名称变化递增，故触发器继续排除这些管理列。封面、显示名称、审计时间/说明、流行度与 follower 等非统计列排除；原始曲目/专辑/艺人名称仍参与。快照内展示字段保留发布时值，单纯更新封面/显示名称不会重建统计事实。流派与语言仅跟踪 approved 行；同值 UPDATE 和事务回滚不改变 revision。
 
 数据身份为文件 device/inode lineage，不是绝对路径，也不声称是账号身份。同文件重启可以命中；Online Backup、替换主库或复制 sidecar 到其他数据库，不允许借用原库 LKG。

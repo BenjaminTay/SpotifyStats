@@ -38,6 +38,7 @@ COMMON = (
     "artist_identity_aliases",
     "track_credit_state",
     "track_credit_overrides",
+    "spotify_auto_track_credits",
     "artist_metadata_attribution_overrides",
 )
 RECORDS = (

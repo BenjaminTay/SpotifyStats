@@ -111,15 +111,26 @@ def _billboard(year: int) -> dict:
 
 def test_orchestrator_loads_play_and_entity_frames_once(monkeypatch) -> None:
     calls = {"plays": 0, "entities": 0, "stats": 0}
-    frame = _frame()
+    frame = _frame().iloc[::-1].reset_index(drop=True)
+    frame["play_id"] = 7
 
     def fake_load(*_args, **_kwargs):
         calls["plays"] += 1
         return frame
 
-    def fake_entities(*_args, **_kwargs):
+    def fake_entities(events, *_args, **_kwargs):
         calls["entities"] += 1
-        return frame.copy(), frame.copy(), frame.copy()
+        assert events["_logical_event_id"].tolist() == ["raw_play_v1:7:0", "raw_play_v1:7:1"]
+        return events.copy(), events.copy(), events.copy()
+
+    def fake_candidates(*_args, **kwargs):
+        annual_keys = kwargs["event_frame"]["_logical_event_id"].tolist()
+        assert annual_keys == ["raw_play_v1:7:1"]
+        assert all(
+            entity["_logical_event_id"].tolist() == annual_keys
+            for entity in kwargs["entity_frames"]
+        )
+        return {"catalog_counts": {"total": 0}, "candidates": []}
 
     def fake_stats(_conn, year, _context, **_kwargs):
         calls["stats"] += 1
@@ -137,7 +148,7 @@ def test_orchestrator_loads_play_and_entity_frames_once(monkeypatch) -> None:
     monkeypatch.setattr(
         orchestrator,
         "build_playback_record_candidates",
-        lambda *_args, **_kwargs: {"catalog_counts": {"total": 0}, "candidates": []},
+        fake_candidates,
     )
     curated_record = YearlyFeaturedRecord(
         record_id="curated-record",

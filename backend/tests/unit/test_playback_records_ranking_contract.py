@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from backend.domains.playback.records_behavior import compute_behavior_records
+from backend.domains.playback.records_collaboration import build_collaboration_facts
 from backend.domains.playback.records_discovery import _feat_lover_artist, _no_repeat_streak
 from backend.domains.playback.records_longevity import _longest_streak_days
 from backend.domains.playback.records_obsession import (
@@ -214,40 +215,24 @@ def test_weekday_rank_is_assigned_after_sorting() -> None:
     assert result.iloc[1]["rank"] == 2
 
 
-def test_featured_artist_ranking_excludes_primary_credit() -> None:
-    frame = _event_rows(
+def test_collaboration_artist_ranking_includes_primary_and_featured_credits() -> None:
+    events = _event_rows(
         [
-            {
-                "play_id": 1,
-                "track_name": "Song (feat. Guest)",
-                "artist_name": "Primary",
-                "role": "primary",
-            },
-            {
-                "play_id": 2,
-                "track_name": "Song (feat. Guest)",
-                "artist_name": "Primary",
-                "role": "primary",
-            },
-            {
-                "play_id": 3,
-                "track_name": "Song (feat. Guest)",
-                "artist_name": "Guest",
-                "role": "featured",
-            },
-            {
-                "play_id": 4,
-                "track_name": "Song (feat. Guest)",
-                "artist_name": "Guest",
-                "role": "featured",
-            },
+            {"play_id": 1, "track_id": 7, "representative_track_id": 7},
+            {"play_id": 2, "track_id": 7, "representative_track_id": 7},
         ]
     )
+    artists = pd.concat(
+        [
+            events.assign(artist_id=1, raw_artist_id=1, artist_name="Primary", role="primary"),
+            events.assign(artist_id=2, raw_artist_id=2, artist_name="Guest", role="featured"),
+        ]
+    )
+    facts = build_collaboration_facts(events, pd.DataFrame(), pd.DataFrame(), artists)
+    result = _feat_lover_artist(facts)
 
-    result = _feat_lover_artist(frame)
-
-    assert result["name"].tolist() == ["Guest"]
-    assert result.iloc[0]["value"] == 2
+    assert result["name"].tolist() == ["Primary", "Guest"]
+    assert result["value"].tolist() == [2, 2]
 
 
 def test_milestones_can_use_full_history_when_display_period_is_scoped() -> None:

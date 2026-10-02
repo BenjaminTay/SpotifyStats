@@ -11,6 +11,7 @@ import pandas as pd
 
 from backend.core.cache import singleflight
 from backend.core.db import get_db, load_plays, load_plays_for_artists
+from backend.domains.playback.counting import assign_logical_event_id
 from backend.domains.playback.logical_timeline import attach_listening_duration_frame
 from backend.domains.playback.records import (
     _add_cover_urls_to_records,
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Bump this whenever record ranking/serialization semantics change so a
 # long-lived process cannot serve a pre-fix payload from its LRU cache.
-PLAYBACK_RECORDS_SORT_CONTRACT_VERSION = "2026-09-01-all-duration-v3"
+PLAYBACK_RECORDS_SORT_CONTRACT_VERSION = "2026-10-02-effective-collaboration-v4"
 
 
 def _load_reliable_album_release_dates(conn: sqlite3.Connection) -> pd.DataFrame:
@@ -76,6 +77,9 @@ def _build_entity_frames(
         album_frame: event_frame with album_project_id/name columns added
         artist_frame: fan-out frame with one row per contributing artist
     """
+    # Establish logical identity before track/album membership expands rows.
+    # Yearly Review also calls this builder directly on its history frame.
+    event_frame = assign_logical_event_id(event_frame)
     duration_frame = records_duration_frame(event_frame, copy=False)
     track_frame = event_frame.copy()
     track_duration = duration_frame.copy()
@@ -86,6 +90,10 @@ def _build_entity_frames(
     tg = pd.DataFrame()
     if (not track_frame.empty or not track_duration.empty) and merge_level >= 2:
         tg = load_track_group_keys(conn, merge_level)
+        # Keep the played version's representative key for artist credits;
+        # group representatives determine only the aggregation identity.
+        if not tg.empty:
+            tg = tg[["track_id", "track_agg_id", "track_agg_name"]]
     if not track_frame.empty and merge_level >= 2:
         if not tg.empty:
             track_frame = track_frame.merge(tg, on="track_id", how="left")
@@ -299,6 +307,10 @@ def _get_analysis_records_uncached(
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
         )
+
+    # Preserve full-history duplicate ordinals before narrowing the time range.
+    # Existing IDs on Yearly Review's prepared frames remain unchanged.
+    event_frame = assign_logical_event_id(event_frame)
 
     # Keep the complete standalone history for lifetime ordinal records before
     # applying the requested display period.  Yearly Review supplies an

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-import re
 import sqlite3
 
 import pandas as pd
 
+from backend.domains.playback.records_collaboration import (
+    aggregate_collaboration,
+    build_collaboration_facts,
+)
 from backend.domains.playback.records_helpers import (
     TOP_RECORD_LIMIT,
     grouped_records_duration,
@@ -188,15 +191,12 @@ def compute_discovery_records(
         if conn
         else pd.DataFrame()
     )
-    records["discovery_feat_lover_track"] = (
-        _feat_lover_track(event_frame) if not event_frame.empty else pd.DataFrame()
+    collaboration = build_collaboration_facts(
+        event_frame, track_frame, album_frame, artist_frame, conn
     )
-    records["discovery_feat_lover_album"] = (
-        _feat_lover_album(album_frame) if not album_frame.empty else pd.DataFrame()
-    )
-    records["discovery_feat_lover_artist"] = (
-        _feat_lover_artist(artist_frame) if not artist_frame.empty else pd.DataFrame()
-    )
+    records["discovery_feat_lover_track"] = _feat_lover_track(collaboration)
+    records["discovery_feat_lover_album"] = _feat_lover_album(collaboration)
+    records["discovery_feat_lover_artist"] = _feat_lover_artist(collaboration)
 
 
 def _no_repeat_streak(frame, group_col, entity_type):
@@ -412,178 +412,75 @@ def _get_album_total_tracks(conn, album_name, artist_name):
         return None
 
 
-def _has_feat_marker(name):
-    """Check if a track name contains feat/collaboration markers.
-
-    Uses regex context matching to distinguish real collaboration markers from
-    ordinary words that happen to appear in song titles:
-
-    - "(feat. X)" / "[feat. X]" / "feat. X" — explicit featured artist
-    - "(with X)" / "[with X]" — parenthesized "with" = collaboration billing
-    - "(vs. X)" / "[vs. X]" / "vs. X" — versus / remix collaboration
-
-    Plain occurrences of "with", "&", "x" in the middle of song titles
-    (e.g. "I'm with You", "Dumb & Poetic", "Taco Truck x VB") are NOT
-    treated as collaboration markers.
-    """
-    if not isinstance(name, str):
-        return False
-
-    # feat. / ft. — explicit collab, with or without parentheses/brackets
-    if re.search(r"(?:^|[(\[\s])(?:feat|ft)\.\s", name, re.IGNORECASE):
-        return True
-
-    # (with X) or [with X] — parenthesized "with" indicates featured artist
-    if re.search(r"[(\[]with\s", name, re.IGNORECASE):
-        return True
-
-    # vs. — remix/collaboration marker
-    if re.search(r"(?:^|[(\[\s])vs\.\s", name, re.IGNORECASE):
-        return True
-
-    return False
-
-
-def _feat_lover_track(event_frame):
-    """合作曲偏好：feat 歌曲播放佔比。"""
-    if event_frame.empty or "track_name" not in event_frame.columns:
+def _feat_lover_track(collaboration):
+    """Collaboration counts and share from the shared logical-event set."""
+    if not collaboration.total_events:
         return pd.DataFrame()
-
-    ef = event_frame.copy(deep=False)
-    event_names = ef["track_name"].unique()
-    ef["_has_feat"] = ef["track_name"].map({name: _has_feat_marker(name) for name in event_names})
-    feat_count = int(ef["_has_feat"].sum())
-    total = len(ef)
-    if total == 0:
-        return pd.DataFrame()
-    feat_pct = round(feat_count / total * 100, 1)
-
-    if feat_count == 0:
-        return pd.DataFrame(
-            [
-                {
-                    "rank": 1,
-                    "name": "合作曲播放佔比",
-                    "value": 0.0,
-                    "unit": "% feat 歌曲",
-                    "secondary_value": 0.0,
-                    "secondary_unit": "次",
-                    "caption": f"在 {total} 次播放中未檢測到合作歌曲",
-                }
-            ]
-        )
-
-    # Top feat tracks
-    feat_tracks = (
-        ef[ef["_has_feat"]]
-        .groupby(["track_name", "artist_name"])
-        .agg(count=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
-    )
-    top_feat = sort_and_limit(
-        feat_tracks,
-        ["count", "total_ms", "track_name", "artist_name"],
-        [False, False, True, True],
-    )
-
-    rows = []
-    for _, row in top_feat.iterrows():
-        rows.append(
+    frame = collaboration.tracks
+    identity = "canonical_track_id" if "canonical_track_id" in frame.columns else "track_id"
+    name = "canonical_track_name" if "canonical_track_name" in frame.columns else "track_name"
+    ranked = aggregate_collaboration(frame, collaboration.track_duration, identity, name, "track")
+    if not ranked.empty:
+        ranked = sort_and_limit(ranked, ["count", "total_ms", "entity_id"], [False, False, True])
+    count = len(collaboration.events)
+    percentage = round(count / collaboration.total_events * 100, 1)
+    summary = pd.DataFrame(
+        [
             {
-                "rank": len(rows) + 1,
-                "name": row["track_name"],
-                "artist_name": row["artist_name"],
-                "value": float(row["count"]),
-                "unit": "次",
-                "total_ms": float(row["total_ms"]),
+                "rank": 0,
+                "name": "合作曲播放占比",
+                "value": float(percentage),
+                "unit": "%",
+                "secondary_value": float(count),
+                "secondary_unit": "次合作曲播放",
+                "caption": f"在 {collaboration.total_events} 次播放中，有 {count} 次是合作歌曲 ({percentage}%)",
             }
-        )
-    # Add summary row
-    rows.insert(
-        0,
-        {
-            "rank": 0,
-            "name": "合作曲播放佔比",
-            "value": float(feat_pct),
-            "unit": "%",
-            "secondary_value": float(feat_count),
-            "secondary_unit": "次合作曲播放",
-            "caption": f"在 {total} 次播放中，有 {feat_count} 次是合作歌曲 ({feat_pct}%)",
-        },
+        ]
     )
-    return pd.DataFrame(rows)
+    return pd.concat([summary, ranked], ignore_index=True)
 
 
-def _feat_lover_artist(artist_frame):
-    """合作曲偏好：最常出現的合作藝人（按播放次數）。"""
-    if artist_frame.empty or "track_name" not in artist_frame.columns:
-        return pd.DataFrame()
-    if "role" not in artist_frame.columns:
-        # A role-less fan-out frame cannot distinguish the primary artist from
-        # the collaborator; fail closed instead of publishing a contaminated
-        # collaborator ranking.
-        return pd.DataFrame()
-
-    # Detect feat tracks by track_name markers and group by artist
-    af = artist_frame.copy(deep=False)
-    event_names = af["track_name"].unique() if "track_name" in af.columns else []
-    af["_has_feat"] = (
-        af["track_name"].map({name: _has_feat_marker(name) for name in event_names})
-        if "track_name" in af.columns
-        else False
+def _feat_lover_artist(collaboration):
+    """All canonical participants, regardless of primary/featured role."""
+    result = aggregate_collaboration(
+        collaboration.artists, collaboration.artist_duration, "artist_id", "artist_name", "artist"
     )
-    feat_plays = af[af["_has_feat"] & af["role"].eq("featured")]
-    if feat_plays.empty:
-        return pd.DataFrame()
-
-    top_artists = (
-        feat_plays.groupby("artist_name")
-        .agg(count=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
+    return (
+        sort_and_limit(result, ["count", "total_ms", "entity_id"], [False, False, True])
+        if not result.empty
+        else result
     )
-    top_artists = sort_and_limit(
-        top_artists,
-        ["count", "total_ms", "artist_name"],
-        [False, False, True],
-    )
-    top_artists["name"] = top_artists["artist_name"]
-    top_artists["value"] = top_artists["count"].astype(float)
-    top_artists["unit"] = "次"
-    top_artists["total_hours"] = (top_artists["total_ms"] / 3_600_000).round(1)
-    return top_artists
 
 
-def _feat_lover_album(album_frame):
-    """合作曲偏好：含合作歌曲播放的专辑排行。"""
-    if album_frame.empty or "track_name" not in album_frame.columns:
-        return pd.DataFrame()
+def _feat_lover_album(collaboration):
+    """Project membership of the same collaboration events."""
+    frame = collaboration.albums
+    identity = "album_project_id" if "album_project_id" in frame.columns else "album_name"
+    name = "album_project_name" if "album_project_name" in frame.columns else "album_name"
 
-    af = album_frame.copy(deep=False)
-    event_names = af["track_name"].unique() if "track_name" in af.columns else []
-    af["_has_feat"] = af["track_name"].map({name: _has_feat_marker(name) for name in event_names})
-    feat_plays = af[af["_has_feat"]]
-    if feat_plays.empty:
-        return pd.DataFrame()
+    # L1 and unresolved project fallbacks carry album titles rather than a
+    # numeric project ID. Keep equal titles by different owners separate,
+    # preferring the concrete album identity when the loader provides it.
+    def album_identity(source):
+        if source.empty or identity not in source.columns:
+            return source
+        source = source.copy()
+        numeric = pd.to_numeric(source[identity], errors="coerce")
+        fallback = source[identity].astype(str) + "::" + source["artist_name"].astype(str)
+        if "track_album_id" in source.columns:
+            fallback = source["track_album_id"].where(source["track_album_id"].notna(), fallback)
+        source["_collaboration_album_id"] = source[identity].where(numeric.notna(), fallback)
+        return source
 
-    album_id_col = "album_project_id" if "album_project_id" in feat_plays.columns else "album_name"
-    album_name_col = (
-        "album_project_name" if "album_project_name" in feat_plays.columns else "album_name"
+    result = aggregate_collaboration(
+        album_identity(frame),
+        album_identity(collaboration.album_duration),
+        "_collaboration_album_id",
+        name,
+        "album",
     )
-    group_cols = list(dict.fromkeys([album_id_col, album_name_col, "artist_name"]))
-    result = (
-        feat_plays.groupby(group_cols, dropna=False)
-        .agg(count=("play_id", "count"), total_ms=("ms_played", "sum"))
-        .reset_index()
+    return (
+        sort_and_limit(result, ["count", "total_ms", "entity_id"], [False, False, True])
+        if not result.empty
+        else result
     )
-    result = sort_and_limit(
-        result,
-        ["count", "total_ms", album_name_col, album_id_col],
-        [False, False, True, True],
-    )
-    result["entity_type"] = "album"
-    result["entity_id"] = result[album_id_col].astype(str)
-    result["name"] = result[album_name_col].astype(str)
-    result["value"] = result["count"].astype(float)
-    result["unit"] = "次"
-    result["total_hours"] = (result["total_ms"] / 3_600_000).round(1)
-    return result

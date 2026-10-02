@@ -102,6 +102,8 @@ L2/L3 发布，但不得伪装成已自动修复。
 5. 通过艺人身份 resolver 投影到 canonical artist；同一曲目上的 alias 重叠只保留一个 canonical credit。
 6. artist fan-out 后，同一有效播放事件对同一 canonical artist 至多贡献一次；增加合作艺人不会增加歌曲本身的播放事件数。
 
+播放记录的合作曲排行消费上述有效署名：至少两位不同 canonical artist 即构成合作曲，三个排行共用实际合作事件；参与艺人榜包括 primary 和 featured。角色不参与合作资格判断，别名重叠不计为多人。原始标题识别继续作为署名补充兜底，排行本身不重复解析标题；人工移除合作艺人后，标题不能把该曲重新纳入。
+
 语言和 genre 的主艺人归属规则是独立产品语义，仍按各自文档执行，不因曲目 featured fan-out 自动改变。
 
 ### 2.1 Spotify Track `artists[]` 证据

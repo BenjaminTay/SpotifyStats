@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [合作曲排行实施与验收](2026-10-02-collaboration-ranking-acceptance.md)
+
 - [AI Agent V6 本地提交与主分支集成](2026-09-27-ai-agent-v6-local-integration.md)
 
 - [AI Agent V6 统一运行时与渐进报告最终本地验收](2026-09-22-ai-agent-v6-final-acceptance.md)

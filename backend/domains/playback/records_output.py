@@ -124,14 +124,24 @@ def _add_cover_urls_to_records(records: dict) -> None:
             track_name_cover_map[key] = url
             track_name_id_map[key] = str(r["track_id"])
 
-    # Fallback: apply name-based cover lookup to track records that lack
-    # track_id/entity_id (e.g. feat_lover_track which only has name+artist_name).
+    # Legacy fallback applies only to rows without an entity identity. A
+    # known canonical track with no artwork must not borrow a same-name
+    # song's cover (collaboration rows now carry explicit canonical IDs).
     for key, val in records.items():
         if not isinstance(val, pd.DataFrame) or val.empty:
             continue
         if "name" not in val.columns or "artist_name" not in val.columns:
             continue
         if not _is_track_record(val, key):
+            continue
+        identity_missing = (
+            val["entity_id"].isna()
+            if "entity_id" in val.columns
+            else val["track_id"].isna()
+            if "track_id" in val.columns
+            else pd.Series(True, index=val.index)
+        )
+        if not identity_missing.any():
             continue
         val = val.copy()
         lookup_keys = val.apply(
@@ -142,7 +152,7 @@ def _add_cover_urls_to_records(records: dict) -> None:
             axis=1,
         )
         resolved_ids = lookup_keys.map(track_name_id_map)
-        resolved_covers = lookup_keys.map(track_name_cover_map)
+        resolved_covers = lookup_keys.map(track_name_cover_map).where(identity_missing)
         if "entity_id" in val.columns:
             val["entity_id"] = val["entity_id"].where(val["entity_id"].notna(), resolved_ids)
         else:

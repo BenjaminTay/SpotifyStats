@@ -460,18 +460,22 @@ export function TrackCell({
   trackId,
   name,
   artistName,
+  artistNames,
   coverUrl,
 }: {
   trackId?: string | null
   name: string
   artistName?: string | null
+  artistNames?: string[] | null
   coverUrl?: string | null
 }) {
   useChineseTextVersion()
+  const fullArtistNames = artistNames?.filter(Boolean)
+  const creditText = fullArtistNames?.length ? fullArtistNames.map(displayName).join('、') : artistName && displayName(artistName)
   return (
     <div className="flex items-center gap-2.5 min-w-0">
       <CoverImg url={coverUrl} />
-      <div className="min-w-0 truncate">
+      <div className={cn('min-w-0', !fullArtistNames?.length && 'truncate')}>
         {trackId ? (
           <Link
             to={`/music/tracks/${encodeURIComponent(trackId)}`}
@@ -482,8 +486,8 @@ export function TrackCell({
         ) : (
           <span className="block truncate font-sans text-[14px] font-medium">{displayName(name)}</span>
         )}
-        {artistName && (
-          <p className="truncate font-sans text-[11px] italic text-muted-foreground">{displayName(artistName)}</p>
+        {creditText && (
+          <p className={cn('font-sans text-[11px] italic text-muted-foreground', fullArtistNames?.length ? 'break-words whitespace-normal' : 'truncate')}>{creditText}</p>
         )}
       </div>
     </div>
@@ -593,6 +597,7 @@ export function ValueBar({
 export function EntityRecordCard({
   title,
   subtitle,
+  mobileSubtitle,
   headerExtra,
   recordsByEntity,
   defaultEntity = 'track',
@@ -601,7 +606,8 @@ export function EntityRecordCard({
   mobileRowClassName,
 }: {
   title: string
-  subtitle?: string
+  subtitle?: string | ((entity: EntityRecordType) => string)
+  mobileSubtitle?: string | ((entity: EntityRecordType) => string)
   headerExtra?: ReactNode
   recordsByEntity: Partial<Record<EntityRecordType, PlaybackRecordRow[]>>
   defaultEntity?: EntityRecordType
@@ -623,7 +629,8 @@ export function EntityRecordCard({
   return (
     <RecordCard
       title={title}
-      subtitle={subtitle}
+      subtitle={typeof subtitle === 'function' ? subtitle(entity) : subtitle}
+      mobileSubtitle={typeof mobileSubtitle === 'function' ? mobileSubtitle(entity) : mobileSubtitle}
       toggle={
         <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
           {headerExtra}
