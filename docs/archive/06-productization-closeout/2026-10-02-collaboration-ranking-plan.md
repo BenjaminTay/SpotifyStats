@@ -1,6 +1,6 @@
 # 合作曲排行修改计划
 
-创建日期：2026-10-02。状态：IN_PROGRESS，正在实现与验收，尚未提交或部署。
+创建日期：2026-10-02。状态：IMPLEMENTED / ACCEPTANCE_PASS / DEPLOYED；S1–S6 全部完成，实施提交 `fa683d97` 已推送并通过正式发布及服务器验收。详见[验收报告](../../reports/2026-10-02-collaboration-ranking-acceptance.md)。下文保留实施规划与边界，现行规则以 reference 为准。
 
 适用入口：播放分析 → 播放记录 → 探索与品味 → 合作曲排行。本文确定建议实施的口径、改动范围和验收条件；实施时再同步当前参考规则。
 
@@ -8,7 +8,7 @@
 
 合作曲应由已经记录的有效曲目署名判断，标题没有写 feat. 的歌曲也能自动进入排行。歌曲、专辑、艺人三个榜和播放占比必须使用同一份合作事件集合，避免各自识别、结果不一致。
 
-当前实现位于 `backend/domains/playback/records_discovery.py`：
+实施前的实现位于 `backend/domains/playback/records_discovery.py`：
 
 - `_feat_lover_track()`、`_feat_lover_album()` 通过 `_has_feat_marker()` 检查歌名。
 - `_feat_lover_artist()` 同样先检查歌名，再限定 `role = featured`。
@@ -104,7 +104,7 @@ Spotify `artists[]` 已回填不等于这个板块已改用有效署名。此次
 - 保留现有歌曲、专辑、艺人切换及占比摘要，不增加来源审核、证据链接或新的管理表单。
 - 歌曲行使用明确的歌曲身份、封面和完整展示署名，核验手机和桌面链接一致。
 
-现有 `discovery.feat_lover.track/album/artist` 响应结构和 `feat-ranking` 锚点可继续使用，降低对前端类型、年度消费和历史深链的影响；内部旧命名不影响新口径。只有现有行字段不能承载稳定身份或艺人列表时，才做必要的兼容字段补充并同步类型。
+现有 `discovery.feat_lover.track/album/artist` 响应结构和 `feat-ranking` 模块 key 可继续使用，降低对前端类型、年度消费和既有模块配置的影响；内部旧命名不影响新口径。实际页面通过 `family=discovery` 恢复分类，没有 `feat-ranking` DOM 锚点。只有现有行字段不能承载稳定身份或艺人列表时，才做必要的兼容字段补充并同步类型。
 
 ## 5. 实施阶段与完成条件
 
@@ -121,7 +121,7 @@ Spotify `artists[]` 已回填不等于这个板块已改用有效署名。此次
 
 主要文件：`records_discovery.py`、`analysis_records_service.py`、`DiscoverySection.tsx`；按检查结果涉及 `records_output.py`、年度缓存版本或分析快照依赖。测试更新现有 Records 排序/预加载/快照及页面测试，必要时新增专门的合作曲统计测试文件。
 
-实施后同步 [播放统计规则](../reference/playback-stats-rules.md)、[元数据治理](../reference/music-metadata-management.md)、必要的[分析快照规则](../reference/analysis-result-snapshots.md)、文档地图与 CHANGELOG；本计划保留至发布验收完成。
+实施后已同步 [播放统计规则](../../reference/playback-stats-rules.md)、[元数据治理](../../reference/music-metadata-management.md)、[分析快照规则](../../reference/analysis-result-snapshots.md)、文档地图与 CHANGELOG；本计划在发布验收完成后归档。
 
 ## 6. 验证案例与验收标准
 

@@ -2,6 +2,8 @@
 
 - [合作曲排行实施与验收](reports/2026-10-02-collaboration-ranking-acceptance.md)
 
+- [合作曲排行已完成规划（归档）](archive/06-productization-closeout/2026-10-02-collaboration-ranking-plan.md)
+
 - [AI Agent V6 本地提交与主分支集成](reports/2026-09-27-ai-agent-v6-local-integration.md)
 
 - [AI Agent V6 优化规划与本地验收进度](plans/2026-09-22-ai-agent-v6-optimization-plan.md)
@@ -133,7 +135,6 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
-- [`plans/2026-10-02-collaboration-ranking-plan.md`](plans/2026-10-02-collaboration-ranking-plan.md)：合作曲排行改用有效多艺人署名，统一三个榜和占比、避免 L3 独唱版误计，并明确快照重建及验收步骤；实施与验收中
 - [`plans/2026-09-23-multi-source-music-metadata-roadmap.md`](plans/2026-09-23-multi-source-music-metadata-roadmap.md)：MusicBrainz、Apple Music、曲目语言与封面替代等后续方向的分析记录和重新启动门槛；当前延后
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
 - [`plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)：P0 编排与 P1 首项重复请求去重已完成，待低干扰三次计时验收

@@ -1,6 +1,6 @@
 # 合作曲排行实施与验收
 
-日期：2026-10-02。旧代码基线：`194fd1138da4bacfea45b9578923d9f4c301fb6f`。当前状态：实现及本地自动化验证完成；浏览器与生产发布验收进行中。
+日期：2026-10-02。旧代码基线：`194fd1138da4bacfea45b9578923d9f4c301fb6f`。实施提交：`fa683d972d052d6e24d7a882648e99725334a05e`，已推送并发布。当前状态：S1–S6 全部完成并验收。
 
 ## 交付范围
 
@@ -26,6 +26,8 @@ Records 合同升级为 `2026-10-02-effective-collaboration-v4`，年度内容�
 
 L2、L3 均与独立有效署名筛选得到的 6,518 个事件完全一致。移除合作板块和生成时间后，整个 Records 响应逐字段相同。艺人榜由客串榜变为参与榜，例如 Taylor Swift 1,574 次；艺人次数相加不是歌曲播放分母。
 
+另沿实际年度 orchestrator 的预加载准备方式，对比 2025 年 L3 的 standalone 与年度范围：动态、静态门槛下三个合作榜均逐字段相同；两种配置本轮均为 17,577 次有效播放中的 1,584 次合作播放。
+
 L2 旧/新完整 Records 构建耗时 14.182 / 9.818 秒，L3 为 12.961 / 11.752 秒。仅作该副本本轮观察，不作为稳定性能基准。
 
 可复现工具：`scripts/verify_collaboration_ranking.py --db-copy <明确副本> --baseline-ref 194fd1138da4bacfea45b9578923d9f4c301fb6f --merge-level 2 --json-output <全新本地结果路径>`；L3 同理。完整结果含个人历史，仅保留在本地临时验收目录，不提交。
@@ -50,4 +52,29 @@ L2 旧/新完整 Records 构建耗时 14.182 / 9.818 秒，L3 为 12.961 / 11.75
 
 ## 浏览器与生产
 
-待登记真实浏览器与受控发布结果。S6 完成前不将计划归档为完成。
+本地真实 Chromium 浏览器在 1280×800、360×800、390×844、430×932、768×1024 验证歌曲/专辑/艺人切换，摘要均为 6,518 / 9.6%，页面横向溢出均为 0。桌面与手机完整榜单均显示《For Good》六位艺人，手机实际点击 `/music/tracks/4453` 进入对应详情并返回播放记录。
+
+1280/390 的零合作 0 次 / 0% 与空榜通过明确标注的浏览器网络 fixture 验证，不代表修改真实数据。封面、长署名、空态和详情截图均完成视觉检查；无 console warning/error，只有开发环境 React DevTools 信息。证据在忽略目录 `output/playwright/collab-local-*.png` 及对应快照，浏览器 session 已关闭。
+
+正式[发布流水线](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37026172888)全部 success；源码、两套镜像及实际 capabilities 的 release SHA 均为 `fa683d972d052d6e24d7a882648e99725334a05e`。服务器继续保持 dual，三个容器 healthy；`verify.sh` 通过 loopback、运行面与写入边界、SQLite 完整性及四个搜索变体语义检查。未改变外部入口或访问控制。
+
+发布使用既有 Online Backup 与副本预检，保护点为服务器 `backups/spotify-stats-pre-release-fa683d972d05-20261002T154104Z.db`；预检报告 `music-search-preflight-fa683d972d05-20261002T154104Z.json` 确认 migration 85、四个统计 fingerprint 全部精确复用、候选复用、orphan=0、integrity=ok，没有重新冷建全库搜索统计。
+
+服务器实际只读探针再次确认五张来源表的行数和有序摘要与发布前完全一致，Records 合同及年度内容版本为上述新值。线上旧/新完整 Records 响应移除合作板块、生成时间和 snapshot 元信息后逐字段相同。
+
+| 生产快照范围 | 合作播放 | 占比 | 状态 |
+| --- | --- | --- | --- |
+| lifetime，L2 | 6,518 | 9.6% | ready / current |
+| 最近 4 周，L2 | 72 | 9.8% | ready / current |
+| 最近 6 个月，L2 | 728 | 8.7% | ready / current |
+| lifetime，L3，私有 prepare 受控构建 | 6,518 | 9.6% | ready / current |
+
+上述快照 source/target revision 均为 `b2ea5d704b915f8c0d8adf2fc5d0ef9cbfa9dc8d7f5a25d5ca0b6e14af6d6c57`，不是旧标题结果的 LKG。切换后的短暂 503 准备状态结束后才登记 ready，GET 没有同步构建。
+
+通过仅本机 loopback 的 SSH 隧道，使用内置浏览器验收服务器实际页面：1280×800、390×844 的三视图切换、6,518 / 9.6% 摘要、完整署名、封面和稳定链接正确，横向溢出 0；手机实际进入 `/music/tracks/4453`，详情显示 Taylor Swift / Sabrina Carpenter 并返回记录页。console warning/error 均为 0，生产截图在本次会话留存并已视觉检查。CLI 会话因环境自动关闭而切换验收工具，不影响统计结论。
+
+这是服务器运行面与浏览器视口验收，不是物理手机、外部 HTTPS 或默认完整全栈的验收。临时浏览器、视口覆盖及本地副本服务已关闭，数据库副本与服务器保护点保留。
+
+## 阶段收口
+
+S1 副本基线、S2 共用事实、S3 修订/缓存/年度、S4 页面及规则、S5 自动化/真实数据/浏览器、S6 提交/推送/正式发布/生产快照与页面，全部完成。已完成计划移入 `docs/archive/06-productization-closeout/2026-10-02-collaboration-ranking-plan.md`。共享工作区另一项状态文档的变更未混入业务提交。
