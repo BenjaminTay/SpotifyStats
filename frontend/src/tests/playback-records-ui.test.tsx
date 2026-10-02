@@ -8,7 +8,7 @@ import { PlaybackMilestonesCard } from '@/features/analysis/records/BehaviorSect
 import { DiscoverySection } from '@/features/analysis/records/DiscoverySection'
 import { ReignsSection } from '@/features/analysis/records/ReignsSection'
 import { TimePatternsSection } from '@/features/analysis/records/TimePatternsSection'
-import { EntityRecordCard } from '@/features/analysis/records/PlaybackRecordsPrimitives'
+import { EntityRecordCard, TrackCell } from '@/features/analysis/records/PlaybackRecordsPrimitives'
 import { PlaybackRecordsExperience } from '@/features/analysis/records/PlaybackRecordsExperience'
 import { PLAYBACK_RECORD_MODULE_COUNT, PLAYBACK_RECORD_SECTIONS } from '@/features/analysis/records/recordsArchitecture'
 import { ThemeProvider } from '@/hooks/useTheme'
@@ -664,8 +664,12 @@ describe('播放记录 UI', () => {
       expect(within(card).getByText('两位及以上艺人共同署名的歌曲，按有效播放次数排行')).toBeInTheDocument()
       const trackLinks = within(card).getAllByRole('link', { name: 'We Found Love' })
       expect(trackLinks.map((link) => link.getAttribute('href'))).toEqual(['/music/tracks/track%2Frihanna', '/music/tracks/track%2Fother'])
-      expect(within(card).getByText('Rihanna、Calvin Harris、A Third Artist With A Complete Long Name')).toHaveClass('whitespace-normal')
-      expect(within(card).getByText('Other Artist、Collaborator')).toBeInTheDocument()
+      const credits = within(card).getByRole('link', { name: 'Rihanna' }).parentElement?.parentElement as HTMLElement
+      expect(credits).toHaveClass('whitespace-normal')
+      expect(credits).toHaveTextContent('Rihanna · Calvin Harris · A Third Artist With A Complete Long Name')
+      for (const name of ['Rihanna', 'Calvin Harris', 'A Third Artist With A Complete Long Name', 'Other Artist', 'Collaborator']) {
+        expect(within(card).getByRole('link', { name })).toHaveAttribute('href', `/music/artists/${encodeURIComponent(name)}?tab=overview`)
+      }
       const cover = card.querySelector('img')
       expect(cover).toHaveAttribute('src', '/covers/albums/rihanna.jpg')
       expect(within(card).getByLabelText('合作曲播放摘要')).toHaveTextContent('50%')
@@ -676,10 +680,32 @@ describe('播放记录 UI', () => {
       expect(within(card).getAllByText('参与播放次数').length).toBeGreaterThan(0)
       fireEvent.click(within(card).getByRole('tab', { name: '专辑' }))
       expect(within(card).getByRole('link', { name: 'Talk That Talk' })).toHaveAttribute('href', '/music/albums/Talk%20That%20Talk?artist=Rihanna')
+      expect(within(card).getByRole('link', { name: 'Rihanna' })).toHaveAttribute('href', '/music/artists/Rihanna?tab=overview')
       expect(within(card).getByText('两位及以上艺人共同署名的歌曲，按有效播放次数排行')).toBeInTheDocument()
     } finally {
       matchMedia.mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList)
     }
+  })
+
+  it.each([
+    { artistName: 'Rihanna', artistNames: undefined, target: 'Rihanna' },
+    { artistName: 'Rihanna', artistNames: [], target: 'Rihanna' },
+    { artistName: null, artistNames: ['蔡健雅', 'Artist / & Partner'], target: 'Artist / & Partner' },
+  ])('曲目署名独立点击跳转且保留单艺人兜底：$target', ({ artistName, artistNames, target }) => {
+    function PathProbe() {
+      const location = useLocation()
+      return <output data-testid="artist-route">{location.pathname}{location.search}</output>
+    }
+    render(
+      <MemoryRouter initialEntries={['/analysis/records?family=discovery']}>
+        <TrackCell trackId="1782" name="We Found Love" artistName={artistName} artistNames={artistNames} />
+        <PathProbe />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('link', { name: target }))
+    expect(screen.getByTestId('artist-route')).toHaveTextContent(`/music/artists/${encodeURIComponent(target)}?tab=overview`)
+    expect(screen.getByRole('link', { name: 'We Found Love' })).toHaveAttribute('href', '/music/tracks/1782')
+    expect(document.querySelector('a a')).toBeNull()
   })
 
   it('没有合作曲时保留零占比摘要和空排行，允许切换所有实体', () => {

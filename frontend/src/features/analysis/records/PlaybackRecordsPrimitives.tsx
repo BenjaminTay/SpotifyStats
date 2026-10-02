@@ -10,6 +10,7 @@ import {
 } from '@/components/mobile/MobileRecordTable'
 import { mobileRecordTitle } from '@/components/mobile/mobileRecordUtils'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { cn } from '@/lib/utils'
 import type { EntityRecordType, PlaybackRecordRow } from '@/types/analysis'
@@ -471,7 +472,7 @@ export function TrackCell({
 }) {
   useChineseTextVersion()
   const fullArtistNames = artistNames?.filter(Boolean)
-  const creditText = fullArtistNames?.length ? fullArtistNames.map(displayName).join('、') : artistName && displayName(artistName)
+  const primaryArtist = fullArtistNames?.[0] || artistName
   return (
     <div className="flex items-center gap-2.5 min-w-0">
       <CoverImg url={coverUrl} />
@@ -486,8 +487,12 @@ export function TrackCell({
         ) : (
           <span className="block truncate font-sans text-[14px] font-medium">{displayName(name)}</span>
         )}
-        {creditText && (
-          <p className={cn('font-sans text-[11px] italic text-muted-foreground', fullArtistNames?.length ? 'break-words whitespace-normal' : 'truncate')}>{creditText}</p>
+        {primaryArtist && (
+          <ArtistLinks
+            artistName={primaryArtist}
+            artistNames={fullArtistNames}
+            className={cn('font-sans text-[11px] italic text-muted-foreground', fullArtistNames?.length ? 'break-words whitespace-normal' : 'truncate')}
+          />
         )}
       </div>
     </div>
@@ -532,7 +537,7 @@ export function AlbumCell({
           {displayName(name)}
         </Link>
         {artistName && (
-          <p className="truncate font-sans text-[11px] italic text-muted-foreground">{displayName(artistName)}</p>
+          <ArtistLinks artistName={artistName} className="font-sans text-[11px] italic text-muted-foreground" />
         )}
       </div>
     </div>
