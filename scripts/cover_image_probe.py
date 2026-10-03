@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Read-only image coverage/HTTP-cache probe against an existing web deployment.
+"""Image coverage/cache navigation observer against an existing web deployment.
 
 Cold means a fresh Chromium browser context, not a cold server or CDN. Warm is
 an ordinary reload in the same context after scrolling the cold page. Each pair
 uses the same route and viewport. DOM observations include virtualized images
-seen during scrolling. Timing is measured through this machine's network path.
+seen during scrolling. Timing is measured through this machine's network path. Navigation may trigger
+the application's existing derived-cache prewarm or read-only analysis POSTs.
+The probe does not actively invoke management writes or modify original data.
 """
 
 from __future__ import annotations
@@ -51,7 +53,7 @@ DOM = """() => {
     sizes:img.sizes, alt:img.alt, loading:img.loading, priority:img.fetchPriority,
     natural_width:img.naturalWidth, natural_height:img.naturalHeight, complete:img.complete,
     width:r.width, height:r.height, top:r.top, left:r.left, section:section?.id || null,
-    visible:style.display!=='none' && style.visibility!=='hidden' && r.width>0 && r.height>0,
+    visible:(typeof img.checkVisibility === 'function' ? img.checkVisibility() : style.display!=='none' && style.visibility!=='hidden' && !img.closest('details:not([open])')) && r.width>0 && r.height>0,
     in_viewport:r.bottom>0 && r.top<innerHeight && r.right>0 && r.left<innerWidth};
  });
  const resources=performance.getEntriesByType('resource').filter(e=> e.initiatorType==='img' || /\\/covers\\//.test(e.name)).map(e=>({url:e.name, initiator:e.initiatorType, start_ms:e.startTime, finish_ms:e.responseEnd, duration_ms:e.duration, encoded_bytes:e.encodedBodySize, decoded_bytes:e.decodedBodySize, transfer_bytes:e.transferSize}));
@@ -59,7 +61,7 @@ DOM = """() => {
  return {path:location.pathname+location.search, title:document.title, text:(root?.innerText||'').slice(0,4000), images, backgrounds, resources, dpr:devicePixelRatio,
    scroll_y:scrollY, scroll_height:document.documentElement.scrollHeight, viewport_height:innerHeight,
    sections:[...document.querySelectorAll('section[id],[id^="phone-yearly"],[id^="yearly-v2"]')].map(x=>({id:x.id, images:x.querySelectorAll('img').length})),
-   loading:[...document.querySelectorAll('[aria-busy="true"],.animate-pulse')].filter(x=>x.getBoundingClientRect().height>0).length};
+   loading:[...document.querySelectorAll('[aria-busy="true"],.animate-pulse')].filter(x=>(typeof x.checkVisibility !== 'function' || x.checkVisibility()) && x.getBoundingClientRect().height>0).length};
 }"""
 ERROR = re.compile(
     r"页面渲染错误|加载失败|请求失败|404 Not Found|Access denied|Just a moment|请先登录|没有权限|找不到页面",
@@ -232,9 +234,6 @@ async def visit(
             result["screenshot"] = str(shot)
         scroll_steps = 0
         for scroll_steps in range(args.max_scrolls):
-            before = await page.evaluate(
-                "() => ({y:scrollY,h:innerHeight,total:document.documentElement.scrollHeight})"
-            )
             await page.evaluate("() => window.scrollBy(0, innerHeight * .8)")
             await page.wait_for_timeout(250)
             state = await page.evaluate(DOM)
@@ -246,8 +245,33 @@ async def visit(
                 await page.wait_for_timeout(500)
                 state = await page.evaluate(DOM)
                 collect(state)
-            if before["y"] + before["h"] >= before["total"] - 2:
+            if state["scroll_y"] + state["viewport_height"] >= state["scroll_height"] - 2:
                 break
+        # Dynamically mounted lazy images may appear above the scroll position
+        # after their section query resolves. A second visit proves they load
+        # when actually viewed; keep this separate from first-viewport timing.
+        result["deferred_revisited"] = []
+        if args.visit_deferred:
+            state = await page.evaluate(DOM)
+            deferred = list(
+                dict.fromkeys(
+                    x["src"]
+                    for x in state["images"]
+                    if x["visible"] and not x["complete"] and x["src"]
+                )
+            )
+            for source in deferred:
+                image = page.locator(f"img[src={json.dumps(source)}]:visible").first
+                await image.scroll_into_view_if_needed(timeout=5000)
+                await page.wait_for_function(
+                    "src => [...document.images].filter(i => i.getAttribute('src') === src).every(i => i.complete)",
+                    arg=source,
+                    timeout=5000,
+                )
+                result["deferred_revisited"].append(source)
+                collect(await page.evaluate(DOM))
+            await page.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
+            await page.wait_for_timeout(300)
         final_deadline = time.monotonic() + args.wait_ms / 1000
         while time.monotonic() < final_deadline:
             state = await page.evaluate(DOM)
@@ -279,10 +303,14 @@ async def visit(
             result["state"] = "primary_api_unavailable"
         elif ERROR.search(text):
             result["state"] = "error_or_access_boundary"
+        elif (
+            state["loading"]
+            or api_pending
+            or any(x["visible"] and not x["complete"] for x in state["images"])
+        ):
+            result["state"] = "partial_not_ready"
         elif observations:
             result["state"] = "images_observed"
-        elif state["loading"] or api_pending:
-            result["state"] = "not_ready"
         elif EMPTY.search(text):
             result["state"] = "explicit_empty"
         else:
@@ -312,12 +340,19 @@ async def visit(
                 "src": x["current_src"],
                 "display_width": round(x["width"], 2),
                 "natural_width": x["natural_width"],
+                "natural_height": x["natural_height"],
+                "display_height": round(x["height"], 2),
                 "dpr": state["dpr"],
                 "requested_pixels": round(x["width"] * state["dpr"], 2),
+                "requested_height_pixels": round(x["height"] * state["dpr"], 2),
                 "section": x["section"],
             }
             for x in observations.values()
-            if x["natural_width"] and x["natural_width"] + 1 < x["width"] * state["dpr"]
+            if x["natural_width"]
+            and (
+                x["natural_width"] + 1 < x["width"] * state["dpr"]
+                or x["natural_height"] + 1 < x["height"] * state["dpr"]
+            )
         ]
     except Exception as exc:
         result["state"] = "exception"
@@ -420,6 +455,11 @@ def main() -> None:
     )
     parser.add_argument("--wait-ms", type=int, default=25000)
     parser.add_argument("--max-scrolls", type=int, default=80)
+    parser.add_argument(
+        "--visit-deferred",
+        action="store_true",
+        help="Revisit deferred images mounted above the scroll position after section queries resolve",
+    )
     parser.add_argument("--chrome")
     args = parser.parse_args()
     if args.runs < 1:
