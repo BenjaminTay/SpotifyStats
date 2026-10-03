@@ -72,6 +72,40 @@ def forbid(*args, **kwargs):
     pytest.fail("GET crossed publication boundary")
 
 
+@pytest.mark.contract
+def test_public_legacy_record_ids_are_normalized_without_rebuilding_snapshot(isolated, monkeypatch):
+    from backend.core.job_queue import JobQueue
+    from backend.services import analysis_records_service
+
+    params, key, revision, version = build("analysis_records")
+    payload, _ = store.read("analysis_records", key, revision, version)
+    legacy_row = {
+        "rank": 1,
+        "entity_type": "track",
+        "entity_id": "1493.0",
+        "name": "vampire",
+        "value": 43,
+        "unit": "次",
+        "top_track_entity_id": "1493.000",
+    }
+    payload["records"]["obsession"]["daily_binge"]["track"] = [legacy_row]
+    store.publish("analysis_records", key, revision, version, payload)
+    before = store.path().read_bytes()
+    monkeypatch.setattr(analysis_records_service, "_get_analysis_records_uncached", forbid)
+    monkeypatch.setattr(store, "publish", forbid)
+    monkeypatch.setattr(JobQueue, "enqueue_if_not_pending", forbid)
+    response = TestClient(app).get(
+        "/api/analysis/records", params=params, headers={SURFACE_HEADER: "public-readonly"}
+    )
+    assert response.status_code == 200, response.text
+    row = response.json()["records"]["obsession"]["daily_binge"]["track"][0]
+    assert row["entity_id"] == row["top_track_entity_id"] == "1493"
+    assert row["value"] == 43
+    assert response.json()["snapshot"]["freshness"] == "current"
+    assert store.path().read_bytes() == before
+    assert store.read("analysis_records", key, revision, version)[0] == payload
+
+
 def test_store_integrity_retention_and_rollback(isolated, monkeypatch):
     for i in range(4):
         store.publish("analysis_stats", "key", str(i), "v", {"value": i})

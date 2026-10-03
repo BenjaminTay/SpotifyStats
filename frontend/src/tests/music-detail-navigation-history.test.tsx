@@ -113,6 +113,30 @@ function renderWithHistory(path: string, routePath: string, element: ReactElemen
 afterEach(() => vi.restoreAllMocks())
 
 describe('音乐详情页历史记录', () => {
+  it.each(['1493.0', '001493.000'])('修正旧歌曲 ID %s，保留筛选、页签和锚点且不请求错误 ID', async (id) => {
+    const get = vi.spyOn(api, 'get').mockResolvedValue({ ...TRACK_DETAIL, track_id: 1493, track_name: 'vampire' })
+    const router = renderWithHistory(
+      `/music/tracks/${id}?merge_level=3&tab=overview#history`,
+      '/music/tracks/:trackId',
+      <TrackDetailExperience />,
+    )
+    await waitFor(() => expect(router.state.location.pathname).toBe('/music/tracks/1493'))
+    expect(router.state.location.search).toBe('?merge_level=3&tab=overview')
+    expect(router.state.location.hash).toBe('#history')
+    expect(router.state.historyAction).toBe('REPLACE')
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/billboard/track/canonical/1493', expect.objectContaining({ merge_level: 3, view: 'summary' })))
+    expect(get.mock.calls.every(([path]) => path === '/billboard/track/canonical/1493')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: /单曲详情/ }))
+    expect(await screen.findByText('进入详情前的页面')).toBeInTheDocument()
+  })
+
+  it.each(['1493.5', '1493oops', 'NaN', '0', '-1493', '1e3'])('非法歌曲 ID %s 不发起详情请求', async (id) => {
+    const get = vi.spyOn(api, 'get')
+    renderWithHistory(`/music/tracks/${id}`, '/music/tracks/:trackId', <TrackDetailExperience />)
+    expect(screen.getByText('歌曲链接无效')).toBeInTheDocument()
+    expect(get).not.toHaveBeenCalled()
+  })
+
   it('将 URL 中的归并层级同时传给歌曲统计预取和正式面板', async () => {
     vi.spyOn(api, 'get').mockResolvedValue(TRACK_DETAIL)
     renderWithHistory(

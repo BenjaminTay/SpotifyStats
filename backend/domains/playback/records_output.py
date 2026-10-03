@@ -7,6 +7,7 @@ import pandas as pd
 from backend.core.db import get_db
 from backend.core.json_helpers import df_to_json as _df_to_json
 from backend.core.json_helpers import py_val as _py_val
+from backend.domains.playback.record_identity import normalize_record_identity
 
 
 def _is_track_record(df, key: str) -> bool:
@@ -287,11 +288,13 @@ def _serialize_records(records: dict) -> dict:
             else:
                 # Replace NaN/NaT with None before serialization
                 cleaned = val.where(pd.notnull(val), None)
-                result[key] = _df_to_json(cleaned)
+                result[key] = [normalize_record_identity(row) for row in _df_to_json(cleaned)]
         elif isinstance(val, dict):
-            result[key] = {k: _py_val(v) for k, v in val.items()}
+            result[key] = normalize_record_identity({k: _py_val(v) for k, v in val.items()})
         elif isinstance(val, list):
-            result[key] = val
+            result[key] = [
+                normalize_record_identity(row) if isinstance(row, dict) else row for row in val
+            ]
         else:
             result[key] = _py_val(val)
     return result

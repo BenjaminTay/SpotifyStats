@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
+from backend.domains.playback.record_identity import normalize_record_identity
 from backend.models.snapshot import SnapshotReadState
 from backend.models.wrapped import ConsumerTasteProfile
 
@@ -248,6 +249,13 @@ class AnalysisPlayDateEntry(BaseModel):
 
 class PlaybackRecordRow(BaseModel):
     """通用播放记录行模型，三实体记录与事件型记录共用。"""
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_song_links(cls, value):
+        # Response validation also covers already-published legacy snapshots;
+        # it does not rebuild, invalidate or rewrite their persisted payloads.
+        return normalize_record_identity(value) if isinstance(value, dict) else value
 
     rank: int
     entity_type: str | None = None

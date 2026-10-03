@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, useLocation, Navigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { queryKeys } from '@/api/query-keys'
@@ -54,6 +54,26 @@ function TrackDetailSkeleton() {
 }
 
 export function TrackDetailExperience() {
+  const { trackId } = useParams<{ trackId: string }>()
+  const location = useLocation()
+  const match = trackId?.match(/^([0-9]+)(?:\.0+)?$/)
+  const canonicalId = match?.[1].replace(/^0+/, '')
+  if (!canonicalId) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-20 text-center">
+        <AlertCircle className="h-8 w-8 text-accent-foreground" />
+        <p className="text-muted-foreground">歌曲链接无效</p>
+        <Link to="/music/search" className="text-accent-foreground hover:underline">返回音乐查找</Link>
+      </div>
+    )
+  }
+  if (canonicalId !== trackId) {
+    return <Navigate replace to={`/music/tracks/${canonicalId}${location.search}${location.hash}`} />
+  }
+  return <TrackDetailContent />
+}
+
+function TrackDetailContent() {
   useChineseTextVersion()
   const { trackId } = useParams<{ trackId: string }>()
   const navigate = useNavigate()
