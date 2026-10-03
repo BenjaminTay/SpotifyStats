@@ -18,7 +18,7 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 2. 元数据来源单一。平台的名称、封面、发行信息或身份关联发生错误时，本地缺少第二来源用于发现冲突。
 3. 语言粒度不够。当前语言事实以艺人为主体，适合稳定的艺人级统计，但无法可靠回答同一位多语言艺人的某一首歌究竟使用什么语言。
 
-这份文档只保存已经讨论过的方向、边界和重新启动条件。已完成的 Spotify Track `artists[]` 证据阶段见 [实施规划归档](../archive/06-productization-closeout/2026-09-23-spotify-track-artists-evidence-plan.md)及[交付报告](../reports/2026-09-24-spotify-track-artists-evidence-delivery.md)；Album 稳定艺人与完整分页另有本地交付；日期精度与第二来源仍未实施。
+这份文档只保存已经讨论过的方向、边界和重新启动条件。已完成的 Spotify Track `artists[]` 证据阶段见 [实施规划归档](../archive/06-productization-closeout/2026-09-23-spotify-track-artists-evidence-plan.md)及[交付报告](../reports/2026-09-24-spotify-track-artists-evidence-delivery.md)；Album 稳定艺人与完整分页已独立交付及有界生产验收；日期精度与第二来源仍未实施。
 
 ## 2. 规划形成时的事实（2026-09-23 / 24）
 
@@ -149,8 +149,8 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 
 | 优先级 | 问题与当前证据 | 后续处理门槛 |
 |---|---|---|
-| 已本地合入 | SS-2026-09-24-002：Album 有序稳定 ID、canonical 解析及冲突保留已实现；含逗号名称和 JOLIN 的实际误判已验证修正。同名不同 ID、历史改名由合成测试覆盖。 | `fe99756b` 已安全合入本地 main，完整全栈通过；待正式回填及生产验收，见[最终报告](../reports/2026-10-03-album-metadata-final-integration.md)。 |
-| 已本地合入 | SS-2026-09-24-001：统一 Album Tracks 完整分页与原子发布；副本 12 条缺页、35 条缺列表已补齐，3 条 50 首边界经核验无缩小总数；2026-10-03 收口旧缓存位置证据，定向补齐 Lana，其余未核验位置明确显示未知。 | [交付报告](../reports/2026-10-02-album-track-pagination-acceptance.md)；`fe99756b` 已本地合入，完整全栈和桌面/手机视口通过；生产回填与物理终端另验。 |
+| 已生产交付 | SS-2026-09-24-002：有序稳定ID、canonical及冲突保留已实现，154份生产证据/177条艺人已安装；逗号/JOLIN实际修正，同名/改名边界保留测试证据。 | daf098ca已发布，13个Album未解析保留审核；见[生产报告](../reports/2026-10-03-album-metadata-production-delivery.md)。 |
+| 已生产交付 | SS-2026-09-24-001：完整分页与可靠发行位置已实现；生产54份目录/位置及必要简化曲目元数据已补齐。 | daf098ca已发布，Glee106/1、Lana位置、Mimi14共享/6独占、Records与两视口通过；见[生产报告](../reports/2026-10-03-album-metadata-production-delivery.md)。 |
 | 中 | Album 返回 `release_date_precision`（年/月/日），当前 `spotify_album_meta` 只保存日期字符串；专辑候选与归并比较无法区分日期精度。 | 先量化部分精度样本和被日期匹配影响的候选，再持久保存 precision 并修正规则。 |
 | 中 | 已知 Spotify 专辑/艺人 ID 时 API 对象直接有 `images[]`。当前封面主链已使用它，但缺图兜底会按名称搜索专辑，甚至采用第一个有图结果，可能误配。 | 先统计走名称搜索的比例和错配样本；已有稳定 ID 时优先 ID 读取，不明身份则保留缺图。 |
 | 低 | Album Tracks 的每首歌有 `duration_ms`，而 `analysis_stats_service._resolve_album_category()` 用 `total_tracks × 210000` 估算专辑总时长。 | 依赖完整曲目表后，比较估算与真实时长对 LP/EP 分类的影响，再决定是否替换。 |

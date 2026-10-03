@@ -168,6 +168,8 @@ SS-2026-09-24-002 的本地实现（migration 88）独立于 Track evidence；�
 
 副本演练入口：`scripts/backfill_spotify_album_artist_credits.py --source-db <只读源> --output-db <不存在的新副本> --limit 20 [--ids ...]`。该 CLI 先用 Online Backup 创建副本并迁移，再最多处理 1..100 个明确有界 Album；输出目标必须是新文件，禁止直接执行正式库回填。它只写 Album 证据/兼容显示和必要的最小元数据父行，不写 Track 元数据或任何署名。正式库全量回填、冲突审批和发布需要另行授权及验证。
 
+2026-10-03 已按授权完成限定生产维护，选择范围与未解析身份见[生产交付](../reports/2026-10-03-album-metadata-production-delivery.md)。正式维护先在新副本验证，再以实时来源保护和原子安装/事务发布；本轮两份CLI均仅在副本执行。目录消费依赖的缺失简化Track元数据可随已选发行有界补齐，不能据此生成Track艺人证据、改写原始曲目或增加播放贡献。
+
 ## 4. API
 
 统一前缀为 `/api/music-metadata/track-credits`：

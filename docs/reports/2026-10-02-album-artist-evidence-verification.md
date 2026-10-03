@@ -85,4 +85,4 @@ pytest 输出有现有 Python/LibreSSL 的 urllib3 warning，没有测试失败�
 
 本任务范围内的实现、只读调查、副本验证与文档登记已经完成。主工作区未合入，本事项改动已本地提交，未推送/部署。正式源库仍是 schema 81，无 Album evidence；旧名兼容仍存在，strict 发行周期对未回填旧行不声称 ID 验证。正式库迁移、分批回填、冲突审批以及生产快照/消费者验收，需要后续明确授权。不会从此报告推定已完成正式回填或生产验收。
 
-参考：[实施方案](../plans/2026-10-02-album-artist-evidence-plan.md)、[最终规则](../reference/music-metadata-management.md#33-spotify-album-artists-与专辑身份)、[开发状态](../DEVELOPMENT_STATUS.md)、[问题台账](../issues/2026-08-27-issue-register.md)。
+参考：[实施方案](../archive/06-productization-closeout/2026-10-02-album-artist-evidence-plan.md)、[最终规则](../reference/music-metadata-management.md#33-spotify-album-artists-与专辑身份)、[开发状态](../DEVELOPMENT_STATUS.md)、[问题台账](../issues/2026-08-27-issue-register.md)。

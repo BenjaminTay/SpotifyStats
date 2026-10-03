@@ -62,4 +62,4 @@ OpenAPI 从最终集成后端重新生成，并保留当前 main 的艺人署名
 
 本地整合和验收不授权发布。后续按任务白名单审阅并授权集成提交，取得固定 SHA 后复跑必要检查/CI；生产发布前 Online Backup、schema 85→88、三模式/健康/回滚检查，先有界补目录和被消费发行位置，再按已审核范围补 Album artists，失败/歧义/冲突保留旧值或待审核。记录来源 run ID、成功/拒绝/未解析数量，再验证生产快照与受影响页面，不能无条件全库重抓或擅自修改人工身份。
 
-历史专项：[艺人报告](2026-10-02-album-artist-evidence-verification.md)、[分页报告](2026-10-02-album-track-pagination-acceptance.md)、[分页独立复核](2026-10-03-album-track-pagination-independent-review.md)。当前规则见[元数据规则](../reference/music-metadata-management.md)，范围及文件整合见[集成计划](../plans/2026-10-03-album-metadata-integration-plan.md)。
+历史专项：[艺人报告](2026-10-02-album-artist-evidence-verification.md)、[分页报告](2026-10-02-album-track-pagination-acceptance.md)、[分页独立复核](2026-10-03-album-track-pagination-independent-review.md)。当前规则见[元数据规则](../reference/music-metadata-management.md)，范围及文件整合见[集成计划](../archive/06-productization-closeout/2026-10-03-album-metadata-integration-plan.md)。

@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [专辑目录与艺人证据生产交付](2026-10-03-album-metadata-production-delivery.md)
+
 - [专辑证据与最新封面主线最终集成验收](2026-10-03-album-metadata-final-integration.md)
 
 - [专辑分页与艺人证据联合集成验收](2026-10-03-album-metadata-integration-verification.md)

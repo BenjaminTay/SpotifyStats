@@ -2,8 +2,8 @@
 
 > 状态：持续维护
 > 首次建立：2026-08-27
-> 最后状态核验：2026-10-03（本地 Git、交付与发布记录；本次未重新进行生产现场或真机验收）
-> 当前业务基线：本地 main 已合入专辑证据 `fe99756b`，尚未推送/部署；已登记生产版本为封面 `814ea7cb`。开发优先级、外部验收和探索方向统一见 [开发状态总表](../DEVELOPMENT_STATUS.md)。
+> 最后状态核验：2026-10-03（实际生产SSH、HTTPS与桌面/手机视口；物理真机、生产LLM与OAuth另验）
+> 当前业务基线：固定daf098ca已提交、推送并正式发布，schema88；后续文档收尾不改变业务镜像。开发优先级、外部验收和探索方向统一见[开发状态总表](../DEVELOPMENT_STATUS.md)。
 > 下文原有数值、环境状态和已解决项证据保留原始日期；9 月 13 日生产、LLM、Spotify 与 HTTPS 记录不自动代表今天的状态。
 
 ## 当前开放与未闭环事项
@@ -12,8 +12,14 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 |
 | --- | --- | --- | --- | --- |
-| SS-2026-09-24-001 | 完整曲目分页与发行位置 | 本地专项交付 `4f9a01ff`；最新主线联合候选 `8464ffa6` 已提交、完整验收通过并安全合入本地 main/未部署 | 缺页/缺列表副本 47 条已修复，未知位置不借用另一发行；[联合报告](../reports/2026-10-03-album-metadata-final-integration.md)含八阶段同轮 PASS 和两视口 | 正式迁移、回填及生产验收另行授权 |
-| SS-2026-09-24-002 | 专辑艺人稳定 ID 与有序证据 | 本地专项交付 `8f638494`；最新主线联合候选 `8464ffa6` 已提交、完整验收通过并安全合入本地 main/未部署 | 有序 ID/canonical、真实逗号/JOLIN 与 Cats 未解析边界，冲突保留；[联合报告](../reports/2026-10-03-album-metadata-final-integration.md) | 正式 Album 回填和身份审核另行授权 |
+| SS-2026-09-24-001 | 完整曲目分页与发行位置 | `RESOLVED`；daf098ca已正式发布及限定生产维护 | 54份目录/位置及必要缺失provider元数据，Glee106/1、Lana位置、Mimi14共享/6独占、Records保持；[生产报告](../reports/2026-10-03-album-metadata-production-delivery.md) | 本范围已收口；不将模拟视口称为物理真机 |
+| SS-2026-09-24-002 | 专辑艺人稳定 ID 与有序证据 | `RESOLVED`；daf098ca已正式发布及限定生产维护 | 154份证据/177条有序署名，canonical人工优先、冲突保留，实际发行周期/Records通过；[生产报告](../reports/2026-10-03-album-metadata-production-delivery.md) | 13个Album含17条未解析署名保留数据审核；不新增身份批准 |
+
+### 2026-10-03 生产搜索派生外键遗留
+
+| ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
+| --- | --- | --- | --- | --- |
+| `SS-2026-10-03-002` | 生产搜索派生表引用已缺失 snapshot meta | `OPEN` / P2 | schema85源 Online Backup 已有60,294条 FK orphan：weekly chart context60,270、year-end meta20、year-end projection state4；Album维护后集合不变，当前四精确变体ready及entity context读取门禁另验；[生产报告](../reports/2026-10-03-album-metadata-production-delivery.md)。 | 独立调查快照轮转与派生清理合同，先在副本验证；本轮未修复或删除，最后核验2026-10-03。 |
 
 ### 2026-10-03 全站封面优化
 

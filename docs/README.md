@@ -1,11 +1,13 @@
 # SpotifyStats 文档地图
 
+- [专辑目录与艺人证据生产交付](reports/2026-10-03-album-metadata-production-delivery.md)
+
 - [专辑证据与最新封面主线最终集成验收](reports/2026-10-03-album-metadata-final-integration.md)
 
 - [专辑分页与艺人证据联合集成验收](reports/2026-10-03-album-metadata-integration-verification.md)
 
-- [专辑分页与艺人证据本地集成计划](plans/2026-10-03-album-metadata-integration-plan.md)
-- [专辑艺人实施方案](plans/2026-10-02-album-artist-evidence-plan.md)与[专项报告](reports/2026-10-02-album-artist-evidence-verification.md)
+- [专辑分页与艺人证据已完成集成方案](archive/06-productization-closeout/2026-10-03-album-metadata-integration-plan.md)
+- [专辑艺人已完成实施方案](archive/06-productization-closeout/2026-10-02-album-artist-evidence-plan.md)与[专项报告](reports/2026-10-02-album-artist-evidence-verification.md)
 - [专辑分页交付报告](reports/2026-10-02-album-track-pagination-acceptance.md)与[第二轮独立复核](reports/2026-10-03-album-track-pagination-independent-review.md)
 
 - [全站封面优化已完成方案](archive/06-productization-closeout/2026-10-03-cover-image-optimization-plan.md)
