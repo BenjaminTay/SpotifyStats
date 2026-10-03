@@ -139,9 +139,9 @@ export function AlbumDetailExperience() {
                     subtitle={<Link to={`/music/artists/${encodeURIComponent(data.artist_name)}`}>{displayName(data.artist_name)}</Link>}
                     meta={data.meta ? [
                       data.meta.release_date,
-                      projectData?.album_project?.unique_canonical_songs
-                        ? `${projectData.album_project.unique_canonical_songs} 首曲目`
-                        : data.meta.total_tracks ? `${data.meta.total_tracks} 首曲目` : null,
+                      data.meta.total_tracks ? `发行 ${data.meta.total_tracks} 首` : null,
+                      projectData?.album_project?.unique_canonical_songs != null
+                        ? `已听 ${projectData.album_project.unique_canonical_songs} 首` : null,
                     ].filter(Boolean).join(' · ') : undefined}
                     facts={[
                       { label: '有效播放', value: `${(data.effective_play_count ?? 0).toLocaleString('zh-CN')} 次` },

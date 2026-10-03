@@ -149,6 +149,25 @@ Spotify Track API 返回的完整 `artists[]` 以原始顺序保存到 `spotify_
 - 身份事件的 before/after 快照包含活动成员的 external IDs；undo 恢复对应成员当时的外部 ID 状态，并继续以新事件和新 revision 留痕。
 - 候选页发现的 provider ID 会随确认写入治理层。名称只能用于寻找候选，最终关联仍绑定本地 `artist_id + provider + external_id`。
 
+### 3.3 Spotify Album `artists[]` 与专辑身份
+
+SS-2026-09-24-002 的本地实现（migration 88）独立于 Track evidence；实施与验证范围见 [专辑艺人报告](../reports/2026-10-02-album-artist-evidence-verification.md)。
+
+- `spotify_album_credit_sets` 保存 Album ID、数量、内容签名、获取时间、来源入口及可选 run ID；`spotify_album_artist_credits` 按 `credit_order` 保存 Spotify artist ID 和原始 `credited_name`。ID 缺失允许首次保存为 NULL / unresolved，不能按名称猜补 ID；`album_artists` 只是兼容显示投影，不能反向生成稳定身份。
+- `spotify_album_credit_events` 追加 observed / changed / rejected 事件及前后 JSON、原因、来源、run ID 与时间。相同数组只更新时间，不追加成功事件或改变事实 revision；重复拒绝同一观察也不重复追加事件。
+- 名称与顺序变化不改变 ID 身份。同一完整 ID 集合可以更新名称/顺序；已保存的已知 ID 消失、完整集合新增/替换 ID、重复 ID、缺失数组或非法名称时，保留上一可靠数组和显示字符串，在 rejected 事件中保存待审核观察。部分未解析数组可以在保留所有已知 ID 的前提下补全。网络失败不写入新观察，更不能将失败视为身份验证成功。
+- 本地关联只查 `artists.spotify_artist_id` 与已有 `artist_identity_external_ids(provider=spotify)`，随后使用当前活动人工 canonical map。多个本地成员已被人工合并为同一 canonical 时可以唯一解析；仍指向多个 canonical 时为 ambiguous，零个为 unresolved。Album 刷新不创建、按名称合并艺人，不改写既有人工作证的 external IDs。Provider 名称与人工显示名称分别保留；人工 canonical 选择即时优先。
+- `AlbumArtistResolver.match()` 的 `verified_id` 仅用于所有数组成员均唯一解析且包含目标 canonical 的结果；id_mismatch / ambiguous / unresolved / unresolved_target 都不回退名称。同名不同 ID 不能通过名称得到身份验证。目标为旧名称参数时，必须唯一解析到本地 canonical，再做 ID 判断。
+- 无结构化证据的旧行仍可读取。Billboard 类型/日期、Album Project/健康候选、Records 可信原版及完整曲目自动归并保留明确的 legacy 名称兼容路径；整名匹配先于逗号分词，JSON 名称数组仍兼容。这只是 `legacy_name_match` 候选，残留歧义不能当成 ID 已验证。发行周期的严格 `_verify_album_artists()` 只接受 verified_id；公开请求不联网，未回填的旧行可能暂不进入发行周期结果。
+- 新证据的自动归并 family/fingerprint 和 `album_artist_key` 使用 canonical 集合，名称只用于标题包装和展示；legacy 自动归并仍须满足完整曲目表及既有关系门禁。原声带/Various Artists 残余项目存在新证据时，不选择数组第一人作为 primary，不创建多人拼接艺人；只有全部唯一解析到同一个 canonical 才复用该项目艺人，其他情况保留待解析。人工项目优先级不变。
+- 歌曲归并列表不再从 Album provider 或本地专辑艺人回退歌曲艺人；专辑曲目比较的歌曲艺人字段复用本地 owner 的有效 Track 署名；非本地歌曲只能读取已有 Track provider evidence，缺失时留空，不能读取 Album artists 字符串代替歌曲署名。
+- 数组顺序不是 primary / featured。Album evidence 不提供 Track 艺人的替代来源，不参与有效曲目署名投影，不为 Album 未播放成员新增播放贡献；项目成员仍来自既有本地歌曲/播放关联。
+- 主刷新、版本归并补取、发行周期批取/搜索、封面脚本共用 `persist_album_artists()`；封面脚本使用 UPSERT，不能通过 REPLACE 删除证据父行或丢失曲目表。Simplified Album 的艺人证据可保存，但不据此声称曲目表完整。
+- Analysis/Records 与健康 revision 纳入 Album credits 和外部身份字段；Billboard 与发行周期内部缓存按证据/身份 revision 读取，年报的准备 LRU、持久 prepared-key 和内容 digest 同步受 revision 约束。拒绝事件、获取时间和 run ID 不使事实缓存失效。刷新成功后通过现有 cache manager 释放相关内存缓存。Album 语义变化可能使既有年报准备 key 失效，不能复用未纳入证据依赖的旧准备结果。
+- migration 88 只增表，不拆分旧字符串回填 ID，不修改原始 plays / tracks / track_artists。81→88 过程中，migration 85 安装当前 revision 合同时先幂等创建新增证据表；最终安装完整触发器。当前联合集成由 migration 86 安装专辑语义修订合同，同时保留分页 migration 87 与艺人 migration 88；编号连续。
+
+副本演练入口：`scripts/backfill_spotify_album_artist_credits.py --source-db <只读源> --output-db <不存在的新副本> --limit 20 [--ids ...]`。该 CLI 先用 Online Backup 创建副本并迁移，再最多处理 1..100 个明确有界 Album；输出目标必须是新文件，禁止直接执行正式库回填。它只写 Album 证据/兼容显示和必要的最小元数据父行，不写 Track 元数据或任何署名。正式库全量回填、冲突审批和发布需要另行授权及验证。
+
 ## 4. API
 
 统一前缀为 `/api/music-metadata/track-credits`：
@@ -180,3 +199,50 @@ Spotify Track API 返回的完整 `artists[]` 以原始顺序保存到 `spotify_
   TrackPresentation；标准曲、deluxe-only、精选集独占、独立单曲/EP、URI/裸 Spotify ID、ISRC
   等价和错误 cross-link 均有回归覆盖。播放事件行与 source breakdown 仍保留实际来源。
 - provider 刷新、身份创建、身份更新和 undo 必须覆盖 external-ID 持久化、冲突保留、人工证据不降级和 before/after 对称恢复；真实数据测试只断言跨接口一致性与治理不变量，不硬编码会随合法新播放增长的累计次数。
+
+## 专辑完整曲目表
+
+`SS-2026-09-24-001` 的当前合同：日常 Spotify 元数据刷新和显式版本归并补取共用
+`SpotifyProvider` / `HttpClient` 的完整专辑读取。首个 Album 分页对象经校验后可复用；后续只请求
+固定 `GET /v1/albums/{id}/tracks?limit=50&offset=...`，不执行 `next` URL。
+接口合同于 2026-10-02 核对 [Spotify 官方文档](https://developer.spotify.com/documentation/web-api/reference/get-an-albums-tracks)。
+
+- `total_tracks` 是来源声明的发行位置总数；`track_list` 是按发行顺序保存的 ID 列表，允许相同 ID
+  出现在不同位置。完整性校验比较位置数量，不比较不同 ID 数量；必要 ID、分页 offset、分页总数、
+  页长度、结束状态、重复页及有序碟号/曲号均须通过校验。
+- additive migration 87 增加 `spotify_album_tracklist_evidence`，保存发行级的完整曲目对象、有序
+  `disc_number` / `track_number`、已验证总数及最近尝试状态/总数/错误。避免同一 recording ID 的
+  全局元数据行覆盖另一发行位置。列表、位置证据和必要简化曲目元数据在同一事务提交。
+- 中途请求失败、总数变化或证据不足时不写入半份列表，保留上一完整列表及其来源总数；最近尝试的
+  新声明写入 `attempted_total`。既有完整缓存可继续读取；旧缺页、缺 ID 或无声明总数的非空列表
+  不能参与完整性判断。旧完整列表兼容读取，默认不重抓全库。
+- 版本对比优先按本地专辑名称及来源链接的置信度/播放证据选择具体发行；未有来源链接时沿原链路
+  回退。保留目录顺序；相同 track ID 和归一化歌曲名各只展示首次位置。目录或必要名称未齐时返回
+  `incomplete_album_ids`，前端提示先维护元数据，不能把未知差异显示成独占曲目。
+- 目录完整性与发行位置完整性分别判断。精确碟号/曲号只取自与当前 `track_list` 的有序 ID、
+  `total_tracks` 完全匹配且名称、位置有效的整份发行证据；缺失、错配或损坏时所有位置返回 `null`，
+  `position_incomplete_album_ids` 标记对应本地专辑。曲目异同仍可比较，前端明确显示“位置未知”。
+  禁止从 recording 的全局父发行借用位置，也不推断 Disc 1 或以数组下标伪造 Track。旧目录未核验
+  顺序时只保持缓存顺序；显式补齐后恢复来源发行顺序。最近尝试失败不否定仍与目录匹配的上一完整证据。
+- 整专辑收听分母是可信发行中不同 canonical song 的集合。重复 ID 的位置不会增加歌曲数、逻辑
+  播放、听过曲目或入榜曲目；曲目专辑展示归属也只使用完整目录证据。专辑详情分别标注“发行 N 首”
+  与“已听 M 首”，未知发行总数不再用本地歌曲数量伪装。
+- Records 沿用专辑元数据的语义 revision；治理健康把 `track_list` 纳入依赖。年度内容版本为
+  `yearly_review_v2_19_album_evidence`，年度指纹覆盖播放来源链接触达的专辑，防止 recording 的当前父专辑不同
+  时漏掉曲目表变化。修复不批准新归并、不改项目 membership、不重建完整 Billboard。
+- 页面 GET 只读缓存，不完整时通过显式刷新/维护或
+  [`repair_album_tracklists.py`](../../scripts/repair_album_tracklists.py) 修复。脚本必须指定数据库，
+  默认只审计；`--apply` 默认最多 50 个目标，硬上限 200，支持重复 `--album-id` 和
+  `--verify-boundary-50`。默认队列只处理目录缺口；`--include-position-evidence` 显式加入与实际播放
+  相连、目录完整但位置缺失/错配的有界目标，不将所有旧缓存加入日常刷新。审计模式也输出选中范围，
+  不请求 Spotify。自动选择会跳过已完整的目标；明确 `--album-id` 可复查指定发行，重复成功写入不改变
+  曲目事实。位置补齐沿用同一原子事务、来源修订跟踪与维护缓存失效；对比 GET 直接读取，位置不加入
+  不消费它的 Records/年度事实依赖，不启动全量重建。生产应用仍需单独授权、Online Backup
+  和正式发布门禁。
+
+实施与隔离副本证据见 [分页交付报告](../reports/2026-10-02-album-track-pagination-acceptance.md)。
+
+
+## 专辑证据联合更新边界
+
+完整目录/发行位置与 Album artists 分别校验；来源校验失败只阻止对应证据发布，不清空可靠旧证据。分页失败时可信艺人仍可更新；艺人 ID 冲突时可信完整目录/位置仍可更新。任一数据库写入失败回滚整批显示、两类证据和审计。共同写入支持 Provider/token/outcomes 和 source/source_run_id；不改原始播放、歌曲、原始/有效歌曲署名或人工批准关系。当前联合年度内容版本为 `yearly_review_v2_19_album_evidence`，准备层 revision 和播放来源专辑触达依赖均保留。

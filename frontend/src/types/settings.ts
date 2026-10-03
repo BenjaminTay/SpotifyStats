@@ -330,12 +330,14 @@ export interface L3AlbumAttributionMutationResult {
 
 // ── Version Merge — Track Comparison ────────────────────────
 
-export type TrackRow = [string, string, number | null, number | null];
+export type TrackRow = [trackName: string, artistName: string, discNumber: number | null, trackNumber: number | null];
 
 export interface TrackComparison {
   shared: TrackRow[];
   only_in_a: TrackRow[];
   only_in_b: TrackRow[];
+  incomplete_album_ids?: number[];
+  position_incomplete_album_ids?: number[];
 }
 
 // ── Rebuild Agg ─────────────────────────────────────────────

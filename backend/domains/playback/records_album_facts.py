@@ -6,7 +6,6 @@ edition trust rules are identical to the per-project lookup.
 
 from __future__ import annotations
 
-import json
 import re
 from collections import defaultdict
 
@@ -19,7 +18,7 @@ def load_original_memberships(conn, merge_level):
     try:
         projects = conn.execute(
             """SELECT ap.project_id, ap.primary_album_id, ap.canonical_name, ap.release_date,
-                      al.album_name, ar.artist_name
+                      al.album_name, ar.artist_name, ap.artist_id
                FROM album_projects ap
                JOIN album_project_albums apa
                  ON apa.project_id = ap.project_id
@@ -68,6 +67,12 @@ def load_original_memberships(conn, merge_level):
         track_ids = sorted({int(row["track_id"]) for row in members})
         keyed = apply_canonical_song_keys(pd.DataFrame({"track_id": track_ids}), conn, merge_level)
         canonical_keys = dict(zip(keyed["track_id"], keyed["canonical_song_key"].astype(str)))
+        from backend.domains.metadata.spotify_album_credits import (
+            AlbumArtistResolver,
+            evidence_schema_available,
+        )
+
+        artist_resolver = AlbumArtistResolver(conn) if evidence_schema_available(conn) else None
         result = {}
         for project in projects:
             if project["primary_album_id"] is None:
@@ -77,7 +82,7 @@ def load_original_memberships(conn, merge_level):
             if local:
                 try:
                     result[int(project["project_id"])] = _trusted_original(
-                        project, local, by_album[original], canonical_keys
+                        project, local, by_album[original], canonical_keys, artist_resolver
                     )
                 except (TypeError, ValueError, KeyError):
                     continue
@@ -88,7 +93,9 @@ def load_original_memberships(conn, merge_level):
         return {}
 
 
-def _trusted_original(project, local_spotify_to_track, candidates, canonical_keys):
+def _trusted_original(
+    project, local_spotify_to_track, candidates, canonical_keys, artist_resolver=None
+):
     def normalized(value):
         return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
 
@@ -104,36 +111,41 @@ def _trusted_original(project, local_spotify_to_track, candidates, canonical_key
     for candidate in candidates:
         if normalized(candidate["album_name"]) not in expected_titles:
             continue
-        album_artists = {
-            normalized(value)
-            for value in re.split(r"\s*,\s*", str(candidate["album_artists"] or ""))
-            if normalized(value)
-        }
-        if expected_artist and expected_artist not in album_artists:
+        from backend.domains.metadata.spotify_album_credits import legacy_name_matches
+
+        if artist_resolver is not None:
+            if not artist_resolver.compatible(
+                candidate["spotify_album_id"],
+                project["artist_id"],
+                project["artist_name"],
+                candidate["album_artists"],
+            ):
+                continue
+        elif expected_artist and not legacy_name_matches(
+            project["artist_name"], candidate["album_artists"]
+        ):
             continue
         if expected_date and candidate["release_date"] != expected_date:
             continue
         total = int(candidate["total_tracks"] or 0)
-        try:
-            spotify_track_ids = {
-                str(value) for value in json.loads(candidate["track_list"] or "[]") if value
-            }
-        except (json.JSONDecodeError, TypeError):
+        from backend.providers.spotify.album_tracks import complete_track_ids
+
+        positions = complete_track_ids(candidate["track_list"], total)
+        if total < 2 or positions is None:
             continue
-        if total < 2 or len(spotify_track_ids) != total:
-            continue
-        if int(candidate["linked_track_count"] or 0) < total:
+        spotify_track_ids = set(positions)
+        if int(candidate["linked_track_count"] or 0) < len(spotify_track_ids):
             continue
         if not spotify_track_ids.issubset(local_spotify_to_track):
             continue
 
         song_keys = {canonical_keys[local_spotify_to_track[value]] for value in spotify_track_ids}
-        if len(song_keys) != total:
+        if len(song_keys) != len(spotify_track_ids):
             continue
         trusted.append(
             (
                 song_keys,
-                total,
+                len(song_keys),
                 int(candidate["play_count"] or 0),
                 float(candidate["confidence"] or 0),
             )

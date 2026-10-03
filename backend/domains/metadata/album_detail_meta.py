@@ -267,8 +267,4 @@ def resolve_album_detail_meta(
         meta["release_date"] = project_date
     if "album_type" not in meta and project_type:
         meta["album_type"] = "compilation" if project_type == "compilation_exclusive" else "album"
-    if "total_tracks" not in meta:
-        track_count = _local_track_count(conn, [primary_album_id] if primary_album_id else ids)
-        if track_count is not None:
-            meta["total_tracks"] = track_count
     return meta or None

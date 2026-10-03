@@ -52,6 +52,8 @@ RECORDS = (
     "l3_song_album_attribution_overrides",
     "album_spotify_links",
     "spotify_album_meta",
+    "spotify_album_artist_credits",
+    "artist_identity_external_ids",
 )
 TASTE = (
     "artist_genre_sources",

@@ -16,8 +16,8 @@ def _clear_db_caches() -> None:
 
     db_mod._load_plays_cached.cache_clear()
     db_mod._load_plays_for_artists_cached.cache_clear()
-    db_mod.get_track_all_artists_map.cache_clear()
-    db_mod.get_track_artist_names_map.cache_clear()
+    getattr(db_mod.get_track_all_artists_map, "cache_clear")()
+    getattr(db_mod.get_track_artist_names_map, "cache_clear")()
 
 
 def test_import_data_handles_audio_and_video_records_without_metadata(tmp_path, monkeypatch):

@@ -37,180 +37,154 @@ def dedup_preserve_order(seq):
     return [x for x in seq if not (x in seen or seen.add(x))]
 
 
-def _verify_album_artists(spotify_album_ids, artist_name):
-    """Verify whether albums' main artists include the target artist.
+def _verify_album_artists(spotify_album_ids, artist_name, artist_id=None):
+    """Return ID-verified albums only; legacy names are unverified candidates."""
+    from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
 
-    Returns set of verified spotify_album_ids.
-    """
     if not spotify_album_ids:
         return set()
-
     conn = get_db()
-    artist_lower = artist_name.lower()
-    verified = set()
-    need_api = []
-
-    placeholders = ",".join("?" for _ in spotify_album_ids)
-    rows = pd.read_sql_query(
-        f"SELECT spotify_album_id, album_artists FROM spotify_album_meta "
-        f"WHERE spotify_album_id IN ({placeholders})",
-        conn,
-        params=list(spotify_album_ids),
-    )
-    conn.close()
-
-    db_ids = set()
-    for _, row in rows.iterrows():
-        db_id = row["spotify_album_id"]
-        db_ids.add(db_id)
-        artists_str = row.get("album_artists")
-        if artists_str:
-            artists = [a.strip().lower() for a in artists_str.split(",")]
-            if artist_lower in artists:
-                verified.add(db_id)
-        else:
-            need_api.append(db_id)
-
-    for sid in spotify_album_ids:
-        if sid not in db_ids:
-            need_api.append(sid)
-
+    try:
+        resolver = AlbumArtistResolver(conn)
+        verified = {
+            sid
+            for sid in spotify_album_ids
+            if resolver.match(sid, artist_id, artist_name) == "verified_id"
+        }
+        need_api = [sid for sid in spotify_album_ids if not resolver.read(sid)]
+    finally:
+        conn.close()
     if need_api and not public_readonly_db_guard_active():
-        api_verified = _fetch_album_artists_from_api(need_api, artist_name)
-        verified.update(api_verified)
-
+        verified.update(_fetch_album_artists_from_api(need_api, artist_name, artist_id))
     return verified
 
 
-def _fetch_album_artists_from_api(spotify_album_ids, artist_name):
-    """Batch fetch album artists via Spotify /v1/albums?ids= and persist to DB."""
-    if not spotify_album_ids:
-        return set()
-    if public_readonly_db_guard_active():
-        return set()
+def _fetch_album_artists_from_api(spotify_album_ids, artist_name, artist_id=None):
+    """Bounded legacy helper; failed requests never count as identity verification."""
+    from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
+    from backend.domains.metadata.spotify_refresh import upsert_album_batch
 
+    if not spotify_album_ids or public_readonly_db_guard_active():
+        return set()
     token = _get_spotify_token()
     if not token:
-        return set(spotify_album_ids)
-
-    verified = set()
-    ids_list = list(dedup_preserve_order(spotify_album_ids))
-    artist_lower = artist_name.lower()
-
+        return set()
     conn = get_db(readonly=False)
-
-    for i in range(0, len(ids_list), 20):
-        batch = ids_list[i : i + 20]
-        try:
-            data = SpotifyProvider().get_albums(batch, token)
-            if not data:
-                verified.update(batch)
-                continue
-
-            for album in data.get("albums", []):
-                if album is None:
-                    continue
-
-                artist_names = [a["name"] for a in album.get("artists", [])]
-                album_artists_str = ", ".join(artist_names)
-                album_artists_lower = [n.lower() for n in artist_names]
-
-                try:
-                    genres = (
-                        json.dumps(album.get("genres", []), ensure_ascii=False)
-                        if album.get("genres")
-                        else None
-                    )
-                    img_url = album["images"][0]["url"] if album.get("images") else None
-                    conn.execute(
-                        """INSERT INTO spotify_album_meta(
-                               spotify_album_id, album_name, album_type, release_date,
-                               popularity, label, genres, image_url, album_artists)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                           ON CONFLICT(spotify_album_id) DO UPDATE SET
-                               album_name = excluded.album_name,
-                               album_type = excluded.album_type,
-                               release_date = excluded.release_date,
-                               popularity = excluded.popularity,
-                               label = excluded.label,
-                               genres = excluded.genres,
-                               image_url = excluded.image_url,
-                               album_artists = excluded.album_artists""",
-                        (
-                            album["id"],
-                            album["name"],
-                            album.get("album_type"),
-                            album.get("release_date"),
-                            album.get("popularity"),
-                            album.get("label"),
-                            genres,
-                            img_url,
-                            album_artists_str,
-                        ),
-                    )
-                except Exception:
-                    pass
-
-                if artist_lower in album_artists_lower:
-                    verified.add(album["id"])
-
-        except Exception:
-            verified.update(batch)
-
-    conn.commit()
-    conn.close()
-    return verified
+    try:
+        ids_list = dedup_preserve_order(spotify_album_ids)
+        for i in range(0, len(ids_list), 20):
+            batch = ids_list[i : i + 20]
+            try:
+                provider = SpotifyProvider()
+                data = provider.get_albums(batch, token)
+                albums = [
+                    album
+                    for album in (data or {}).get("albums", [])
+                    if album and album.get("id") in batch
+                ]
+                upsert_album_batch(
+                    conn, albums, provider=provider, access_token=token, source="release_cycle"
+                )
+            except Exception:
+                conn.rollback()
+        resolver = AlbumArtistResolver(conn)
+        return {
+            sid for sid in ids_list if resolver.match(sid, artist_id, artist_name) == "verified_id"
+        }
+    finally:
+        conn.close()
 
 
 def _save_album_meta_to_db(
-    spotify_album_id, album_name, album_type, release_date, album_artists=None, image_url=None
+    spotify_album_id,
+    album_name,
+    album_type,
+    release_date,
+    album_artists=None,
+    image_url=None,
+    artist_evidence=None,
 ):
-    """Persist Spotify album metadata to spotify_album_meta table."""
+    """Persist a simplified Album search result through the common evidence boundary."""
+    from backend.domains.metadata.spotify_refresh import upsert_album_batch
+
+    conn = get_db(readonly=False)
     try:
-        conn = get_db(readonly=False)
-        conn.execute(
-            """INSERT INTO spotify_album_meta(
-                   spotify_album_id, album_name, album_type, release_date, album_artists, image_url)
-               VALUES (?, ?, ?, ?, ?, ?)
-               ON CONFLICT(spotify_album_id) DO UPDATE SET
-                   album_name = excluded.album_name,
-                   album_type = excluded.album_type,
-                   release_date = excluded.release_date,
-                   album_artists = COALESCE(excluded.album_artists, spotify_album_meta.album_artists),
-                   image_url = COALESCE(excluded.image_url, spotify_album_meta.image_url)""",
-            (spotify_album_id, album_name, album_type, release_date, album_artists, image_url),
+        upsert_album_batch(
+            conn,
+            [
+                {
+                    "id": spotify_album_id,
+                    "name": album_name,
+                    "album_type": album_type,
+                    "release_date": release_date,
+                    "artists": artist_evidence,
+                    "images": [{"url": image_url}] if image_url else [],
+                }
+            ],
         )
-        conn.commit()
-        conn.close()
     except Exception:
-        pass
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _album_identity_cache_revision():
+    from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.spotify_album_credits import album_credit_revision
+
+    conn = None
+    try:
+        conn = get_db()
+        return (album_credit_revision(conn), get_identity_revision(conn))
+    except Exception:
+        return ()
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _spotify_search_album(album_name, artist_name, skip_db_check=False):
+    return _spotify_search_album_cached(
+        album_name, artist_name, skip_db_check, _album_identity_cache_revision()
+    )
 
 
 @ttl_cached(3600, namespace="billboard")
-def _spotify_search_album(album_name, artist_name, skip_db_check=False):
+def _spotify_search_album_cached(album_name, artist_name, skip_db_check=False, _revision=()):
     """Get album metadata — DB first, Spotify Search API fallback."""
+    from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
+
     if not skip_db_check:
+        conn = None
         try:
             conn = get_db()
-            row = pd.read_sql_query(
-                """SELECT spotify_album_id, album_name, album_type, release_date, image_url
+            resolver = AlbumArtistResolver(conn)
+            rows = conn.execute(
+                """SELECT spotify_album_id, album_name, album_type, release_date, image_url, album_artists
                    FROM spotify_album_meta
-                   WHERE album_name = ? AND album_type IS NOT NULL AND release_date IS NOT NULL
-                   LIMIT 1""",
-                conn,
-                params=[album_name],
-            )
-            conn.close()
-            if not row.empty:
-                return {
-                    "album_name": row["album_name"].iloc[0],
-                    "album_type": row["album_type"].iloc[0],
-                    "release_date": row["release_date"].iloc[0],
-                    "spotify_album_id": row["spotify_album_id"].iloc[0],
-                    "image_url": row["image_url"].iloc[0],
-                }
+                   WHERE album_name=? AND album_type IS NOT NULL AND release_date IS NOT NULL
+                   ORDER BY spotify_album_id""",
+                (album_name,),
+            ).fetchall()
+            candidates = []
+            for row in rows:
+                item = dict(row)
+                status = resolver.match(
+                    item["spotify_album_id"],
+                    artist_name=artist_name,
+                    legacy_text=item["album_artists"],
+                )
+                if status in {"verified_id", "legacy_name_match"}:
+                    item.pop("album_artists")
+                    candidates.append((status != "verified_id", item))
+            if candidates:
+                return sorted(candidates, key=lambda item: item[0])[0][1]
         except Exception:
             pass
+        finally:
+            if conn is not None:
+                conn.close()
 
     # Public presentation requests are cache-only. They must not turn a GET
     # into a Spotify API call or metadata persistence side effect.
@@ -245,12 +219,24 @@ def _spotify_search_album(album_name, artist_name, skip_db_check=False):
                     album.get("release_date"),
                     album_artists=album_artists,
                     image_url=result["image_url"],
+                    artist_evidence=album.get("artists"),
                 )
-                return result
+                conn = get_db()
+                try:
+                    if (
+                        AlbumArtistResolver(conn).match(album["id"], artist_name=artist_name)
+                        == "verified_id"
+                    ):
+                        return result
+                finally:
+                    conn.close()
     except Exception:
         pass
 
     return None
+
+
+setattr(_spotify_search_album, "cache_clear", _spotify_search_album_cached.cache_clear)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -270,8 +256,12 @@ def load_artist_list(df_raw):
     return artists.to_dict(orient="records")
 
 
-@lru_cache(maxsize=4)
 def load_artist_releases(artist_name):
+    return _load_artist_releases_cached(artist_name, _album_identity_cache_revision())
+
+
+@lru_cache(maxsize=4)
+def _load_artist_releases_cached(artist_name, _revision):
     """Get all releases (albums + singles) for an artist with metadata.
 
     Returns DataFrame columns:
@@ -326,6 +316,10 @@ def load_artist_releases(artist_name):
     df = df.sort_values("release_date", ascending=False).reset_index(drop=True)
 
     return df
+
+
+setattr(load_artist_releases, "cache_clear", _load_artist_releases_cached.cache_clear)
+setattr(load_artist_releases, "cache_info", _load_artist_releases_cached.cache_info)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -426,84 +426,185 @@ def backfill_album_links_for_spotify_ids(
     return max(cursor.rowcount, 0)
 
 
+def select_incomplete_album_ids(conn: sqlite3.Connection, limit: int = 200) -> list[str]:
+    """Bounded repair selection; complete legacy lists do not need a full refetch."""
+    from backend.providers.spotify.album_tracks import complete_track_ids
+
+    selected = []
+    for sid, total, raw in conn.execute(
+        "SELECT spotify_album_id, total_tracks, track_list FROM spotify_album_meta ORDER BY spotify_album_id"
+    ):
+        if complete_track_ids(raw, total) is None:
+            selected.append(sid)
+            if len(selected) >= limit:
+                break
+    return selected
+
+
 def select_missing_album_ids(conn: sqlite3.Connection, limit: int = 5000) -> list[str]:
     rows = conn.execute(
-        """
-        SELECT DISTINCT candidate.spotify_album_id
-        FROM (
-            SELECT spotify_album_id_at_play AS spotify_album_id
-            FROM plays
-            WHERE spotify_album_id_at_play IS NOT NULL AND spotify_album_id_at_play != ''
-            UNION
-            SELECT spotify_album_id
-            FROM spotify_track_meta
-            WHERE spotify_album_id IS NOT NULL AND spotify_album_id != ''
-            UNION
-            SELECT spotify_album_id
-            FROM album_spotify_links
-            WHERE spotify_album_id IS NOT NULL AND spotify_album_id != ''
-        ) candidate
-        LEFT JOIN spotify_album_meta sam
-          ON sam.spotify_album_id = candidate.spotify_album_id
-        WHERE sam.spotify_album_id IS NULL
-           OR sam.image_url IS NULL
-           OR sam.image_url = ''
-           OR sam.total_tracks IS NULL
-        ORDER BY candidate.spotify_album_id
-        LIMIT ?
-        """,
+        """SELECT DISTINCT candidate.spotify_album_id FROM (
+        SELECT spotify_album_id_at_play AS spotify_album_id FROM plays
+        UNION SELECT spotify_album_id FROM spotify_track_meta
+        UNION SELECT spotify_album_id FROM album_spotify_links
+        ) candidate LEFT JOIN spotify_album_meta sam
+        ON sam.spotify_album_id=candidate.spotify_album_id
+        WHERE candidate.spotify_album_id IS NOT NULL AND candidate.spotify_album_id!=''
+        AND (sam.spotify_album_id IS NULL OR sam.image_url IS NULL OR sam.image_url=''
+             OR sam.total_tracks IS NULL)
+        ORDER BY candidate.spotify_album_id LIMIT ?""",
         (limit,),
     ).fetchall()
-    return [row["spotify_album_id"] for row in rows]
+    return list(
+        dict.fromkeys([*(row[0] for row in rows), *select_incomplete_album_ids(conn, limit)])
+    )[:limit]
 
 
-def upsert_album_batch(conn: sqlite3.Connection, albums: list[dict]) -> int:
-    updated = 0
+def upsert_album_batch(
+    conn: sqlite3.Connection,
+    albums: list[dict],
+    *,
+    provider=None,
+    access_token=None,
+    outcomes=None,
+    source_run_id=None,
+    source="spotify_refresh",
+) -> int:
+    """Publish only validated releases. Failed refreshes preserve the last complete pair.
+
+    Network reads finish before the batch transaction; the evidence and simplified
+    track metadata commit with the ID list. No plays/links/identity are rewritten.
+    """
+    from backend.domains.metadata.spotify_album_credits import persist_album_artists
+    from backend.providers.spotify.album_tracks import (
+        AlbumTracksIncompleteError,
+        fetch_complete_album_tracks,
+    )
+
+    prepared = []
     for album in albums:
         if not album:
             continue
-        images = album.get("images") or []
-        artists = ", ".join(
-            artist.get("name", "") for artist in album.get("artists", []) if artist.get("name")
-        )
-        tracks = (album.get("tracks") or {}).get("items", [])
-        track_ids = [item.get("id") for item in tracks if item.get("id")]
-        genres = (
-            json.dumps(album.get("genres", []), ensure_ascii=False) if album.get("genres") else None
-        )
+        try:
+            tracks = fetch_complete_album_tracks(provider, album, access_token)
+            error = None
+        except (AlbumTracksIncompleteError, AttributeError) as exc:
+            tracks, error = None, str(exc)
+        except Exception as exc:
+            tracks, error = None, f"provider_failed:{type(exc).__name__}"
+        prepared.append((album, tracks, error))
+    has_evidence = (
         conn.execute(
-            """INSERT INTO spotify_album_meta(
-                   spotify_album_id, album_name, album_type, release_date,
-                   popularity, label, genres, image_url, album_artists,
-                   total_tracks, track_list)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(spotify_album_id) DO UPDATE SET
-                   album_name = excluded.album_name,
-                   album_type = excluded.album_type,
-                   release_date = excluded.release_date,
-                   popularity = excluded.popularity,
-                   label = excluded.label,
-                   genres = COALESCE(excluded.genres, spotify_album_meta.genres),
-                   image_url = COALESCE(excluded.image_url, spotify_album_meta.image_url),
-                   album_artists = COALESCE(excluded.album_artists, spotify_album_meta.album_artists),
-                   total_tracks = COALESCE(excluded.total_tracks, spotify_album_meta.total_tracks),
-                   track_list = COALESCE(excluded.track_list, spotify_album_meta.track_list)""",
-            (
-                album["id"],
-                album.get("name"),
-                album.get("album_type"),
-                album.get("release_date"),
-                album.get("popularity"),
-                album.get("label"),
-                genres,
-                images[0].get("url") if images else None,
-                artists or None,
-                album.get("total_tracks"),
-                json.dumps(track_ids, ensure_ascii=False) if track_ids else None,
-            ),
-        )
-        updated += 1
-    conn.commit()
+            "SELECT 1 FROM sqlite_master WHERE name='spotify_album_tracklist_evidence'"
+        ).fetchone()
+        is not None
+    )
+    updated = 0
+    evidence_changed = False
+    try:
+        for album, tracks, error in prepared:
+            images = album.get("images") or []
+            track_ids = [item["id"] for item in tracks] if tracks is not None else None
+            genres = (
+                json.dumps(album.get("genres", []), ensure_ascii=False)
+                if album.get("genres")
+                else None
+            )
+            conn.execute(
+                """INSERT INTO spotify_album_meta(
+                       spotify_album_id, album_name, album_type, release_date,
+                       popularity, label, genres, image_url, album_artists,
+                       total_tracks, track_list)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(spotify_album_id) DO UPDATE SET
+                       album_name = excluded.album_name,
+                       album_type = excluded.album_type,
+                       release_date = excluded.release_date,
+                       popularity = excluded.popularity,
+                       label = excluded.label,
+                       genres = COALESCE(excluded.genres, spotify_album_meta.genres),
+                       image_url = COALESCE(excluded.image_url, spotify_album_meta.image_url),
+                       album_artists = COALESCE(excluded.album_artists, spotify_album_meta.album_artists),
+                       total_tracks = CASE WHEN excluded.track_list IS NOT NULL OR spotify_album_meta.track_list IS NULL
+                           THEN COALESCE(excluded.total_tracks, spotify_album_meta.total_tracks)
+                           ELSE spotify_album_meta.total_tracks END,
+                       track_list = COALESCE(excluded.track_list, spotify_album_meta.track_list)""",
+                (
+                    album["id"],
+                    album.get("name"),
+                    album.get("album_type"),
+                    album.get("release_date"),
+                    album.get("popularity"),
+                    album.get("label"),
+                    genres,
+                    images[0].get("url") if images else None,
+                    None,
+                    album.get("total_tracks"),
+                    json.dumps(track_ids, ensure_ascii=False) if track_ids else None,
+                ),
+            )
+            artist_state = persist_album_artists(
+                conn, album, source=source, source_run_id=source_run_id
+            )
+            evidence_changed |= artist_state in {"observed", "changed"}
+            if has_evidence:
+                conn.execute(
+                    """INSERT INTO spotify_album_tracklist_evidence
+                    (spotify_album_id, tracks_json, validated_total, last_status, attempted_total, last_error)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(spotify_album_id) DO UPDATE SET
+                        tracks_json=COALESCE(excluded.tracks_json, tracks_json),
+                        validated_total=COALESCE(excluded.validated_total, validated_total),
+                        last_status=excluded.last_status, attempted_total=excluded.attempted_total,
+                        last_error=excluded.last_error, updated_at=CURRENT_TIMESTAMP""",
+                    (
+                        album["id"],
+                        json.dumps(tracks, ensure_ascii=False) if tracks is not None else None,
+                        album.get("total_tracks") if tracks is not None else None,
+                        "complete" if tracks is not None else "incomplete",
+                        album.get("total_tracks"),
+                        error,
+                    ),
+                )
+            if tracks is not None:
+                # Simplified release tracks must not replace a recording's known parent
+                # or overwrite full Track endpoint attributes with absent fields.
+                conn.executemany(
+                    """INSERT INTO spotify_track_meta
+                    (spotify_track_id, track_name, duration_ms, explicit, disc_number, track_number, spotify_album_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(spotify_track_id) DO UPDATE SET
+                        track_name=COALESCE(excluded.track_name, spotify_track_meta.track_name),
+                        duration_ms=COALESCE(spotify_track_meta.duration_ms, excluded.duration_ms),
+                        disc_number=COALESCE(spotify_track_meta.disc_number, excluded.disc_number),
+                        track_number=COALESCE(spotify_track_meta.track_number, excluded.track_number),
+                        spotify_album_id=COALESCE(spotify_track_meta.spotify_album_id, excluded.spotify_album_id)""",
+                    [
+                        (
+                            t["id"],
+                            t.get("name"),
+                            t.get("duration_ms"),
+                            int(bool(t.get("explicit"))),
+                            t.get("disc_number"),
+                            t.get("track_number"),
+                            album["id"],
+                        )
+                        for t in tracks
+                    ],
+                )
+            if outcomes is not None:
+                outcomes.append(
+                    (album["id"], "complete" if tracks is not None else "incomplete", error)
+                )
+            updated += 1
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    if evidence_changed or any(tracks is not None for _, tracks, _ in prepared):
+        from backend.core.cache_manager import invalidate_many
+
+        invalidate_many("billboard", "analysis", "yearly_review")
     return updated
 
 
@@ -852,7 +953,20 @@ def refresh_missing_spotify_metadata(
             errors.append("albums_batch_failed")
             continue
         albums = data.get("albums", [])
-        albums_updated += upsert_album_batch(conn, albums)
+        album_outcomes: list[tuple[str, str, str | None]] = []
+        albums_updated += upsert_album_batch(
+            conn,
+            albums,
+            provider=provider,
+            access_token=access_token,
+            outcomes=album_outcomes,
+            source_run_id=source_run_id,
+        )
+        errors.extend(
+            f"album_tracks_incomplete:{sid}:{error}"
+            for sid, status, error in album_outcomes
+            if status != "complete"
+        )
         spotify_album_ids_updated.update(
             str(album["id"]) for album in albums if album and album.get("id")
         )

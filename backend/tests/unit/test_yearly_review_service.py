@@ -407,3 +407,64 @@ def test_published_preparation_survives_memory_reset_without_source_scan(monkeyp
         )
         is None
     )
+
+
+def test_scoped_dependency_tracks_play_source_album_without_recording_parent(monkeypatch, tmp_path):
+    db_path = tmp_path / "source-album-dependency.db"
+    _create_scoped_dependency_fixture(db_path)
+    with sqlite3.connect(db_path) as c:
+        c.execute("ALTER TABLE plays ADD COLUMN source_album_id INTEGER")
+        c.execute("UPDATE plays SET source_album_id=100")
+        c.execute("CREATE TABLE album_spotify_links(album_id INTEGER, spotify_album_id TEXT)")
+        c.execute("INSERT INTO album_spotify_links VALUES (100,'source-album')")
+        c.execute(
+            "INSERT INTO spotify_album_meta(spotify_album_id,album_name,total_tracks,track_list) VALUES ('source-album','Source',106,'[\"first-page\"]')"
+        )
+
+    def connect(*, readonly=True):
+        connection = sqlite3.connect(db_path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    monkeypatch.setattr(yearly_review_service, "get_db", connect)
+    before = yearly_review_service._year_scoped_dependency_revision(2025, _context())
+    with sqlite3.connect(db_path) as c:
+        c.execute(
+            "UPDATE spotify_album_meta SET track_list='[\"complete-release\"]' WHERE spotify_album_id='source-album'"
+        )
+    assert yearly_review_service._year_scoped_dependency_revision(2025, _context()) != before
+
+
+def test_scoped_dependency_tracks_source_album_artists_and_external_ids(monkeypatch, tmp_path):
+    db_path = tmp_path / "source-album-artist-dependency.db"
+    _create_scoped_dependency_fixture(db_path)
+    with sqlite3.connect(db_path) as c:
+        c.execute("ALTER TABLE plays ADD COLUMN source_album_id INTEGER")
+        c.execute("UPDATE plays SET source_album_id=100")
+        c.execute("CREATE TABLE album_spotify_links(album_id INTEGER, spotify_album_id TEXT)")
+        c.execute("INSERT INTO album_spotify_links VALUES (100,'source-album')")
+        c.execute(
+            "CREATE TABLE IF NOT EXISTS spotify_album_artist_credits(spotify_album_id TEXT,spotify_artist_id TEXT,credited_name TEXT,credit_order INTEGER)"
+        )
+        c.execute(
+            "CREATE TABLE IF NOT EXISTS artist_identity_external_ids(artist_id INTEGER,provider TEXT,external_id TEXT)"
+        )
+        c.execute(
+            "INSERT INTO spotify_album_artist_credits VALUES ('source-album','provider-a','Name',0)"
+        )
+        c.execute("INSERT INTO artist_identity_external_ids VALUES (1,'spotify','provider-a')")
+
+    def connect(*, readonly=True):
+        connection = sqlite3.connect(db_path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    monkeypatch.setattr(yearly_review_service, "get_db", connect)
+    before = yearly_review_service._year_scoped_dependency_revision(2025, _context())
+    with sqlite3.connect(db_path) as c:
+        c.execute("UPDATE spotify_album_artist_credits SET credited_name='Renamed'")
+    changed = yearly_review_service._year_scoped_dependency_revision(2025, _context())
+    assert changed != before
+    with sqlite3.connect(db_path) as c:
+        c.execute("UPDATE artist_identity_external_ids SET artist_id=2")
+    assert yearly_review_service._year_scoped_dependency_revision(2025, _context()) != changed

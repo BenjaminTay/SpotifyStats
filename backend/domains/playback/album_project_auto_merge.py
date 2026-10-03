@@ -16,7 +16,6 @@ publishing one statistics-level project.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import sqlite3
 import unicodedata
@@ -40,7 +39,7 @@ _COMPILATION_NAME_MARKERS = (
     "compilation",
 )
 
-ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION = "spotify_complete_release_v2"
+ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION = "spotify_complete_release_v3_album_artist_ids"
 
 _RELEASE_PACKAGING_MARKERS = (
     "remaster",
@@ -175,6 +174,7 @@ class _ProjectReleaseEvidence:
     track_list: tuple[str, ...]
     link_track_count: int
     confidence: float
+    artist_identity_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -271,6 +271,9 @@ def plan_album_project_auto_merges(conn: sqlite3.Connection) -> AlbumProjectAuto
     for row in projects:
         albums_by_project[int(row["project_id"])].append(row)
 
+    from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
+
+    artist_resolver = AlbumArtistResolver(conn)
     evidence_by_project: dict[int, list[_ProjectReleaseEvidence]] = {}
     for project_id, rows in albums_by_project.items():
         # An inferred project with multiple source albums already encodes bundle
@@ -292,6 +295,7 @@ def plan_album_project_auto_merges(conn: sqlite3.Connection) -> AlbumProjectAuto
             artist_name=str(row["artist_name"] or ""),
             local_track_count=int(row["local_track_count"] or 0),
             skipped=skipped,
+            artist_resolver=artist_resolver,
         )
         if strong:
             evidence_by_project[project_id] = strong
@@ -371,7 +375,7 @@ def plan_album_project_auto_merges(conn: sqlite3.Connection) -> AlbumProjectAuto
             component_edges,
             primary_spotify_album_id=primary.spotify_album_id,
         )
-        artist_id = _select_project_artist_id(conn, candidate_evidence, primary)
+        artist_id = _select_project_artist_id(conn, candidate_evidence, primary, artist_resolver)
         candidates.append(
             AlbumProjectAutoMergeCandidate(
                 candidate_key=_candidate_key(spotify_album_ids, album_ids),
@@ -466,6 +470,9 @@ def apply_album_project_auto_merge_plan(
         # The existing rebuild is the single publisher for project identities,
         # source-album membership, track membership, and project revision.
         rebuild_album_projects(conn, commit=False, ensure_schema=False)
+        from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
+
+        artist_resolver = AlbumArtistResolver(conn)
         for candidate in plan.candidates:
             project_row = conn.execute(
                 """SELECT project_id
@@ -480,6 +487,13 @@ def apply_album_project_auto_merge_plan(
                     f"rebuilt Album Project missing primary album {candidate.primary_album_id}"
                 )
             project_id = int(project_row[0])
+            credits = artist_resolver.read(candidate.spotify_album_id)
+            artist_key = (
+                "canonical:"
+                + ",".join(map(str, sorted({c["canonical_artist_id"] for c in credits})))
+                if credits
+                else normalize_album_release_name(candidate.album_artists)
+            )
             conn.execute(
                 """UPDATE album_projects
                       SET normalized_name=?, album_artist_key=?,
@@ -487,7 +501,7 @@ def apply_album_project_auto_merge_plan(
                     WHERE project_id=?""",
                 (
                     normalize_album_release_name(candidate.canonical_name),
-                    normalize_album_release_name(candidate.album_artists),
+                    artist_key,
                     ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION,
                     project_id,
                 ),
@@ -564,6 +578,7 @@ def _strong_release_evidence_for_album(
     artist_name: str,
     local_track_count: int,
     skipped: Counter[str],
+    artist_resolver,
 ) -> list[_ProjectReleaseEvidence]:
     rows = conn.execute(
         """SELECT asl.spotify_album_id, MAX(asl.confidence) AS confidence,
@@ -603,6 +618,16 @@ def _strong_release_evidence_for_album(
         if not release_date or not album_artists:
             skipped["incomplete_release_metadata"] += 1
             continue
+        provider_credits = artist_resolver.read(row["spotify_album_id"])
+        if provider_credits:
+            if any(c["resolution_status"] != "resolved" for c in provider_credits):
+                skipped["album_artist_identity_unresolved"] += 1
+                continue
+            canonical_ids = sorted({c["canonical_artist_id"] for c in provider_credits})
+            artist_identity_key = "canonical:" + ",".join(map(str, canonical_ids))
+        else:
+            # Existing complete-track proof remains, but name evidence is explicitly legacy.
+            artist_identity_key = "legacy:" + normalize_album_release_name(album_artists)
         track_list = _parse_complete_track_list(row["track_list"], row["total_tracks"])
         if track_list is None:
             skipped["incomplete_track_list"] += 1
@@ -635,29 +660,16 @@ def _strong_release_evidence_for_album(
                 track_list=track_list,
                 link_track_count=int(row["link_track_count"] or 0),
                 confidence=confidence,
+                artist_identity_key=artist_identity_key,
             )
         )
     return result
 
 
 def _parse_complete_track_list(raw: Any, total_tracks: Any) -> tuple[str, ...] | None:
-    try:
-        expected = int(total_tracks or 0)
-        decoded = json.loads(raw) if isinstance(raw, str) else raw
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return None
-    if expected <= 0 or not isinstance(decoded, list):
-        return None
-    track_ids: list[str] = []
-    for item in decoded:
-        if isinstance(item, dict):
-            item = item.get("id") or item.get("spotify_track_id") or item.get("uri")
-        if not isinstance(item, str) or not item.strip():
-            return None
-        track_ids.append(_normalize_spotify_track_id(item))
-    if len(track_ids) != expected or len(set(track_ids)) != expected:
-        return None
-    return tuple(track_ids)
+    from backend.providers.spotify.album_tracks import complete_track_ids
+
+    return complete_track_ids(raw, total_tracks)
 
 
 def _local_spotify_track_ids(conn: sqlite3.Connection, album_id: int) -> set[str]:
@@ -832,7 +844,8 @@ def _artist_alias_tolerant_album_key(evidence: _ProjectReleaseEvidence) -> str:
 
 def _release_family_key(evidence: _ProjectReleaseEvidence) -> tuple[str, str]:
     return (
-        normalize_album_release_name(evidence.album_artists),
+        evidence.artist_identity_key
+        or "legacy:" + normalize_album_release_name(evidence.album_artists),
         _artist_alias_tolerant_album_key(evidence),
     )
 
@@ -1043,7 +1056,8 @@ def _release_fingerprint(evidence: _ProjectReleaseEvidence) -> tuple[str, str, s
         evidence.spotify_album_id,
         normalize_album_release_name(evidence.spotify_album_name),
         evidence.release_date,
-        normalize_album_release_name(evidence.album_artists),
+        evidence.artist_identity_key
+        or "legacy:" + normalize_album_release_name(evidence.album_artists),
         track_hash,
     )
 
@@ -1126,11 +1140,19 @@ def _select_project_artist_id(
     conn: sqlite3.Connection,
     evidence: list[_ProjectReleaseEvidence],
     primary: _ProjectReleaseEvidence,
+    artist_resolver,
 ) -> int:
     artist_ids = {item.artist_id for item in evidence}
     if len(artist_ids) == 1:
         return next(iter(artist_ids))
 
+    credits = artist_resolver.read(primary.spotify_album_id)
+    if credits:
+        resolved = {
+            c["canonical_artist_id"] for c in credits if c["resolution_status"] == "resolved"
+        }
+        # Array order never creates a primary/featured role.
+        return next(iter(resolved)) if len(resolved) == 1 else primary.artist_id
     normalized_album_artists = normalize_album_release_name(primary.album_artists)
     exact = conn.execute("SELECT artist_id, artist_name FROM artists ORDER BY artist_id").fetchall()
     exact_ids = [

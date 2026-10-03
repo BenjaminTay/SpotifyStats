@@ -139,14 +139,16 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 
 本路线只保存剩余分析与未来入口。Spotify Track `artists[]` 证据已按独立计划实施并在隔离副本验收；其余方向继续停留在 `PLANNED / DEFERRED`。没有新的明确授权时，不继续做第二来源、曲目语言、封面替代或其他字段的真实 API 回填、schema 设计与实现。
 
+> 2026-10-03：两个专辑事项已形成固定专项交付，并从 main `7b9a1f4e` 完成隔离联合集成、默认完整八阶段 PASS 及桌面/手机视口验收；见[联合报告](../reports/2026-10-03-album-metadata-integration-verification.md)。集成版本尚未提交/合入，后续 main 封面变更仍须审阅；正式库迁移、回填和生产验收另行授权。
+
 ## 10. 2026-09-24 Spotify 现有字段利用审计：后续问题
 
 以下问题是只读代码与 Spotify 官方接口对账的结果，均不并入 Track `artists[]` 证据接入的当前实施范围；后续按影响量另行排期。
 
 | 优先级 | 问题与当前证据 | 后续处理门槛 |
 |---|---|---|
-| 高 | Album `artists[]` 包含稳定 Spotify artist id 和名称；`upsert_album_batch()` 当前只把名称拼成 `album_artists` 字符串，`release_cycle_service._verify_album_artists()` 再按逗号拆分并用名称比较。同名、改名和含逗号名称都可能造成错误关联。 | 先抽样核对实际冲突；设计有序 album artist evidence 与 ID 解析，保留现有名称作显示。 |
-| 高 | Album `tracks` 是分页对象；`upsert_album_batch()` 和 `version_merge._fetch_album_tracks_from_api()` 只取当前 `items`，却把结果写入 `track_list`。`total_tracks` 可以发现缺页。专辑自动归并已有完整数量门禁，会拒绝缺页列表；其他消费者仍须审计。 | 量化 `length(track_list) < total_tracks`，再用 Album Tracks 的 `limit`/`offset` 完整拉取、校验总数后原子发布。 |
+| 高 | Album `artists[]` 包含稳定 Spotify artist id 和名称；`upsert_album_batch()` 当前只把名称拼成 `album_artists` 字符串，`release_cycle_service._verify_album_artists()` 再按逗号拆分并用名称比较。同名、改名和含逗号名称都可能造成错误关联。 | 本地实现已采用有序 Album evidence、稳定 ID/canonical 解析与冲突保留；完成副本验证，待共享文件合入、正式回填及生产验收。 |
+| 已完成本地专项 | SS-2026-09-24-001：统一 Album Tracks 完整分页与原子发布；副本 12 条缺页、35 条缺列表已补齐，3 条 50 首边界经核验无缩小总数；2026-10-03 收口旧缓存位置证据，定向补齐 Lana，其余未核验位置明确显示未知。 | [交付报告](../reports/2026-10-02-album-track-pagination-acceptance.md)；本地独立提交交付，未推送/发布，默认完整全栈和真实终端另验。 |
 | 中 | Album 返回 `release_date_precision`（年/月/日），当前 `spotify_album_meta` 只保存日期字符串；专辑候选与归并比较无法区分日期精度。 | 先量化部分精度样本和被日期匹配影响的候选，再持久保存 precision 并修正规则。 |
 | 中 | 已知 Spotify 专辑/艺人 ID 时 API 对象直接有 `images[]`。当前封面主链已使用它，但缺图兜底会按名称搜索专辑，甚至采用第一个有图结果，可能误配。 | 先统计走名称搜索的比例和错配样本；已有稳定 ID 时优先 ID 读取，不明身份则保留缺图。 |
 | 低 | Album Tracks 的每首歌有 `duration_ms`，而 `analysis_stats_service._resolve_album_category()` 用 `total_tracks × 210000` 估算专辑总时长。 | 依赖完整曲目表后，比较估算与真实时长对 LP/EP 分类的影响，再决定是否替换。 |

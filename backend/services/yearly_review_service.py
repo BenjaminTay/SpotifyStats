@@ -138,6 +138,22 @@ def database_revision(year: int | None = None) -> str:
         conn.close()
 
 
+def _report_source_revision(year):
+    # Fence the preparation LRU and persisted prepared-key registry as well as
+    # the scoped content digest. Observation timestamps/rejected events are excluded.
+    from backend.domains.metadata.spotify_album_credits import album_credit_revision
+
+    conn = get_db(readonly=True)
+    try:
+        album_revision = album_credit_revision(conn)
+    finally:
+        conn.close()
+    playback = database_revision(year)
+    if not album_revision:
+        return playback
+    return playback + ":album:" + hashlib.sha256(repr(album_revision).encode()).hexdigest()[:20]
+
+
 def _language_revision() -> str:
     conn = get_db(readonly=True)
     try:
@@ -293,7 +309,7 @@ def _prepare_artifact(year: int, context: YearlyReviewFilterContext) -> Prepared
     return _prepare_artifact_cached(
         year,
         context.model_dump_json(),
-        database_revision(year),
+        _report_source_revision(year),
         _language_revision(),
     )
 
@@ -331,7 +347,7 @@ def _prepare_artifacts(
         year: _prepare_artifact_cached(
             year,
             context.model_dump_json(),
-            database_revision(year),
+            _report_source_revision(year),
             language_revision,
         )
         for year in dict.fromkeys(years)
@@ -353,6 +369,18 @@ def _year_scoped_dependency_revision(
     """Hash metadata/group/project facts reachable from the report prefix."""
     conn = get_db(readonly=True)
     try:
+        source_album_dependency = ""
+        if (
+            "source_album_id" in {r[1] for r in conn.execute("PRAGMA table_info(plays)")}
+            and conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='album_spotify_links'"
+            ).fetchone()
+        ):
+            source_album_dependency = """ OR EXISTS (
+                SELECT 1 FROM album_spotify_links asl
+                JOIN plays p ON p.source_album_id=asl.album_id
+                WHERE asl.spotify_album_id=sam.spotify_album_id AND p.ts_year<=?
+            )"""
         digest = hashlib.sha256(b"spotifystats-year-dependencies-v2\0")
         queries = (
             (
@@ -479,7 +507,7 @@ def _year_scoped_dependency_revision(
             ),
             (
                 "spotify_album_meta",
-                """SELECT sam.spotify_album_id, sam.album_name, sam.album_type,
+                f"""SELECT sam.spotify_album_id, sam.album_name, sam.album_type,
                           sam.release_date, sam.popularity, sam.label, sam.genres,
                           sam.image_url, sam.album_artists, sam.total_tracks,
                           sam.track_list
@@ -492,8 +520,41 @@ def _year_scoped_dependency_revision(
                        WHERE stm.spotify_album_id=sam.spotify_album_id
                          AND p.ts_year<=?
                    )
+                   {source_album_dependency}
                    ORDER BY sam.spotify_album_id""",
-                (year,),
+                (year, year) if source_album_dependency else (year,),
+            ),
+            (
+                "spotify_album_artist_credits",
+                f"""SELECT c.spotify_album_id, c.spotify_artist_id, c.credited_name, c.credit_order
+                   FROM spotify_album_artist_credits c
+                   WHERE EXISTS (
+                       SELECT 1 FROM spotify_track_meta stm
+                       JOIN tracks t ON t.spotify_track_id=stm.spotify_track_id
+                       JOIN plays p ON p.track_id=t.track_id
+                       WHERE stm.spotify_album_id=c.spotify_album_id AND p.ts_year<=?
+                   )
+                   {source_album_dependency.replace("sam.spotify_album_id", "c.spotify_album_id")}
+                   ORDER BY c.spotify_album_id, c.credit_order""",
+                (year, year) if source_album_dependency else (year,),
+            ),
+            (
+                "artist_identity_external_ids",
+                f"""SELECT e.artist_id, e.provider, e.external_id
+                   FROM artist_identity_external_ids e
+                   WHERE e.provider='spotify' AND EXISTS (
+                       SELECT 1 FROM spotify_album_artist_credits c
+                       WHERE c.spotify_artist_id=e.external_id AND (
+                           EXISTS (
+                               SELECT 1 FROM spotify_track_meta stm
+                               JOIN tracks t ON t.spotify_track_id=stm.spotify_track_id
+                               JOIN plays p ON p.track_id=t.track_id
+                               WHERE stm.spotify_album_id=c.spotify_album_id AND p.ts_year<=?
+                           )
+                           {source_album_dependency.replace("sam.spotify_album_id", "c.spotify_album_id")}
+                       )
+                   ) ORDER BY e.artist_id,e.provider,e.external_id""",
+                (year, year) if source_album_dependency else (year,),
             ),
             (
                 "track_groups",

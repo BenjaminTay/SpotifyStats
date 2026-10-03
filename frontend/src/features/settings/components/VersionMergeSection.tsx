@@ -848,7 +848,7 @@ function AlbumDetectionCard({
           <button
             type="button"
             onClick={openComparison}
-            className="mt-2 flex min-h-9 items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+            className="mt-2 flex min-h-11 min-w-11 items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
           >
             <ChevronDown
               className={cn("size-3.5 transition", compareOpen && "rotate-180")}

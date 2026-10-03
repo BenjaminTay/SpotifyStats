@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 85
+LATEST_SCHEMA_VERSION = 88
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4262,9 +4262,48 @@ def migrate_084(conn: sqlite3.Connection):
 @migration(85, "analysis_spotify_automatic_credit_revisions")
 def migrate_085(conn: sqlite3.Connection):
     """Track automatic artist membership without rewriting source music data."""
+    # Current revision contract includes the additive Album evidence dependencies.
+    from backend.domains.metadata.spotify_album_credits import create_schema
     from backend.services.analysis_snapshot_revision import install_revision_tracking
 
+    create_schema(conn)
     install_revision_tracking(conn)
+
+
+@migration(86, "album_metadata_semantic_revisions")
+def migrate_086(conn: sqlite3.Connection):
+    """Install Album identity/directory dependencies without changing playback facts."""
+    from backend.domains.metadata.governance_revision import (
+        install_revision_tracking as install_governance,
+    )
+    from backend.domains.metadata.spotify_album_credits import create_schema
+    from backend.services.analysis_snapshot_revision import install_revision_tracking
+
+    # A schema-85 database has no Album artist tables. The revision contract
+    # must become available before any dependent consumer can read its vector.
+    create_schema(conn)
+    install_revision_tracking(conn)
+    install_governance(conn)
+
+
+@migration(87, "spotify_album_tracklist_evidence")
+def _spotify_album_tracklist_evidence(conn):
+    conn.execute("""CREATE TABLE IF NOT EXISTS spotify_album_tracklist_evidence (
+        spotify_album_id TEXT PRIMARY KEY,
+        tracks_json TEXT,
+        validated_total INTEGER,
+        last_status TEXT NOT NULL,
+        attempted_total INTEGER,
+        last_error TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )""")
+
+
+@migration(88, "spotify_album_artist_credit_evidence")
+def migrate_088(conn: sqlite3.Connection):
+    from backend.domains.metadata.spotify_album_credits import create_schema
+
+    create_schema(conn)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

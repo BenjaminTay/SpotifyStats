@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/covers/{cover_type}/{entity_id}.thumb.webp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cover Thumbnail
+         * @description Serve a persisted list thumbnail, falling back to the original cover.
+         */
+        get: operations["get_cover_thumbnail_covers__cover_type___entity_id__thumb_webp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/covers/{cover_type}/{entity_id}.jpg": {
         parameters: {
             query?: never;
@@ -3101,6 +3121,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/tasks/report/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lookup Report Task */
+        post: operations["lookup_report_task_api_ai_tasks_report_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/tasks/chat": {
         parameters: {
             query?: never;
@@ -3178,6 +3215,23 @@ export interface paths {
         };
         /** Get Ai Task Events */
         get: operations["get_ai_task_events_api_ai_tasks__task_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/tasks/{task_id}/sections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ai Report Sections */
+        get: operations["get_ai_report_sections_api_ai_tasks__task_id__sections_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4183,6 +4237,61 @@ export interface components {
             /** Created At */
             created_at: string;
         };
+        /** AiReportSection */
+        AiReportSection: {
+            /** Task Id */
+            task_id: string;
+            /** Generation */
+            generation: number;
+            /** Section Id */
+            section_id: string;
+            /** Section Order */
+            section_order: number;
+            /** Section Version */
+            section_version: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "writing" | "validated" | "failed" | "invalidated";
+            /**
+             * Source Kind
+             * @enum {string}
+             */
+            source_kind: "model" | "deterministic";
+            /** Section */
+            section?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Attempt Count
+             * @default 0
+             */
+            attempt_count: number;
+            /** Fallback Reason */
+            fallback_reason?: string | null;
+            /** Updated At */
+            updated_at: string;
+            /** Sequence */
+            sequence?: number | null;
+        };
+        /** AiReportSectionsResponse */
+        AiReportSectionsResponse: {
+            /** Found */
+            found: boolean;
+            /**
+             * Generation
+             * @default 0
+             */
+            generation: number;
+            /**
+             * Sequence
+             * @default 0
+             */
+            sequence: number;
+            /** Sections */
+            sections: components["schemas"]["AiReportSection"][];
+        };
         /** AiTaskCreateResponse */
         AiTaskCreateResponse: {
             /** Task Id */
@@ -4193,7 +4302,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "cancelling" | "done" | "error" | "cancelled";
+            status: "queued" | "running" | "awaiting_input" | "cancelling" | "done" | "error" | "cancelled";
             /** Stage */
             stage: string;
             /**
@@ -4251,7 +4360,7 @@ export interface components {
             /** Task Type */
             task_type?: string | null;
             /** Status */
-            status?: ("queued" | "running" | "cancelling" | "done" | "error" | "cancelled") | null;
+            status?: ("queued" | "running" | "awaiting_input" | "cancelling" | "done" | "error" | "cancelled") | null;
             /** Stage */
             stage?: string | null;
             /** Progress Pct */
@@ -4272,6 +4381,10 @@ export interface components {
             created_at?: string | null;
             /** Updated At */
             updated_at?: string | null;
+            /** Generation */
+            generation?: number | null;
+            /** State Version */
+            state_version?: number | null;
         };
         /** AiToolCall */
         AiToolCall: {
@@ -11508,6 +11621,10 @@ export interface components {
             only_in_a: unknown[][];
             /** Only In B */
             only_in_b: unknown[][];
+            /** Incomplete Album Ids */
+            incomplete_album_ids?: number[];
+            /** Position Incomplete Album Ids */
+            position_incomplete_album_ids?: number[];
         };
         /** TrackCreditMutationRequest */
         TrackCreditMutationRequest: {
@@ -12604,7 +12721,7 @@ export interface components {
         YearlyMethodology: {
             /**
              * Content Version
-             * @default yearly_review_v2_16
+             * @default yearly_review_v2_17
              */
             content_version: string;
             /**
@@ -12934,7 +13051,7 @@ export interface components {
         YearlyReviewRecordsPage: {
             /**
              * Content Version
-             * @default yearly_review_v2_16
+             * @default yearly_review_v2_17
              */
             content_version: string;
             /** Year */
@@ -13213,6 +13330,38 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_cover_thumbnail_covers__cover_type___entity_id__thumb_webp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cover_type: string;
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_cover_covers__cover_type___entity_id__jpg_get: {
         parameters: {
             query?: never;
@@ -20611,6 +20760,39 @@ export interface operations {
             };
         };
     };
+    lookup_report_task_api_ai_tasks_report_lookup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiTaskStatusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_chat_agent_task_api_ai_tasks_chat_post: {
         parameters: {
             query?: never;
@@ -20761,6 +20943,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AiTaskEventsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ai_report_sections_api_ai_tasks__task_id__sections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiReportSectionsResponse"];
                 };
             };
             /** @description Validation Error */

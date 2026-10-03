@@ -9,7 +9,12 @@ from pathlib import Path
 
 import pytest
 
-from backend.core.migrations import MIGRATIONS, _applied_versions, _ensure_migrations_table
+from backend.core.migrations import (
+    LATEST_SCHEMA_VERSION,
+    MIGRATIONS,
+    _applied_versions,
+    _ensure_migrations_table,
+)
 
 
 @pytest.fixture
@@ -29,6 +34,7 @@ def test_migrations_registered():
     versions = [m[0] for m in MIGRATIONS]
     assert len(versions) == len(set(versions)), "Duplicate migration versions"
     assert versions == sorted(versions), "Migrations not sorted"
+    assert LATEST_SCHEMA_VERSION == max(versions), "Declared schema version must match migrations"
     assert len(MIGRATIONS) >= 10, f"Expected at least 10 migrations, got {len(MIGRATIONS)}"
 
 
@@ -103,6 +109,12 @@ def test_tracked_seed_matches_current_schema_contract():
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
         columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(track_groups)")}
         assert {"primary_l1_id", "group_status"} <= columns
+        assert (
+            conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='spotify_album_tracklist_evidence'"
+            ).fetchone()
+            is not None
+        )
     finally:
         conn.close()
 
@@ -715,3 +727,67 @@ def test_migration_071_adds_idempotent_ai_task_worker_leases(empty_db) -> None:
     indexes = {row[1] for row in empty_db.execute("PRAGMA index_list(ai_task_runs)")}
     assert {"lease_owner", "lease_expires_at", "attempt_count"} <= columns
     assert "idx_ai_task_runs_recovery_lease" in indexes
+
+
+def test_album_tracklist_evidence_upgrade_from_85_preserves_facts_and_is_idempotent(
+    monkeypatch, tmp_path
+):
+    from backend.core import db, migrations
+
+    seed_path = Path(__file__).resolve().parents[1] / "fixtures" / "seed.db"
+    path = tmp_path / "schema85.db"
+    with (
+        sqlite3.connect(f"file:{seed_path}?mode=ro&immutable=1", uri=True) as source,
+        sqlite3.connect(path) as target,
+    ):
+        source.backup(target)
+        target.execute("DROP TABLE spotify_album_tracklist_evidence")
+        target.execute("DELETE FROM schema_migrations WHERE version>=86")
+        target.execute("DROP TABLE spotify_album_artist_credits")
+        target.execute("DROP TABLE spotify_album_credit_sets")
+        target.execute("DROP TABLE spotify_album_credit_events")
+        target.commit()
+        assert target.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 85
+        before = {
+            table: target.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
+            for table in [
+                "plays",
+                "tracks",
+                "track_artists",
+                "release_groups",
+                "release_group_members",
+            ]
+        }
+
+    def get_db(readonly=True):
+        conn = sqlite3.connect(path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    monkeypatch.setattr(db, "DB_PATH", str(path))
+    monkeypatch.setattr(db, "get_db", get_db)
+    migrations.run_migrations()
+    with sqlite3.connect(path) as conn:
+        assert (
+            conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+            == LATEST_SCHEMA_VERSION
+        )
+        conn.execute(
+            "INSERT INTO spotify_album_tracklist_evidence(spotify_album_id,tracks_json,validated_total,last_status) VALUES ('fixture','[]',0,'incomplete')"
+        )
+    migrations.run_migrations()
+    with sqlite3.connect(path) as conn:
+        assert (
+            conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE version=87").fetchone()[0]
+            == 1
+        )
+        assert (
+            conn.execute(
+                "SELECT tracks_json FROM spotify_album_tracklist_evidence WHERE spotify_album_id='fixture'"
+            ).fetchone()[0]
+            == "[]"
+        )
+        for table, rows in before.items():
+            assert conn.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall() == rows
+        assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []

@@ -87,6 +87,10 @@ def build() -> str:
     conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (2, 'Beta')")
     conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (3, 'Podcast Creator')")
 
+    # Stable fixture dimension: do not depend on incomplete legacy metadata
+    # incidentally creating this artist during derived project maintenance.
+    conn.execute("INSERT INTO artists(artist_id, artist_name) VALUES (903, 'Various Artists')")
+
     # Albums — 5 albums + one extra for cross-artist testing
     albums = [
         (1, "Alpha Debut", 1),

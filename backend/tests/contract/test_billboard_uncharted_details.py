@@ -76,8 +76,8 @@ def _seed_six_low_volume_entities(monkeypatch) -> tuple[int, str, str]:
     )
     db_mod._load_plays_cached.cache_clear()
     db_mod._load_plays_for_artists_cached.cache_clear()
-    db_mod.get_track_all_artists_map.cache_clear()
-    db_mod.get_track_artist_names_map.cache_clear()
+    getattr(db_mod.get_track_all_artists_map, "cache_clear")()
+    getattr(db_mod.get_track_artist_names_map, "cache_clear")()
     invalidate_all()
     return 88_300, "Uncharted Fixture Album 0", "Uncharted Fixture Artist 0"
 

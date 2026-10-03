@@ -101,6 +101,18 @@ class SpotifyProvider(BaseProvider):
         url = f"{self.config.base_url}/tracks?ids={','.join(track_ids)}"
         return self.api_get(url, access_token)
 
+    def get_album_tracks_page(
+        self, album_id: str, access_token: str, *, offset: int
+    ) -> dict | None:
+        # Never follow a provider-supplied next URL.
+        url = f"https://api.spotify.com/v1/albums/{quote(album_id, safe='')}/tracks?limit=50&offset={offset}"
+        return self.api_get(url, access_token)
+
+    def get_complete_album_tracks(self, album: dict, access_token: str) -> list[dict]:
+        from backend.providers.spotify.album_tracks import fetch_complete_album_tracks
+
+        return fetch_complete_album_tracks(self, album, access_token)
+
     def get_artists_by_ids(self, artist_ids: list[str], access_token: str) -> dict | None:
         if not artist_ids:
             return {"artists": []}

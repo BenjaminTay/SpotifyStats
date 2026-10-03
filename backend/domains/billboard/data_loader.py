@@ -436,45 +436,32 @@ def _match_album_artist(artist_name, album_artists):
     Matching is case-insensitive and diacritic-tolerant via NFKD
     normalization + combining-character stripping.
     """
-    import json
-    import unicodedata
+    from backend.domains.metadata.spotify_album_credits import legacy_name_matches
 
-    if album_artists is None:
-        return True
-    s = str(album_artists).strip()
-    if not s:
-        return True
-    if artist_name is None:
-        return False
+    return legacy_name_matches(artist_name, album_artists)
 
-    def _norm(name: str) -> str:
-        nkd = unicodedata.normalize("NFKD", str(name))
-        # Strip combining diacritical marks, then casefold
-        return "".join(c for c in nkd if not unicodedata.combining(c)).casefold()
 
-    target = _norm(artist_name)
+def _load_album_metadata():
+    from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.spotify_album_credits import album_credit_revision
 
-    # JSON array: ["Artist A", "Artist B"]
-    if s.startswith("["):
-        try:
-            arr = json.loads(s)
-            if isinstance(arr, list):
-                return any(_norm(n) == target for n in arr)
-        except (json.JSONDecodeError, TypeError):
-            pass
-
-    # Comma-separated (or single artist)
-    names = [n.strip() for n in s.split(",")]
-    return any(_norm(n) == target for n in names)
+    conn = get_db()
+    try:
+        revision = (album_credit_revision(conn), get_identity_revision(conn))
+    finally:
+        conn.close()
+    return _load_album_metadata_cached(revision)
 
 
 @lru_cache(maxsize=8)
-def _load_album_metadata():
+def _load_album_metadata_cached(_revision):
+    from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
+
     conn = get_db()
     # Join by album_name only; filter by artist in pandas to handle
     # multi-artist formats (comma-separated, JSON array).
     df = pd.read_sql_query(
-        """SELECT DISTINCT al.album_name, a.artist_name, sam.album_artists,
+        """SELECT DISTINCT al.album_name, a.artist_name, a.artist_id, sam.spotify_album_id, sam.album_artists,
                sam.album_type, sam.release_date, sam.total_tracks
            FROM albums al
            JOIN artists a ON al.artist_id = a.artist_id
@@ -482,7 +469,13 @@ def _load_album_metadata():
         conn,
     )
 
-    mask = df.apply(lambda r: _match_album_artist(r["artist_name"], r["album_artists"]), axis=1)
+    resolver = AlbumArtistResolver(conn)
+    mask = [
+        resolver.compatible(sid, aid, name, text)
+        for sid, aid, name, text in df[
+            ["spotify_album_id", "artist_id", "artist_name", "album_artists"]
+        ].itertuples(index=False, name=None)
+    ]
     df = df[mask]
 
     base = df[["album_name", "artist_name", "album_type", "total_tracks"]].copy()
@@ -502,6 +495,10 @@ def _load_album_metadata():
 
     conn.close()
     return {"type": type_df, "release_date": date_df}
+
+
+setattr(_load_album_metadata, "cache_clear", _load_album_metadata_cached.cache_clear)
+setattr(_load_album_metadata, "cache_info", _load_album_metadata_cached.cache_info)
 
 
 def _add_canonical_metadata(type_df, date_df, conn):

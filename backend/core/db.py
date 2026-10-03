@@ -13,6 +13,7 @@ from typing import Any
 
 from backend.core.cache import singleflight
 from backend.core.config import SPOTIFY_STATS_DB_PATH
+from backend.domains.metadata.spotify_album_credits import SCHEMA as ALBUM_CREDIT_SCHEMA
 from backend.domains.playback.logical_timeline import reconstruct_logical_plays
 
 logger = logging.getLogger(__name__)
@@ -729,6 +730,16 @@ CREATE TABLE IF NOT EXISTS spotify_auto_track_credits (
 CREATE INDEX IF NOT EXISTS idx_spotify_auto_track_credits_track
     ON spotify_auto_track_credits(track_id);
 
+CREATE TABLE IF NOT EXISTS spotify_album_tracklist_evidence (
+    spotify_album_id TEXT PRIMARY KEY,
+    tracks_json TEXT,
+    validated_total INTEGER,
+    last_status TEXT NOT NULL,
+    attempted_total INTEGER,
+    last_error TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS spotify_album_meta (
     spotify_album_id   TEXT PRIMARY KEY,
     album_name         TEXT NOT NULL,
@@ -1230,6 +1241,9 @@ CREATE TABLE IF NOT EXISTS wikipedia_cache (
     fetched_at REAL NOT NULL
 );
 """
+
+
+SCHEMA += ALBUM_CREDIT_SCHEMA
 
 
 def enforce_sqlite_foreign_keys(conn: sqlite3.Connection) -> sqlite3.Connection:

@@ -245,10 +245,6 @@ export function AlbumDetailHero({
   projectTrackCount?: number
 }) {
   useChineseTextVersion()
-  const showDualTrackCount =
-    projectTrackCount != null &&
-    data.meta?.total_tracks != null &&
-    projectTrackCount !== data.meta.total_tracks
   const renderedAlbumName = displayName(data.album_name)
   const renderedArtistName = displayName(data.artist_name)
 
@@ -300,9 +296,8 @@ export function AlbumDetailHero({
               {[
                 data.meta.album_type && formatAlbumKind(data.meta.album_type),
                 data.meta.release_date && formatAlbumReleaseDate(data.meta.release_date),
-                showDualTrackCount
-                  ? `${data.meta.total_tracks} tracks (${projectTrackCount} total)`
-                  : data.meta.total_tracks && `${data.meta.total_tracks} tracks`,
+                data.meta.total_tracks && `发行 ${data.meta.total_tracks} 首`,
+                projectTrackCount != null && `已听 ${projectTrackCount} 首`,
                 data.meta.label,
               ]
                 .filter(Boolean)

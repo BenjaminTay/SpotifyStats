@@ -1,5 +1,11 @@
 # SpotifyStats 文档地图
 
+- [专辑分页与艺人证据联合集成验收](reports/2026-10-03-album-metadata-integration-verification.md)
+
+- [专辑分页与艺人证据本地集成计划](plans/2026-10-03-album-metadata-integration-plan.md)
+- [专辑艺人实施方案](plans/2026-10-02-album-artist-evidence-plan.md)与[专项报告](reports/2026-10-02-album-artist-evidence-verification.md)
+- [专辑分页交付报告](reports/2026-10-02-album-track-pagination-acceptance.md)与[第二轮独立复核](reports/2026-10-03-album-track-pagination-independent-review.md)
+
 - [合作曲排行实施与验收](reports/2026-10-02-collaboration-ranking-acceptance.md)
 
 - [合作曲排行已完成规划（归档）](archive/06-productization-closeout/2026-10-02-collaboration-ranking-plan.md)

@@ -9,6 +9,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from backend.domains.metadata.spotify_album_credits import album_artist_match_sql
+
 _UNMATCHED_AUDIO_CATEGORIES = (
     "podcast",
     "audiobook",
@@ -303,13 +305,11 @@ def _recent_album_project_health(
         )
     ):
         for row in conn.execute(
-            """SELECT al.album_id,
+            f"""SELECT al.album_id,
                       (SELECT sam.album_type
                          FROM spotify_album_meta sam
                         WHERE lower(sam.album_name) = lower(al.album_name)
-                          AND (sam.album_artists IS NULL
-                               OR ar.artist_name IS NULL
-                               OR instr(lower(sam.album_artists), lower(ar.artist_name)) > 0)
+                          AND {album_artist_match_sql(conn, "sam", "ar")}
                         ORDER BY CASE sam.album_type
                                    WHEN 'album' THEN 0
                                    WHEN 'ep' THEN 1

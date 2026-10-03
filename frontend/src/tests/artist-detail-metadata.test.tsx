@@ -69,6 +69,15 @@ describe('artist detail provider metadata', () => {
     )
   })
 
+  it('separates declared release positions from listened songs', () => {
+    const album = {
+      album_name: 'Glee', artist_name: 'Glee Cast', cover_url: null,
+      meta: { total_tracks: 106 },
+    } as AlbumDetailResponse
+    renderFull(<AlbumDetailHero data={album} projectTrackCount={1} onBack={vi.fn()} />)
+    expect(screen.getByText(/发行 106 首/)).toHaveTextContent('已听 1 首')
+  })
+
   it('places the album management deep link in the title row with return context', () => {
     const album = {
       album_name: 'GUTS',

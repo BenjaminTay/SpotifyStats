@@ -14,7 +14,6 @@ Projects from a request path and never rewrite playback/source facts.
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, replace
@@ -333,7 +332,7 @@ def _primary_album_catalog_ids(
     if _table_exists(conn, "album_spotify_links") and _table_exists(conn, "spotify_album_meta"):
         link_rows = conn.execute(
             f"""SELECT asl.album_id, sam.spotify_album_id, sam.album_name,
-                       sam.album_type, sam.release_date, sam.track_list,
+                       sam.album_type, sam.release_date, sam.track_list, sam.total_tracks,
                        asl.confidence, asl.play_count, 0 AS source_rank
                   FROM album_spotify_links asl
                   JOIN spotify_album_meta sam
@@ -357,7 +356,7 @@ def _primary_album_catalog_ids(
         fallback_rows = conn.execute(
             f"""WITH album_tracks AS ({" UNION ".join(album_track_selects)})
                   SELECT at.album_id, sam.spotify_album_id, sam.album_name,
-                         sam.album_type, sam.release_date, sam.track_list,
+                         sam.album_type, sam.release_date, sam.track_list, sam.total_tracks,
                          0.0 AS confidence, 0 AS play_count, 0 AS source_rank
                     FROM album_tracks at
                     JOIN tracks t ON t.track_id=at.track_id
@@ -382,12 +381,11 @@ def _primary_album_catalog_ids(
         expected_name = normalize_search_text(project.primary_album_name or project.canonical_name)
         if normalize_search_text(str(provider.get("album_name") or "")) != expected_name:
             continue
-        try:
-            values = json.loads(str(provider.get("track_list") or ""))
-        except (TypeError, ValueError, json.JSONDecodeError):
-            continue
-        if isinstance(values, list):
-            out[album_id].update(_spotify_track_id(value) for value in values if value)
+        from backend.providers.spotify.album_tracks import complete_track_ids
+
+        values = complete_track_ids(provider.get("track_list"), provider.get("total_tracks"))
+        if values is not None:
+            out[album_id].update(values)
     return out
 
 

@@ -465,6 +465,9 @@ export function ImportProgressCard({
 export function TrackComparePanel({ data }: { data: TrackComparison | null }) {
   if (!data) return <Skeleton className="h-20 w-full" />
 
+  if (data.incomplete_album_ids?.length) {
+    return <p className="text-sm text-muted-foreground py-3">专辑完整曲目表尚未就绪，请先刷新专辑元数据，再比较版本。</p>
+  }
   const allEmpty = data.shared.length === 0 && data.only_in_a.length === 0 && data.only_in_b.length === 0
   if (allEmpty) {
     return <p className="py-4 text-center text-[13px] text-muted-foreground">无曲目数据</p>
@@ -477,14 +480,16 @@ export function TrackComparePanel({ data }: { data: TrackComparison | null }) {
         <span className="ml-1 text-muted-foreground">{row[1]}</span>
       </span>
       <span className="shrink-0 text-muted-foreground">
-        {row[2] !== null ? `Track ${row[2]}` : ''}
-        {row[3] !== null ? ` · Disc ${row[3]}` : ''}
+        {row[2] === null || row[3] === null ? '位置未知' : `Track ${row[3]} · Disc ${row[2]}`}
       </span>
     </div>
   )
 
   return (
     <div className="space-y-3">
+      {!!data.position_incomplete_album_ids?.length && (
+        <p className="text-sm text-muted-foreground">曲目异同可用；部分版本的发行位置尚未核验，显示为“位置未知”。</p>
+      )}
       {data.shared.length > 0 && (
         <div>
           <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-green-600 dark:text-green-400">

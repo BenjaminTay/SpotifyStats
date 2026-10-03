@@ -1,5 +1,11 @@
 # 交付与验证报告索引
 
+- [专辑分页与艺人证据联合集成验收](2026-10-03-album-metadata-integration-verification.md)
+
+- [专辑艺人稳定 ID 与有序证据专项](2026-10-02-album-artist-evidence-verification.md)
+- [专辑完整分页交付](2026-10-02-album-track-pagination-acceptance.md)
+- [专辑分页第二轮独立复核](2026-10-03-album-track-pagination-independent-review.md)
+
 - [合作曲排行实施与验收](2026-10-02-collaboration-ranking-acceptance.md)
 
 - [AI Agent V6 本地提交与主分支集成](2026-09-27-ai-agent-v6-local-integration.md)

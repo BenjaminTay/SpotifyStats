@@ -196,6 +196,8 @@ class TrackComparisonResponse(BaseModel):
     shared: list[list]
     only_in_a: list[list]
     only_in_b: list[list]
+    incomplete_album_ids: list[int] = Field(default_factory=list)
+    position_incomplete_album_ids: list[int] = Field(default_factory=list)
 
 
 class StatusResponse(BaseModel):

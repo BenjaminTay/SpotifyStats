@@ -223,7 +223,20 @@ def test_refresh_defers_new_album_links_until_album_metadata_exists():
                         "name": "Album A",
                         "images": [],
                         "artists": [],
-                        "tracks": {"items": []},
+                        "tracks": {
+                            "items": [
+                                {
+                                    "id": "fixture-track",
+                                    "name": "Fixture",
+                                    "disc_number": 1,
+                                    "track_number": 1,
+                                }
+                            ],
+                            "total": 1,
+                            "offset": 0,
+                            "limit": 50,
+                            "next": None,
+                        },
                         "total_tracks": 1,
                     }
                 ]
@@ -572,7 +585,7 @@ def test_upsert_album_batch_preserves_existing_image_when_provider_omits_images(
     assert row["album_type"] == "album"
     assert row["image_url"] == "old.jpg"
     assert row["total_tracks"] == 11
-    assert row["track_list"] == '["track-a"]'
+    assert row["track_list"] is None  # First page is incomplete and must not be published.
 
 
 def test_artist_batch_and_cover_source_sync_fill_local_entities():
@@ -669,7 +682,20 @@ def test_scoped_refresh_reports_exact_provider_and_backlog_impact_ids():
                         "name": spotify_album_id,
                         "images": [],
                         "artists": [],
-                        "tracks": {"items": []},
+                        "tracks": {
+                            "items": [
+                                {
+                                    "id": "fixture-track",
+                                    "name": "Fixture",
+                                    "disc_number": 1,
+                                    "track_number": 1,
+                                }
+                            ],
+                            "total": 1,
+                            "offset": 0,
+                            "limit": 50,
+                            "next": None,
+                        },
                         "total_tracks": 1,
                     }
                     for spotify_album_id in ids

@@ -567,18 +567,21 @@ def _upsert_album_meta(
     db, spotify_id, name, album_type, release_date, popularity, label, genres, img_url, artists
 ):
     """写入 spotify_album_meta 表。"""
-    genres_json = json.dumps(genres, ensure_ascii=False) if genres else None
-    artists_json = None
-    if artists:
-        artist_names = [a.get("name", "") for a in artists if a.get("name")]
-        if artist_names:
-            artists_json = json.dumps(artist_names, ensure_ascii=False)
+    from backend.domains.metadata.spotify_album_credits import persist_album_artists
 
     db.execute(
-        """INSERT OR REPLACE INTO spotify_album_meta(
+        """INSERT INTO spotify_album_meta(
                spotify_album_id, album_name, album_type, release_date,
-               popularity, label, genres, image_url, album_artists)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               popularity, label, genres, image_url)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(spotify_album_id) DO UPDATE SET
+               album_name=excluded.album_name,
+               album_type=COALESCE(excluded.album_type, spotify_album_meta.album_type),
+               release_date=COALESCE(excluded.release_date, spotify_album_meta.release_date),
+               popularity=COALESCE(excluded.popularity, spotify_album_meta.popularity),
+               label=COALESCE(excluded.label, spotify_album_meta.label),
+               genres=COALESCE(excluded.genres, spotify_album_meta.genres),
+               image_url=COALESCE(excluded.image_url, spotify_album_meta.image_url)""",
         (
             spotify_id,
             name,
@@ -586,11 +589,11 @@ def _upsert_album_meta(
             release_date,
             popularity,
             label,
-            genres_json,
+            json.dumps(genres, ensure_ascii=False) if genres else None,
             img_url,
-            artists_json,
         ),
     )
+    persist_album_artists(db, {"id": spotify_id, "artists": artists}, source="fetch_covers")
 
 
 def fetch_artist_covers(

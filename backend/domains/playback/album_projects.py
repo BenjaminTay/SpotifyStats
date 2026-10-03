@@ -13,6 +13,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from backend.domains.metadata.spotify_album_credits import album_artist_match_sql
+
 SOURCE_BUCKET_ORDER = {
     "original_album": 0,
     "soundtrack": 1,
@@ -475,9 +477,7 @@ def _plan_album_project_impact(
                     JOIN artists ar ON ar.artist_id = al.artist_id
                     JOIN spotify_album_meta sam
                       ON lower(sam.album_name) = lower(al.album_name)
-                     AND (sam.album_artists IS NULL
-                          OR ar.artist_name IS NULL
-                          OR instr(lower(sam.album_artists), lower(ar.artist_name)) > 0)
+                     AND {album_artist_match_sql(conn, "sam", "ar")}
                     WHERE sam.spotify_album_id IN ({placeholders})""",
                 spotify_album_params,
             ).fetchall()
@@ -1127,7 +1127,7 @@ def _bootstrap_from_release_groups(
            LEFT JOIN artists ar ON ar.artist_id = al.artist_id
            LEFT JOIN spotify_album_meta sam
              ON lower(sam.album_name) = lower(al.album_name)
-            AND (sam.album_artists IS NULL OR ar.artist_name IS NULL OR instr(lower(sam.album_artists), lower(ar.artist_name)) > 0)
+            AND {album_artist_match_sql(conn, "sam", "ar")}
            {group_filter}
            ORDER BY rg.group_id""",
         group_params,
@@ -1312,8 +1312,7 @@ def _bootstrap_standalone_album_projects(
            LEFT JOIN spotify_album_meta sam ON sam.spotify_album_id = (
                SELECT s.spotify_album_id FROM spotify_album_meta s
                WHERE lower(s.album_name) = lower(al.album_name)
-                 AND (s.album_artists IS NULL
-                      OR instr(lower(s.album_artists), lower(ar.artist_name)) > 0)
+                 AND {album_artist_match_sql(conn, "s", "ar")}
                ORDER BY CASE s.album_type
                           WHEN 'album' THEN 0
                           WHEN 'ep' THEN 1
@@ -1425,8 +1424,7 @@ def _bootstrap_l3_single_projects(
                   SELECT source.spotify_album_id
                     FROM spotify_album_meta source
                    WHERE lower(source.album_name)=lower(al.album_name)
-                     AND (source.album_artists IS NULL
-                          OR instr(lower(source.album_artists), lower(ar.artist_name)) > 0)
+                     AND {album_artist_match_sql(conn, "source", "ar")}
                    ORDER BY CASE source.album_type
                               WHEN 'album' THEN 0 WHEN 'ep' THEN 1
                               WHEN 'single' THEN 2 ELSE 3 END
@@ -1546,9 +1544,20 @@ def _is_soundtrack_release_name(value: str | None) -> bool:
     return any(marker in normalized for marker in _SOUNDTRACK_NAME_MARKERS)
 
 
-def _ensure_album_artist(conn: sqlite3.Connection, album_artists: str | None) -> int | None:
+def _ensure_album_artist(
+    conn: sqlite3.Connection, album_artists: str | None, spotify_album_id=None, resolver=None
+) -> int | None:
     """Resolve a provider album artist without reusing a track artist by accident."""
 
+    from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
+
+    resolver = resolver or AlbumArtistResolver(conn)
+    credits = resolver.read(spotify_album_id)
+    if credits:
+        if any(c["resolution_status"] != "resolved" for c in credits):
+            return None
+        canonical = {c["canonical_artist_id"] for c in credits}
+        return next(iter(canonical)) if len(canonical) == 1 else None
     name = " ".join(str(album_artists or "").split())
     if not name:
         return None
@@ -1557,7 +1566,11 @@ def _ensure_album_artist(conn: sqlite3.Connection, album_artists: str | None) ->
         (name,),
     ).fetchall()
     if rows:
-        return int(rows[0][0])
+        canonical = {resolver.canonical(row[0]) for row in rows}
+        return next(iter(canonical)) if len(canonical) == 1 else None
+    if "," in name or name.startswith("["):
+        return None
+    # Legacy single-name soundtrack entity, retained for old databases only.
     cursor = conn.execute("INSERT INTO artists(artist_name) VALUES (?)", (name,))
     return int(cursor.lastrowid)
 
@@ -1602,13 +1615,18 @@ def _bootstrap_soundtrack_projects(
             continue
         grouped.setdefault(str(row["spotify_album_id"]), []).append(row)
 
+    from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
+
+    artist_resolver = AlbumArtistResolver(conn)
     for spotify_album_id, release_rows in grouped.items():
         first = release_rows[0]
         local_album_ids = sorted({int(row["album_id"]) for row in release_rows})
         memberships = _tracks_for_albums(conn, local_album_ids)
         if not memberships:
             continue
-        album_artist_id = _ensure_album_artist(conn, first["album_artists"])
+        album_artist_id = _ensure_album_artist(
+            conn, first["album_artists"], spotify_album_id, artist_resolver
+        )
         if album_artist_id is None:
             continue
         tracks_by_album: dict[int, int] = {}
@@ -1704,18 +1722,36 @@ def _bootstrap_multi_artist_compilation_projects(
              ORDER BY lower(al.album_name), al.album_id, asl.spotify_album_id""",
         params,
     ).fetchall()
-    grouped: dict[str, list[sqlite3.Row]] = {}
+    from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
+
+    artist_resolver = AlbumArtistResolver(conn)
+    grouped: dict[tuple[str, str, int], list[sqlite3.Row]] = {}
+    group_artists: dict[tuple[str, str, int], int] = {}
     for row in rows:
         if _is_soundtrack_release_name(row["spotify_album_name"]):
             continue
-        key = " ".join(str(row["album_name"] or "").casefold().split())
-        if key:
-            grouped.setdefault(key, []).append(row)
+        name_key = " ".join(str(row["album_name"] or "").casefold().split())
+        if not name_key:
+            continue
+        credits = artist_resolver.read(row["spotify_album_id"])
+        if credits:
+            if any(c["resolution_status"] != "resolved" for c in credits):
+                continue
+            canonical = {c["canonical_artist_id"] for c in credits}
+            if len(canonical) != 1:
+                continue
+            artist_id = next(iter(canonical))
+            key = (name_key, "canonical", artist_id)
+        else:
+            artist_id = _ensure_album_artist(conn, "Various Artists", resolver=artist_resolver)
+            if artist_id is None:
+                continue
+            key = (name_key, "legacy", artist_id)
+        grouped.setdefault(key, []).append(row)
+        group_artists[key] = artist_id
 
-    album_artist_id = _ensure_album_artist(conn, "Various Artists")
-    if album_artist_id is None:
-        return
-    for release_rows in grouped.values():
+    for key, release_rows in grouped.items():
+        album_artist_id = group_artists[key]
         local_album_ids = sorted({int(row["album_id"]) for row in release_rows})
         memberships = _tracks_for_albums(conn, local_album_ids)
         if not memberships:

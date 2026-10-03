@@ -8,6 +8,7 @@ import re
 import pandas as pd
 
 from backend.core.db import get_db
+from backend.providers.spotify.album_tracks import complete_track_ids
 
 
 def detect_collaboration_track_group_candidates() -> pd.DataFrame:
@@ -506,9 +507,7 @@ def get_all_track_groups() -> pd.DataFrame:
                           pt.track_name AS primary_track_name,
                           pt.album_id AS primary_album_id,
                           external.external_track_id AS spotify_track_id,
-                          COALESCE(NULLIF(a.artist_name, ''),
-                                   NULLIF(album_artist.artist_name, ''),
-                                   NULLIF(sam.album_artists, '')) AS artist_name,
+                          COALESCE(NULLIF(a.artist_name, ''), '') AS artist_name,
                           tg.scope, tg.is_manual, tg.group_status, tg.created_at,
                           tg.identity_policy_version, tg.automatic_version_tag,
                           COUNT(members.l1_id) AS member_count
@@ -528,9 +527,7 @@ def get_all_track_groups() -> pd.DataFrame:
                    LEFT JOIN track_group_l1_members members ON members.group_id=tg.group_id
                    WHERE tg.group_status='active'
                    GROUP BY tg.group_id
-                   ORDER BY COALESCE(NULLIF(a.artist_name, ''),
-                                     NULLIF(album_artist.artist_name, ''),
-                                     NULLIF(sam.album_artists, ''), ''),
+                   ORDER BY COALESCE(NULLIF(a.artist_name, ''), ''),
                             tg.canonical_name, tg.scope""",
                 conn,
             )
@@ -539,9 +536,7 @@ def get_all_track_groups() -> pd.DataFrame:
             """SELECT tg.group_id, tg.canonical_name, tg.primary_track_id,
                       pt.track_name AS primary_track_name,
                       pt.album_id AS primary_album_id,
-                      COALESCE(NULLIF(a.artist_name, ''),
-                               NULLIF(album_artist.artist_name, ''),
-                               NULLIF(sam.album_artists, '')) AS artist_name,
+                      COALESCE(NULLIF(a.artist_name, ''), '') AS artist_name,
                       tg.scope, tg.is_manual, tg.created_at,
                       NULL AS identity_policy_version,
                       NULL AS automatic_version_tag,
@@ -557,9 +552,7 @@ def get_all_track_groups() -> pd.DataFrame:
                       ON sam.spotify_album_id = stm.spotify_album_id
                LEFT JOIN track_group_members tgm ON tgm.group_id = tg.group_id
                GROUP BY tg.group_id
-               ORDER BY COALESCE(NULLIF(a.artist_name, ''),
-                                 NULLIF(album_artist.artist_name, ''),
-                                 NULLIF(sam.album_artists, ''), ''),
+               ORDER BY COALESCE(NULLIF(a.artist_name, ''), ''),
                         tg.canonical_name, tg.scope""",
             conn,
         )
@@ -587,9 +580,7 @@ def get_track_group_members(group_id: int) -> pd.DataFrame:
                           (COUNT(DISTINCT source.track_name) > 1
                            OR COUNT(DISTINCT source.artist_id) > 1
                            OR COUNT(DISTINCT source.album_id) > 1) AS metadata_conflict,
-                          COALESCE(NULLIF(a.artist_name, ''),
-                                   NULLIF(album_artist.artist_name, ''),
-                                   NULLIF(sam.album_artists, '')) AS artist_name,
+                          COALESCE(NULLIF(a.artist_name, ''), '') AS artist_name,
                           CASE WHEN li.l1_id=tg.primary_l1_id THEN 1 ELSE 0 END AS is_primary
                    FROM track_group_l1_members members
                    JOIN track_groups tg ON tg.group_id=members.group_id
@@ -616,9 +607,7 @@ def get_track_group_members(group_id: int) -> pd.DataFrame:
             return _attach_effective_track_artist_names(conn, df, "track_id")
         df = pd.read_sql_query(
             """SELECT t.track_id, t.track_name, t.album_id,
-                      COALESCE(NULLIF(a.artist_name, ''),
-                               NULLIF(album_artist.artist_name, ''),
-                               NULLIF(sam.album_artists, '')) AS artist_name,
+                      COALESCE(NULLIF(a.artist_name, ''), '') AS artist_name,
                       CASE WHEN t.track_id = tg.primary_track_id THEN 1 ELSE 0 END AS is_primary
                FROM track_group_members tgm
                JOIN track_groups tg ON tg.group_id = tgm.group_id
@@ -2039,26 +2028,42 @@ def _compute_track_overlap(conn, album_id1: int, album_id2: int) -> float:
     return shared / min(count1, count2)
 
 
+def _spotify_release_ids_for_album(conn, album_id):
+    """Prefer play-time release links over a recording's mutable catalog parent."""
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='album_spotify_links'").fetchone():
+        rows = conn.execute(
+            """SELECT asl.spotify_album_id
+            FROM album_spotify_links asl JOIN spotify_album_meta sam
+              ON sam.spotify_album_id=asl.spotify_album_id
+            JOIN albums al ON al.album_id=asl.album_id
+            WHERE asl.album_id=?
+            GROUP BY asl.spotify_album_id
+            ORDER BY (sam.album_name=al.album_name COLLATE NOCASE) DESC,
+                     MAX(asl.confidence) DESC, SUM(asl.play_count) DESC, asl.spotify_album_id""",
+            (album_id,),
+        ).fetchall()
+        if rows:
+            return [rows[0][0]]  # One local release, never a union with unrelated containers.
+    return [
+        row[0]
+        for row in conn.execute(
+            """SELECT DISTINCT sam.spotify_album_id
+        FROM track_albums ta JOIN tracks t ON t.track_id=ta.track_id
+        JOIN spotify_track_meta stm ON stm.spotify_track_id=t.spotify_track_id
+        JOIN spotify_album_meta sam ON sam.spotify_album_id=stm.spotify_album_id
+        WHERE ta.album_id=? ORDER BY sam.spotify_album_id""",
+            (album_id,),
+        ).fetchall()
+    ]
+
+
 def _get_album_spotify_tracks(conn, album_id: int) -> set:
     """获取某张本地专辑对应的完整 Spotify 曲目 ID 集合。
 
-    优先从 spotify_album_meta.track_list 缓存读取，缓存缺失时通过 API 补全。
+    只消费通过声明总数校验的缓存；缺口通过显式维护补齐。
     """
-    import json
 
-    # 查找该本地 album_id 对应的 Spotify album ID
-    sid_rows = conn.execute(
-        """SELECT DISTINCT sam.spotify_album_id
-           FROM track_albums ta
-           JOIN tracks t ON t.track_id = ta.track_id
-           JOIN spotify_track_meta stm
-             ON t.spotify_track_id = stm.spotify_track_id
-           JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
-           WHERE ta.album_id = ?""",
-        (album_id,),
-    ).fetchall()
-
-    spotify_ids = [r[0] for r in sid_rows]
+    spotify_ids = _spotify_release_ids_for_album(conn, album_id)
     if not spotify_ids:
         return set()
 
@@ -2066,60 +2071,19 @@ def _get_album_spotify_tracks(conn, album_id: int) -> set:
     placeholders = ",".join("?" for _ in spotify_ids)
     cached = {}
     rows = conn.execute(
-        f"""SELECT spotify_album_id, track_list
+        f"""SELECT spotify_album_id, track_list, total_tracks
             FROM spotify_album_meta
             WHERE spotify_album_id IN ({placeholders})
               AND track_list IS NOT NULL""",
         spotify_ids,
     ).fetchall()
-    for sid, tl in rows:
-        try:
-            cached[sid] = set(json.loads(tl))
-        except (json.JSONDecodeError, TypeError):
-            pass
+    for sid, tl, total in rows:
+        ids = complete_track_ids(tl, total)
+        if ids is not None:
+            cached[sid] = set(ids)
 
-    # 检查已缓存的专辑是否需要重新获取（缺曲目名或缺艺人名）
-    def _needs_refetch(sid, tracks):
-        if not tracks:
-            return False
-        aa = conn.execute(
-            "SELECT album_artists FROM spotify_album_meta WHERE spotify_album_id = ?",
-            (sid,),
-        ).fetchone()
-        if not aa or not aa[0]:
-            return True
-        placeholders = ",".join("?" for _ in tracks)
-        named = conn.execute(
-            f"""SELECT COUNT(*) FROM spotify_track_meta
-                WHERE spotify_track_id IN ({placeholders})
-                  AND track_name IS NOT NULL AND track_name != ''""",
-            list(tracks),
-        ).fetchone()[0]
-        return named < len(tracks) * 0.5
-
-    missing = [sid for sid in spotify_ids if sid not in cached]
-    needs_metadata = []
-    if not missing:
-        for sid in spotify_ids:
-            if _needs_refetch(sid, cached.get(sid, set())):
-                needs_metadata.append(sid)
-
-    refetch_ids = missing + needs_metadata
-    if refetch_ids:
-        fetched = _fetch_album_tracks_from_api(refetch_ids)
-        wconn = get_db(readonly=False)
-        for sid, tracks in fetched.items():
-            if tracks:
-                tl_json = json.dumps(tracks, ensure_ascii=False)
-                wconn.execute(
-                    """UPDATE spotify_album_meta
-                       SET track_list = ?, total_tracks = ?
-                       WHERE spotify_album_id = ?""",
-                    (tl_json, len(tracks), sid),
-                )
-                cached[sid] = set(tracks)
-        wconn.commit()
-        wconn.close()
+    if len(cached) != len(spotify_ids):
+        return set()
 
     # 合并所有关联 Spotify 专辑的曲目，转换为归一化曲目名
     all_ids = set()
@@ -2139,6 +2103,9 @@ def _get_album_spotify_tracks(conn, album_id: int) -> set:
         for tid, tname in name_rows:
             id_to_name[tid] = normalize_track_name(tname.strip().lower())
 
+    if len(id_to_name) != len(all_ids):
+        return set()
+
     result = set()
     for tid in all_ids:
         name = id_to_name.get(tid)
@@ -2148,28 +2115,65 @@ def _get_album_spotify_tracks(conn, album_id: int) -> set:
 
 
 def _lookup_track_names(conn, spotify_track_ids: set) -> dict:
-    """批量查询 Spotify track ID → (track_name, artist_name, disc_number, track_number)。"""
+    """Track comparison display uses Track credits, never Album artist evidence."""
     if not spotify_track_ids:
         return {}
-    placeholders = ",".join("?" for _ in spotify_track_ids)
+    from backend.domains.metadata.track_credits import canonical_artist_names_for_effective_tracks
+
+    ids = sorted(spotify_track_ids)
+    placeholders = ",".join("?" for _ in ids)
     rows = conn.execute(
-        f"""SELECT stm.spotify_track_id, stm.track_name, sam.album_artists,
-                   stm.disc_number, stm.track_number
-            FROM spotify_track_meta stm
-            JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
-            WHERE stm.spotify_track_id IN ({placeholders})""",
-        list(spotify_track_ids),
+        f"""SELECT spotify_track_id, track_name
+            FROM spotify_track_meta WHERE spotify_track_id IN ({placeholders})""",
+        ids,
     ).fetchall()
-    return {r[0]: (r[1], r[2] or "", r[3], r[4]) for r in rows}
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    owners = {}
+    if "spotify_track_owners" in tables:
+        owners = dict(
+            conn.execute(
+                f"SELECT spotify_track_id,track_id FROM spotify_track_owners WHERE spotify_track_id IN ({placeholders})",
+                ids,
+            )
+        )
+    elif "tracks" in tables:
+        # Legacy local identity must be unique; never pick an arbitrary same-ID row.
+        owners = dict(
+            conn.execute(
+                f"SELECT spotify_track_id,MIN(track_id) FROM tracks WHERE spotify_track_id IN ({placeholders}) "
+                "GROUP BY spotify_track_id HAVING COUNT(*)=1",
+                ids,
+            )
+        )
+    effective = (
+        canonical_artist_names_for_effective_tracks(conn, set(owners.values())) if owners else {}
+    )
+    provider: dict[str, list[str]] = {}
+    if "spotify_track_artist_credits" in tables:
+        for sid, name in conn.execute(
+            f"SELECT spotify_track_id,credited_name FROM spotify_track_artist_credits WHERE spotify_track_id IN ({placeholders}) "
+            "ORDER BY spotify_track_id,credit_order",
+            ids,
+        ):
+            provider.setdefault(sid, []).append(name)
+    return {
+        row[0]: (
+            row[1],
+            ", ".join(effective.get(owners[row[0]], []))
+            if row[0] in owners
+            else ", ".join(provider.get(row[0], [])),
+        )
+        for row in rows
+    }
 
 
 def get_album_track_comparison(album_id_a: int, album_id_b: int) -> dict:
-    """对比两张专辑的完整曲目异同（基于 Spotify API 全量数据 + 曲目名匹配）。
+    """对比两张专辑的完整曲目异同（只读已验证缓存 + 曲目名匹配）。
 
     因为同一首歌在不同版本专辑中 Spotify track ID 不同，
     比较统一使用归一化曲目名（lower + 剥离版本后缀）。
 
-    曲目顺序保留 Spotify 专辑原始曲目排列，去重时取首次出现位置。
+    沿用目录顺序，去重时取首次出现位置；未核验的旧目录不宣称发行顺序。
 
     Returns:
         {"shared": [(track_name, artist_name, disc_number, track_number), ...],
@@ -2177,34 +2181,26 @@ def get_album_track_comparison(album_id_a: int, album_id_b: int) -> dict:
          "only_in_b": [(track_name, artist_name, disc_number, track_number), ...]}
         disc_number/track_number 为 Spotify API 真实曲目号，缺失时为 None。
     """
-    import json
 
     conn = get_db()
+    incomplete_album_ids = set()
+    position_incomplete_album_ids = set()
 
     def _get_ordered_tracks(aid):
-        """获取本地专辑的曲目列表，按 Spotify track_number / disc_number 排序。
+        """获取本地专辑的曲目列表，保留 Spotify 发行列表顺序。
 
-        若缓存的 track_number 大面积缺失（旧数据），自动触发 API 补全。
+        只读缓存；精确曲目位置只采用与当前目录匹配的发行级证据。
         Returns [(track_name, artist_name, disc_number, track_number), ...]
         """
-        sid_rows = conn.execute(
-            """SELECT DISTINCT sam.spotify_album_id
-               FROM track_albums ta
-               JOIN tracks t ON t.track_id = ta.track_id
-               JOIN spotify_track_meta stm
-                 ON t.spotify_track_id = stm.spotify_track_id
-               JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
-               WHERE ta.album_id = ?""",
-            (aid,),
-        ).fetchall()
-        spotify_ids = [r[0] for r in sid_rows]
+        spotify_ids = _spotify_release_ids_for_album(conn, aid)
         if not spotify_ids:
+            incomplete_album_ids.add(aid)
             return []
 
         # 读取缓存 track_list
         placeholders = ",".join("?" for _ in spotify_ids)
         rows = conn.execute(
-            f"""SELECT spotify_album_id, track_list
+            f"""SELECT spotify_album_id, track_list, total_tracks
                 FROM spotify_album_meta
                 WHERE spotify_album_id IN ({placeholders})
                   AND track_list IS NOT NULL""",
@@ -2213,58 +2209,51 @@ def get_album_track_comparison(album_id_a: int, album_id_b: int) -> dict:
 
         sid_to_tracks = {}
         all_track_ids = set()
-        for sid, tl in rows:
-            try:
-                tracks = json.loads(tl)
+        for sid, tl, total in rows:
+            tracks = complete_track_ids(tl, total)
+            if tracks is not None:
                 sid_to_tracks[sid] = tracks
                 all_track_ids.update(tracks)
-            except (json.JSONDecodeError, TypeError):
-                pass
+            else:
+                incomplete_album_ids.add(aid)
+        if len(sid_to_tracks) != len(spotify_ids):
+            incomplete_album_ids.add(aid)
+            return []
 
         if not all_track_ids:
             return []
 
         id_to_name = _lookup_track_names(conn, all_track_ids)
 
-        # 自愈：若大部分曲目缺 track_number，从 API 重新获取
-        named_count = sum(1 for v in id_to_name.values() if v[3] is not None)
-        if named_count < len(id_to_name) * 0.7 and len(id_to_name) >= 4:
-            refetched = _fetch_album_tracks_from_api(spotify_ids)
-            if refetched:
-                # 用 API 返回的正确顺序更新 sid_to_tracks + 持久化
-                wconn = get_db(readonly=False)
-                for sid, tracks in refetched.items():
-                    if tracks:
-                        sid_to_tracks[sid] = tracks
-                        wconn.execute(
-                            """UPDATE spotify_album_meta
-                               SET track_list = ?, total_tracks = ?
-                               WHERE spotify_album_id = ?""",
-                            (json.dumps(tracks, ensure_ascii=False), len(tracks), sid),
-                        )
-                wconn.commit()
-                wconn.close()
-                # 重新查询 track_number（API 已写入 spotify_track_meta）
-                all_ids = set()
-                for tracks in sid_to_tracks.values():
-                    all_ids.update(tracks)
-                id_to_name = _lookup_track_names(get_db(), all_ids)
+        from backend.domains.metadata.album_tracklist import release_position_evidence
 
-        # 按 (disc_number, track_number) 排序，缺失回退数组索引
+        # 保留发行顺序；相同歌曲只在首次出现位置展示
         seen_norms = set()
+        seen_ids = set()
         raw_items = []
         for sid in spotify_ids:
             tracks = sid_to_tracks.get(sid, [])
+            evidence = release_position_evidence(conn, sid)
+            positions = evidence.positions
+            if evidence.status != "complete":
+                position_incomplete_album_ids.add(aid)
             for array_pos, tid in enumerate(tracks):
-                if tid not in id_to_name:
+                if tid in seen_ids:
                     continue
-                tname, tartist, disc_num, track_num = id_to_name[tid]
+                seen_ids.add(tid)
+                if tid not in id_to_name or not id_to_name[tid][0]:
+                    incomplete_album_ids.add(aid)
+                    continue
+                tname, tartist = id_to_name[tid]
+                disc_num, track_num = None, None
+                position = positions.get(array_pos)
+                if position and position.get("id") == tid:
+                    tname = position["name"]
+                    disc_num, track_num = position["disc_number"], position["track_number"]
                 norm = normalize_track_name(tname.strip().lower())
                 if norm not in seen_norms:
                     seen_norms.add(norm)
-                    d = disc_num if disc_num is not None else 1
-                    t = track_num if track_num is not None else array_pos + 1
-                    raw_items.append(((d, t), tname, tartist, d, t))
+                    raw_items.append(((len(raw_items),), tname, tartist, disc_num, track_num))
 
         raw_items.sort(key=lambda x: x[0])
         return [
@@ -2284,6 +2273,16 @@ def get_album_track_comparison(album_id_a: int, album_id_b: int) -> dict:
                 norm_map[norm] = (tname, tartist, disc_num, track_num)
         return norm_map
 
+    if incomplete_album_ids:
+        conn.close()
+        return {
+            "shared": [],
+            "only_in_a": [],
+            "only_in_b": [],
+            "incomplete_album_ids": sorted(incomplete_album_ids),
+            "position_incomplete_album_ids": sorted(position_incomplete_album_ids),
+        }
+
     norm_a = _build_norm_map(ordered_a)
     norm_b = _build_norm_map(ordered_b)
 
@@ -2300,10 +2299,11 @@ def get_album_track_comparison(album_id_a: int, album_id_b: int) -> dict:
             for n, (tname, tartist, disc_num, track_num) in norm_map.items()
             if n in norm_set
         ]
-        result.sort(key=lambda x: (x[2] or 1, x[3] or 0))
         return result
 
     return {
+        "incomplete_album_ids": sorted(incomplete_album_ids),
+        "position_incomplete_album_ids": sorted(position_incomplete_album_ids),
         "shared": _pairs(shared_names, norm_a),  # 用 album_a 的名称显示，按 A 顺序
         "only_in_a": _pairs(only_a_names, norm_a),  # 按 A 顺序
         "only_in_b": _pairs(only_b_names, norm_b),  # 按 B 顺序
@@ -2328,99 +2328,35 @@ def _get_release_date(conn, album_id: int):
 def _build_album_track_sets(conn, albums_df):
     """构建 {album_id: set(spotify_track_id)} 映射，优先用缓存的 track_list。
 
-    对于 track_list 为空的专辑，通过 Spotify API 批量补全并持久化。
+    缺少完整曲目表时不参与归并；通过显式维护补齐。
     比较使用 Spotify track ID（字符串），不依赖本地 track_id，
     确保检测基于真实专辑曲目而非用户播放记录。
     """
-    import json
 
-    # 收集 spotify_album_id → album_id 映射
+    album_spotify_map = {}
     spotify_ids = set()
-    album_spotify_map = {}  # album_id → spotify_album_id
-    for _, row in albums_df.iterrows():
-        aid = int(row["album_id"])
-        if aid in album_spotify_map:
-            continue
-        # 通过 track_albums → tracks → spotify_track_meta → spotify_album_meta 链获取
-        sam_rows = conn.execute(
-            """SELECT DISTINCT sam.spotify_album_id
-               FROM track_albums ta
-               JOIN tracks t ON t.track_id = ta.track_id
-               JOIN spotify_track_meta stm
-                 ON t.spotify_track_id = stm.spotify_track_id
-               JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
-               WHERE ta.album_id = ?""",
-            (aid,),
-        ).fetchall()
-        for r in sam_rows:
-            sid = r[0]
-            album_spotify_map[aid] = sid
-            spotify_ids.add(sid)
-            break  # 取第一个
+    for row in albums_df.itertuples(index=False):
+        aid = int(row.album_id)
+        releases = _spotify_release_ids_for_album(conn, aid)
+        if releases:
+            album_spotify_map[aid] = releases[0]
+            spotify_ids.add(releases[0])
 
     # 查询已有的 track_list
     placeholders = ",".join("?" for _ in spotify_ids) if spotify_ids else "''"
     cached = {}
     if spotify_ids:
         rows = conn.execute(
-            f"""SELECT spotify_album_id, track_list
+            f"""SELECT spotify_album_id, track_list, total_tracks
                 FROM spotify_album_meta
                 WHERE spotify_album_id IN ({placeholders})
                   AND track_list IS NOT NULL""",
             list(spotify_ids),
         ).fetchall()
-        for sid, tl in rows:
-            try:
-                cached[sid] = set(json.loads(tl))
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-    # 检查已缓存的专辑是否需要重新获取（缺曲目名或缺艺人名）
-    def _needs_refetch(sid, tracks):
-        if not tracks:
-            return False
-        # 检查 album_artists 是否为空
-        aa = conn.execute(
-            "SELECT album_artists FROM spotify_album_meta WHERE spotify_album_id = ?",
-            (sid,),
-        ).fetchone()
-        if not aa or not aa[0]:
-            return True
-        # 检查曲目名覆盖率
-        placeholders = ",".join("?" for _ in tracks)
-        named = conn.execute(
-            f"""SELECT COUNT(*) FROM spotify_track_meta
-                WHERE spotify_track_id IN ({placeholders})
-                  AND track_name IS NOT NULL AND track_name != ''""",
-            list(tracks),
-        ).fetchone()[0]
-        return named < len(tracks) * 0.5
-
-    # 缺失的通过 API 补全；已缓存但缺元数据的也重新获取
-    missing = [sid for sid in spotify_ids if sid not in cached]
-    needs_metadata = []
-    if not missing:
-        for sid in spotify_ids:
-            if _needs_refetch(sid, cached.get(sid, set())):
-                needs_metadata.append(sid)
-
-    refetch_ids = missing + needs_metadata
-    if refetch_ids:
-        fetched = _fetch_album_tracks_from_api(refetch_ids)
-        # 持久化到 DB
-        wconn = get_db(readonly=False)
-        for sid, tracks in fetched.items():
-            if tracks:
-                tl_json = json.dumps(tracks, ensure_ascii=False)
-                wconn.execute(
-                    """UPDATE spotify_album_meta
-                       SET track_list = ?, total_tracks = ?
-                       WHERE spotify_album_id = ?""",
-                    (tl_json, len(tracks), sid),
-                )
-                cached[sid] = set(tracks)
-        wconn.commit()
-        wconn.close()
+        for sid, tl, total in rows:
+            ids = complete_track_ids(tl, total)
+            if ids is not None:
+                cached[sid] = set(ids)
 
     # 构建 album_id → set(spotify_track_id)，再转换为归一化曲目名
     id_result = {}
@@ -2451,6 +2387,8 @@ def _build_album_track_sets(conn, albums_df):
     # 转换为归一化曲目名集合（IDs 匹配不到名称的跳过）
     result = {}
     for aid, ids in id_result.items():
+        if any(tid not in id_to_name for tid in ids):
+            continue
         names = set()
         for tid in ids:
             name = id_to_name.get(tid)
@@ -2747,150 +2685,53 @@ def _detect_prefix_groups(
 
 
 def _fetch_album_tracks_from_api(spotify_album_ids):
-    """批量获取专辑完整元数据（通过 Spotify /v1/albums?ids= API）。
+    """Explicit maintenance only: shared validated fetch and atomic persistence."""
+    import logging
 
-    每批最多 20 个 ID。成功后将全部曲目与专辑元数据持久化：
-      - spotify_track_meta: id, name, duration_ms, popularity, explicit,
-        disc_number, track_number, isrc, spotify_album_id
-      - spotify_album_meta: popularity, label, genres, album_artists, total_tracks
+    from backend.domains.metadata.spotify_refresh import upsert_album_batch
+    from backend.providers.spotify.client import SpotifyProvider
 
-    Returns {spotify_album_id: [spotify_track_id, ...]}  # list 保留原始曲目顺序
-    """
-    if not spotify_album_ids:
-        return {}
-
-    try:
-        from backend.providers.spotify.client import SpotifyProvider
-
-        provider = SpotifyProvider()
-        token = provider.get_cc_token()
-    except Exception:
-        return {}
-
+    provider = SpotifyProvider()
+    token = provider.get_cc_token()
     if not token:
         return {}
-
     result = {}
-    track_meta_rows = []  # 9 列全量
-    album_meta_updates = {}  # {sid: {popularity, label, genres, album_artists, total_tracks, album_name}}
-
-    ids_list = list(spotify_album_ids)
-
-    for i in range(0, len(ids_list), 20):
-        batch = ids_list[i : i + 20]
-        try:
+    conn = get_db(readonly=False)
+    try:
+        ids = sorted(set(spotify_album_ids))
+        for offset in range(0, len(ids), 20):
+            batch = ids[offset : offset + 20]
             data = provider.get_albums(batch, token)
             if not data:
                 continue
-
-            for album in data.get("albums", []):
-                if album is None:
-                    continue
-                sid = album["id"]
-
-                # ── 专辑级元数据 ──
-                artist_names = [
-                    a.get("name", "") for a in album.get("artists", []) if a.get("name")
-                ]
-                genres_list = album.get("genres", [])
-                images = album.get("images", [])
-                album_meta_updates[sid] = {
-                    "album_name": album.get("name", ""),
-                    "popularity": album.get("popularity"),
-                    "label": album.get("label"),
-                    "genres": json.dumps(genres_list, ensure_ascii=False) if genres_list else None,
-                    "album_artists": ", ".join(artist_names) if artist_names else None,
-                    "total_tracks": album.get("total_tracks"),
-                    "release_date": album.get("release_date"),
-                    "album_type": album.get("album_type"),
-                    "image_url": images[0]["url"] if images else None,
-                }
-
-                # ── 曲目级元数据（保留原始顺序） ──
-                tracks = []
-                for t in album.get("tracks", {}).get("items", []):
-                    tid = t.get("id")
-                    if not tid:
-                        continue
-                    tracks.append(tid)
-                    track_meta_rows.append(
-                        (
-                            tid,
-                            t.get("name", ""),
-                            t.get("duration_ms"),
-                            t.get("popularity"),
-                            1 if t.get("explicit") else 0,
-                            t.get("disc_number", 1),
-                            t.get("track_number", 0),
-                            t.get("external_ids", {}).get("isrc")
-                            if t.get("external_ids")
-                            else None,
-                            sid,
-                        )
+            albums = [
+                album for album in (data.get("albums") or []) if album and album.get("id") in batch
+            ]
+            outcomes = []
+            upsert_album_batch(
+                conn,
+                albums,
+                provider=provider,
+                access_token=token,
+                outcomes=outcomes,
+                source="version_merge",
+            )
+            for sid, status, error in outcomes:
+                if status == "complete":
+                    row = conn.execute(
+                        "SELECT track_list FROM spotify_album_meta WHERE spotify_album_id=?", (sid,)
+                    ).fetchone()
+                    result[sid] = json.loads(row[0])
+                else:
+                    logging.getLogger(__name__).warning(
+                        "Album tracks incomplete: %s (%s)", sid, error
                     )
-                result[sid] = tracks  # 保留 list 顺序！
-        except Exception:
-            pass
+        if result:
+            from backend.core.cache_manager import invalidate_many
 
-    # ── 持久化 ──
-    if track_meta_rows or album_meta_updates:
-        try:
-            wconn = get_db(readonly=False)
-
-            # 曲目元数据 — 全量 9 列 UPSERT
-            if track_meta_rows:
-                wconn.executemany(
-                    """INSERT INTO spotify_track_meta
-                       (spotify_track_id, track_name, duration_ms, popularity, explicit,
-                        disc_number, track_number, isrc, spotify_album_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                       ON CONFLICT(spotify_track_id) DO UPDATE SET
-                           track_name = excluded.track_name,
-                           duration_ms = COALESCE(excluded.duration_ms, spotify_track_meta.duration_ms),
-                           popularity = COALESCE(excluded.popularity, spotify_track_meta.popularity),
-                           explicit = COALESCE(excluded.explicit, spotify_track_meta.explicit),
-                           disc_number = COALESCE(excluded.disc_number, spotify_track_meta.disc_number),
-                           track_number = COALESCE(excluded.track_number, spotify_track_meta.track_number),
-                           isrc = COALESCE(excluded.isrc, spotify_track_meta.isrc),
-                           spotify_album_id = COALESCE(excluded.spotify_album_id, spotify_track_meta.spotify_album_id)""",
-                    track_meta_rows,
-                )
-
-            # 专辑元数据 — 补充 popularity/label/genres 等（不覆盖已有的 release_date/album_type）
-            for sid, meta in album_meta_updates.items():
-                wconn.execute(
-                    """INSERT INTO spotify_album_meta
-                       (spotify_album_id, album_name, album_type, release_date,
-                        popularity, label, genres, album_artists, total_tracks, image_url)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                       ON CONFLICT(spotify_album_id) DO UPDATE SET
-                           album_name = excluded.album_name,
-                           album_type = COALESCE(excluded.album_type, spotify_album_meta.album_type),
-                           release_date = COALESCE(excluded.release_date, spotify_album_meta.release_date),
-                           popularity = COALESCE(excluded.popularity, spotify_album_meta.popularity),
-                           label = COALESCE(excluded.label, spotify_album_meta.label),
-                           genres = COALESCE(excluded.genres, spotify_album_meta.genres),
-                           album_artists = COALESCE(excluded.album_artists, spotify_album_meta.album_artists),
-                           total_tracks = COALESCE(excluded.total_tracks, spotify_album_meta.total_tracks),
-                           image_url = COALESCE(excluded.image_url, spotify_album_meta.image_url)""",
-                    (
-                        sid,
-                        meta["album_name"],
-                        meta.get("album_type"),
-                        meta.get("release_date"),
-                        meta.get("popularity"),
-                        meta.get("label"),
-                        meta.get("genres"),
-                        meta.get("album_artists"),
-                        meta.get("total_tracks"),
-                        meta.get("image_url"),
-                    ),
-                )
-            wconn.commit()
-            wconn.close()
-        except Exception:
-            pass
-
+            invalidate_many("analysis", "yearly_review")
+    finally:
+        conn.close()
     return result
 
 
