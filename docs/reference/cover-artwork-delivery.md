@@ -33,4 +33,4 @@
 
 通过 `scripts/cover_image_probe.py` 固定路由、视口、DPR，测首屏/完整滚动、冷/热缓存和图片体积。未准备、错误和没有图片的页面必须说明状态，不能充当图片加载成功。用户外部 HTTPS 与服务器 loopback 分别标记，传输字节下降与实际时间下降分别报告。
 
-补建命令及生产回滚见[生产手册](../../deploy/production/README.md)；本次实施和基线见[方案](../plans/2026-10-03-cover-image-optimization-plan.md)、[验收报告](../reports/2026-10-03-cover-image-optimization-acceptance.md)。
+补建命令及生产回滚见[生产手册](../../deploy/production/README.md)；本次实施和基线见[已完成方案](../archive/06-productization-closeout/2026-10-03-cover-image-optimization-plan.md)、[验收报告](../reports/2026-10-03-cover-image-optimization-acceptance.md)。

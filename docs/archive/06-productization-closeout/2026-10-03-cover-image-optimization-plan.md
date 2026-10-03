@@ -1,7 +1,7 @@
 # 全站封面图片优化实施方案
 
 > 问题 ID：`SS-2026-10-03-001`
-> 状态：实施中；阶段完成与验收证据见[交付报告](../reports/2026-10-03-cover-image-optimization-acceptance.md)。
+> 状态：S0–S5 已完成；业务版本 `814ea7cb` 已正式发布，完整本地全栈、生产资产与实际 HTTPS 验收闭环。最后核验 2026-10-03；证据见[交付报告](../../reports/2026-10-03-cover-image-optimization-acceptance.md)。
 > 基线：本地 `7b9a1f4e`，生产 `3a4e6310`；用户实际入口 `https://stats.benjaminlei.site`。
 
 ## 目标

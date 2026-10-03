@@ -2,6 +2,8 @@
 
 归档资料用于回溯产品演进、设计决策、迁移过程和验收证据。归档文件不代表当前实现，也不应直接作为新任务的实施计划。
 
+- [全站封面优化已完成方案](06-productization-closeout/2026-10-03-cover-image-optimization-plan.md)：S0–S5 已完成；`814ea7cb` 已发布，8,720 个生产派生资产及实际 HTTPS 验收完成，见[验收报告](../reports/2026-10-03-cover-image-optimization-acceptance.md)。
+
 - [合作曲排行已完成规划](06-productization-closeout/2026-10-02-collaboration-ranking-plan.md)：S1–S6 已完成；`fa683d97` 已发布，服务器快照和两端浏览器验收通过，详见[验收报告](../reports/2026-10-02-collaboration-ranking-acceptance.md)。
 
 ## 阶段目录

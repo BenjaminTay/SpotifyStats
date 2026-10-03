@@ -1,6 +1,6 @@
 # SpotifyStats 文档地图
 
-- [全站封面优化实施方案](plans/2026-10-03-cover-image-optimization-plan.md)
+- [全站封面优化已完成方案](archive/06-productization-closeout/2026-10-03-cover-image-optimization-plan.md)
 - [音乐封面传输规则](reference/cover-artwork-delivery.md)
 - [全站封面优化实施与验收](reports/2026-10-03-cover-image-optimization-acceptance.md)
 
