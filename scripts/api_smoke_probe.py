@@ -126,6 +126,12 @@ DEFAULT_SAFE_GET_CASES: tuple[SmokeCase, ...] = (
         "/covers/albums/999999999.thumb.webp",
         expected_statuses=(307, 404),
     ),
+    SmokeCase(
+        "cover_medium_missing", "/covers/albums/999999999.320.webp", expected_statuses=(307, 404)
+    ),
+    SmokeCase(
+        "cover_large_missing", "/covers/albums/999999999.640.webp", expected_statuses=(307, 404)
+    ),
     SmokeCase("analysis_overview", "/api/analysis/overview", DEFAULT_FILTERS),
     SmokeCase("analysis_stats", "/api/analysis/stats", {**DEFAULT_FILTERS, "period": "lifetime"}),
     SmokeCase(

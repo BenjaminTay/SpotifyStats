@@ -13,9 +13,49 @@ export interface paths {
         };
         /**
          * Get Cover Thumbnail
-         * @description Serve a persisted list thumbnail, falling back to the original cover.
+         * @description Serve the compatible 160px list variant.
          */
         get: operations["get_cover_thumbnail_covers__cover_type___entity_id__thumb_webp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/covers/{cover_type}/{entity_id}.320.webp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cover Medium
+         * @description Serve a persisted 320px card variant.
+         */
+        get: operations["get_cover_medium_covers__cover_type___entity_id__320_webp_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/covers/{cover_type}/{entity_id}.640.webp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cover Large
+         * @description Serve a persisted 640px display variant.
+         */
+        get: operations["get_cover_large_covers__cover_type___entity_id__640_webp_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -13331,6 +13371,70 @@ export interface components {
 export type $defs = Record<string, never>;
 export interface operations {
     get_cover_thumbnail_covers__cover_type___entity_id__thumb_webp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cover_type: string;
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cover_medium_covers__cover_type___entity_id__320_webp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cover_type: string;
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cover_large_covers__cover_type___entity_id__640_webp_get: {
         parameters: {
             query?: never;
             header?: never;

@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { useParams, Link } from 'react-router-dom'
 
 import { useCommunityChartParams, useCommunityPost, useCommunityTrending } from '@/hooks/useCommunity'
@@ -146,8 +147,9 @@ export function PostDetailExperience() {
             <div className={`mb-5 ${post.images.length === 1 ? '' : 'grid grid-cols-2 gap-2'}`}>
               {post.images.map((url, i) => (
                 <img
+                  loading="lazy" decoding="async"
                   key={i}
-                  src={url}
+                  src={coverDisplayUrl(url, post.images.length === 1 ? 'original' : 640)}
                   alt=""
                   className={`rounded-2xl object-cover ${post.images.length === 1 ? 'max-h-96 w-full' : 'aspect-square'}`}
                 />

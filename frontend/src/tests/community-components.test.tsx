@@ -232,7 +232,7 @@ describe('PostCard', () => {
     expect(squareContainer).toBeInTheDocument()
     const contentImg = squareContainer?.querySelector('img')
     expect(contentImg).toBeInTheDocument()
-    expect(contentImg?.getAttribute('src')).toBe('/covers/albums/1.jpg')
+    expect(contentImg?.getAttribute('src')).toBe('/covers/albums/1.320.webp')
   })
 
   it('renders multi-image grid', () => {

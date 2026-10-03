@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { archiveReadErrorMessage } from '@/features/account-archive/model/archiveModel'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -64,7 +65,7 @@ export function ArchiveEntityRow({
     <>
       {index !== undefined && <span className="archive-entity-index">{String(index).padStart(2, '0')}</span>}
       <span className="archive-entity-cover" aria-hidden="true">
-        {coverUrl ? <img src={coverUrl} alt="" loading="lazy" /> : <Disc3 />}
+        {coverUrl ? <img decoding="async" src={coverDisplayUrl(coverUrl)} alt="" loading="lazy" /> : <Disc3 />}
       </span>
       <span className="archive-entity-copy">
         <strong>{displayTrackName}</strong>

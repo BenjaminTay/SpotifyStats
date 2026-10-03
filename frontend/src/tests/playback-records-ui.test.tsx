@@ -743,6 +743,6 @@ describe('播放记录 UI', () => {
     expect(screen.getByText('第 1,000 次播放')).toBeInTheDocument()
     expect(screen.queryByText(/累计播放/)).not.toBeInTheDocument()
     expect(screen.queryByText('播放节点')).not.toBeInTheDocument()
-    expect(container.querySelector('img[src="/covers/albums/1.jpg"]')).not.toBeNull()
+    expect(container.querySelector('img[src="/covers/albums/1.thumb.webp"]')).not.toBeNull()
   })
 })

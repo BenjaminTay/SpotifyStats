@@ -101,13 +101,26 @@ Quick Tunnel 只用于临时测试：URL 在隧道重启后可能变化，官方
 后仍可被绕过访问的旧副本。若未来使用可编程清理的正式 CDN，再单独开启共享
 封面缓存。`/api/` 个人统计仍不由 Service Worker 持久化。
 
-列表封面使用持久化的 160px WebP 缩略图，详情仍使用原图。新下载的封面会
-同时生成缩略图；已有封面在首次发布此功能后，于服务器的
+列表封面使用持久化的 160px WebP 缩略图，摘要与大卡片按展示尺寸使用
+320px / 640px；完整展示仍可使用原图。新下载的封面同时生成三种尺寸；
+已有封面在首次发布此功能后，于服务器的
 `/opt/spotify-stats` 目录运行一次：
 
 ```bash
 docker compose -f compose.yml exec -T backend python scripts/backfill_cover_thumbnails.py
 ```
+
+上述旧命令默认只补 160px。补建新增尺寸可分批执行：
+
+```bash
+docker compose -f compose.yml exec -T backend python scripts/backfill_cover_thumbnails.py --sizes 320 640 --limit 200
+```
+
+`--limit` 限制本批需要生成的原图数量，已有有效派生文件不消耗额度；重复执行
+会向后推进。输出 `processed` 按源图计数，`generated/skipped/failed` 按变体
+计数；失败以非零退出码报告，应检查具体文件后再继续。最终执行同尺寸扫描，
+确认 `processed=0 failed=0`。补建期间观察 CPU、RSS 和磁盘，避免与重型快照
+构建同时执行。原图完整保留，尺寸选择和例外见[封面传输规则](../../docs/reference/cover-artwork-delivery.md)。
 
 脚本只读取原图并在 `data/covers/thumbnails/` 写入派生文件，不修改 SQLite；
 重复运行会跳过当前版本。补建完成前，缩略图地址会暂时返回原图并使用

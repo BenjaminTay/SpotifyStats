@@ -1,10 +1,14 @@
 # 交付与验证报告索引
 
+- [专辑证据与最新封面主线最终集成验收](2026-10-03-album-metadata-final-integration.md)
+
 - [专辑分页与艺人证据联合集成验收](2026-10-03-album-metadata-integration-verification.md)
 
 - [专辑艺人稳定 ID 与有序证据专项](2026-10-02-album-artist-evidence-verification.md)
 - [专辑完整分页交付](2026-10-02-album-track-pagination-acceptance.md)
 - [专辑分页第二轮独立复核](2026-10-03-album-track-pagination-independent-review.md)
+
+- [全站封面优化实施与验收](2026-10-03-cover-image-optimization-acceptance.md)
 
 - [合作曲排行实施与验收](2026-10-02-collaboration-ranking-acceptance.md)
 

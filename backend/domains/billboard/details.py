@@ -349,6 +349,19 @@ def _classify_recording_kind(track_name: str) -> str | None:
     return None
 
 
+def _version_album_cover_url(version: dict) -> str | None:
+    """Reuse a known local cover source, otherwise retain provider-only artwork."""
+    from backend.services.play_service import _cover_url
+
+    return (
+        _cover_url(
+            version.get("image_path"), version.get("image_url"), "albums", version.get("album_id")
+        )
+        or version.get("album_cover_url")
+        or None
+    )
+
+
 def _attach_track_version_group(
     conn,
     track_id,
@@ -409,6 +422,7 @@ def _attach_track_version_group(
     if merge_level >= 3:
         versions = conn.execute(
             """SELECT t.track_id, t.track_name, al.album_name, al.album_id,
+                      al.image_path, al.image_url,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
                       sam.album_type, sam.release_date,
@@ -431,6 +445,7 @@ def _attach_track_version_group(
     else:
         versions = conn.execute(
             """SELECT t.track_id, t.track_name, al.album_name, al.album_id,
+                      al.image_path, al.image_url,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
                       sam.album_type, sam.release_date,
@@ -482,8 +497,7 @@ def _attach_track_version_group(
                 "total_ms": v["total_ms"],
                 "is_primary": v["track_id"] == group_row["primary_track_id"],
                 "recording_kind": _classify_recording_kind(v["track_name"]),
-                "album_cover_url": v["album_cover_url"]
-                or (f"/covers/albums/{v['album_id']}.jpg" if v["album_id"] else None),
+                "album_cover_url": _version_album_cover_url(v),
                 "release_date": v["release_date"],
             }
             for v in versions
@@ -524,6 +538,7 @@ def _attach_l1_track_version_group(
     effective_group_id = int(group_row["effective_group_id"])
     versions = conn.execute(
         """SELECT li.l1_id AS track_id, t.track_name, al.album_name, al.album_id,
+                  al.image_path, al.image_url,
                   COUNT(DISTINCT p.play_id) AS plays,
                   COALESCE(SUM(p.ms_played), 0) AS total_ms,
                   sam.album_type, sam.release_date,
@@ -582,8 +597,7 @@ def _attach_l1_track_version_group(
                 "total_ms": int(version["total_ms"]),
                 "is_primary": int(version["track_id"]) == int(group_row["primary_l1_id"]),
                 "recording_kind": _classify_recording_kind(version["track_name"]),
-                "album_cover_url": version["album_cover_url"]
-                or (f"/covers/albums/{version['album_id']}.jpg" if version["album_id"] else None),
+                "album_cover_url": _version_album_cover_url(version),
                 "release_date": version["release_date"],
             }
             for version in versions
@@ -718,6 +732,7 @@ def _attach_album_release_group(
     if merge_level >= 3:
         versions = conn.execute(
             """SELECT al.album_id, al.album_name, ar.artist_name,
+                      al.image_path, al.image_url,
                       COUNT(DISTINCT p.track_id) AS unique_tracks,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
@@ -741,6 +756,7 @@ def _attach_album_release_group(
     else:
         versions = conn.execute(
             """SELECT al.album_id, al.album_name, ar.artist_name,
+                      al.image_path, al.image_url,
                       COUNT(DISTINCT p.track_id) AS unique_tracks,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
@@ -829,7 +845,7 @@ def _attach_album_release_group(
                 "unique_tracks": v["unique_tracks"],
                 "total_ms": v["total_ms"],
                 "is_primary": v["album_id"] == group_row["primary_album_id"],
-                "album_cover_url": v["album_cover_url"] or f"/covers/albums/{v['album_id']}.jpg",
+                "album_cover_url": _version_album_cover_url(v),
                 "release_date": v["release_date"],
                 "album_type": v["album_type"],
                 "total_tracks": v["total_tracks"],
@@ -853,7 +869,9 @@ def _enrich_source_breakdown(conn: sqlite3.Connection, df: pd.DataFrame) -> pd.D
     meta_rows = conn.execute(
         f"""SELECT a.album_id,
                   a.album_name,
+                  a.image_path, a.image_url,
                   ar.artist_name,
+                  sam.image_url AS album_cover_url,
                   sam.release_date,
                   (SELECT COUNT(*) FROM track_albums ta
                    WHERE ta.album_id = a.album_id) AS track_count
@@ -878,17 +896,14 @@ def _enrich_source_breakdown(conn: sqlite3.Connection, df: pd.DataFrame) -> pd.D
             "track_count": r["track_count"] or 0,
             "album_name": r["album_name"],
             "artist_name": r["artist_name"],
+            "album_cover_url": _version_album_cover_url(dict(r)),
         }
-
-    from backend.services.play_service import _album_cover_lookup
-
-    cover_map = _album_cover_lookup(conn)
 
     def enrich_row(row):
         aid = row.get("source_album_id")
         meta = meta_by_id.get(int(aid)) if aid is not None and pd.notna(aid) else None
         if meta:
-            row["album_cover_url"] = cover_map.get((meta["album_name"], meta["artist_name"]))
+            row["album_cover_url"] = meta["album_cover_url"]
             row["release_date"] = meta["release_date"] or row.get("release_date")
             row["track_count"] = meta["track_count"]
         else:

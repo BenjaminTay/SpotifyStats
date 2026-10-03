@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 /** Shared UI primitives for Playback Records — aligned with Billboard RecordsPrimitives. */
 
 import { createContext, type ReactNode, useCallback, useContext, useState } from 'react'
@@ -31,7 +32,7 @@ function CoverImg({ url, size = 'sm' }: { url?: string | null; size?: 'sm' | 'md
   if (url) {
     return (
       <img
-        src={url}
+        src={coverDisplayUrl(url)}
         alt=""
         className={`${dims} shrink-0 rounded-[8px] object-cover`}
         loading="lazy"
@@ -51,7 +52,7 @@ function ArtistCoverImg({ url, size = 'sm' }: { url?: string | null; size?: 'sm'
   if (url) {
     return (
       <img
-        src={url}
+        src={coverDisplayUrl(url)}
         alt=""
         className={`${dims} shrink-0 rounded-full object-cover`}
         loading="lazy"

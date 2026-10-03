@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
@@ -60,7 +61,7 @@ export function LegacyTrackDetailRedirect() {
             className="flex min-h-16 items-center gap-3 rounded-2xl border border-border p-3 transition-colors hover:bg-muted/40"
           >
             {item.cover_url ? (
-              <img src={item.cover_url} alt="" className="size-11 rounded-xl object-cover" />
+              <img loading="lazy" decoding="async" src={coverDisplayUrl(item.cover_url)} alt="" className="size-11 rounded-xl object-cover" />
             ) : <span className="size-11 rounded-xl bg-muted" />}
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold">{displayName(item.track_name)}</span>

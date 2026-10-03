@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Disc3, FolderOpen, Search } from 'lucide-react'
@@ -162,7 +163,7 @@ export function LibrarySection() {
                     <>
                       <span className="archive-library-index">{String((page - 1) * 20 + index + 1).padStart(3, '0')}</span>
                       <span className="archive-library-cover">
-                        {cover ? <img src={cover} alt="" loading="lazy" /> : <Disc3 aria-hidden="true" />}
+                        {cover ? <img decoding="async" src={coverDisplayUrl(cover)} alt="" loading="lazy" /> : <Disc3 aria-hidden="true" />}
                       </span>
                       <LibraryEntityCopy name={name} secondary={secondary} />
                       <span className="archive-library-meta">{meta}</span>

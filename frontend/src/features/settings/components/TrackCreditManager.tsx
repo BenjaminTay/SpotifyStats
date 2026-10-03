@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from "@/lib/cover-thumbnail";
 import { useDeferredValue, useState, type ComponentProps } from "react";
 import {
   AlertTriangle,
@@ -44,9 +45,9 @@ function Input({ className, ...props }: ComponentProps<"input">) {
 }
 
 function Avatar({ name, coverUrl }: { name: string; coverUrl?: string | null }) {
-  const [failed, setFailed] = useState(false);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const renderedName = useDisplayName(name);
-  if (!coverUrl || failed) {
+  if (!coverUrl || coverUrl === failedUrl) {
     return (
       <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent-foreground/10 font-serif text-sm font-bold text-accent-foreground">
         {renderedName.trim().slice(0, 1).toUpperCase() || <UserRound className="size-4" />}
@@ -55,10 +56,11 @@ function Avatar({ name, coverUrl }: { name: string; coverUrl?: string | null }) 
   }
   return (
     <img
-      src={coverUrl}
+      loading="lazy" decoding="async"
+      src={coverDisplayUrl(coverUrl)}
       alt=""
       className="size-10 shrink-0 rounded-full object-cover"
-      onError={() => setFailed(true)}
+      onError={() => setFailedUrl(coverUrl)}
     />
   );
 }

@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { archiveReadErrorMessage } from '@/features/account-archive/model/archiveModel'
 import { Disc3, LoaderCircle, RotateCcw } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -57,7 +58,7 @@ export function PhoneEntityCard({
   const content = (
     <>
       <span className="phone-archive-entity-art">
-        {coverUrl ? <img src={coverUrl} alt="" loading="lazy" /> : <Disc3 aria-hidden="true" />}
+        {coverUrl ? <img decoding="async" src={coverDisplayUrl(coverUrl)} alt="" loading="lazy" /> : <Disc3 aria-hidden="true" />}
       </span>
       <span className="phone-archive-entity-copy">
         {ordinal ? <small>{String(ordinal).padStart(2, '0')}</small> : null}

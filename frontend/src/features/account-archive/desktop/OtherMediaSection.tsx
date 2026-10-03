@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { Radio, Video } from 'lucide-react'
 
 import { useArchiveOtherMedia } from '@/features/account-archive/hooks/useAccountArchive'
@@ -50,7 +51,7 @@ export function OtherMediaSection() {
                   <small>{String(index + 1).padStart(2, '0')}</small>
                   {show.cover_url ? (
                     <span className="archive-podcast-cover" aria-hidden="true">
-                      <img src={show.cover_url} alt="" loading="lazy" />
+                      <img decoding="async" src={coverDisplayUrl(show.cover_url)} alt="" loading="lazy" />
                     </span>
                   ) : null}
                   <PodcastName name={show.show_name} publisher={show.publisher} />

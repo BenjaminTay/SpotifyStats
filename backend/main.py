@@ -735,14 +735,31 @@ def _search_spotify_cover(cover_type: str, entity_id: int) -> str | None:
 
 @app.get("/covers/{cover_type}/{entity_id}.thumb.webp")
 async def get_cover_thumbnail(request: Request, cover_type: str, entity_id: int):
-    """Serve a persisted list thumbnail, falling back to the original cover."""
+    """Serve the compatible 160px list variant."""
+    return _get_cover_variant(request, cover_type, entity_id, 160)
+
+
+@app.get("/covers/{cover_type}/{entity_id}.320.webp")
+async def get_cover_medium(request: Request, cover_type: str, entity_id: int):
+    """Serve a persisted 320px card variant."""
+    return _get_cover_variant(request, cover_type, entity_id, 320)
+
+
+@app.get("/covers/{cover_type}/{entity_id}.640.webp")
+async def get_cover_large(request: Request, cover_type: str, entity_id: int):
+    """Serve a persisted 640px display variant."""
+    return _get_cover_variant(request, cover_type, entity_id, 640)
+
+
+def _get_cover_variant(request: Request, cover_type: str, entity_id: int, size: int):
+    """Only read current files; missing/stale variants briefly use the original."""
     from backend.services.cover_thumbnail_service import thumbnail_is_current, thumbnail_path
 
     if cover_type not in ("albums", "artists"):
         raise HTTPException(status_code=404)
 
     original = os.path.join(_covers_dir(), cover_type, f"{entity_id}.jpg")
-    thumbnail = thumbnail_path(_covers_dir(), cover_type, entity_id)
+    thumbnail = thumbnail_path(_covers_dir(), cover_type, entity_id, size)
     if os.path.isfile(original):
         if thumbnail_is_current(original, thumbnail):
             return _local_cover_response(request, str(thumbnail), media_type="image/webp")

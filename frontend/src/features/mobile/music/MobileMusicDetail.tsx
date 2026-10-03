@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Disc3, Mic2, Music2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -39,13 +40,13 @@ export function MobileMusicDetailHero({
   meta,
   facts,
 }: MobileMusicDetailHeroProps) {
-  const [failed, setFailed] = useState(false)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
 
   return (
     <section className={cn('mobile-music-detail-hero', `mobile-music-detail-hero-${kind}`)}>
       <div className="mobile-music-detail-artwork">
-        {coverUrl && !failed
-          ? <img src={coverUrl} alt={title} onError={() => setFailed(true)} />
+        {coverUrl && coverUrl !== failedUrl
+          ? <img decoding="async" src={coverDisplayUrl(coverUrl, kind === 'album' ? 640 : 320)} alt={title} onError={() => setFailedUrl(coverUrl)} />
           : <ArtworkFallback kind={kind} />}
       </div>
       <div className="mobile-music-detail-copy">

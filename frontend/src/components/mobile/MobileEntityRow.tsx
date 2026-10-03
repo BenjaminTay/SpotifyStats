@@ -33,7 +33,7 @@ export interface MobileEntityRowProps {
 }
 
 export function MobileEntityArtwork({ type, coverUrl }: { type: MobileEntityType; coverUrl?: string | null }) {
-  const [failed, setFailed] = useState(false)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const fallback = type === 'artist'
     ? <Mic2 aria-hidden="true" />
     : type === 'album'
@@ -42,8 +42,8 @@ export function MobileEntityArtwork({ type, coverUrl }: { type: MobileEntityType
 
   return (
     <span className={cn('mobile-entity-artwork', `mobile-entity-artwork-${type}`)}>
-      {coverUrl && !failed
-        ? <img src={coverThumbnailUrl(coverUrl)} alt="" loading="lazy" onError={() => setFailed(true)} />
+      {coverUrl && coverUrl !== failedUrl
+        ? <img decoding="async" src={coverThumbnailUrl(coverUrl)} alt="" loading="lazy" onError={() => setFailedUrl(coverUrl)} />
         : fallback}
     </span>
   )

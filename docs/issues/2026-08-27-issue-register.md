@@ -14,6 +14,13 @@
 | SS-2026-09-24-001 | 完整曲目分页与发行位置 | 本地专项交付 `4f9a01ff`；联合本地完整验收通过，集成未提交/未部署 | 缺页/缺列表副本 47 条已修复，未知位置不借用另一发行；[联合报告](../reports/2026-10-03-album-metadata-integration-verification.md)含八阶段同轮 PASS 和两视口 | 审阅与后续 main 的合入依赖；正式迁移、回填及生产验收另行授权 |
 | SS-2026-09-24-002 | 专辑艺人稳定 ID 与有序证据 | 本地专项交付 `8f638494`；联合本地完整验收通过，集成未提交/未部署 | 有序 ID/canonical、真实逗号/JOLIN 与 Cats 未解析边界，冲突保留；[联合报告](../reports/2026-10-03-album-metadata-integration-verification.md) | 审阅固定候选，正式 Album 回填和身份审核另行授权 |
 
+### 2026-10-03 全站封面优化
+
+| ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
+| --- | --- | --- | --- | --- |
+| `SS-2026-10-03-001` | 小封面优化未覆盖首页、播放记录、音乐档案和当前年度 V2 | `IN_PROGRESS` | 生产 `3a4e6310` 的播放记录当时 68 张均原图、首页小图仍原图；六张首页原图同尺寸 WebP 可减少约 61.5–78.1% bytes。 | 执行 S0–S5，双版覆盖、尺寸选择、冷热性能与生产验收；2026-10-03。见[方案](../plans/2026-10-03-cover-image-optimization-plan.md)、[报告](../reports/2026-10-03-cover-image-optimization-acceptance.md)。 |
+
+
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 |
 |---|---|---|---|---|
 | `SS-2026-08-24-004` | 全栈总门禁时间过长，且并发性能竞争、冷建等待和失败后整轮重跑放大交付成本 | `PARTIAL` · P1-A/P1-B 已完成 | 廉价 preflight、跨工作区 `fcntl` 锁和 run-id 独立 summary 已由提交 `8326169f` 实现。当前 `5bcfc5de` 默认完整门禁全部必需阶段 PASS，但实测总耗时 2,832,355ms（约 47 分钟），其中 backend 约 18.8 分钟、API 约 10.5 分钟、browser routes 约 9.2 分钟；说明正确性已闭环但 25 分钟耗时目标仍未达到。见 [`收口与发布报告`](../reports/2026-09-13-development-closeout-and-release.md)。 | 基于本次 run-id evidence 做 `pytest --durations=100` 与 API/浏览器阶段剖析，再评估不降低覆盖、三浏览器和 500ms 阈值的安全并行；严格 evidence manifest 单独续做。 |

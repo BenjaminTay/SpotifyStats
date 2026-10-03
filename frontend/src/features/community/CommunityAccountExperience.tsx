@@ -90,6 +90,8 @@ export function CommunityAccountExperience() {
           >
             {account.banner_url && (
               <img
+                decoding="async"
+                key={account.banner_url}
                 src={account.banner_url}
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover"

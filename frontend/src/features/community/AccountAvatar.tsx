@@ -17,7 +17,7 @@ const SIZE_CLASSES = {
 
 export function AccountAvatar({ handle, size = 'sm', linkable = false }: AccountAvatarProps) {
   const account: AccountInfo | undefined = ACCOUNT_CONFIG[handle]
-  const [imgError, setImgError] = useState(false)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const dims = SIZE_CLASSES[size]
   const avatar = account?.avatar
   const avatarUrl = account?.avatar_url
@@ -32,13 +32,15 @@ export function AccountAvatar({ handle, size = 'sm', linkable = false }: Account
     </div>
   )
 
-  if (avatarUrl && !imgError) {
+  if (avatarUrl && avatarUrl !== failedUrl) {
     const img = (
       <img
+        loading="lazy"
+        decoding="async"
         src={avatarUrl}
         alt={account?.display_name ?? handle}
         className={`${dims} shrink-0 rounded-full object-cover`}
-        onError={() => setImgError(true)}
+        onError={() => setFailedUrl(avatarUrl)}
       />
     )
     if (linkable) {

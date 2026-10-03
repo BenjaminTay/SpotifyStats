@@ -1,3 +1,4 @@
+import { coverDisplayUrl } from '@/lib/cover-thumbnail'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, Fingerprint, GitMerge, ListMusic, Settings2 } from 'lucide-react'
 import type { AlbumDetailResponse, ArtistDetailResponse, TrackDetailResponse } from '@/types/billboard'
@@ -59,7 +60,7 @@ export function TrackDetailHero({
       </button>
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
         {data.cover_url && (
-          <img src={data.cover_url} alt={renderedTrackName} className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg" />
+          <img decoding="async" src={coverDisplayUrl(data.cover_url, 320)} alt={renderedTrackName} className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg" />
         )}
         <div className="min-w-0 max-w-full flex-1">
           <div className="flex min-w-0 items-start justify-between gap-3">
@@ -167,7 +168,8 @@ export function ArtistDetailHero({
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
         {data.cover_url && (
           <img
-            src={data.cover_url}
+            decoding="async"
+            src={coverDisplayUrl(data.cover_url, 320)}
             alt={renderedArtistName}
             style={{ width: 120, height: 120 }}
             className="h-[120px] w-[120px] flex-shrink-0 rounded-full object-cover shadow-lg"
@@ -260,7 +262,8 @@ export function AlbumDetailHero({
       <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
         {data.cover_url && (
           <img
-            src={data.cover_url}
+            decoding="async"
+            src={coverDisplayUrl(data.cover_url, 320)}
             alt={renderedAlbumName}
             style={{ width: 120, height: 120 }}
             className="h-[120px] w-[120px] flex-shrink-0 rounded-[12px] object-cover shadow-lg"
