@@ -1,12 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SnapshotUnavailableError } from '@/api/errors'
 import { AnalysisStatsPage } from '@/pages/AnalysisStatsPage'
 import { AnalysisRecordsPage } from '@/pages/AnalysisRecordsPage'
 
-const state = vi.hoisted(() => ({ phone: false, error: null as Error | null }))
+const state = vi.hoisted(() => ({ phone: false, loading: false, error: null as Error | null }))
 vi.mock('@/hooks/useViewportMode', () => ({ useViewportMode: () => state.phone ? 'phone' : 'desktop' }))
 vi.mock('@/components/shared/AnalysisControls', () => ({
   useAnalysisQueryState: () => ({ apiParams: {}, period: 'lifetime', metric: 'plays', setQuery: vi.fn() }),
@@ -14,11 +14,27 @@ vi.mock('@/components/shared/AnalysisControls', () => ({
 }))
 vi.mock('@/hooks/useAnalysis', () => ({
   useAnalysisFilters: () => ({ filters: { min_ms: 30000, merge_level: 2 }, loading: false }),
-  usePreparedAnalysisData: () => ({ data: null, loading: false, switching: false, error: state.error?.message, errorObject: state.error, refetch: vi.fn() }),
+  usePreparedAnalysisData: () => ({ data: null, loading: state.loading, switching: false, error: state.error?.message, errorObject: state.error, refetch: vi.fn() }),
   analysisApi: { stats: vi.fn(), records: vi.fn(), prepareSnapshot: vi.fn() },
 }))
 
 describe('analysis publication errors', () => {
+  beforeEach(() => {
+    state.phone = false
+    state.loading = false
+    state.error = null
+  })
+
+  it('keeps phone time controls available while both routes load', () => {
+    state.phone = true
+    state.loading = true
+    for (const Page of [AnalysisStatsPage, AnalysisRecordsPage]) {
+      const view = render(<MemoryRouter><Page /></MemoryRouter>)
+      expect(screen.getByRole('button', { name: '选择时间范围，当前全部时间' })).toBeInTheDocument()
+      view.unmount()
+    }
+  })
+
   it.each([false, true])('separates unavailable from general failure for both routes (phone=%s)', async phone => {
     state.phone = phone
     for (const Page of [AnalysisStatsPage, AnalysisRecordsPage]) {
@@ -32,6 +48,9 @@ describe('analysis publication errors', () => {
         expect(screen.queryByLabelText('正在加载')).not.toBeInTheDocument()
         expect(view.container.querySelector('[data-slot="skeleton"]')).toBeNull()
         expect(screen.queryByLabelText('播放统计核心数据')).not.toBeInTheDocument()
+        if (phone) {
+          expect(screen.getByRole('button', { name: '选择时间范围，当前全部时间' })).toBeInTheDocument()
+        }
         view.unmount()
         client.clear()
       }

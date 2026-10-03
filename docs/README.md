@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [公开展示版完整时间选择修复](reports/2026-10-03-public-analysis-time-ranges.md)
+
 - [专辑目录与艺人证据生产交付](reports/2026-10-03-album-metadata-production-delivery.md)
 
 - [专辑证据与最新封面主线最终集成验收](reports/2026-10-03-album-metadata-final-integration.md)

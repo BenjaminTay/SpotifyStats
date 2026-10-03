@@ -267,9 +267,41 @@ export function EntityStatsPanel({
     return result
   }, [data, chartOrigin])
 
-  if (queryError) return <GlassCard className="p-8 text-center text-destructive">加载失败：{queryError}</GlassCard>
-  if (isPending || !data) return <Skeleton className="h-[560px] rounded-[16px]" />
-  if (!data.found) return <GlassCard className="p-8 text-muted-foreground">暂无个人播放统计。</GlassCard>
+  const controls = (
+    <div className={cn(
+      'entity-stats-controls flex flex-wrap items-end gap-4',
+      isPhone ? 'entity-stats-controls-mobile justify-end' : 'justify-between',
+    )}>
+      {isPhone ? (
+        <MobileAnalysisTimeControl
+          compact
+          period={period}
+          periodValue={periodValue}
+          startDate={startDate}
+          endDate={endDate}
+          metric={metric}
+          onChange={setQuery}
+        />
+      ) : (
+        <>
+          <AnalysisTimeRangeSelector period={period} periodValue={periodValue} startDate={startDate} endDate={endDate} onChange={setQuery} quickFirst />
+          <MetricToggle metric={metric} onChange={(next) => setQuery({ metric: next })} />
+        </>
+      )}
+    </div>
+  )
+  if (queryError || isPending || !data || !data.found) return (
+    <div className="entity-stats-panel space-y-8">
+      {controls}
+      {queryError ? (
+        <GlassCard className="p-8 text-center text-destructive">加载失败：{queryError}</GlassCard>
+      ) : isPending || !data ? (
+        <Skeleton className="h-[560px] rounded-[16px]" />
+      ) : (
+        <GlassCard className="p-8 text-muted-foreground">暂无个人播放统计。</GlassCard>
+      )}
+    </div>
+  )
 
   const metricLabel = metric === 'plays' ? '次' : '小时'
   const dailyChartData = paddedDaily.map((item) => ({ label: item.date.slice(2), value: item[distributionKey] }))
@@ -286,29 +318,7 @@ export function EntityStatsPanel({
 
   return (
     <div className="entity-stats-panel space-y-8">
-      {/* Header */}
-      <div className={cn(
-        'entity-stats-controls flex flex-wrap items-end gap-4',
-        isPhone ? 'entity-stats-controls-mobile justify-end' : 'justify-between',
-      )}>
-        {isPhone ? (
-          <MobileAnalysisTimeControl
-            compact
-            period={period}
-            periodValue={periodValue}
-            startDate={startDate}
-            endDate={endDate}
-            metric={metric}
-            onChange={setQuery}
-          />
-        ) : (
-          <>
-            <AnalysisTimeRangeSelector period={period} periodValue={periodValue} startDate={startDate} endDate={endDate} onChange={setQuery} quickFirst />
-            <MetricToggle metric={metric} onChange={(next) => setQuery({ metric: next })} />
-          </>
-        )}
-      </div>
-
+      {controls}
       {/* KPIs Row 1: 播放概览 — 6 cards */}
       <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard label="总播放次数" value={fmt(data.summary.total_plays)} />

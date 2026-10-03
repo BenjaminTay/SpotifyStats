@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar } from '@/components/ui/calendar'
 import type { AnalysisPeriod } from '@/types/analysis'
-import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 
 const QUICK_OPTIONS: Array<{ value: AnalysisPeriod; label: string }> = [
   { value: 'lifetime', label: '全部时间' },
@@ -97,10 +96,6 @@ export function AnalysisTimeRangeSelector({
   onChange: (patch: Record<string, string | undefined>) => void
   quickFirst?: boolean
 }) {
-  const { capabilities } = useRuntimeCapabilities()
-  const quickOptions = capabilities.surface === 'public-readonly'
-    ? QUICK_OPTIONS.filter((option) => ['lifetime', 'last_6_months', 'last_4_weeks'].includes(option.value))
-    : QUICK_OPTIONS
   const anchor = useMemo(() => parsePeriodValue(period, periodValue), [period, periodValue])
 
   // ── Custom date range state ──
@@ -235,8 +230,8 @@ export function AnalysisTimeRangeSelector({
   )
 
   const quickBlock = (
-    <div className="flex gap-1 rounded-[8px] border border-border bg-muted/30 p-1">
-      {quickOptions.map((opt) => (
+    <div className="flex flex-wrap gap-1 rounded-[8px] border border-border bg-muted/30 p-1">
+      {QUICK_OPTIONS.map((opt) => (
         <button
           key={opt.value}
           type="button"
@@ -255,7 +250,7 @@ export function AnalysisTimeRangeSelector({
   )
 
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="flex flex-wrap items-center gap-2.5">
       {quickFirst ? (
         <>
           {quickBlock}

@@ -64,23 +64,38 @@ export function AnalysisRecordsPage() {
     [params],
     !filtersLoading,
   )
+  const timeControl = isPhone ? (
+    <div className="mobile-analysis-floating-time-control">
+      <MobileAnalysisTimeControl
+        compact
+        period={period}
+        periodValue={periodValue}
+        startDate={startDate}
+        endDate={endDate}
+        onChange={setQuery}
+      />
+    </div>
+  ) : null
 
-  if (filtersLoading || isLoading) return <LoadingSkeleton isPhone={isPhone} />
+  if (filtersLoading || isLoading) return <>{timeControl}<LoadingSkeleton isPhone={isPhone} /></>
 
   if (error) {
     return (
-      <div role={switching ? 'status' : 'alert'} className="mx-auto max-w-[1200px] py-16 text-center">
-        <AlertCircle className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-        <p className="font-sans text-[14px] text-muted-foreground">{switching ? '正在准备这个时间范围的数据' : errorObject instanceof SnapshotUnavailableError ? '当前时间范围暂不可用' : '加载播放记录失败'}</p>
-        <p className="mt-1 font-sans text-[12px] text-muted-foreground/60">
-          {switching
-            ? '可以停留在当前页面，准备完成后会自动显示。'
-            : errorObject instanceof SnapshotUnavailableError
-              ? '当前还没有可用的播放记录，请稍后重新加载。'
-              : error}
-        </p>
-        {!switching && <button type="button" className="mt-4 text-sm underline" onClick={refetch}>重试</button>}
-      </div>
+      <>
+        {timeControl}
+        <div role={switching ? 'status' : 'alert'} className="mx-auto max-w-[1200px] py-16 text-center">
+          <AlertCircle className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+          <p className="font-sans text-[14px] text-muted-foreground">{switching ? '正在准备这个时间范围的数据' : errorObject instanceof SnapshotUnavailableError ? '当前时间范围暂不可用' : '加载播放记录失败'}</p>
+          <p className="mt-1 font-sans text-[12px] text-muted-foreground/60">
+            {switching
+              ? '可以停留在当前页面，准备完成后会自动显示。'
+              : errorObject instanceof SnapshotUnavailableError
+                ? '当前还没有可用的播放记录，可切换其他时间范围或稍后重试。'
+                : error}
+          </p>
+          {!switching && <button type="button" className="mt-4 text-sm underline" onClick={refetch}>重试</button>}
+        </div>
+      </>
     )
   }
 
@@ -93,18 +108,7 @@ export function AnalysisRecordsPage() {
       aria-busy={switching}
     >
       <SnapshotStatusNotice snapshot={data.snapshot} />
-      {isPhone ? (
-        <div className="mobile-analysis-floating-time-control">
-          <MobileAnalysisTimeControl
-            compact
-            period={period}
-            periodValue={periodValue}
-            startDate={startDate}
-            endDate={endDate}
-            onChange={setQuery}
-          />
-        </div>
-      ) : <section className="mt-6 mb-6">
+      {isPhone ? timeControl : <section className="mt-6 mb-6">
         <p className="mb-2 font-sans text-[11px] font-bold uppercase tracking-[1.5px] text-accent-foreground">Playback Records</p>
         <h2 className="font-serif text-[34px] font-bold leading-tight">
           播放记录

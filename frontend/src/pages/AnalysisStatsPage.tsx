@@ -32,21 +32,35 @@ export function AnalysisStatsPage() {
     [filters, apiParams],
     !filtersLoading,
   )
+  const timeControl = isPhone ? (
+    <MobileAnalysisTimeControl
+      compact
+      period={period}
+      periodValue={periodValue}
+      startDate={startDate}
+      endDate={endDate}
+      metric={metric}
+      onChange={setQuery}
+    />
+  ) : null
 
   if (error) return (
-    <div role={switching ? 'status' : 'alert'} className="py-16 text-center">
-      <p>{switching ? '正在准备这个时间范围的数据' : errorObject instanceof SnapshotUnavailableError ? '当前时间范围暂不可用' : '加载播放统计失败'}</p>
-      <p className="mt-2 text-sm text-muted-foreground">
-        {switching
-          ? '可以停留在当前页面，准备完成后会自动显示。'
-          : errorObject instanceof SnapshotUnavailableError
-            ? '当前还没有可用的统计结果，请稍后重新加载。'
-            : error}
-      </p>
-    </div>
+    <>
+      {timeControl}
+      <div role={switching ? 'status' : 'alert'} className="py-16 text-center">
+        <p>{switching ? '正在准备这个时间范围的数据' : errorObject instanceof SnapshotUnavailableError ? '当前时间范围暂不可用' : '加载播放统计失败'}</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {switching
+            ? '可以停留在当前页面，准备完成后会自动显示。'
+            : errorObject instanceof SnapshotUnavailableError
+              ? '当前还没有可用的统计结果，可切换其他时间范围或稍后重试。'
+              : error}
+        </p>
+      </div>
+    </>
   )
 
-  if (loading || !data) return isPhone ? <MobileStatePanel variant="loading" /> : <Skeleton className="h-[640px] rounded-[16px]" />
+  if (loading || !data) return isPhone ? <>{timeControl}<MobileStatePanel variant="loading" /></> : <Skeleton className="h-[640px] rounded-[16px]" />
 
   const metricKey = metric === 'plays' ? 'plays' : 'hours'
   const metricLabel = metric === 'plays' ? '次' : '小时'
@@ -59,17 +73,7 @@ export function AnalysisStatsPage() {
           data={data}
           metric={metric}
           busy={switching}
-          timeControl={(
-            <MobileAnalysisTimeControl
-              compact
-              period={period}
-              periodValue={periodValue}
-              startDate={startDate}
-              endDate={endDate}
-              metric={metric}
-              onChange={setQuery}
-            />
-          )}
+          timeControl={timeControl}
         filters={filters}
         apiParams={apiParams}
         fetchPage={(page, limit, search, date) =>
