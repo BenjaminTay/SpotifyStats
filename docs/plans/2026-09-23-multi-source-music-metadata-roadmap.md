@@ -139,7 +139,7 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 
 本路线只保存剩余分析与未来入口。Spotify Track `artists[]` 证据已按独立计划实施并在隔离副本验收；其余方向继续停留在 `PLANNED / DEFERRED`。没有新的明确授权时，不继续做第二来源、曲目语言、封面替代或其他字段的真实 API 回填、schema 设计与实现。
 
-> 2026-10-03：两个专辑事项已形成固定专项交付，并从 main `7b9a1f4e` 完成隔离联合集成、默认完整八阶段 PASS 及桌面/手机视口验收；见[联合报告](../reports/2026-10-03-album-metadata-integration-verification.md)。集成版本尚未提交/合入，后续 main 封面变更仍须审阅；正式库迁移、回填和生产验收另行授权。
+> 2026-10-03 历史候选（`7b9a1f4e`）：两个专辑事项已形成固定专项交付，并从 main `7b9a1f4e` 完成隔离联合集成、默认完整八阶段 PASS 及桌面/手机视口验收；见[联合报告](../reports/2026-10-03-album-metadata-integration-verification.md)。集成版本尚未提交/合入，后续 main 封面变更仍须审阅；正式库迁移、回填和生产验收另行授权。
 
 ## 10. 2026-09-24 Spotify 现有字段利用审计：后续问题
 
@@ -157,4 +157,4 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 
 官方参考：[Get Track](https://developer.spotify.com/documentation/web-api/reference/get-track)、[Get Album](https://developer.spotify.com/documentation/web-api/reference/get-an-album)、[Get Album Tracks](https://developer.spotify.com/documentation/web-api/reference/get-an-albums-tracks)、[Get Artist](https://developer.spotify.com/documentation/web-api/reference/get-an-artist)。
 
-2026-10-03 最终恢复：`SS-2026-09-24-001/002` 已以 `8464ffa6` 与封面主线整合，新默认完整全栈与两视口专项通过；待主目录安全合入，未推送/部署，正式迁移/回填仍需独立授权。见[最终报告](../reports/2026-10-03-album-metadata-final-integration.md)。日期精度 `003` 未实施。
+2026-10-03 最终恢复：`SS-2026-09-24-001/002` 已以 `8464ffa6` 与封面主线整合，新默认完整全栈与两视口专项通过；已吸收封面收口 `85a44cb8` 并安全合入本地 main，未推送本任务/部署，正式迁移/回填仍需独立授权。见[最终报告](../reports/2026-10-03-album-metadata-final-integration.md)。日期精度 `003` 未实施。
