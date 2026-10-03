@@ -156,3 +156,5 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 不要误列为遗漏：Track 的 `duration_ms`、`explicit`、`track_number`、`disc_number`、`external_ids.isrc`、专辑 `album_type`、`total_tracks` 和封面 URL 已被现有元数据表保存。Spotify Track/Album 对象未提供可靠的歌曲演唱语言、`primary`/`featured` 角色或结构化 live/remaster/acoustic 类型；Artist `genres` 已被官方标为 deprecated，Album `genres` 官方说明始终为空，不应作为上述问题的直接替代。
 
 官方参考：[Get Track](https://developer.spotify.com/documentation/web-api/reference/get-track)、[Get Album](https://developer.spotify.com/documentation/web-api/reference/get-an-album)、[Get Album Tracks](https://developer.spotify.com/documentation/web-api/reference/get-an-albums-tracks)、[Get Artist](https://developer.spotify.com/documentation/web-api/reference/get-an-artist)。
+
+2026-10-03 最终恢复：`SS-2026-09-24-001/002` 已以 `8464ffa6` 与封面主线整合，新默认完整全栈与两视口专项通过；待主目录安全合入，未推送/部署，正式迁移/回填仍需独立授权。见[最终报告](../reports/2026-10-03-album-metadata-final-integration.md)。日期精度 `003` 未实施。
