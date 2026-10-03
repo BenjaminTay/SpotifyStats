@@ -16,9 +16,11 @@
 
 - [合作曲排行已完成规划（归档）](archive/06-productization-closeout/2026-10-02-collaboration-ranking-plan.md)
 
+当前开发总览与排期从 [开发状态总表](DEVELOPMENT_STATUS.md) 开始：集中查看已完成、尚未完成、可探索和明确暂缓事项。详细方案与历史证据继续由本地图索引。
+
 - [AI Agent V6 本地提交与主分支集成](reports/2026-09-27-ai-agent-v6-local-integration.md)
 
-- [AI Agent V6 优化规划与本地验收进度](plans/2026-09-22-ai-agent-v6-optimization-plan.md)
+- [AI Agent V6 已完成规划（归档）](archive/06-productization-closeout/2026-09-22-ai-agent-v6-optimization-plan.md)
 
 - [AI Agent V6 统一运行时与渐进报告最终本地验收](reports/2026-09-22-ai-agent-v6-final-acceptance.md)
 
@@ -64,6 +66,7 @@
 | 目的 | 入口 |
 |---|---|
 | 了解项目、安装和启动 | [`../README.md`](../README.md) |
+| 查看开发进度、剩余事项与探索方向 | [`DEVELOPMENT_STATUS.md`](DEVELOPMENT_STATUS.md) |
 | AI/开发工作约定 | [`../AGENTS.md`](../AGENTS.md) / [`../CLAUDE.md`](../CLAUDE.md) |
 | 后端开发 | [`../backend/CLAUDE.md`](../backend/CLAUDE.md) |
 | 前端开发 | [`../frontend/README.md`](../frontend/README.md) / [`../frontend/CLAUDE.md`](../frontend/CLAUDE.md) |
@@ -130,6 +133,8 @@
 - [`reference/fullstack-verification.md`](reference/fullstack-verification.md)：完整/局部门禁、阶段状态、耗时报告和证据边界
 
 ## 状态口径
+
+当前状态摘要统一维护在 [`DEVELOPMENT_STATUS.md`](DEVELOPMENT_STATUS.md)；各计划和交付报告保留其原始日期、版本与验证范围。
 
 当前文档不得用一个“已完成”同时代替实现、验证、提交和部署。计划、报告和问题台账按需要分别记录：
 

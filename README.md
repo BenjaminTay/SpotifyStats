@@ -9,6 +9,7 @@
 <p>
   <a href="#快速开始">快速开始</a> ·
   <a href="#你可以用它做什么">功能亮点</a> ·
+  <a href="docs/DEVELOPMENT_STATUS.md">开发状态</a> ·
   <a href="docs/README.md">文档地图</a> ·
   <a href="deploy/production/README.md">部署指南</a>
 </p>
@@ -225,12 +226,13 @@ SpotifyStats/
 | 你想了解 | 入口 |
 | --- | --- |
 | 准备 Spotify JSON 和导入数据 | [`data/README.md`](data/README.md) |
+| 查看已完成、待完成与探索方向 | [`docs/DEVELOPMENT_STATUS.md`](docs/DEVELOPMENT_STATUS.md) |
 | 查看当前文档地图 | [`docs/README.md`](docs/README.md) |
 | 理解播放统计口径 | [`docs/reference/playback-stats-rules.md`](docs/reference/playback-stats-rules.md) |
 | 理解音乐档案统计 | [`docs/reference/account-archive-statistics.md`](docs/reference/account-archive-statistics.md) |
 | 处理版本、署名、艺人和流派语言 | [`docs/reference/music-metadata-management.md`](docs/reference/music-metadata-management.md) |
 | 前端开发和页面约束 | [`frontend/README.md`](frontend/README.md) / [`frontend/UI_STYLE_GUIDE.md`](frontend/UI_STYLE_GUIDE.md) |
-| 查看交付证据和当前状态 | [`docs/reports/README.md`](docs/reports/README.md) |
+| 查看历史交付与验证证据 | [`docs/reports/README.md`](docs/reports/README.md) |
 | 查看变更历史 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) |
 
 ## License

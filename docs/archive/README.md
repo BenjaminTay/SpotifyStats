@@ -6,6 +6,10 @@
 
 - [合作曲排行已完成规划](06-productization-closeout/2026-10-02-collaboration-ranking-plan.md)：S1–S6 已完成；`fa683d97` 已发布，服务器快照和两端浏览器验收通过，详见[验收报告](../reports/2026-10-02-collaboration-ranking-acceptance.md)。
 
+## 最近归档
+
+- [AI Agent V6 已完成规划](06-productization-closeout/2026-09-22-ai-agent-v6-optimization-plan.md)：本地开发与主线集成已完成，代码随 `194fd113` 发布；当前验证边界见 [开发状态总表](../DEVELOPMENT_STATUS.md)。
+
 ## 阶段目录
 
 - [`01-streamlit-mvp/`](01-streamlit-mvp/)：Streamlit 原型与早期页面设计
@@ -13,6 +17,6 @@
 - [`03-quality-gate/`](03-quality-gate/)：全栈质量门禁与 Billboard 年榜早期方案
 - [`04-ai-agent-harness/`](04-ai-agent-harness/)：AI Agent 中间层早期方案
 - [`05-yearly-report-genre/`](05-yearly-report-genre/)：年度报告、音乐查找和流派治理早期迭代
-- [`06-productization-closeout/`](06-productization-closeout/)：2026-08 产品化收口阶段已完成计划和设计
+- [`06-productization-closeout/`](06-productization-closeout/)：产品化、性能及 Agent 等已完成计划和设计
 
 当前有效入口见 [`../README.md`](../README.md)。

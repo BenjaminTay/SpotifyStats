@@ -8,7 +8,9 @@
 > 部署状态（记录形成时）：NOT_DEPLOYED<br>
 > 文档用途：记录后续可考虑的方向，不构成实施授权，也不改变当前产品规则
 
-## 1. 为什么保留这份路线
+> 2026-10-02 状态核对：Spotify Track `artists[]` 证据与自动有效署名投影已由 `56a23500` / `9eccd00e` 实现，本地正式库回填有记录；代码随 `194fd113` 于 2026-09-30 发布。其余第二来源、曲目语言和封面替代仍为 `PLANNED / DEFERRED`。当前摘要见 [开发状态总表](../DEVELOPMENT_STATUS.md)，自动署名规则以 [元数据规则](../reference/music-metadata-management.md) 为准。
+
+## 1. 为什么保留这份路线（形成时的问题背景）
 
 SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外部标识，但把某一个平台的数据直接当成完整事实，会留下三类长期问题：
 
@@ -16,9 +18,9 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 2. 元数据来源单一。平台的名称、封面、发行信息或身份关联发生错误时，本地缺少第二来源用于发现冲突。
 3. 语言粒度不够。当前语言事实以艺人为主体，适合稳定的艺人级统计，但无法可靠回答同一位多语言艺人的某一首歌究竟使用什么语言。
 
-这份文档只保存已经讨论过的方向、边界和重新启动条件。已完成的 Spotify Track `artists[]` 证据阶段见 [实施规划归档](../archive/06-productization-closeout/2026-09-23-spotify-track-artists-evidence-plan.md)及[交付报告](../reports/2026-09-24-spotify-track-artists-evidence-delivery.md)；本路线中的其他字段与第二来源仍未实施。
+这份文档只保存已经讨论过的方向、边界和重新启动条件。已完成的 Spotify Track `artists[]` 证据阶段见 [实施规划归档](../archive/06-productization-closeout/2026-09-23-spotify-track-artists-evidence-plan.md)及[交付报告](../reports/2026-09-24-spotify-track-artists-evidence-delivery.md)；Album 稳定艺人与完整分页另有本地交付；日期精度与第二来源仍未实施。
 
-## 2. 已确认的当前事实
+## 2. 规划形成时的事实（2026-09-23 / 24）
 
 ### 2.1 数据链路
 
@@ -43,7 +45,7 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 
 | 方向 | 主要用途 | 可以解决什么 | 主要边界 | 当前决定 |
 |---|---|---|---|---|
-| Spotify Track `artists[]` | 保存平台返回的完整有序艺人数组 | 发现标题未标注的合作艺人；建立第一份结构化 provider evidence | 不提供 `primary` / `featured` 角色；平台也可能有误 | **证据层已实现并在隔离副本验收；正式库未发布** |
+| Spotify Track `artists[]` | 保存平台返回的完整有序艺人数组 | 补齐标题未标注的合作艺人；结构化证据与自动有效署名投影 | 不提供 `primary` / `featured` 角色；冲突保留旧结果，人工覆盖优先 | **证据与自动投影已实现，本地正式库有回填记录，代码已发布；生产回填量未重测** |
 | MusicBrainz Recording / Artist Credit | 通过 ISRC、recording、release 交叉核对署名 | 提供独立于 Spotify 的第二来源与 credit phrase | 社区数据会有重复、错配或不完整；需遵守客户端标识和限流 | Spotify 证据层稳定后再做样本验证 |
 | MusicBrainz Work 语言 | 获取作品层歌词语言候选 | 为曲目语言提供结构化候选证据 | recording 与 work 关系并非总是存在或可靠；作品语言不必然等于具体录音版本 | 仅作为候选证据，不自动批准 |
 | Apple Music Catalog | 通过 ISRC 查询歌曲、艺人、封面和类型 | 第三方交叉核验署名与发行元数据 | 需要开发者凭据；同一 ISRC 可能返回多个地区或版本结果 | 在明确收益与凭据运维成本后再评估 |
@@ -56,20 +58,20 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 ### 4.1 外部来源是证据，不是真相覆盖层
 
 - Spotify、MusicBrainz、Apple Music 或其他来源都只能先进入 provider evidence。
-- provider evidence 与当前有效事实不一致时，先形成可审计候选或冲突，不直接覆盖正式署名。
+- 新增第二来源与当前有效事实不一致时，先形成可审计候选或冲突，不直接覆盖正式署名；已交付的 Spotify 自动投影遵守独立身份门禁与人工覆盖优先规则。
 - 同一个结论应保留来源、外部稳定 ID、原始名称、获取时间、顺序、匹配方式和冲突状态。
 - 无法证明安全时保留 `unknown` 或 review queue，不用名称猜测填满覆盖率。
 
 ### 4.2 原始事实与人工治理保持分层
 
 - `plays`、`tracks`、`track_artists` 继续表达导入时的原始事实；新增 Track `artists[]` 证据和后续人工署名治理不得重写它们。现有导入后 metadata 阶段的专辑来源维护是另一个既有流程，不等同于本次证据回填。
-- 当前有效署名仍由原始署名、人工 override、canonical artist resolver 共同产生。
+- 当前有效署名由原始署名、Spotify 自动投影、人工 override 与 canonical artist resolver 共同产生。
 - provider evidence 要先证明稳定、幂等、可回滚，再单独规划是否产生人工候选或自动晋升。
 
 ### 4.3 身份优先于名称
 
 - ISRC、Spotify track id、MusicBrainz recording id、Apple song id 等只能作为身份证据的一部分；任何一种标识都可能出现重用、版本差异或映射冲突。
-- 艺人匹配优先使用 provider external id。名称精确归一化匹配最多生成候选，不自动创建或合并本地艺人。
+- 新增第二来源的艺人匹配优先使用 provider external id；名称匹配最多生成候选，不自动创建或合并。已交付的 Spotify 投影另有唯一身份解析及按 Spotify ID 补建规则，不能把本路线的探索限制反写为其当前行为。
 - 相同显示名称不能代替稳定本地 `artist_id`，跨 provider 的合并必须经过 identity resolver 和冲突检测。
 
 ### 4.4 曲目语言与艺人语言是两类事实
@@ -110,15 +112,15 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 
 ## 6. 建议的后续顺序
 
-1. Spotify Track `artists[]` 证据层及隔离副本差异报告已完成，不改变正式署名；正式库发布仍需单独授权。
+1. Spotify Track `artists[]` 证据与自动投影已完成，代码已发布；后续以当前只读差异和冲突报告评估剩余需求。
 2. 后续依据已生成的差异报告，确定身份解析与人工核验的优先级。
 3. 根据真实差异决定下一项：若主要缺口是署名可信度，优先试验 MusicBrainz；若主要缺口是具体歌曲语言，则单独启动 track-level language 研究。
 4. 只有第二来源合同稳定后，才抽取通用 provider evidence 接口。
-5. 自动晋升为正式署名、人工审核 UI、语言统计消费和封面替代均各自需要独立规划与授权。
+5. 第二来源自动晋升、新增人工审核 UI、语言统计消费和封面替代均需要独立规划；Spotify 自动投影是已交付能力。
 
 ## 7. 明确不在本路线中实施的事项
 
-- 本路线剩余方向不自动授权修改代码、数据库 schema 或生产数据；Track `artists[]` 的独立实施已完成，但没有修改正式数据库。
+- 本路线剩余方向不自动授权修改代码、数据库 schema 或生产数据；Track `artists[]` 的独立实施与自动投影有后续交付记录，不属于本路线的未实现范围。
 - 不批量调用 Spotify、MusicBrainz、Apple Music 或歌词服务。
 - 不把标题解析结果自动升级为权威署名。
 - 不将 `artists[1:]` 一律解释为 `featured`。
@@ -147,8 +149,8 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 
 | 优先级 | 问题与当前证据 | 后续处理门槛 |
 |---|---|---|
-| 高 | Album `artists[]` 包含稳定 Spotify artist id 和名称；`upsert_album_batch()` 当前只把名称拼成 `album_artists` 字符串，`release_cycle_service._verify_album_artists()` 再按逗号拆分并用名称比较。同名、改名和含逗号名称都可能造成错误关联。 | 本地实现已采用有序 Album evidence、稳定 ID/canonical 解析与冲突保留；完成副本验证，待共享文件合入、正式回填及生产验收。 |
-| 已完成本地专项 | SS-2026-09-24-001：统一 Album Tracks 完整分页与原子发布；副本 12 条缺页、35 条缺列表已补齐，3 条 50 首边界经核验无缩小总数；2026-10-03 收口旧缓存位置证据，定向补齐 Lana，其余未核验位置明确显示未知。 | [交付报告](../reports/2026-10-02-album-track-pagination-acceptance.md)；本地独立提交交付，未推送/发布，默认完整全栈和真实终端另验。 |
+| 已本地合入 | SS-2026-09-24-002：Album 有序稳定 ID、canonical 解析及冲突保留已实现；含逗号名称和 JOLIN 的实际误判已验证修正。同名不同 ID、历史改名由合成测试覆盖。 | `fe99756b` 已安全合入本地 main，完整全栈通过；待正式回填及生产验收，见[最终报告](../reports/2026-10-03-album-metadata-final-integration.md)。 |
+| 已本地合入 | SS-2026-09-24-001：统一 Album Tracks 完整分页与原子发布；副本 12 条缺页、35 条缺列表已补齐，3 条 50 首边界经核验无缩小总数；2026-10-03 收口旧缓存位置证据，定向补齐 Lana，其余未核验位置明确显示未知。 | [交付报告](../reports/2026-10-02-album-track-pagination-acceptance.md)；`fe99756b` 已本地合入，完整全栈和桌面/手机视口通过；生产回填与物理终端另验。 |
 | 中 | Album 返回 `release_date_precision`（年/月/日），当前 `spotify_album_meta` 只保存日期字符串；专辑候选与归并比较无法区分日期精度。 | 先量化部分精度样本和被日期匹配影响的候选，再持久保存 precision 并修正规则。 |
 | 中 | 已知 Spotify 专辑/艺人 ID 时 API 对象直接有 `images[]`。当前封面主链已使用它，但缺图兜底会按名称搜索专辑，甚至采用第一个有图结果，可能误配。 | 先统计走名称搜索的比例和错配样本；已有稳定 ID 时优先 ID 读取，不明身份则保留缺图。 |
 | 低 | Album Tracks 的每首歌有 `duration_ms`，而 `analysis_stats_service._resolve_album_category()` 用 `total_tracks × 210000` 估算专辑总时长。 | 依赖完整曲目表后，比较估算与真实时长对 LP/EP 分类的影响，再决定是否替换。 |

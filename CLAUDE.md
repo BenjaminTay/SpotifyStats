@@ -13,6 +13,7 @@
 ## 文档阅读顺序
 
 - 项目介绍与启动：[README.md](README.md)
+- 开发状态与下一步：[docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md)
 - 文档地图：[docs/README.md](docs/README.md)
 - 当前统计规则：[docs/reference/playback-stats-rules.md](docs/reference/playback-stats-rules.md)
 - 首页展示规则：[docs/reference/homepage-presentation-rules.md](docs/reference/homepage-presentation-rules.md)
@@ -96,6 +97,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 ## 文档和 Git 约定
 
 - 规则写入 `docs/reference/`，未完成路线写入 `docs/plans/`，设计决策写入 `docs/designs/`，交付证据写入 `docs/reports/`，已完成或取代内容写入 `docs/archive/`。
+- 开始开发前查 [开发状态总表](docs/DEVELOPMENT_STATUS.md)；实现、验收、提交/推送/发布或暂缓决定变化时，更新对应事项、证据、下一步和最后核验日期。新问题复用问题台账稳定 ID；探索方向与已启动任务分开记录。
 - 新增或移动文档后更新 [docs/README.md](docs/README.md)，并运行文档审计。
 - 未经明确要求不执行 `git commit` 或 `git push`。
 - 若用户明确要求提交，先检查 README、AGENTS、CLAUDE、docs 地图和 CHANGELOG 是否需要同步，再运行 `git diff --check`、测试和项目 hooks。
