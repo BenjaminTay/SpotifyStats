@@ -24,7 +24,7 @@
 - 搜索当前支持的四个精确变体 ready、repeat-safe；使用 `--statistics-reuse-only` 重新确认，没有冷重建。
 - 默认完整全栈 `20261003T070853.211207Z-f917b9718886`：full 模式全部八个必需阶段同轮 PASS，1,360,570ms（22分40秒）；seed 3,231 passed / 2 skipped / 5 warnings，真实 integration 186 passed / 1 skipped / 1 warning；前端全量 726 passed / 4 skipped，API 157/157、边界 113/113，22 轮 500ms 热请求门槛与 Chromium/Firefox/WebKit 通过。没有 `--only`、`--from`、跨浏览器跳过或三次效率验收。八阶段分别 7,518 / 64,093 / 456,196 / 159,274 / 399,976 / 79,866 / 45,928 / 147,594ms。
 - summary 的 git_head 为上述代码 SHA；dirty=true 仅因继承未跟踪的开发状态总表，业务 tracked diff 在运行前后均为空。规范 summary、OpenAPI 审计、benchmark、seed/integration JUnit 等 14 个 run 文件在结束时已复制至 ignored `output/album-final/run-artifacts/`，完整日志和兼容 summary 同时保留，不依赖系统临时目录长期存在。
-- 实际 Chromium 1440×1000 / 390×844：Glee 106/1、Midnights 86、Mimi 14共享/6独占与 Track 2 / Disc 1，两端实际点击 Sabrina 并返回；嵌套链接 0。8 个测量结果横向溢出 0、console warning/error 0，手机对比按钮 62×44px。桌面 Glee `.320.webp`、手机 `.640.webp` 实际加载成功；这两次视口测量 DPR 都为 1，DPR 选择另由封面单元合同覆盖，不冒充物理手机/高 DPI 实机验收。主要截图已视觉复核。
+- 实际 Chromium 1440×1000 / 390×844：Glee 106/1、Midnights 86、Mimi 14共享/6独占与 Track 2 / Disc 1，两端实际点击 Sabrina 并返回；嵌套链接 0。8 个测量结果横向溢出 0、console warning/error 0，手机对比按钮 62×44px。桌面 Glee 请求 `.320.webp`、手机请求 `.640.webp`，图片实际正常显示；本运行资产尚未补建这两档，使用合同内的原图回退，不能据此宣称本地变体齐备或图片体积已下降。三档 WebP 读取/回退合同由专项与完整后端覆盖。这两次视口测量 DPR 都为 1，DPR 选择另由封面单元合同覆盖，不冒充物理手机/高 DPI 实机验收。主要截图已视觉复核。
 - 专项证据在 ignored `output/playwright/album-final/`；新数据库、资产、缓存、真实截图均不进入 Git。浏览器 session、专项锁和本任务临时服务已关闭。
 
 本轮保留的边界：seed 的 5 warnings 包括 LibreSSL、HTTP 422 弃用，以及 `ai_task_service.py` 后台线程访问测试临时库时出现的 disk I/O warning（与早期历史轮相同）；实际 integration 只有 LibreSSL warning，没有扩大任务修改 AI 运行时。一次辅助迁移脚本引号错误与不支持的 CLI 参数在实际门禁前终止，修正后重新完整执行；专项首次桌面标题定位及手机 presentation 重挂载后的旧候选定位失败，按 fresh snapshot 修正标题/重新检测后重跑，保留失败文件，未改产品代码、未把失败拼为 Pass。
@@ -42,3 +42,7 @@
 取得最终固定 SHA 后，正式发布仍须独立授权。先记录生产现有版本与 schema，Online Backup 并保存 SHA-256/完整性；正常生产 schema 85→88，先在副本迁移并确认连续注册表、幂等、FK 和守恒，失败联合回滚代码与备份。
 
 目录维护 CLI 默认只审计；Album 艺人 CLI 要求明确源库、新输出副本和有界 limit，只在新副本写入。先限定现有缺口/被消费发行位置并预览，再有界补目录及 Album 艺人证据；正式发布数据另走经授权的副本审阅与切换。保存 run ID、成功/拒绝/失败/未解析数量；冲突保留已有可靠证据，身份缺失保持待审核，不全库重抓、不自动批准身份或归并，不修改 plays/tracks/raw track_artists 或 Track 有效署名。正式回填后验证 revision/快照及实际消费者；发布三模式、健康、搜索 ready 快照和回滚门禁另存证据。
+
+## 安全合入窗口
+
+2026-10-03：只读确认“优化榜单页面图片加载速度”会话已完成，提交/推送及验收隧道收尾结束，主目录无仍依赖代码的后端/前端服务。实时 main 为 `85a44cb888272d6229297d883af4f05dfd271e12`；相对 `814ea7cb` 只有封面报告、方案归档与规则/索引增量，业务代码未变化。隔离候选逐段吸收这些文档，保留其归档路径与发布记录；最终业务内容仍等于已完整验收的 `8464ffa6`。全局未提交内容将在有界文档保护点和三方预览下恢复后再核验。

@@ -8,7 +8,7 @@
 - [专辑完整分页交付](2026-10-02-album-track-pagination-acceptance.md)
 - [专辑分页第二轮独立复核](2026-10-03-album-track-pagination-independent-review.md)
 
-- [全站封面优化实施与验收](2026-10-03-cover-image-optimization-acceptance.md)
+- [全站封面优化实施与验收](2026-10-03-cover-image-optimization-acceptance.md)：`814ea7cb` 已发布，完整本地全栈与实际 HTTPS 四视口验收完成。
 
 - [合作曲排行实施与验收](2026-10-02-collaboration-ranking-acceptance.md)
 

@@ -18,7 +18,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-03-001` | 小封面优化未覆盖首页、播放记录、音乐档案和当前年度 V2 | `IN_PROGRESS` | 生产 `3a4e6310` 的播放记录当时 68 张均原图、首页小图仍原图；六张首页原图同尺寸 WebP 可减少约 61.5–78.1% bytes。 | 执行 S0–S5，双版覆盖、尺寸选择、冷热性能与生产验收；2026-10-03。见[方案](../plans/2026-10-03-cover-image-optimization-plan.md)、[报告](../reports/2026-10-03-cover-image-optimization-acceptance.md)。 |
+| `SS-2026-10-03-001` | 小封面优化未覆盖首页、播放记录、音乐档案和当前年度 V2 | `RESOLVED` | `814ea7cb` 已正式发布；默认八阶段全栈 PASS，生产 8,720 个派生资产补齐，原图 stat/原始播放表数量不变；实际 HTTPS 核心 60 + 四视口 192 样本及必要交互完成。 | S0–S5 闭环；高清 Phone 榜单体积增加与非真机边界见报告，最后核验 2026-10-03。见[已完成方案](../archive/06-productization-closeout/2026-10-03-cover-image-optimization-plan.md)、[报告](../reports/2026-10-03-cover-image-optimization-acceptance.md)。 |
 
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 |
