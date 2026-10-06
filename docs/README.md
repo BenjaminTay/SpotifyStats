@@ -19,6 +19,7 @@
 - [合作曲排行实施与验收](reports/2026-10-02-collaboration-ranking-acceptance.md)
 
 - [合作曲排行已完成规划（归档）](archive/06-productization-closeout/2026-10-02-collaboration-ranking-plan.md)
+- [曲目署名覆盖与标题解析生产验收](reports/2026-10-06-track-credit-resolution-acceptance.md)
 
 当前开发总览与排期从 [开发状态总表](DEVELOPMENT_STATUS.md) 开始：集中查看已完成、尚未完成、可探索和明确暂缓事项。详细方案与历史证据继续由本地图索引。
 
@@ -156,7 +157,6 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
-- [`plans/2026-10-06-track-credit-resolution-plan.md`](plans/2026-10-06-track-credit-resolution-plan.md)：曲目署名覆盖与标题解析修复，S0–S4完成、完整全栈PASS，S5年度投影同源安装及仅复用发布补修验收中
 - [`reports/2026-10-06-track-credit-resolution-acceptance.md`](reports/2026-10-06-track-credit-resolution-acceptance.md)：真实生产副本前后对照、原始事实守恒、人工兼容与分阶段验收记录
 - [`plans/2026-09-23-multi-source-music-metadata-roadmap.md`](plans/2026-09-23-multi-source-music-metadata-roadmap.md)：MusicBrainz、Apple Music、曲目语言与封面替代等后续方向的分析记录和重新启动门槛；当前延后
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
@@ -219,6 +219,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 - [`archive/README.md`](archive/README.md)：归档阅读规则与阶段目录
 - [`archive/06-productization-closeout/`](archive/06-productization-closeout/)：最近一次产品化收口阶段
+- [`archive/06-productization-closeout/2026-10-06-track-credit-resolution-plan.md`](archive/06-productization-closeout/2026-10-06-track-credit-resolution-plan.md)：署名S0–S5已完成；2faadc64正式发布、实际生产署名和独立链接验收通过
 - [`archive/06-productization-closeout/2026-09-21-import-processing-governance-remediation-plan.md`](archive/06-productization-closeout/2026-09-21-import-processing-governance-remediation-plan.md)：已完成的数据导入、阶段恢复、任务调度、身份治理与 S6 完整验收规划
 - [`archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md`](archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md)：已完成的 L3 歌曲作品、原生专辑唯一归属、Taylor 并集和 Live 逐曲回流实施计划
 - [`archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md`](archive/06-productization-closeout/2026-08-23-incremental-streaming-import-plan.md)：已完成的串流增量导入 Phase A–E 规划与实施记录

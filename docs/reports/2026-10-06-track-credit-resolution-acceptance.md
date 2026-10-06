@@ -1,7 +1,7 @@
-# 曲目署名覆盖与标题解析验收（进行中）
+# 曲目署名覆盖与标题解析验收
 
 > 问题：SS-2026-10-06-001；最后核验：2026-10-07。
-> 当前：业务代码固定 `e4929e812f90cfc5dfa9e42ef731b11b5897ff75`，仅文档增量发布 SHA 为 `3e2c39425fe9b7e5d520935fc5e3e2dc89f0ef27`，已推送 main；S0–S4 完成，默认完整全栈八阶段 PASS。S5 第二次发布在副本预检期间 SSH 断开，连接现已恢复，三容器仍为旧版daf098ca且healthy；必要补修进行中，不能登记为已发布。
+> 完成：S0–S5全部闭环。生产 `2faadc64c73dadbcca0f05b6a53d1a0aebef4611` 已正式发布，两端API、桌面与手机视口的实际署名及跳转通过。S0–S4业务e4929e81默认完整全栈八阶段PASS；S5发布补修另有94项专项、独立53项及真实副本证明，不将旧全栈报告冒称2faadc64全量重跑。
 
 ## 真实副本前后对照
 
@@ -72,7 +72,7 @@ Come Alive 的历史改名、Henri René and / & 名称变体、Super Freaky Gir
 - 搜索四变体全部ready、schema88、当前署名policy；准备耗时32,165.568ms，进程峰值819MiB。封存副本integrity_check=ok、context orphan=0；source marker证明原始、自动、人工、身份及审计事实不变。
 - 上传后再次用目标镜像确认与live source一致、4精确变体ready。准备文件原子安装为 `/opt/spotify-stats/backups/music-search-resume.db`；原文件恢复性移至 `music-search-resume-pre-credit-20261006T162300Z.db`，没有删除。正式发布继续走640MiB候选预算和 `--statistics-reuse-only`，不在live DB冷建。
 
-## S5 第二次发布失败与待恢复边界
+## S5 第二次发布失败与恢复记录
 
 仅文档阶段提交 `3e2c39425fe9b7e5d520935fc5e3e2dc89f0ef27` 相对 e4929e81 无业务、脚本或镜像配置变化。[第二次正式发布](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37497317613)的质量、full/showcase/dual、镜像构建、精确镜像ref及TCR运输均通过；Deploy commit 失败，不登记为已发布。
 
@@ -90,4 +90,20 @@ Come Alive 的历史改名、Henri René and / & 名称变体、Super Freaky Gir
 
 补修最终94项专项、Ruff/format、两个实现模块Mypy通过；独立差量审查53项通过，无阻挡。审查曾定位L3依赖未ready时只跳过planner却仍可返回ready，现已改为预先拒绝，缺失/failed/旧policy/track revision及album project revision不匹配5种真实state均拒绝且DB不变。冻结后在同一真实正向副本重新执行仅复用：15.769ms、峰值108.234MiB，四变体全部reused、candidate revalidated，DB/WAL大小无变化；这是两次观测，不作为稳定P95。S0–S4默认完整全栈e4929e81的证据范围保持，新发布补修另以专项、真实副本与最终生产验收证明。
 
-下一步在明确副本验证补修后续行既有发布、两端API与真实浏览器专项。生产目标版本专项尚未执行；实施计划保持进行中，不归档或标完成。结束后归档[实施计划](../plans/2026-10-06-track-credit-resolution-plan.md)。
+## S5 最终生产发布与验收
+
+[正式流水线37503310902](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37503310902)固定2faadc64，质量、full/showcase/dual、镜像构建、精确TCR运输和Deploy全部success。CI后端unit2,280 passed / 2 skipped、contract455 passed / 1 warning，前端745 passed / 4 skipped及构建通过，生产部署契约27项通过；保留既有React key、Node action弃用及runner升级提示，不称零警告。
+
+北京时间2026-10-07 01:43完成切换：backend、web、public-web均healthy，实际OCI revision和两端capability都是2faadc64；Backend 8000仅容器内，Web仍绑定127.0.0.1:3001/3002，外部入口未改变。发布前Online Backup为 `/opt/spotify-stats/backups/spotify-stats-pre-release-2faadc64c73d-20261006T174112Z.db`。预检报告 `music-search-preflight-2faadc64c73d-20261006T174112Z.json` 确认当前四变体ready且全部reused、候选revalidated、当前policy、schema88、聚合artists16,629、orphan0、integrity=ok；仅复用维护50.244ms、峰值95.027MiB、DB/WAL大小变化0。此耗时不包括备份、源核对和安装，不作为整次发布P95。
+
+生产只读完整事实对照再次通过：94,760 plays、10,026 tracks、10,496 track_artists、1,907 artists、8,970自动署名逐行等于S0封存基线；旧34条人工覆盖逐行保持，现35条仅多出授权My Heart remove，幂等事件恰好1条。source marker等于维护后备份，credit state=(38,38,ready)，四精确变体唯一ready、context orphan0、integrity=ok。独立补充、别名冲突及三个歧义例外保持；Mother I Sober生产共用resolver只保留Kendrick Lamar与Beth Gibbons。
+
+私有版和公开版各11个可读歌曲摘要均显示预期独立实体，包含Safe & Sound、Fly To You、Get Lucky两版、Holidays、两首Orchestra、Easy、The Last Time、Rush及With My Heart。Mother I Sober原始ID49158有身份但默认有效播放条件下详情404，故该样本用上述生产只读resolver验证；尝试替代过滤请求30秒超时，不计API通过，也不改变过滤规则。两端Joy Williams均8次/0小时、日/年趋势非空；Records当前ready、全局67,881次、合作曲6,518次/9.6%，前三艺人Taylor1574/Ariana512/Lana304保持。
+
+生产真实浏览器通过SSH隧道读取服务器3001/3002，不使用本地候选页面：1440×1000公开周榜同一2023-03-17周Safe & Sound从4个署名变为3个，2个点分隔，点击Joy Williams进入正确详情；390×844公开周榜3个独立艺人目标均至少44×44px、无嵌套anchor或横向溢出，点击John Paul White成功。私有详情桌面/手机Holidays只显示Meghan和完整Earth, Wind & Fire，完整乐队点击成功；私有手机Safe详情点击Joy成功，8次/0小时趋势与排名正常。合作曲排行桌面私有、手机公开均实际点击Sabrina Carpenter成功，实体间点分隔，手机无溢出。启动补建期间公开排名曾503，后台准备后200，不将该早期错误隐藏或误称署名失败。
+
+公开Records手机实际点击vampire进入整数1493并正常显示；旧1493.0链接规范化保留merge_level与锚点。公开桌面及手机时间控件均8选项可见，2026-10-06日范围请求映射custom起止日期，仍返回snapshot_unavailable/503并保留切换入口，不在公开GET冷建。这两项此前本地修复也已包含在本次生产版本。
+
+前后及手机截图位于ignored `output/playwright/credit-prod-safe-before.png`、`credit-prod-safe-after.png`、`credit-prod-safe-phone.png`、`credit-prod-holidays-phone.png`；已查看截图。此为实际生产浏览器视口验收，不是物理手机或外层HTTPS链路专项，不替代生产LLM/OAuth验收。
+
+S0–S5已完成，[实施计划](../archive/06-productization-closeout/2026-10-06-track-credit-resolution-plan.md)归档。未新增全库逐条审批、未批量删除31个差异条目，身份歧义继续独立维护。

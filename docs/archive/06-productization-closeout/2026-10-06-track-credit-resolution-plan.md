@@ -1,8 +1,8 @@
 # 曲目署名来源优先级与标题解析修复实施计划
 
-> 状态：IMPLEMENTING；S0–S4 完成，默认完整全栈八阶段PASS；S5第二次发布在副本预检期间SSH断开，已恢复连接，当前周榜明细/Year-End同源安装和禁止secondary冷建补修进行中。
+> 状态：COMPLETED；S0–S5全部完成，2026-10-07固定2faadc64正式发布及生产两端API、桌面/手机视口验收通过。
 > 问题：SS-2026-10-06-001。
-> 最后核验：2026-10-07；人工覆盖基线revision37、34条记录保留，正式My Heart单条纠正为revision38；实际现网仍daf098ca、三容器healthy，不登记为已发布。
+> 最后核验：2026-10-07；原始事实和既有34条人工覆盖保持，My Heart单条纠正revision38、聚合ready；失败发布与补修证据保留。
 > 当前授权：用户已明确授权执行全部 S0–S5、必要子 agent、按大阶段提交和结束验收；各交付状态仍分别记录。
 
 本次修复解决旧标题识别与 Spotify 多艺人署名简单叠加造成的重复、误拆和误归属。先修改共用有效署名规则，再限制新增标题兜底；能确定的情况自动处理，身份不明的例外保留，不要求管理员对全部歌曲逐条审核。
@@ -31,7 +31,7 @@
 - Machine Gun Kelly / mgk、中英文名称、98° / 98º 等：存在未消解的身份候选；98° / 98º 和魏如萱 / Waa Wei 在现库还绑定不同 Spotify ID，不按相似名称自动合并。
 - `All Night Parking` 的 Erroll Garner、`Fields.` 的 Grandad Michael：已存 Spotify 数组未列入旧合作署名，不能仅因缺席而删除。
 
-修复前的标题入口见 [import_data.py](../../backend/core/import_data.py)，共用署名入口见 [track_credits.py](../../backend/domains/metadata/track_credits.py)。旧解析器按逗号和 `&` 拆分，并将括号内 `with` 直接视为合作说明；旧共用规则保留原有行后追加 Spotify 行，canonical 去重不能消除不同实体之间的占位重复。
+修复前的标题入口见 [import_data.py](../../../backend/core/import_data.py)，共用署名入口见 [track_credits.py](../../../backend/domains/metadata/track_credits.py)。旧解析器按逗号和 `&` 拆分，并将括号内 `with` 直接视为合作说明；旧共用规则保留原有行后追加 Spotify 行，canonical 去重不能消除不同实体之间的占位重复。
 
 ## 2 范围和不做的事项
 
@@ -64,7 +64,7 @@
 
 ### 4.1 先修有效署名
 
-在 [track_credits.py](../../backend/domains/metadata/track_credits.py) 的共用解析链路中，按曲目批量读取原始署名、已批准自动投影、可信身份关系和人工覆盖。Spotify 原始证据不能绕过 [自动投影安全关联](../../backend/domains/metadata/spotify_track_credits.py) 直接进入有效结果。
+在 [track_credits.py](../../../backend/domains/metadata/track_credits.py) 的共用解析链路中，按曲目批量读取原始署名、已批准自动投影、可信身份关系和人工覆盖。Spotify 原始证据不能绕过 [自动投影安全关联](../../../backend/domains/metadata/spotify_track_credits.py) 直接进入有效结果。
 
 新增对旧标题结果的有界判定：
 
@@ -79,7 +79,7 @@
 
 ### 4.2 再限制新增标题兜底
 
-重构 [导入解析入口](../../backend/core/import_data.py)，分开“提取署名候选”和“接受有效艺人身份”。仍允许正常创建原始主艺人维度；不再由未解析的合作字符串直接调用艺人创建。
+重构 [导入解析入口](../../../backend/core/import_data.py)，分开“提取署名候选”和“接受有效艺人身份”。仍允许正常创建原始主艺人维度；不再由未解析的合作字符串直接调用艺人创建。
 
 - 支持括号配对及嵌套，保留艺人名字自己的括号；处理全角形式、`feat.` 后无空格、`ft.`、`featuring` 和混用标记。
 - 先识别完整名称，再在名称之外解释 and、&、逗号等连接关系；规范化不能丢失区分身份的重要字符。
@@ -108,7 +108,7 @@ My Heart 这种未被 Spotify 覆盖、但已定位为普通歌名误识别的�
 - 乐队按一个艺人实体计算；独唱版与合作版先按实际录音判断，再参与 L2/L3 汇总。
 - 专辑项目成员、语言与流派的独立统计规则保持。
 
-不能只更新 resolver 而保留旧精确快照。核对 [署名重建服务](../../backend/services/track_credit_rebuild_service.py)、内存署名显示键、搜索统计及 Records/Billboard/年度 builder 的依赖。规则代码变化即使不改变源表，也必须进入已有缓存合同或构建输入版本；数据关系变化复用已有 revision，版本安装幂等，不为每条曲目递增一次全局 revision。
+不能只更新 resolver 而保留旧精确快照。核对 [署名重建服务](../../../backend/services/track_credit_rebuild_service.py)、内存署名显示键、搜索统计及 Records/Billboard/年度 builder 的依赖。规则代码变化即使不改变源表，也必须进入已有缓存合同或构建输入版本；数据关系变化复用已有 revision，版本安装幂等，不为每条曲目递增一次全局 revision。
 
 持久快照和聚合通过私有受控维护更新，不由 GET 冷建。上一可用结果仍按现有 warming 合同提供；公开端未准备新结果时沿用只读边界，不伪装新规则已发布。准备新精确搜索快照先在明确数据库副本进行，再按发布合同安装，遇源数据漂移拒绝替换。
 
@@ -123,7 +123,7 @@ My Heart 这种未被 Spotify 覆盖、但已定位为普通歌名误识别的�
 | S4 | 专项测试、真实副本前后对照及桌面手机视口验收 | 显示、链接、统计、编辑及恢复均满足下表；本地完整门禁单独报告 |
 | S5 | 经授权固定提交、推送与发布，受控安装派生结果 | CI、备份、三模式门禁、生产 API 与浏览器专项均有实际结果；失败可联合回滚 |
 
-用户已授权完整执行。S0生产基线已固定，S1–S3提交1a9afc90，S4必要补修固定e4929e81并推送main；最终默认完整全栈八阶段PASS。S5已完成正式My Heart单条纠正、前后Online Backup，以及备份副本当前聚合和四精确搜索变体同源准备。首次正式workflow通过质量/三模式/镜像构建，因提前推广的演练镜像与同SHA正式重建image ID不同而拒绝覆盖，尚未deploy；按文档阶段新SHA重发，不改变业务代码或弱化不可变校验。具体证据见[验收记录](../reports/2026-10-06-track-credit-resolution-acceptance.md)。只有实际生产验收完成后才将本计划标为完成。
+用户授权的S0–S5全部完成：S0固定生产基线，S1–S3提交1a9afc90，S4补修e4929e81并完成默认完整全栈八阶段PASS。S5正式My Heart单条纠正、Online Backup、同源17表安装与仅复用guard补修固定2faadc64，正式workflow37503310902全部success；生产两端11个可读摘要、Mother I Sober只读resolver、事实守恒、合作曲ready与桌面/手机实际跳转均通过。两次失败发布不计成功，原记录保留。详细版本、测试和生产边界见[验收记录](../../reports/2026-10-06-track-credit-resolution-acceptance.md)。
 
 ## 7 验收矩阵
 
@@ -146,13 +146,13 @@ My Heart 这种未被 Spotify 覆盖、但已定位为普通歌名误识别的�
 | 旧库升级和无新证据表的测试库 | 原始主艺人可读，候选不成为虚构实体；兼容行为有测试 |
 | 桌面及手机视口 | 完整名正确、多艺人点分隔、每个实体可点击；名称内标点不影响链接 |
 
-重点更新现有 [标题解析测试](../../backend/tests/unit/test_artist_parsing.py)、[署名测试](../../backend/tests/unit/test_track_credits.py)、[Spotify 投影测试](../../backend/tests/unit/test_spotify_track_credit_evidence.py) 和导入、合作曲、缓存合同相关测试。无需联网的合成样本负责边界，真实副本负责应用数据的前后对照，两者分别记录。
+重点更新现有 [标题解析测试](../../../backend/tests/unit/test_artist_parsing.py)、[署名测试](../../../backend/tests/unit/test_track_credits.py)、[Spotify 投影测试](../../../backend/tests/unit/test_spotify_track_credit_evidence.py) 和导入、合作曲、缓存合同相关测试。无需联网的合成样本负责边界，真实副本负责应用数据的前后对照，两者分别记录。
 
-后端按隔离测试规则执行 unit / contract；前端执行测试与生产构建。专项不足以称完整全栈，通过默认 [完整全栈门禁](../reference/fullstack-verification.md) 后才登记本地全栈 Pass。守恒对照在实施副本执行，正式库保持只读直至授权维护。
+后端按隔离测试规则执行 unit / contract；前端执行测试与生产构建。专项不足以称完整全栈，通过默认 [完整全栈门禁](../../reference/fullstack-verification.md) 后才登记本地全栈 Pass。守恒对照在实施副本执行，正式库保持只读直至授权维护。
 
 ## 8 发布与回滚
 
-发布前固定代码 SHA、数据库源版本和规则版本，完成 SQLite Online Backup，保存原始表与人工覆盖基线及受影响范围。按 [生产运行手册](../../deploy/production/README.md) 执行三模式门禁、健康检查和已有维护入口，不上传数据库或密钥、不改变外部网络入口。
+发布前固定代码 SHA、数据库源版本和规则版本，完成 SQLite Online Backup，保存原始表与人工覆盖基线及受影响范围。按 [生产运行手册](../../../deploy/production/README.md) 执行三模式门禁、健康检查和已有维护入口，不上传数据库或密钥、不改变外部网络入口。
 
 先在副本完成署名结果与派生统计更新，再安装匹配源版本的新结果。生产验收至少实际读取本计划关键歌曲详情、榜单和合作曲排行，并检查艺人链接；不能以本地 resolver 或容器健康替代页面生效。
 
@@ -160,6 +160,6 @@ My Heart 这种未被 Spotify 覆盖、但已定位为普通歌名误识别的�
 
 ## 9 文档同步与完成口径
 
-实施后更新 [元数据治理规则](../reference/music-metadata-management.md)、[播放统计规则](../reference/playback-stats-rules.md) 中相关口径及需要变化的缓存合同说明；完成本次开发后更新 CHANGELOG。计划阶段仅登记目标规则，不把 reference 提前改成未实现状态。
+实施后更新 [元数据治理规则](../../reference/music-metadata-management.md)、[播放统计规则](../../reference/playback-stats-rules.md) 中相关口径及需要变化的缓存合同说明；完成本次开发后更新 CHANGELOG。计划阶段仅登记目标规则，不把 reference 提前改成未实现状态。
 
-[开发状态总表](../DEVELOPMENT_STATUS.md) 与 [问题台账](../issues/2026-08-27-issue-register.md) 使用 SS-2026-10-06-001 跟踪。代码实现、专项验证、默认完整全栈、提交、推送和生产生效分开登记。生产验收完成后归档本计划，别名与跨 ID 例外继续按其独立状态维护。
+[开发状态总表](../../DEVELOPMENT_STATUS.md) 与 [问题台账](../../issues/2026-08-27-issue-register.md) 使用 SS-2026-10-06-001 跟踪。代码实现、专项验证、默认完整全栈、提交、推送和生产生效分开登记。生产验收完成后归档本计划，别名与跨 ID 例外继续按其独立状态维护。

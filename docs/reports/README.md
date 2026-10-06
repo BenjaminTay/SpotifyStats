@@ -1,6 +1,6 @@
 # 交付与验证报告索引
 
-- [曲目署名覆盖与标题解析验收（进行中）](2026-10-06-track-credit-resolution-acceptance.md)
+- [曲目署名覆盖与标题解析生产验收](2026-10-06-track-credit-resolution-acceptance.md)
 
 - [公开展示版完整时间选择修复](2026-10-03-public-analysis-time-ranges.md)
 
