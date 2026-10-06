@@ -9,6 +9,7 @@ import pytest
 
 from backend.api import track_credits as track_credit_api
 from backend.core.job_queue import Job, JobQueue
+from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
 from backend.services import track_credit_rebuild_service as rebuild
 
 pytestmark = pytest.mark.unit
@@ -81,6 +82,10 @@ def _database(path) -> None:
             error TEXT
         );
         """
+    )
+    conn.execute(
+        "INSERT INTO agg_config VALUES ('track_credit_policy',?)",
+        (TRACK_CREDIT_POLICY_VERSION,),
     )
     conn.commit()
     conn.close()

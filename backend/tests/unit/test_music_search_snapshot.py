@@ -20,6 +20,7 @@ from backend.domains.music_search.context import (
     MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
     MusicSearchFilterContext,
     build_music_search_filter_context,
+    music_search_snapshot_policy_key,
 )
 from backend.domains.music_search.revisions import bump_music_search_revisions
 from backend.domains.music_search.snapshot import (
@@ -2417,8 +2418,9 @@ def test_older_builder_cannot_reclaim_newer_variant_target() -> None:
     assert tuple(state) == ("new-target", "pending")
 
 
-def test_role_only_revision_rekeys_compact_snapshot_without_metric_rebuild(
-    monkeypatch,
+@pytest.mark.parametrize("code_policy_changed", [False, True])
+def test_role_only_revision_rekeys_only_compatible_compact_snapshot(
+    monkeypatch, code_policy_changed
 ) -> None:
     conn = _conn()
     migrate_042(conn)
@@ -2430,7 +2432,7 @@ def test_role_only_revision_rekeys_compact_snapshot_without_metric_rebuild(
                semantic_base_key, merge_level, dynamic_threshold, builder_version,
                policy_key, source_generation_id, source_dataset_digest,
                build_strategy, dependency_digest
-           ) VALUES (?, ?, ?, 'ready', ?, 2, 1, ?, 'policy', 'import-g2',
+           ) VALUES (?, ?, ?, 'ready', ?, 2, 1, ?, ?, 'import-g2',
                      'dataset', 'shared_full', 'old-dependency')""",
         (
             old_context.filter_fingerprint,
@@ -2438,6 +2440,7 @@ def test_role_only_revision_rekeys_compact_snapshot_without_metric_rebuild(
             old_context.source_revision,
             old_context.semantic_base_key,
             MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+            music_search_snapshot_policy_key(old_context),
         ),
     )
     conn.execute(
@@ -2473,7 +2476,27 @@ def test_role_only_revision_rekeys_compact_snapshot_without_metric_rebuild(
         lambda _conn: "new-dependency",
     )
 
-    assert snapshot_module.promote_role_only_music_search_snapshots(conn, (new_context,))
+    if code_policy_changed:
+        from backend.domains.music_search import context as context_module
+
+        writes = conn.total_changes
+        monkeypatch.setattr(context_module, "TRACK_CREDIT_POLICY_VERSION", "new-credit-policy")
+        assert not snapshot_module.promote_role_only_music_search_snapshots(
+            conn, (new_context,), base_credit_revision=old_context.track_credit_revision
+        )
+        assert conn.total_changes == writes
+        assert (
+            conn.execute(
+                "SELECT 1 FROM music_search_snapshot_meta WHERE snapshot_key='role-new'"
+            ).fetchone()
+            is None
+        )
+        conn.close()
+        return
+
+    assert snapshot_module.promote_role_only_music_search_snapshots(
+        conn, (new_context,), base_credit_revision=old_context.track_credit_revision
+    )
     pointer = conn.execute(
         """SELECT active_snapshot_key, maintenance_status
            FROM music_search_snapshot_variant_state

@@ -33,6 +33,27 @@ def _context() -> YearlyReviewFilterContext:
     )
 
 
+def test_code_only_credit_policy_change_invalidates_artifact_and_preparation(monkeypatch):
+    from backend.domains.metadata import track_credits
+
+    context = _context()
+    cache_kwargs = {"language_revision": "language", "db_revision": "database"}
+    before_artifact = build_yearly_review_cache_key(2025, context, **cache_kwargs)
+    before_preparation = yearly_review_service._preparation_key(
+        2025, context, "database", "language"
+    )
+    monkeypatch.setattr(yearly_review_service, "database_revision", lambda *_args: "database")
+    before_source = yearly_review_service._report_source_revision(2025)
+    monkeypatch.setattr(track_credits, "TRACK_CREDIT_POLICY_VERSION", "new-credit-policy")
+
+    assert build_yearly_review_cache_key(2025, context, **cache_kwargs) != before_artifact
+    assert (
+        yearly_review_service._preparation_key(2025, context, "database", "language")
+        != before_preparation
+    )
+    assert yearly_review_service._report_source_revision(2025) != before_source
+
+
 def test_cache_key_changes_with_language_database_and_filter_revisions() -> None:
     context = _context()
     base = build_yearly_review_cache_key(

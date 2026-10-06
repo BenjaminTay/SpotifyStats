@@ -255,7 +255,10 @@ def _artist_metadata_revision(conn: sqlite3.Connection) -> str:
         parts.append(f"overrides:{row['row_count']}:{row['max_updated_at']}")
     genre_revision = "|".join(parts) or "no-artist-genre-tables"
     from backend.domains.metadata.artist_identity import get_identity_revision
-    from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_credits import (
+        TRACK_CREDIT_POLICY_VERSION,
+        get_track_credit_revision,
+    )
     from backend.domains.metadata.track_identity import (
         TRACK_IDENTITY_POLICY_VERSION,
         get_track_identity_revision,
@@ -269,6 +272,7 @@ def _artist_metadata_revision(conn: sqlite3.Connection) -> str:
         f"|language:{artist_language_fact_revision(conn)}"
         f"|identity:{get_identity_revision(conn)}"
         f"|track_credit:{get_track_credit_revision(conn)}"
+        f"|track_credit_policy:{TRACK_CREDIT_POLICY_VERSION}"
         f"|track_identity:{get_track_identity_revision(conn)}"
         f"|track_identity_policy:{TRACK_IDENTITY_POLICY_VERSION}"
         f"|l3_album_attribution:{get_l3_album_attribution_revision(conn)}"

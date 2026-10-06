@@ -17,7 +17,14 @@ from typing import Any
 import pandas as pd
 
 from backend.domains.metadata.artist_identity import get_artist_identity_map
+from backend.domains.metadata.title_credit_parser import (
+    extract_title_credit_blocks,
+    legacy_names_for_block,
+    normalize_credit_name,
+    resolve_block_entities,
+)
 
+TRACK_CREDIT_POLICY_VERSION = "effective_track_credits_v2_title_evidence"
 VALID_ACTIONS = frozenset({"add", "remove", "set_role"})
 VALID_ROLES = frozenset({"primary", "featured"})
 
@@ -143,7 +150,7 @@ def _active_overrides(
                    created_at
             FROM track_credit_overrides o
             {where}{conjunction} o.active=1
-            ORDER BY o.track_id, o.artist_id, o.override_id""",
+            ORDER BY o.track_id, o.override_id""",
         params,
     ).fetchall()
     return [dict(row) for row in rows]
@@ -166,12 +173,37 @@ def _automatic_spotify_credits(
 
 
 def _apply_override(
-    credit_map: dict[tuple[int, int], dict[str, Any]], override: dict[str, Any]
+    credit_map: dict[tuple[int, int], dict[str, Any]],
+    override: dict[str, Any],
+    identity: dict[int, Any] | None = None,
 ) -> None:
     key = (int(override["track_id"]), int(override["artist_id"]))
     action = str(override["action"])
+    resolved = (identity or {}).get(key[1])
+    canonical_id = resolved.canonical_artist_id if resolved else key[1]
+    matching = [
+        candidate
+        for candidate in credit_map
+        if candidate[0] == key[0]
+        and (
+            identity[candidate[1]].canonical_artist_id
+            if identity and candidate[1] in identity
+            else candidate[1]
+        )
+        == canonical_id
+    ]
     if action == "remove":
-        credit_map.pop(key, None)
+        for candidate in matching:
+            credit_map.pop(candidate, None)
+        return
+    if action == "set_role" and matching:
+        for candidate in matching:
+            credit_map[candidate] = {
+                **credit_map[candidate],
+                "role": str(override.get("role") or "featured"),
+                "source": "raw+manual",
+                "override_id": override.get("override_id"),
+            }
         return
     role = str(override.get("role") or "featured")
     previous = credit_map.get(key)
@@ -195,7 +227,9 @@ def _effective_raw_map(
     proposed: dict[str, Any] | None = None,
 ) -> dict[tuple[int, int], dict[str, Any]]:
     credit_map = _raw_credit_map(conn, track_ids)
-    for credit in _automatic_spotify_credits(conn, track_ids):
+    automatic = _automatic_spotify_credits(conn, track_ids)
+    _suppress_covered_title_products(conn, credit_map, automatic)
+    for credit in automatic:
         key = (int(credit["track_id"]), int(credit["artist_id"]))
         if key not in credit_map:
             credit_map[key] = {
@@ -205,11 +239,97 @@ def _effective_raw_map(
                 "source": "spotify",
                 "override_id": None,
             }
+    identity = get_artist_identity_map(conn)
     for override in _active_overrides(conn, track_ids):
-        _apply_override(credit_map, override)
+        _apply_override(credit_map, override, identity)
     if proposed:
-        _apply_override(credit_map, proposed)
+        _apply_override(credit_map, proposed, identity)
     return credit_map
+
+
+def _suppress_covered_title_products(
+    conn: sqlite3.Connection,
+    credit_map: dict[tuple[int, int], dict[str, Any]],
+    automatic: list[dict[str, Any]],
+) -> None:
+    """Discard only legacy title products explained by approved track credits.
+
+    A missing Spotify artist is not evidence that a raw collaborator is wrong.
+    Require a unique interpretation of the entire original title block, then
+    match the historical parser's exact products. Manual decisions run later.
+    No source rows or global artist identities are changed.
+    """
+    if not automatic:
+        return
+    identity = get_artist_identity_map(conn)
+    artists = {
+        int(row[0]): str(row[1])
+        for row in conn.execute("SELECT artist_id, artist_name FROM artists")
+    }
+
+    def canonical(artist_id: int) -> int:
+        resolved = identity.get(artist_id)
+        return resolved.canonical_artist_id if resolved else artist_id
+
+    by_track: dict[int, list[dict[str, Any]]] = {}
+    for credit in automatic:
+        by_track.setdefault(int(credit["track_id"]), []).append(credit)
+    where, params = _where_track_ids(by_track, "t")
+    titles = {
+        int(row[0]): str(row[1] or "")
+        for row in conn.execute(f"SELECT t.track_id, t.track_name FROM tracks t {where}", params)
+    }
+    raw_by_track: dict[int, list[tuple[int, int]]] = {}
+    for key, row in credit_map.items():
+        if row["role"] != "primary" and key[0] in by_track:
+            raw_by_track.setdefault(key[0], []).append(key)
+    # Affiliation text may name a band not credited on this track. Existing
+    # primary entities establish its name, never participation or fan-out.
+    affiliations = (
+        {
+            int(row[0])
+            for row in conn.execute(
+                "SELECT DISTINCT artist_id FROM track_artists WHERE role='primary'"
+            )
+        }
+        if _table_exists(conn, "track_artists")
+        else set()
+    )
+    for track_id, raw_keys in raw_by_track.items():
+        title = titles.get(track_id, "")
+        blocks = extract_title_credit_blocks(title)
+        if not blocks:
+            continue
+        approved = {canonical(int(row["artist_id"])) for row in by_track[track_id]}
+        names: dict[str, set[int]] = {}
+
+        def add_name(name: str, artist_id: int) -> None:
+            if name:
+                names.setdefault(name, set()).add(artist_id)
+
+        for row in by_track[track_id]:
+            add_name(str(row["credited_name"] or ""), canonical(int(row["artist_id"])))
+        for artist_id, name in artists.items():
+            resolved_id = canonical(artist_id)
+            if resolved_id in approved:
+                add_name(name, resolved_id)
+                if artist_id in identity:
+                    add_name(identity[artist_id].display_name, resolved_id)
+            elif artist_id in affiliations and " of " in title.casefold():
+                add_name(name, resolved_id)
+        for block in blocks:
+            resolved = resolve_block_entities(block, names, supported_artist_ids=approved)
+            if not resolved or not set(resolved).issubset(approved):
+                continue
+            products = {
+                normalize_credit_name(name) for name in legacy_names_for_block(block, title)
+            }
+            for key in raw_keys:
+                if (
+                    canonical(key[1]) not in approved
+                    and normalize_credit_name(artists.get(key[1], "")) in products
+                ):
+                    credit_map.pop(key, None)
 
 
 def get_effective_track_credits(
@@ -430,13 +550,13 @@ def preview_track_credit_override(
     exists_before_raw = (track_id, artist_id) in before_raw
     if action == "add" and exists_before_raw:
         raise ValueError("artist is already an effective credit; use set_role when needed")
-    if action in {"remove", "set_role"} and not exists_before_raw:
-        raise ValueError("artist is not an effective credit on this track")
     before_ids = {int(row["artist_id"]) for row in before}
     after_ids = {int(row["artist_id"]) for row in after}
     identity = get_artist_identity_map(conn)
     proposed_canonical = identity.get(artist_id)
     canonical_id = proposed_canonical.canonical_artist_id if proposed_canonical else artist_id
+    if action in {"remove", "set_role"} and canonical_id not in before_ids:
+        raise ValueError("artist is not an effective credit on this track")
     duplicate_identity = action == "add" and canonical_id in before_ids
     no_change = [(row["artist_id"], row["role"]) for row in before] == [
         (row["artist_id"], row["role"]) for row in after
@@ -825,25 +945,17 @@ def undo_track_credit_event(
     restored: dict[str, Any] = {}
     override_id = None
     if previous:
+        # Restore the original decision position. Appending a restored add or
+        # role decision would incorrectly outrank a later remove on an alias.
+        override_id = int(previous["override_id"])
         cursor = conn.execute(
-            """INSERT INTO track_credit_overrides(
-                   track_id, artist_id, action, role, evidence_type, evidence_source,
-                   reason, actor, revision, supersedes_override_id
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                track_id,
-                artist_id,
-                previous["action"],
-                previous.get("role"),
-                previous.get("evidence_type") or "undo_restore",
-                previous.get("evidence_source"),
-                reason,
-                actor,
-                revision,
-                current.get("override_id"),
-            ),
+            """UPDATE track_credit_overrides
+               SET active=1, deactivated_at=NULL, revision=?
+               WHERE override_id=? AND track_id=? AND artist_id=?""",
+            (revision, override_id, track_id, artist_id),
         )
-        override_id = int(cursor.lastrowid)
+        if cursor.rowcount != 1:
+            raise ValueError("previous track credit decision is missing")
         restored = _active_override_snapshot(conn, track_id, artist_id)
     undo_event = conn.execute(
         """INSERT INTO track_credit_events(

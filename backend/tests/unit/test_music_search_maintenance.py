@@ -958,10 +958,12 @@ def test_statistics_builder_drift_rebuilds_only_statistics(
     assert report["snapshot_set"]["revalidated"] is False
 
 
-def test_current_legacy_v2_set_is_adopted_without_statistics_recalculation(
-    monkeypatch,
+@pytest.mark.parametrize("policy_evidence", ["current", "previous", "missing"])
+def test_current_legacy_v2_set_is_adopted_only_with_current_policy_evidence(
+    monkeypatch, policy_evidence
 ) -> None:
     conn = _conn()
+    migrate_042(conn)
     maintenance.rebuild_music_search_index(conn)
     contexts = build_music_search_variant_contexts(
         conn,
@@ -972,8 +974,8 @@ def test_current_legacy_v2_set_is_adopted_without_statistics_recalculation(
         conn.execute(
             """INSERT INTO music_search_snapshot_meta(
                    snapshot_key, filter_fingerprint, source_revision, status,
-                   semantic_base_key, merge_level, dynamic_threshold, builder_version
-               ) VALUES (?, ?, 'legacy-source', 'ready', ?, ?, ?, ?)""",
+                   semantic_base_key, merge_level, dynamic_threshold, builder_version, policy_key
+               ) VALUES (?, ?, 'legacy-source', 'ready', ?, ?, ?, ?, ?)""",
             (
                 legacy_fingerprint,
                 legacy_fingerprint,
@@ -981,6 +983,7 @@ def test_current_legacy_v2_set_is_adopted_without_statistics_recalculation(
                 context.merge_level,
                 int(context.dynamic_threshold),
                 MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+                maintenance.music_search_snapshot_policy_key(context),
             ),
         )
         conn.execute(
@@ -990,6 +993,25 @@ def test_current_legacy_v2_set_is_adopted_without_statistics_recalculation(
             (legacy_fingerprint,),
         )
     conn.commit()
+    if policy_evidence != "current":
+        conn.execute(
+            "UPDATE music_search_snapshot_meta SET policy_key=?",
+            (None if policy_evidence == "missing" else "previous-policy",),
+        )
+        conn.commit()
+        writes = conn.total_changes
+        assert not maintenance._adopt_legacy_v2_snapshot_set(conn, contexts)
+        assert conn.total_changes == writes
+        assert all(
+            conn.execute(
+                "SELECT status FROM music_search_snapshot_meta WHERE filter_fingerprint=?",
+                (fingerprint,),
+            ).fetchone()[0]
+            == "ready"
+            for _, fingerprint in legacy
+        )
+        conn.close()
+        return
     monkeypatch.setattr(
         maintenance,
         "build_music_search_snapshot_set",
@@ -1023,6 +1045,7 @@ def test_source_equivalent_legacy_set_survives_candidate_generation_change(
     monkeypatch,
 ) -> None:
     conn = _conn()
+    migrate_042(conn)
     maintenance.rebuild_music_search_index(conn)
     state = maintenance.get_music_search_index_state(conn)
     legacy_index_source = maintenance.legacy_v2_music_search_source_revision(
@@ -1043,8 +1066,8 @@ def test_source_equivalent_legacy_set_survives_candidate_generation_change(
         conn.execute(
             """INSERT INTO music_search_snapshot_meta(
                    snapshot_key, filter_fingerprint, source_revision, status,
-                   semantic_base_key, merge_level, dynamic_threshold, builder_version
-               ) VALUES (?, ?, ?, 'ready', ?, ?, ?, ?)""",
+                   semantic_base_key, merge_level, dynamic_threshold, builder_version, policy_key
+               ) VALUES (?, ?, ?, 'ready', ?, ?, ?, ?, ?)""",
             (
                 legacy_fingerprint,
                 legacy_fingerprint,
@@ -1053,6 +1076,7 @@ def test_source_equivalent_legacy_set_survives_candidate_generation_change(
                 context.merge_level,
                 int(context.dynamic_threshold),
                 MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
+                maintenance.music_search_snapshot_policy_key(context),
             ),
         )
         conn.execute(

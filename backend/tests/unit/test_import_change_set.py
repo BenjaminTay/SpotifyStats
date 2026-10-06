@@ -793,12 +793,19 @@ def test_aggregate_gate_rejects_previous_playback_generation() -> None:
         conn.close()
 
 
-def test_aggregate_gate_accepts_legacy_config_only_while_playback_is_unbound() -> None:
+def test_aggregate_gate_requires_current_policy_and_unbound_playback_for_legacy_config() -> None:
+    from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
+
     conn = _connection()
     try:
         conn.execute("CREATE TABLE agg_config(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         conn.execute("INSERT INTO agg_config VALUES ('param_hash', 'legacy-params')")
 
+        assert check_agg_valid(conn, "legacy-params") is False
+        conn.execute(
+            "INSERT INTO agg_config VALUES ('track_credit_policy',?)",
+            (TRACK_CREDIT_POLICY_VERSION,),
+        )
         assert check_agg_valid(conn, "legacy-params") is True
 
         conn.execute(

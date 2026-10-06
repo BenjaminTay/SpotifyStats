@@ -5,7 +5,6 @@ from __future__ import annotations
 import glob
 import json
 import os
-import re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -21,6 +20,11 @@ from backend.domains.imports.incremental import (
 )
 from backend.domains.imports.source_inspector import record_fingerprint
 from backend.domains.imports.streaming_staging import StreamingImportStaging
+from backend.domains.metadata.artist_identity import get_artist_identity_map
+from backend.domains.metadata.title_credit_parser import (
+    extract_title_credit_blocks,
+    resolve_block_entities,
+)
 
 from .db import build_aggregations, ensure_schema, get_db, init_db
 from .utils import classify_platform, convert_to_local_time
@@ -125,53 +129,80 @@ def _prepare_replace_schema() -> None:
 
 # ── Featured artist parsing ──────────────────────────────────────────────
 
-# Patterns that should NOT be treated as featured artists
-_NON_ARTIST = re.compile(
-    r"(?:re)?mix|live|version|edit|acoustic|instrumental|demo|"
-    r"remaster(?:ed)?|radio\s*edit|single\s*edit|"
-    r"Taylor's\s*Version|From\s*The\s*Vault|bonus\s*track|"
-    r"deluxe|extended|original\s*mix|club\s*mix|"
-    r"cover|tribute|reprise|interlude|intro|outro|"
-    r"solo|stripped|acapella|a\s*cappella|"
-    r"orchestral|symphonic|unplugged",
-    re.IGNORECASE,
-)
 
-# Patterns to extract featured/with artists from track names
-_FEAT_PATTERNS = [
-    re.compile(r"\(feat\.?\s+([^)]+)\)", re.IGNORECASE),
-    re.compile(r"\(ft\.?\s+([^)]+)\)", re.IGNORECASE),
-    re.compile(r"\(with\s+([^)]+)\)", re.IGNORECASE),
-    re.compile(r"\[feat\.?\s+([^\]]+)\]", re.IGNORECASE),
-    re.compile(r"\[ft\.?\s+([^\]]+)\]", re.IGNORECASE),
-    re.compile(r"\[with\s+([^\]]+)\]", re.IGNORECASE),
-]
-
-
-def _parse_featured_artists(track_name: str) -> list[str]:
-    """Extract featured artist names from track name patterns like '(feat. X)'.
-
-    Returns empty list if no featured artists are found.
-    Handles multiple artists separated by ',' or '&'.
-    """
-    if not track_name:
-        return []
-
-    featured: list[str] = []
-    for pattern in _FEAT_PATTERNS:
-        for match in pattern.findall(track_name):
-            for part in re.split(r"\s*[,&]\s*", match):
-                part = part.strip()
-                if part and not _NON_ARTIST.fullmatch(part):
-                    featured.append(part)
-
-    seen: set[str] = set()
-    result: list[str] = []
-    for name in featured:
-        if name.lower() not in seen:
-            seen.add(name.lower())
-            result.append(name)
+def _parse_featured_artists(
+    track_name: str,
+    trusted_names: dict[str, set[int]] | None = None,
+    supported_artist_ids: set[int] | None = None,
+) -> list[int]:
+    """Accept complete title candidates only as existing trusted artist IDs."""
+    result: list[int] = []
+    for block in extract_title_credit_blocks(track_name):
+        ids = resolve_block_entities(
+            block, trusted_names or {}, supported_artist_ids=supported_artist_ids
+        )
+        if ids is not None:
+            result.extend(artist_id for artist_id in ids if artist_id not in result)
     return result
+
+
+def _load_title_credit_context(
+    conn: sqlite3.Connection,
+) -> tuple[dict[str, set[int]], dict[int, set[int]]]:
+    """Load trusted identities once; arbitrary historical featured rows are not proof.
+
+    Raw primary names, approved Spotify track projections, and active explicit
+    additions or role confirmations provide identity evidence. Only same-track structural/manual
+    participation can authorise ``with``. Minimal/legacy fixtures fail closed.
+    """
+    identities = get_artist_identity_map(conn)
+    tables = {
+        str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    trusted_ids = {
+        int(row[0])
+        for row in conn.execute("SELECT DISTINCT artist_id FROM tracks WHERE artist_id IS NOT NULL")
+    }
+    supported: dict[int, set[int]] = {}
+    credited_names: list[tuple[int, str]] = []
+    if "spotify_auto_track_credits" in tables:
+        for track_id, artist_id, name in conn.execute(
+            "SELECT track_id, artist_id, credited_name FROM spotify_auto_track_credits"
+        ):
+            trusted_ids.add(int(artist_id))
+            canonical_id = (
+                identities[int(artist_id)].canonical_artist_id
+                if int(artist_id) in identities
+                else int(artist_id)
+            )
+            supported.setdefault(int(track_id), set()).add(canonical_id)
+            credited_names.append((canonical_id, str(name)))
+    if "track_credit_overrides" in tables:
+        for track_id, artist_id in conn.execute(
+            "SELECT track_id, artist_id FROM track_credit_overrides WHERE active=1 AND action IN ('add','set_role')"
+        ):
+            trusted_ids.add(int(artist_id))
+            canonical_id = (
+                identities[int(artist_id)].canonical_artist_id
+                if int(artist_id) in identities
+                else int(artist_id)
+            )
+            supported.setdefault(int(track_id), set()).add(canonical_id)
+    canonical_trusted = {
+        identities[artist_id].canonical_artist_id if artist_id in identities else artist_id
+        for artist_id in trusted_ids
+    }
+    names: dict[str, set[int]] = {}
+    for artist_id, name in conn.execute("SELECT artist_id, artist_name FROM artists"):
+        identity = identities.get(int(artist_id))
+        canonical_id = identity.canonical_artist_id if identity else int(artist_id)
+        if canonical_id in canonical_trusted:
+            names.setdefault(str(name), set()).add(canonical_id)
+            if identity:
+                names.setdefault(identity.display_name, set()).add(canonical_id)
+    for canonical_id, name in credited_names:
+        names.setdefault(name, set()).add(canonical_id)
+    return names, supported
 
 
 def _spotify_track_id_from_uri(uri: str | None) -> str | None:
@@ -698,6 +729,16 @@ def _import_data_impl(
     artist_cache: dict[str, int] = {}
     album_cache: dict[tuple, int] = {}
     track_cache: dict[tuple, int] = {}
+    trusted_credit_names, supported_title_credits = _load_title_credit_context(conn)
+    title_credit_cache: dict[tuple[int, str], list[int]] = {}
+
+    def title_featured_ids(track_id: int, track_name: str) -> list[int]:
+        key = (track_id, track_name)
+        if key not in title_credit_cache:
+            title_credit_cache[key] = _parse_featured_artists(
+                track_name, trusted_credit_names, supported_title_credits.get(track_id)
+            )
+        return title_credit_cache[key]
 
     total_files = len(json_files)
     total_records = 0
@@ -762,8 +803,9 @@ def _import_data_impl(
                     "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (?, ?, 'primary')",
                     (track_id, artist_id),
                 )
-                for feat_name in _parse_featured_artists(track_name):
-                    feat_id = _cache_artist(conn, feat_name, artist_cache)
+                for feat_id in title_featured_ids(track_id, track_name):
+                    if feat_id == artist_id or feat_id in trusted_credit_names.get(artist_name, ()):
+                        continue
                     conn.execute(
                         "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (?, ?, 'featured')",
                         (track_id, feat_id),
@@ -868,8 +910,11 @@ def _import_data_impl(
                         "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (?, ?, 'primary')",
                         (track_id, artist_id),
                     )
-                    for feat_name in _parse_featured_artists(track_name):
-                        feat_id = _cache_artist(conn, feat_name, artist_cache)
+                    for feat_id in title_featured_ids(track_id, track_name):
+                        if feat_id == artist_id or feat_id in trusted_credit_names.get(
+                            artist_name, ()
+                        ):
+                            continue
                         conn.execute(
                             "INSERT OR IGNORE INTO track_artists(track_id, artist_id, role) VALUES (?, ?, 'featured')",
                             (track_id, feat_id),

@@ -116,13 +116,206 @@ def test_import_data_handles_audio_and_video_records_without_metadata(tmp_path, 
                 WHERE ta.role = 'featured'
                 """
             ).fetchall()
-            assert [row["artist_name"] for row in featured] == ["Guest Artist"]
+            assert featured == []
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM artists WHERE artist_name='Guest Artist'"
+                ).fetchone()[0]
+                == 0
+            )
 
             assert conn.execute("SELECT COUNT(*) FROM agg_weekly_tracks").fetchone()[0] >= 1
         finally:
             conn.close()
     finally:
         _clear_db_caches()
+
+
+@pytest.mark.parametrize(
+    "suffix,known_names,expected",
+    [
+        (
+            "(feat. Earth, Wind & Fire and Dido)",
+            ["Earth, Wind & Fire", "Dido"],
+            ["Earth, Wind & Fire", "Dido"],
+        ),
+        ("（featuring Guest (The Singer)）", ["Guest (The Singer)"], ["Guest (The Singer)"]),
+        ("(feat.Guest feat. Dido)", ["Guest", "Dido"], ["Guest", "Dido"]),
+        ("(feat. Tegan and Sara)", ["Tegan and Sara", "Tegan", "Sara"], []),
+        ("(feat. Guest & Unknown)", ["Guest"], []),
+        ("(With My Heart)", ["My Heart"], []),
+        ("(feat. Fire)", [], []),
+    ],
+)
+def test_audio_and_video_import_only_accept_existing_bound_identities(
+    tmp_path, monkeypatch, suffix, known_names, expected
+):
+    from backend.core import db as db_mod
+    from backend.core import import_data as import_mod
+
+    db_path = tmp_path / "title_credits.db"
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+    data_dir = tmp_path / "streaming"
+    data_dir.mkdir()
+    db_mod.init_db()
+    db_mod.ensure_schema()
+    conn = sqlite3.connect(db_path)
+    try:
+        main_id = conn.execute("INSERT INTO artists(artist_name) VALUES ('Main Artist')").lastrowid
+        # Known primary projections provide trustworthy local identity. A
+        # historical misparsed featured name with a Spotify ID does not.
+        for name in known_names:
+            artist_id = conn.execute(
+                "INSERT INTO artists(artist_name) VALUES (?)", (name,)
+            ).lastrowid
+            conn.execute(
+                "INSERT INTO tracks(track_name,artist_id) VALUES (?,?)",
+                (f"Known {name}", artist_id),
+            )
+        fire_id = conn.execute("INSERT INTO artists(artist_name) VALUES ('Fire')").lastrowid
+        conn.execute(
+            """INSERT INTO artist_identity_external_ids(
+                   artist_id,provider,external_id,evidence_type,verified)
+               VALUES (?,'spotify',?,'artist_metadata',1)""",
+            (fire_id, "F" * 22),
+        )
+        old_track = conn.execute(
+            "INSERT INTO tracks(track_name,artist_id) VALUES ('Old misparsed song',?)", (main_id,)
+        ).lastrowid
+        conn.execute(
+            "INSERT INTO track_artists(track_id,artist_id,role) VALUES (?,?,'featured')",
+            (old_track, fire_id),
+        )
+        conn.commit()
+        before_artists = conn.execute("SELECT COUNT(*) FROM artists").fetchone()[0]
+        old_raw = conn.execute("SELECT * FROM track_artists").fetchall()
+    finally:
+        conn.close()
+
+    title = f"Imported Song {suffix}"
+    for index, source in enumerate(("Audio", "Video")):
+        records = [
+            {
+                "ts": f"2026-01-0{index + 1}T00:00:00Z",
+                "conn_country": "CN",
+                "platform": "ios",
+                "ms_played": 180_000,
+                "master_metadata_track_name": title,
+                "master_metadata_album_artist_name": "Main Artist",
+                "master_metadata_album_album_name": "Album",
+                "spotify_track_uri": None,
+            }
+        ]
+        (data_dir / f"Streaming_History_{source}_2026_0.json").write_text(json.dumps(records))
+    try:
+        for _ in range(2):
+            result = import_mod.import_data(str(data_dir), build_preaggregations=False)
+            assert result["total_records"] == 2
+            conn = sqlite3.connect(db_path)
+            try:
+                assert conn.execute("SELECT COUNT(*) FROM artists").fetchone()[0] == before_artists
+                rows = conn.execute(
+                    """SELECT a.artist_name FROM track_artists ta
+                       JOIN tracks t ON t.track_id=ta.track_id
+                       JOIN artists a ON a.artist_id=ta.artist_id
+                       WHERE t.track_name=? AND ta.role='featured' ORDER BY ta.artist_id""",
+                    (title,),
+                ).fetchall()
+                assert [row[0] for row in rows] == expected
+                assert (
+                    conn.execute(
+                        "SELECT track_name FROM tracks WHERE track_name=?", (title,)
+                    ).fetchone()[0]
+                    == title
+                )
+                assert (
+                    conn.execute(
+                        "SELECT * FROM track_artists WHERE track_id=?", (old_track,)
+                    ).fetchall()
+                    == old_raw
+                )
+                assert conn.execute("SELECT COUNT(*) FROM plays").fetchone()[0] == 2
+            finally:
+                conn.close()
+    finally:
+        _clear_db_caches()
+
+
+@pytest.mark.parametrize("action", ["add", "set_role"])
+def test_import_with_uses_explicit_same_track_relationship(tmp_path, monkeypatch, action):
+    from backend.core import db as db_mod
+    from backend.core import import_data as import_mod
+
+    db_path = tmp_path / "with_credits.db"
+    monkeypatch.setattr(db_mod, "DB_PATH", str(db_path))
+    data_dir = tmp_path / "streaming"
+    data_dir.mkdir()
+    db_mod.init_db()
+    db_mod.ensure_schema()
+    title = "Rain On Me (with Ariana Grande)"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executemany(
+            "INSERT INTO artists(artist_id,artist_name) VALUES (?,?)",
+            [(1, "Lady Gaga"), (2, "Ariana Grande")],
+        )
+        conn.executemany(
+            "INSERT INTO tracks(track_id,track_name,artist_id) VALUES (?,?,1)",
+            [(1, title), (2, "Other Song (with Ariana Grande)")],
+        )
+        conn.execute(
+            """INSERT INTO track_credit_overrides(track_id,artist_id,action,role,reason,revision)
+               VALUES (1,2,?,'featured','Confirmed participation',1)""",
+            (action,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    for index, source in enumerate(("Audio", "Video")):
+        records = [
+            {
+                "ts": f"2026-01-0{index + 1}T00:00:00Z",
+                "ms_played": 180_000,
+                "master_metadata_track_name": name,
+                "master_metadata_album_artist_name": "Lady Gaga",
+                "spotify_track_uri": None,
+            }
+            for name in (title, "Other Song (with Ariana Grande)")
+        ]
+        (data_dir / f"Streaming_History_{source}_2026_0.json").write_text(json.dumps(records))
+    try:
+        import_mod.import_data(str(data_dir), build_preaggregations=False)
+        conn = sqlite3.connect(db_path)
+        try:
+            assert conn.execute(
+                "SELECT track_id,artist_id FROM track_artists WHERE role='featured'"
+            ).fetchall() == [(1, 2)]
+        finally:
+            conn.close()
+    finally:
+        _clear_db_caches()
+
+
+def test_title_credit_context_uses_verified_aliases_in_minimal_legacy_schema():
+    from backend.core.import_data import _load_title_credit_context, _parse_featured_artists
+
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.executescript("""
+            CREATE TABLE artists(artist_id INTEGER, artist_name TEXT);
+            CREATE TABLE tracks(track_id INTEGER, artist_id INTEGER);
+            CREATE TABLE artist_identity_aliases(alias_artist_id INTEGER, canonical_artist_id INTEGER);
+            INSERT INTO artists VALUES(1,'張靚穎'),(2,'Jane Zhang'),(3,'Unknown Guest');
+            INSERT INTO tracks VALUES(1,1);
+            INSERT INTO artist_identity_aliases VALUES(2,1);
+        """)
+        names, supported = _load_title_credit_context(conn)
+        assert supported == {}
+        assert _parse_featured_artists("Song (feat. Jane Zhang)", names) == [1]
+        assert _parse_featured_artists("Song (feat. Unknown Guest)", names) == []
+        assert _parse_featured_artists("Song (with Jane Zhang)", names) == []
+    finally:
+        conn.close()
 
 
 def test_import_isolates_new_spotify_owner_until_version_governance(tmp_path, monkeypatch):

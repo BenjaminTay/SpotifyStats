@@ -96,11 +96,15 @@ L2/L3 发布，但不得伪装成已自动修复。
 有效署名由 `backend/domains/metadata/track_credits.py` 唯一解析：
 
 1. 读取原始 `track_artists`；旧测试库无该表时才回退到 `tracks.artist_id` 主艺人。原始标题识别的合作艺人保留为兜底，不因 Spotify 漏列而自动删除。
-2. 对权威 owner、有合法 Track `artists[]`、且主艺人与身份无冲突的曲目，叠加 `spotify_auto_track_credits`。本地同一艺人优先按 Spotify artist ID 解析；缺 ID 时只用唯一、无冲突的规范化同名关联，否则新建带 provider ID 的本地艺人。无法安全解析的曲目保留上一可用自动署名，不生成逐条审核任务。
-3. 最后叠加 active `track_credit_overrides`，支持 `add`、`remove`、`set_role`；人工操作始终优先于自动署名，角色为 `primary` 或 `featured`。
+2. 对权威 owner、有合法 Track `artists[]`、且主艺人与身份无冲突的曲目，叠加 `spotify_auto_track_credits`。本地同一艺人优先按 Spotify artist ID 解析；缺 ID 时只用唯一、无冲突的规范化同名关联，否则新建带 provider ID 的本地艺人。无法安全解析的曲目保留上一可用自动署名，不生成逐条审核任务。先唯一解释同曲的完整标题署名片段，再排除与旧解析产物完全对应且被结构化成员覆盖的 featured 占位或碎片；不按 Spotify 数组缺席过滤全部旧补充，也不排除原始主艺人。
+3. 最后按操作时序叠加 active `track_credit_overrides`，支持 `add`、`remove`、`set_role`；人工操作始终优先于自动署名，角色为 `primary` 或 `featured`。移除和角色修改针对 canonical 身份，不能由其另一别名绕过；显式重新添加可恢复被自动排除的历史实体。
 4. 每个成员必须绑定本地稳定 `artist_id`，禁止只保存名称。
 5. 通过艺人身份 resolver 投影到 canonical artist；同一曲目上的 alias 重叠只保留一个 canonical credit。
 6. artist fan-out 后，同一有效播放事件对同一 canonical artist 至多贡献一次；增加合作艺人不会增加歌曲本身的播放事件数。
+
+新增导入将标题候选提取与身份接受分离：先保护可靠的完整名字，再尝试连接符；完整名与多人解释均成立时不接受。未知候选保留在原始歌曲名，不创建合作艺人实体。`with` 必须有同曲参与支持，`of` 仅作成员所属说明、不自动增加团体；括号配对、全角与混用标记共享纯解析器。名称搜索结果和历史 raw featured 行本身不构成新的身份信任。
+
+共用规则版本 `effective_track_credits_v2_title_evidence` 进入显示、fan-out、Analysis/Records、搜索、Billboard、年度及社区缓存合同和聚合证明。代码规则升级即使没有原始数据变化，也不能重标旧精确结果；派生准备在明确副本中执行，公开 GET 不冷建。既有 LKG 可按 warming 合同提供，不视为新规则已生效。
 
 播放记录的合作曲排行消费上述有效署名：至少两位不同 canonical artist 即构成合作曲，三个排行共用实际合作事件；参与艺人榜包括 primary 和 featured。角色不参与合作资格判断，别名重叠不计为多人。原始标题识别继续作为署名补充兜底，排行本身不重复解析标题；人工移除合作艺人后，标题不能把该曲重新纳入。
 

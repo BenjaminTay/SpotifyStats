@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 
+from backend.domains.music_search import snapshot_lineage
 from backend.domains.music_search.snapshot_lineage import (
     active_playback_lineage,
     music_search_snapshot_dependency_digest,
@@ -43,6 +44,10 @@ def _conn() -> sqlite3.Connection:
             ('track_credit_revision', '0'),
             ('album_project_revision', 'albums-v1');
         """
+    )
+    conn.execute(
+        "INSERT INTO agg_config VALUES ('track_credit_policy',?)",
+        (snapshot_lineage.TRACK_CREDIT_POLICY_VERSION,),
     )
     return conn
 
@@ -95,3 +100,13 @@ def test_dependency_digest_uses_published_aggregation_semantics(monkeypatch) -> 
     conn.execute("UPDATE agg_config SET value='duration-v2' WHERE key='duration_revision'")
 
     assert music_search_snapshot_dependency_digest(conn) != baseline
+
+
+def test_code_only_credit_policy_change_rejects_old_incremental_base(monkeypatch):
+    conn = _conn()
+    monkeypatch.setattr(yearly_context, "_table_set_revision", lambda *_args: "groups")
+    monkeypatch.setattr(yearly_context, "_album_project_semantic_revision", lambda *_args: "albums")
+    baseline = music_search_snapshot_dependency_digest(conn)
+    monkeypatch.setattr(snapshot_lineage, "TRACK_CREDIT_POLICY_VERSION", "new-credit-policy")
+    assert music_search_snapshot_dependency_digest(conn) != baseline
+    conn.close()

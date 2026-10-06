@@ -1728,6 +1728,7 @@ def _aggregation_fact_dependencies(
     *,
     excluded_generation_id: str | None = None,
 ) -> dict[str, str]:
+    from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
     from backend.domains.playback.logical_timeline import (
         LISTENING_DURATION_POLICY_VERSION,
         PLAYBACK_EVENT_POLICY_VERSION,
@@ -1735,6 +1736,7 @@ def _aggregation_fact_dependencies(
 
     return {
         "builder_version": _BILLBOARD_AGGREGATION_BUILDER_VERSION,
+        "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
         "playback_policy_version": PLAYBACK_EVENT_POLICY_VERSION,
         "listening_duration_policy_version": LISTENING_DURATION_POLICY_VERSION,
         "duration_revision": _played_track_duration_revision(
@@ -1822,14 +1824,16 @@ def aggregation_partial_base_is_compatible(
 ) -> bool:
     """Return whether a partial publisher may safely advance selected proof keys.
 
-    Older portable fixtures without the versioned proof are allowed through the
-    transitional path.  Versioned production aggregates must prove that their
+    Older portable fixtures require an explicit current credit policy before
+    using the transitional path. Versioned production aggregates prove that their
     existing hash matches the revisions they claim and that every dependency
     outside the partial publisher's scope is still current.
     """
     config = _aggregation_config(conn)
     if "builder_version" not in config:
-        return True
+        from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
+
+        return config.get("track_credit_policy") == TRACK_CREDIT_POLICY_VERSION
 
     try:
         configured_identity_revision = int(config["identity_revision"])
@@ -1908,6 +1912,8 @@ def refresh_aggregation_semantic_proof(
         )
     else:
         # Compatibility for lightweight fixtures and pre-versioned databases.
+        from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
+
         param_hash = _agg_param_hash(
             min_ms,
             music_only,
@@ -1920,6 +1926,7 @@ def refresh_aggregation_semantic_proof(
             track_identity_revision=track_identity_revision,
         )
         dependencies = {
+            "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
             "identity_revision": str(identity_revision),
             "track_credit_revision": str(track_credit_revision),
             "track_identity_revision": str(track_identity_revision),
@@ -2259,6 +2266,7 @@ def _load_plays_for_artists_cached(
     identity_revision: int = 0,
     track_credit_revision: int = 0,
     track_identity_revision: int = 0,
+    track_credit_policy: str = "",
 ) -> pd.DataFrame:
     """Same as _load_plays_cached but fans out through effective credits after merge
     so featured artists get their own rows. One play on a multi-artist track
@@ -2489,7 +2497,10 @@ def load_plays_for_artists(
     — it duplicates rows for multi-artist tracks.
     """
     from backend.domains.metadata.artist_identity import get_identity_revision
-    from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_credits import (
+        TRACK_CREDIT_POLICY_VERSION,
+        get_track_credit_revision,
+    )
     from backend.domains.metadata.track_identity import get_track_identity_revision
 
     return _load_plays_for_artists_cached(
@@ -2507,6 +2518,7 @@ def load_plays_for_artists(
         identity_revision=get_identity_revision(conn),
         track_credit_revision=get_track_credit_revision(conn),
         track_identity_revision=get_track_identity_revision(conn),
+        track_credit_policy=TRACK_CREDIT_POLICY_VERSION,
     ).copy()
 
 
@@ -2529,10 +2541,13 @@ def db_exists() -> bool:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _track_display_cache_key() -> tuple[str, int, int, int]:
+def _track_display_cache_key() -> tuple[str, int, int, int, str]:
     """Read cheap revisions so another process's credit write cannot leave display maps stale."""
     from backend.domains.metadata.artist_identity import get_identity_revision
-    from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_credits import (
+        TRACK_CREDIT_POLICY_VERSION,
+        get_track_credit_revision,
+    )
     from backend.domains.metadata.track_identity import get_track_identity_revision
 
     conn = get_db()
@@ -2542,6 +2557,7 @@ def _track_display_cache_key() -> tuple[str, int, int, int]:
             get_identity_revision(conn),
             get_track_credit_revision(conn),
             get_track_identity_revision(conn),
+            TRACK_CREDIT_POLICY_VERSION,
         )
     finally:
         conn.close()
@@ -2549,7 +2565,7 @@ def _track_display_cache_key() -> tuple[str, int, int, int]:
 
 @lru_cache(maxsize=1)
 def _get_track_all_artists_map_cached(
-    _cache_key: tuple[str, int, int, int],
+    _cache_key: tuple[str, int, int, int, str],
 ) -> dict[int, str]:
     """Return the effective multi-artist display map keyed only by L1 ID.
 
@@ -2590,7 +2606,7 @@ get_track_all_artists_map.cache_info = _get_track_all_artists_map_cached.cache_i
 
 @lru_cache(maxsize=1)
 def _get_track_artist_names_map_cached(
-    _cache_key: tuple[str, int, int, int],
+    _cache_key: tuple[str, int, int, int, str],
 ) -> dict[int, list[str]]:
     """Return effective artist names keyed only by canonical L1 ID."""
     conn = get_db()
@@ -2749,6 +2765,7 @@ def _agg_param_hash(
     track_identity_revision: int = 0,
 ) -> str:
     """Compute a content-hash of the parameters that affect aggregation results."""
+    from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
     from backend.domains.playback.logical_timeline import (
         LISTENING_DURATION_POLICY_VERSION,
         PLAYBACK_EVENT_POLICY_VERSION,
@@ -2758,6 +2775,7 @@ def _agg_param_hash(
         [
             PLAYBACK_EVENT_POLICY_VERSION,
             LISTENING_DURATION_POLICY_VERSION,
+            TRACK_CREDIT_POLICY_VERSION,
             min_ms,
             music_only,
             week_start_dow,
@@ -2799,7 +2817,9 @@ def check_agg_valid(conn: sqlite3.Connection, param_hash: str) -> bool:
             # Transitional compatibility for pre-generation databases. Once
             # facts are bound or a v2 aggregate is published, every semantic
             # dependency below becomes mandatory.
-            return True
+            from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
+
+            return config.get("track_credit_policy") == TRACK_CREDIT_POLICY_VERSION
         current_dependencies = _aggregation_fact_dependencies(conn)
         return all(config.get(key) == value for key, value in current_dependencies.items())
     except sqlite3.OperationalError:

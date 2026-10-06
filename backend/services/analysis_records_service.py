@@ -530,6 +530,7 @@ def _get_analysis_records_cached(
     max_merge_gap_minutes: int | None,
     include_compilations: bool,
     sort_contract_version: str = PLAYBACK_RECORDS_SORT_CONTRACT_VERSION,
+    track_credit_policy: str = "",
 ) -> dict:
     """Cached wrapper for playback records computation."""
     conn = get_db()
@@ -565,6 +566,8 @@ def get_analysis_records(
     include_compilations: bool = False,
 ) -> dict:
     """Get all playback records for the analysis/records page."""
+    from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
+
     return _get_analysis_records_cached(
         min_ms=min_ms,
         music_only=music_only,
@@ -577,6 +580,7 @@ def get_analysis_records(
         max_merge_gap_minutes=max_merge_gap_minutes,
         include_compilations=include_compilations,
         sort_contract_version=PLAYBACK_RECORDS_SORT_CONTRACT_VERSION,
+        track_credit_policy=TRACK_CREDIT_POLICY_VERSION,
     )
 
 

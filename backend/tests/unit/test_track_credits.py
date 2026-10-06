@@ -283,6 +283,53 @@ def test_preview_reports_fanout_without_inflating_track_plays(conn):
     assert get_track_credit_state(conn)["current_revision"] == 0
 
 
+def test_undo_restores_decision_before_later_alias_remove(conn):
+    conn.execute("INSERT INTO artist_identity_groups VALUES(1,53,53,'Britney Spears','active')")
+    conn.execute("INSERT INTO artist_identity_members VALUES(1,1,54,1)")
+    _add_britney(conn)
+    removed = apply_track_credit_override(
+        conn,
+        track_id=175,
+        artist_id=54,
+        action="remove",
+        role=None,
+        evidence_type="user_confirmed",
+        evidence_source=None,
+        reason="remove identity",
+        expected_revision=1,
+        idempotency_key="alias-remove-position",
+    )
+    readded = apply_track_credit_override(
+        conn,
+        track_id=175,
+        artist_id=53,
+        action="add",
+        role="primary",
+        evidence_type="user_confirmed",
+        evidence_source=None,
+        reason="readd identity",
+        expected_revision=2,
+        idempotency_key="alias-readd-position",
+    )
+    assert [row["artist_id"] for row in get_effective_track_credits(conn, [175])] == [42, 53]
+    undo_track_credit_event(
+        conn,
+        event_id=readded["event_id"],
+        expected_revision=3,
+        idempotency_key="undo-alias-position",
+        reason="restore before readd",
+    )
+    assert [row["artist_id"] for row in get_effective_track_credits(conn, [175])] == [42]
+    undo_track_credit_event(
+        conn,
+        event_id=removed["event_id"],
+        expected_revision=4,
+        idempotency_key="undo-alias-remove",
+        reason="restore original add",
+    )
+    assert [row["artist_id"] for row in get_effective_track_credits(conn, [175])] == [42, 53]
+
+
 def test_candidate_surfaces_unique_provider_metadata_as_unverified_evidence(conn):
     candidate = next(
         item

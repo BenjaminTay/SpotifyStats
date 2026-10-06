@@ -21,11 +21,13 @@ _observers = OrderedDict()
 
 
 def source_revision(conn):
+    from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
+
     if conn.in_transaction:
         raise ValueError("Community requires committed source facts")
     path = Path(conn.execute("PRAGMA database_list").fetchone()[2]).resolve()
     identity = database_identity(conn)
-    namespace = (str(path), identity["device"], identity["inode"])
+    namespace = (str(path), identity["device"], identity["inode"], TRACK_CREDIT_POLICY_VERSION)
     with _lock:
         if namespace not in _observers:
             observer = sqlite3.connect(
@@ -52,6 +54,7 @@ def source_revision(conn):
                 for table in (*COMMON, *RECORDS, "saved_tracks", "agg_config")
                 if table != "plays"
             }
+            deps["track_credit_policy"] = TRACK_CREDIT_POLICY_VERSION
             # Only fields consumed by raw eligibility, logical event identity, duration,
             # historical date assignment and collection membership enter this projection.
             available = {r[1] for r in conn.execute("PRAGMA table_info(plays)")}

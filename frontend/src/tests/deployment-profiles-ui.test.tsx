@@ -161,14 +161,14 @@ describe('deployment profile capability contract', () => {
       if (path === '/runtime/capabilities') return publicResponse()
       if (path === '/settings') return settingsResponse()
       if (path.startsWith('/billboard/track/canonical/')) {
-        return { found: false, track_id: 'track-1', track_name: 'Track', artist_name: 'Artist' }
+        return { found: false, track_id: '1', track_name: 'Track', artist_name: 'Artist' }
       }
       throw new Error(`unexpected GET ${path}`)
     })
 
     renderWithRuntime(
       <Routes><Route path="/music/tracks/:trackId" element={<TrackDetailExperience />} /></Routes>,
-      '/music/tracks/track-1?tab=lyrics',
+      '/music/tracks/1?tab=lyrics',
     )
 
     await screen.findByText('未找到该曲目的榜单数据')

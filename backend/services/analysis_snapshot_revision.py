@@ -269,10 +269,14 @@ def source_revision(conn, family: str, *, _attempt: int = 0) -> str:
         raise ValueError("Analysis revisions require committed source facts")
     from backend.domains.metadata.genre_display_taxonomy import GENRE_DISPLAY_TAXONOMY_VERSION
     from backend.domains.metadata.language_registry import LANGUAGE_REGISTRY_VERSION
+    from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
 
     token = conn.execute("PRAGMA data_version").fetchone()[0]
     tables = COMMON + (TASTE if family == "analysis_stats" else RECORDS)
     dependencies = _revision_vector(conn, tables)
+    # Resolver code can change artist participation without a source-table write.
+    # It is a fact dependency, not a new data revision or a GET-time migration.
+    dependencies["track_credit_policy"] = TRACK_CREDIT_POLICY_VERSION
     if family == "analysis_stats":
         dependencies["taxonomy"] = GENRE_DISPLAY_TAXONOMY_VERSION
         dependencies["language"] = LANGUAGE_REGISTRY_VERSION

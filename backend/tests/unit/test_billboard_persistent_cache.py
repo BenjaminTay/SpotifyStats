@@ -155,6 +155,31 @@ def test_context_key_separates_request_parameters(monkeypatch):
     assert first["cache_key"] != second["cache_key"]
 
 
+def test_code_only_credit_policy_change_preserves_lkg_but_not_exact(tmp_path, monkeypatch):
+    from backend.domains.metadata import track_credits
+
+    path = tmp_path / "billboard.db"
+    monkeypatch.setattr(persistent_cache, "BILLBOARD_CACHE_PATH", str(path))
+    before = persistent_cache.build_cache_context("records", {"merge_level": 2})
+    persistent_cache.store_persisted_snapshot(before, {"record_count": 7})
+    monkeypatch.setattr(track_credits, "TRACK_CREDIT_POLICY_VERSION", "new-credit-policy")
+    after = persistent_cache.build_cache_context("records", {"merge_level": 2})
+    assert before["cache_key"] != after["cache_key"]
+    assert before["request_key"] == after["request_key"]
+    assert persistent_cache.load_persisted_snapshot(after, allow_lkg=False) is None
+    token = set_public_readonly_db_guard(True)
+    try:
+        payload = persistent_cache.get_or_build_billboard_snapshot(
+            "records", {"merge_level": 2}, lambda: pytest.fail("public build")
+        )
+        assert payload["record_count"] == 7
+        assert payload["snapshot"]["status"] == "warming"
+        assert payload["snapshot"]["source_revision"] == before["source_revision"]
+        assert payload["snapshot"]["target_revision"] == after["source_revision"]
+    finally:
+        reset_public_readonly_db_guard(token)
+
+
 @pytest.mark.parametrize(
     "state", ["exact", "lkg", "missing", "incompatible", "key_error", "corrupt"]
 )

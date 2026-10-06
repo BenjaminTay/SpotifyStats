@@ -10,7 +10,10 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from backend.domains.metadata.artist_identity import get_identity_revision
-from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.metadata.track_credits import (
+    TRACK_CREDIT_POLICY_VERSION,
+    get_track_credit_revision,
+)
 from backend.domains.metadata.track_identity import (
     TRACK_IDENTITY_POLICY_VERSION,
     get_track_identity_revision,
@@ -130,6 +133,7 @@ def music_search_snapshot_policy_key(context: MusicSearchFilterContext) -> str:
             "snapshot_builder": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
             "chart_builder": MUSIC_SEARCH_CHART_BUILDER_VERSION,
             "listening_duration_policy": LISTENING_DURATION_POLICY_VERSION,
+            "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
             **{key: value for key, value in values.items() if key not in excluded},
         }
     )
@@ -221,6 +225,7 @@ def build_music_search_filter_context(
             "snapshot_builder": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
             "chart_builder": MUSIC_SEARCH_CHART_BUILDER_VERSION,
             **semantic_values,
+            "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
         }
     )
     fingerprint = music_search_variant_fingerprint(
@@ -236,6 +241,7 @@ def build_music_search_filter_context(
             "settings": revisions.settings_revision,
             "identity": values["artist_identity_revision"],
             "credits": values["track_credit_revision"],
+            "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
             "track_identity": values["track_identity_revision"],
             "track_identity_policy": values["track_identity_policy"],
             "album_project_revision": values["album_project_revision"],

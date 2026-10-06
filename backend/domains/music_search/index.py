@@ -17,6 +17,7 @@ from backend.domains.metadata.artist_identity import (
     get_identity_revision,
 )
 from backend.domains.metadata.track_credits import (
+    TRACK_CREDIT_POLICY_VERSION,
     get_effective_track_credits,
     get_track_credit_revision,
 )
@@ -95,6 +96,7 @@ def music_search_source_revision(conn: sqlite3.Connection) -> str:
         "candidate_revision": revisions.candidate_revision,
         "identity_revision": get_identity_revision(conn),
         "track_credit_revision": get_track_credit_revision(conn),
+        "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
         "track_identity_revision": get_track_identity_revision(conn),
         "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
         "album_project_revision": get_album_project_revision(conn),

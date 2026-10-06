@@ -328,6 +328,23 @@ def test_exact_revision_reacts_to_facts_but_not_cover(monkeypatch, tmp_path):
             assert source_revision(conn) != second
 
 
+def test_code_only_credit_policy_change_invalidates_observer_and_persisted_revision(monkeypatch):
+    from backend.core import db
+    from backend.domains.community.snapshot_revision import source_revision
+    from backend.domains.metadata import track_credits
+
+    conn = db.get_db(readonly=True)
+    try:
+        before = source_revision(conn)
+        assert source_revision(conn) == before  # exercise the observer memo
+        writes = conn.total_changes
+        monkeypatch.setattr(track_credits, "TRACK_CREDIT_POLICY_VERSION", "new-credit-policy")
+        assert source_revision(conn) != before
+        assert conn.total_changes == writes
+    finally:
+        conn.close()
+
+
 def test_exact_revision_uses_one_snapshot_during_concurrent_cover_writes(monkeypatch, tmp_path):
     from backend.core import db
     from backend.domains.community import snapshot_revision as revision

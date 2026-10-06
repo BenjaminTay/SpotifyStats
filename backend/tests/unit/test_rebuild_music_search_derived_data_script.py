@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from backend.core.migrations import MIGRATIONS
+from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
 from backend.domains.music_search.context import (
     MUSIC_SEARCH_CHART_BUILDER_VERSION,
     MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION,
@@ -162,6 +163,7 @@ def test_success_report_is_complete_and_privacy_safe(monkeypatch) -> None:
         "filter_fingerprint_version": MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION,
         "snapshot_builder_version": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
         "chart_builder_version": MUSIC_SEARCH_CHART_BUILDER_VERSION,
+        "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
     }
     assert report["migration"] == {
         "applied_version": 34,

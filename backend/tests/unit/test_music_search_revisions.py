@@ -146,6 +146,25 @@ def test_candidate_revision_changes_index_version_but_not_statistics() -> None:
     assert before_index != after_index
 
 
+def test_code_only_credit_policy_change_invalidates_candidate_and_exact_statistics(monkeypatch):
+    conn = _conn()
+    state = get_music_search_revision_state(conn)
+    before = build_music_search_filter_context(conn, _filters())
+    before_index = expected_candidate_index_version(conn)
+    before_policy = music_search_snapshot_policy_key(before)
+    monkeypatch.setattr(context_module, "TRACK_CREDIT_POLICY_VERSION", "new-credit-policy")
+    monkeypatch.setattr(index_module, "TRACK_CREDIT_POLICY_VERSION", "new-credit-policy")
+
+    after = build_music_search_filter_context(conn, _filters())
+    assert after.filter_fingerprint != before.filter_fingerprint
+    assert after.source_revision != before.source_revision
+    assert music_search_snapshot_policy_key(after) != before_policy
+    assert expected_candidate_index_version(conn) != before_index
+    # A deployment changes semantics without pretending that source rows changed.
+    assert get_music_search_revision_state(conn) == state
+    conn.close()
+
+
 @pytest.mark.parametrize(
     ("column", "value"),
     (

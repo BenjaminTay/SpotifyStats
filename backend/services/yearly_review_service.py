@@ -142,13 +142,14 @@ def _report_source_revision(year):
     # Fence the preparation LRU and persisted prepared-key registry as well as
     # the scoped content digest. Observation timestamps/rejected events are excluded.
     from backend.domains.metadata.spotify_album_credits import album_credit_revision
+    from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
 
     conn = get_db(readonly=True)
     try:
         album_revision = album_credit_revision(conn)
     finally:
         conn.close()
-    playback = database_revision(year)
+    playback = database_revision(year) + ":credits:" + TRACK_CREDIT_POLICY_VERSION
     if not album_revision:
         return playback
     return playback + ":album:" + hashlib.sha256(repr(album_revision).encode()).hexdigest()[:20]
@@ -172,6 +173,8 @@ def build_yearly_review_cache_key(
     db_revision: str,
     scoped_dependency_revision: str | None = None,
 ) -> str:
+    from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
+
     request_filter = {
         key: getattr(context, key)
         for key in (
@@ -202,6 +205,7 @@ def build_yearly_review_cache_key(
         "language_revision": language_revision,
         "artist_identity_revision": context.artist_identity_revision,
         "track_credit_revision": context.track_credit_revision,
+        "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
         "track_identity_revision": context.track_identity_revision,
         "track_identity_policy": context.track_identity_policy,
         "l3_album_attribution_revision": context.l3_album_attribution_revision,

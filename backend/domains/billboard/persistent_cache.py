@@ -155,6 +155,7 @@ def _dependency_state(family: str, params: dict[str, Any]) -> dict[str, Any]:
     from backend.core import db as db_module
     from backend.domains.billboard.chart_load_rank import billboard_revision_state
     from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
+    from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
     from backend.services.yearly_review_service import database_revision
 
     state: dict[str, Any] = {
@@ -167,6 +168,7 @@ def _dependency_state(family: str, params: dict[str, Any]) -> dict[str, Any]:
             "unknown",
         ),
         "year_end_semantics_version": YEAR_END_SEMANTICS_VERSION,
+        "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
     }
 
     # A week crossing from open to complete is a time-based publication event,

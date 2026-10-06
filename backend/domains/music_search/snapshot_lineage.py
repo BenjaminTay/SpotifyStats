@@ -8,7 +8,10 @@ import sqlite3
 from typing import Any
 
 from backend.domains.metadata.artist_identity import get_identity_revision
-from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.metadata.track_credits import (
+    TRACK_CREDIT_POLICY_VERSION,
+    get_track_credit_revision,
+)
 from backend.domains.metadata.track_identity import (
     TRACK_IDENTITY_POLICY_VERSION,
     get_track_identity_revision,
@@ -59,6 +62,7 @@ def music_search_snapshot_dependency_manifest(conn: sqlite3.Connection) -> dict[
         "credit_membership_revision",
         "identity_revision",
         "track_credit_revision",
+        "track_credit_policy",
         "track_identity_revision",
         "album_project_revision",
     )
@@ -81,6 +85,7 @@ def music_search_snapshot_dependency_manifest(conn: sqlite3.Connection) -> dict[
         "version": "music_search_snapshot_dependency_v1",
         "identity_revision": identity_revision,
         "track_credit_revision": credit_revision,
+        "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
         "track_identity_revision": track_identity_revision,
         "track_identity_policy": TRACK_IDENTITY_POLICY_VERSION,
         "aggregation": aggregation,

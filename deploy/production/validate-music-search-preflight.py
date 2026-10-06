@@ -17,6 +17,7 @@ from typing import Any
 EXPECTED_BUILDER_VERSION = "music_search_snapshot_v12_logical_event_count"
 EXPECTED_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v4_all_duration"
 EXPECTED_DURATION_POLICY_VERSION = "all_music_intervals_v1"
+EXPECTED_TRACK_CREDIT_POLICY_VERSION = "effective_track_credits_v2_title_evidence"
 REQUIRED_MIGRATION_VERSION = 69
 EXPECTED_VARIANTS = {
     (2, False),
@@ -64,6 +65,10 @@ def validate_rebuild_report(
     require(
         builder.get("snapshot_builder_version") == EXPECTED_BUILDER_VERSION,
         "snapshot report builder version is not current",
+    )
+    require(
+        builder.get("track_credit_policy") == EXPECTED_TRACK_CREDIT_POLICY_VERSION,
+        "snapshot report track credit policy is not current",
     )
     migration = payload.get("migration")
     require(isinstance(migration, dict), "missing migration report")
@@ -206,6 +211,10 @@ def validate_database(
         "listening duration policy is not current",
     )
     require(
+        aggregation_config.get("track_credit_policy") == EXPECTED_TRACK_CREDIT_POLICY_VERSION,
+        "track credit policy is not current",
+    )
+    require(
         all(row_count > 0 for row_count in aggregation_rows.values()),
         "a Billboard aggregation table is empty",
     )
@@ -219,6 +228,7 @@ def validate_database(
         "context_orphan_count": orphan_count,
         "aggregation_builder_version": EXPECTED_AGGREGATION_BUILDER_VERSION,
         "listening_duration_policy_version": EXPECTED_DURATION_POLICY_VERSION,
+        "track_credit_policy": EXPECTED_TRACK_CREDIT_POLICY_VERSION,
         "aggregation_rows": aggregation_rows,
     }
 

@@ -12,6 +12,7 @@ import pytest
 import yaml  # type: ignore[import-untyped]
 
 from backend.core.migrations import LATEST_SCHEMA_VERSION
+from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 from backend.domains.playback.logical_timeline import LISTENING_DURATION_POLICY_VERSION
 from scripts.rebuild_music_search_derived_data import _success_report
@@ -26,6 +27,30 @@ BUILDER_VERSION = MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 REQUIRED_MUSIC_SEARCH_MIGRATION = 69
 AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v4_all_duration"
 VARIANTS = ((2, True), (3, True), (2, False), (3, False))
+
+
+@pytest.mark.parametrize("stale_source", ["report", "aggregate"])
+def test_preflight_rejects_previous_credit_policy_even_with_ready_old_builder(
+    tmp_path, stale_source
+):
+    database, rebuild_report, _ = _build_preflight_fixture(tmp_path)
+    spec = importlib.util.spec_from_file_location(
+        "credit_policy_preflight", PRODUCTION / "validate-music-search-preflight.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.EXPECTED_TRACK_CREDIT_POLICY_VERSION == TRACK_CREDIT_POLICY_VERSION
+    payload = json.loads(rebuild_report.read_text())
+    if stale_source == "report":
+        payload["builder"]["track_credit_policy"] = "previous-credit-policy"
+        with pytest.raises(SystemExit, match="snapshot report track credit policy is not current"):
+            module.validate_rebuild_report(payload)
+    else:
+        with sqlite3.connect(database) as conn:
+            conn.execute("DELETE FROM agg_config WHERE key='track_credit_policy'")
+        semantic, variants = module.validate_rebuild_report(payload)
+        with pytest.raises(SystemExit, match="track credit policy is not current"):
+            module.validate_database(database, semantic, variants)
 
 
 def _build_preflight_fixture(
@@ -63,6 +88,10 @@ def _build_preflight_fixture(
         INSERT INTO agg_weekly_albums VALUES (1, 30000);
         INSERT INTO agg_weekly_artists VALUES (1, 30000);
         """
+    )
+    conn.execute(
+        "INSERT INTO agg_config(key,value) VALUES ('track_credit_policy',?)",
+        (TRACK_CREDIT_POLICY_VERSION,),
     )
     migrations = [
         (35, "search identity split"),
@@ -217,6 +246,7 @@ def test_preflight_validator_requires_migration_variants_builder_and_zero_orphan
         "context_orphan_count": 0,
         "aggregation_builder_version": AGGREGATION_BUILDER_VERSION,
         "listening_duration_policy_version": LISTENING_DURATION_POLICY_VERSION,
+        "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
         "aggregation_rows": {"tracks": 1, "albums": 1, "artists": 1},
         "integrity_check": "ok",
         "required_migration_version": REQUIRED_MUSIC_SEARCH_MIGRATION,

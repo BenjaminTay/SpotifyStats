@@ -18,6 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from backend.core import db as db_mod  # noqa: E402
 from backend.core.db import get_db  # noqa: E402
 from backend.core.migrations import MIGRATIONS, run_migrations  # noqa: E402
+from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION  # noqa: E402
 from backend.domains.music_search.context import (  # noqa: E402
     MUSIC_SEARCH_CHART_BUILDER_VERSION,
     MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION,
@@ -311,6 +312,7 @@ def _success_report(
             "filter_fingerprint_version": MUSIC_SEARCH_FILTER_FINGERPRINT_VERSION,
             "snapshot_builder_version": MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
             "chart_builder_version": MUSIC_SEARCH_CHART_BUILDER_VERSION,
+            "track_credit_policy": TRACK_CREDIT_POLICY_VERSION,
         },
         "migration": migration,
         "variants": variants,

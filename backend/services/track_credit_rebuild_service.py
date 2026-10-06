@@ -182,7 +182,9 @@ def _publish_role_only_revision(conn: Connection, revision: int) -> bool:
     )
 
     contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
-    statistics_promoted = promote_role_only_music_search_snapshots(conn, contexts)
+    statistics_promoted = promote_role_only_music_search_snapshots(
+        conn, contexts, base_credit_revision=active_revision
+    )
 
     # Role labels affect candidate presentation, but canonical artist
     # membership and every aggregate/statistics value remain unchanged.

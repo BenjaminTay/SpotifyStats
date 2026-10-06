@@ -72,6 +72,38 @@ def forbid(*args, **kwargs):
     pytest.fail("GET crossed publication boundary")
 
 
+@pytest.mark.parametrize("family", service.VERSIONS)
+def test_code_only_credit_policy_change_serves_old_facts_as_warming_without_public_write(
+    isolated, monkeypatch, family
+):
+    from backend.core.job_queue import JobQueue
+    from backend.domains.metadata import track_credits
+    from backend.services import analysis_records_service, analysis_stats_service
+
+    params, key, old_revision, version = build(family)
+    before_db = isolated[0].read_bytes()
+    before_sidecar = store.path().read_bytes()
+    monkeypatch.setattr(track_credits, "TRACK_CREDIT_POLICY_VERSION", "new-credit-policy")
+    _, new_key, new_revision, new_version = context(family)
+    assert new_revision != old_revision
+    assert (new_key, new_version) == (key, version)
+    monkeypatch.setattr(analysis_stats_service, "_build_analysis_stats", forbid)
+    monkeypatch.setattr(analysis_records_service, "_get_analysis_records_uncached", forbid)
+    monkeypatch.setattr(store, "publish", forbid)
+    monkeypatch.setattr(JobQueue, "enqueue_if_not_pending", forbid)
+
+    endpoint = "stats" if family == "analysis_stats" else "records"
+    response = TestClient(app).get(
+        f"/api/analysis/{endpoint}", params=params, headers={SURFACE_HEADER: "public-readonly"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["snapshot"]["status"] == "warming"
+    assert response.json()["snapshot"]["source_revision"] == old_revision
+    assert response.json()["snapshot"]["target_revision"] == new_revision
+    assert isolated[0].read_bytes() == before_db
+    assert store.path().read_bytes() == before_sidecar
+
+
 @pytest.mark.contract
 def test_public_legacy_record_ids_are_normalized_without_rebuilding_snapshot(isolated, monkeypatch):
     from backend.core.job_queue import JobQueue

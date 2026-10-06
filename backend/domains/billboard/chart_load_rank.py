@@ -35,7 +35,10 @@ def billboard_revision_state() -> tuple:
     from backend.core.db import get_db
     from backend.domains.metadata.artist_identity import get_identity_state
     from backend.domains.metadata.spotify_album_credits import album_credit_revision
-    from backend.domains.metadata.track_credits import get_track_credit_state
+    from backend.domains.metadata.track_credits import (
+        TRACK_CREDIT_POLICY_VERSION,
+        get_track_credit_state,
+    )
     from backend.domains.metadata.track_identity import get_track_identity_revision
     from backend.domains.playback.album_projects import get_album_project_revision
     from backend.domains.playback.l3_album_attribution import (
@@ -56,6 +59,7 @@ def billboard_revision_state() -> tuple:
             get_album_project_revision(conn),
             get_l3_album_attribution_revision(conn),
             album_credit_revision(conn),
+            TRACK_CREDIT_POLICY_VERSION,
         )
     finally:
         conn.close()

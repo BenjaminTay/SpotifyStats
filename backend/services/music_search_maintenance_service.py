@@ -19,6 +19,7 @@ from backend.domains.music_search.context import (
     build_music_search_filter_context,
     legacy_v2_statistics_identity,
     legacy_v2_statistics_source_revision,
+    music_search_snapshot_policy_key,
     music_search_variant_fingerprint,
 )
 from backend.domains.music_search.index import (
@@ -198,6 +199,12 @@ def _adopt_legacy_v2_snapshot_set(
     contexts: tuple[MusicSearchFilterContext, ...],
 ) -> bool:
     """Re-key an exact current v2 set without recalculating statistics."""
+    # Pre-policy rows cannot prove which resolver produced their facts. They
+    # remain serving LKGs, but maintenance must rebuild them under current rules.
+    if "policy_key" not in {
+        row[1] for row in conn.execute("PRAGMA table_info(music_search_snapshot_meta)")
+    }:
+        return False
     legacy = [legacy_v2_statistics_identity(conn, context) for context in contexts]
     legacy_bases = {base for base, _fingerprint in legacy}
     if len(legacy_bases) != 1:
@@ -207,7 +214,7 @@ def _adopt_legacy_v2_snapshot_set(
     rows = conn.execute(
         f"""SELECT snapshot_key, filter_fingerprint, status, builder_version,
                    merge_level, dynamic_threshold, created_at, activated_at,
-                   last_accessed_at, source_revision, semantic_base_key
+                   last_accessed_at, source_revision, semantic_base_key, policy_key
             FROM music_search_snapshot_meta
             WHERE filter_fingerprint IN ({placeholders})""",
         tuple(legacy_fingerprints),
@@ -221,6 +228,11 @@ def _adopt_legacy_v2_snapshot_set(
     ):
         selected_rows = _source_equivalent_legacy_v2_rows(conn, contexts)
     if selected_rows is None or any(row is None for row in selected_rows):
+        return False
+    if any(
+        str(row[11] or "") != music_search_snapshot_policy_key(context)
+        for context, row in zip(contexts, selected_rows)
+    ):
         return False
 
     with conn:
@@ -333,7 +345,7 @@ def _source_equivalent_legacy_v2_rows(
         rows = conn.execute(
             """SELECT snapshot_key, filter_fingerprint, status, builder_version,
                       merge_level, dynamic_threshold, created_at, activated_at,
-                      last_accessed_at, source_revision, semantic_base_key
+                      last_accessed_at, source_revision, semantic_base_key, policy_key
                FROM music_search_snapshot_meta
                WHERE semantic_base_key=?""",
             (base,),

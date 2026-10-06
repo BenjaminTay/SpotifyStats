@@ -7,6 +7,7 @@ import json
 import logging
 import sqlite3
 import time
+from dataclasses import replace
 from typing import Any, Literal, cast
 
 import pandas as pd
@@ -1227,6 +1228,8 @@ def prepare_music_search_snapshot_set(
 def promote_role_only_music_search_snapshots(
     conn: sqlite3.Connection,
     contexts: tuple[MusicSearchFilterContext, ...],
+    *,
+    base_credit_revision: int,
 ) -> bool:
     """Re-key exact statistics after a proven role-only credit revision.
 
@@ -1257,7 +1260,9 @@ def promote_role_only_music_search_snapshots(
                 MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION,
             ),
         ).fetchone()
-        if row is None:
+        if row is None or str(row["policy_key"] or "") != music_search_snapshot_policy_key(
+            replace(context, track_credit_revision=base_credit_revision)
+        ):
             return False
         sources.append((context, row))
 

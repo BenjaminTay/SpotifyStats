@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from backend.core.job_queue import Job
+from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
 from backend.services import artist_identity_rebuild_service as rebuild
 
 
@@ -55,6 +56,10 @@ def _database(path) -> None:
         );
         INSERT INTO music_search_index_state VALUES (1, NULL, NULL, NULL, NULL);
         """
+    )
+    conn.execute(
+        "INSERT INTO agg_config VALUES ('track_credit_policy',?)",
+        (TRACK_CREDIT_POLICY_VERSION,),
     )
     conn.commit()
     conn.close()
