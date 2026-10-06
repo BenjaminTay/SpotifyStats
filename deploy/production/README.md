@@ -239,7 +239,9 @@ Online Backup，但不得停服或替换数据库。
 2. 将备份复制到 `backups/.release-stage.*`，在目标 API 镜像中关闭
    `SPOTIFY_STATS_SEARCH_STARTUP_REBUILD`，执行一次
    `rebuild_music_search_derived_data.py --require-all-ready --statistics-reuse-only`；候选版本变化时只重建
-   候选，统计 fingerprint 没有变化时四个变体必须精确复用；
+   候选，统计 fingerprint 没有变化时四个变体必须精确复用；当前四个 Year-End 投影也必须已准备，
+   缺失时直接拒绝，不能在候选预算内补建周榜明细或年度统计。准备副本同源移植当前四个 fingerprint
+   的搜索 context、周榜明细和年度投影，保留目标其他历史 key；
 3. 只有 migration 69、当前语义精确四个 fingerprint、搜索 builder v10、Billboard 聚合 v4、
    收听时长策略 `all_music_intervals_v1`、搜索 context orphan=0、
    `integrity_check=ok` 以及宿主容量全部通过，才保留预检副本；报告写入
@@ -263,7 +265,7 @@ Break Glass 调用中启用 `restart_current_backend`。workflow 只重启当前
 
 一次性统计引导默认要求 `MemAvailable >= 2304MiB`，覆盖当前真实库约 1.83GiB 的冷建峰值并留出
 约 20% 余量。正常发布固定使用
-`--statistics-reuse-only`，统计不能精确复用时会在任何候选/统计重建前失败，因此独立使用
+`--statistics-reuse-only`，四套统计或其当前年度投影不能精确复用时会在任何候选/统计重建前失败，因此独立使用
 `SEARCH_PREFLIGHT_REUSE_MIN_AVAILABLE_MIB=640` 的候选索引预算。前者应覆盖当前四变体真实冷建峰值
 约 1.83GiB，后者相对候选重建峰值 318.984MiB 保留约 2 倍预算；两者都不得在没有新实测的
 情况下继续调低。可用磁盘始终要求 `>= max(1GiB, 数据库大小 × 4)`。发布脚本不会在 live DB 上

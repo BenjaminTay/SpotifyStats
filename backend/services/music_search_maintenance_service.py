@@ -508,7 +508,21 @@ def _rebuild_current_music_search_derived_data(
     # Reuse attribution only for an exact ready set or a delta whose complete
     # base dependency proof still matches. Other changes take the full planner.
     contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
+    if statistics_reuse_only:
+        if _revalidated_snapshot_set_report(conn, contexts) is None:
+            raise MusicSearchStatisticsReuseRequiredError(
+                "all four exact music-search statistics variants must be maintained separately"
+            )
+        projection_status = year_end_projection_set_status(conn, contexts)
+        if projection_status["status"] != "ready" or projection_status["ready_count"] != 4:
+            raise MusicSearchStatisticsReuseRequiredError(
+                "all four exact music-search Year-End projections must be maintained separately"
+            )
     attribution_ready = attribution_dependencies_ready(conn)
+    if statistics_reuse_only and not attribution_ready:
+        raise MusicSearchStatisticsReuseRequiredError(
+            "L3 album attribution dependencies must be maintained separately"
+        )
     exact_ready = attribution_ready and _revalidated_snapshot_set_report(conn, contexts) is not None
     incremental_plan = (shared_full_snapshot_plan or {}).get("incremental_snapshot_plan")
     incremental_attribution_ready = (
@@ -516,7 +530,7 @@ def _rebuild_current_music_search_derived_data(
         and isinstance(incremental_plan, dict)
         and incremental_snapshot_dependencies_ready(conn, contexts, incremental_plan)
     )
-    if not exact_ready and not incremental_attribution_ready:
+    if not statistics_reuse_only and not exact_ready and not incremental_attribution_ready:
         # Maintenance is also used by compact test databases and by older local
         # databases during upgrade.  Materialise the derived attribution schema
         # before planning instead of assuming migration 68 has already run.
@@ -631,25 +645,30 @@ def _rebuild_current_music_search_derived_data(
         if shared_frame_fallback_reason is not None:
             snapshot_set_report["strategy"] = "full_fallback"
             snapshot_set_report["fallback_reason"] = shared_frame_fallback_reason
-    try:
-        year_end_projection_report = ensure_year_end_projection_set(conn, contexts)
-    except Exception as exc:
-        # Core context snapshots have already been atomically published.  A
-        # secondary Year-End projection failure must remain observable without
-        # downgrading candidate or context serving.
-        logger.exception("Music-search Year-End projection maintenance failed")
-        fail_pending_year_end_projection_set(
-            conn,
-            contexts,
-            error_type=type(exc).__name__,
-        )
-        conn.commit()
-        year_end_projection_report = {
-            "status": "failed",
-            "ready_count": 0,
-            "failed_count": len(contexts),
-            "error_type": type(exc).__name__,
-        }
+    if statistics_reuse_only:
+        # Reuse-only deployment is a read-only contract for secondary facts,
+        # not permission to reconstruct a ledger or backfill annual rows.
+        year_end_projection_report = projection_status
+    else:
+        try:
+            year_end_projection_report = ensure_year_end_projection_set(conn, contexts)
+        except Exception as exc:
+            # Core context snapshots have already been atomically published.  A
+            # secondary Year-End projection failure must remain observable without
+            # downgrading candidate or context serving.
+            logger.exception("Music-search Year-End projection maintenance failed")
+            fail_pending_year_end_projection_set(
+                conn,
+                contexts,
+                error_type=type(exc).__name__,
+            )
+            conn.commit()
+            year_end_projection_report = {
+                "status": "failed",
+                "ready_count": 0,
+                "failed_count": len(contexts),
+                "error_type": type(exc).__name__,
+            }
     snapshot_set_report["year_end_projection"] = year_end_projection_report
     default_snapshot = snapshot_set_report["variants"][0]
     return {

@@ -1,7 +1,7 @@
 # 曲目署名覆盖与标题解析验收（进行中）
 
 > 问题：SS-2026-10-06-001；最后核验：2026-10-07。
-> 当前：业务代码固定 `e4929e812f90cfc5dfa9e42ef731b11b5897ff75`，已推送 main；S0–S4 完成，默认完整全栈八阶段 PASS。S5 正式发布进行中，现网业务镜像尚未切换。
+> 当前：业务代码固定 `e4929e812f90cfc5dfa9e42ef731b11b5897ff75`，仅文档增量发布 SHA 为 `3e2c39425fe9b7e5d520935fc5e3e2dc89f0ef27`，已推送 main；S0–S4 完成，默认完整全栈八阶段 PASS。S5 第二次发布在副本预检期间 SSH 断开，连接现已恢复，三容器仍为旧版daf098ca且healthy；必要补修进行中，不能登记为已发布。
 
 ## 真实副本前后对照
 
@@ -72,4 +72,22 @@ Come Alive 的历史改名、Henri René and / & 名称变体、Super Freaky Gir
 - 搜索四变体全部ready、schema88、当前署名policy；准备耗时32,165.568ms，进程峰值819MiB。封存副本integrity_check=ok、context orphan=0；source marker证明原始、自动、人工、身份及审计事实不变。
 - 上传后再次用目标镜像确认与live source一致、4精确变体ready。准备文件原子安装为 `/opt/spotify-stats/backups/music-search-resume.db`；原文件恢复性移至 `music-search-resume-pre-credit-20261006T162300Z.db`，没有删除。正式发布继续走640MiB候选预算和 `--statistics-reuse-only`，不在live DB冷建。
 
-生产镜像切换、两端API与真实浏览器专项待正式发布完成后补记；结束后归档[实施计划](../plans/2026-10-06-track-credit-resolution-plan.md)。
+## S5 第二次发布失败与待恢复边界
+
+仅文档阶段提交 `3e2c39425fe9b7e5d520935fc5e3e2dc89f0ef27` 相对 e4929e81 无业务、脚本或镜像配置变化。[第二次正式发布](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37497317613)的质量、full/showcase/dual、镜像构建、精确镜像ref及TCR运输均通过；Deploy commit 失败，不登记为已发布。
+
+部署日志（UTC）确认：16:53:59完成 `/opt/spotify-stats/backups/spotify-stats-pre-release-3e2c39425fe9-20261006T165352Z.db` Online Backup；16:54:49续建判定 `reused=true reason=source_equivalent_exact_statistics_resume ready_rows=12`，随后执行 `--statistics-reuse-only` 候选维护与校验；16:56:50仍在运行，17:01:18 SSH `Broken pipe`、exit255。未出现预检完成、停Backend、原子数据库替换或镜像切换日志。ready_rows12是含历史行的续建库存，不代替当前四精确变体ready证明。
+
+故障前实际 `docker compose ps` 仍为 daf098ca 三容器healthy；故障后SSH直连及经既有代理均在banner交换超时，生产SSH网关HTTP亦超时。TCP22握手可达，但不能据此判断应用健康。尚不能确认资源压力、进程残留或网络/主机故障原因，也不能保证容器未在断线后继续执行。没有再次触发部署、强制重启主机、删除恢复点或削弱发布门禁。
+
+北京时间01:05恢复连接：旧daf098ca三容器healthy，private capability也返回该SHA；无残留preflight容器或deploy/prepare/rebuild进程。主机load51.14、swap1985/1987MiB，随后vmstat趋于空闲；磁盘有13GiB可用。kernel记有01:04:29 `Under memory pressure`，未找到OOM kill；不将原因描述为已确认的OOM。
+
+失败续建库经独立Online Backup保存为 `music-search-resume-after-failed-3e2c3942-20261007T010800Z.db`，integrity=ok。限512MiB/禁swap/0.5CPU只读探针确认当前聚合、候选及四精确变体ready；四Year-End投影在断线后也完成，说明没有持续残留重建进程。本机原完整candidate从准备时已含当前四组周榜明细（每组15,363或15,372行）、Year-End meta5/entity550/state1。
+
+必要修复定位：原13表installer没有携带当前fingerprint的周榜明细/Year-End投影，而维护service即使 `statistics_reuse_only=True` 仍无条件ensure年度投影；缺明细时回调 `build_exact_weekly_ledger_for_context`，越过640MiB候选预算进入重计算。补修同源原子安装当前四fingerprint的相关派生表、保留target其他历史键，并让仅复用模式先只读检查年度投影及L3 attribution，缺失直接拒绝，禁止secondary冷建。不弱化四精确变体或源漂移门禁。
+
+真实补修探针 `/tmp/spotify-credit-resolution.oIlhRJ/secondary-install-proof.py` 在正式维护后备份的独立副本验证：Year-End ready0→4，移植当前周榜明细61,470行、年度meta20行、实体年度2,200行及4条投影state；与原完整prepared artifact当前行逐项一致，target其他历史secondary行保持，完整source marker保持、integrity=ok。17表安装后 `--statistics-reuse-only` 为 `revalidated_existing_snapshot_set`，31.522ms、峰值108.047MiB。修改一条原始播放后明确拒绝，17张派生表全部保持。正/负副本保存在本机 `credit-secondary-proof.fy55yx_1`；没有修改正式库。
+
+补修最终94项专项、Ruff/format、两个实现模块Mypy通过；独立差量审查53项通过，无阻挡。审查曾定位L3依赖未ready时只跳过planner却仍可返回ready，现已改为预先拒绝，缺失/failed/旧policy/track revision及album project revision不匹配5种真实state均拒绝且DB不变。冻结后在同一真实正向副本重新执行仅复用：15.769ms、峰值108.234MiB，四变体全部reused、candidate revalidated，DB/WAL大小无变化；这是两次观测，不作为稳定P95。S0–S4默认完整全栈e4929e81的证据范围保持，新发布补修另以专项、真实副本与最终生产验收证明。
+
+下一步在明确副本验证补修后续行既有发布、两端API与真实浏览器专项。生产目标版本专项尚未执行；实施计划保持进行中，不归档或标完成。结束后归档[实施计划](../plans/2026-10-06-track-credit-resolution-plan.md)。

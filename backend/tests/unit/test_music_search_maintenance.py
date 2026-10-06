@@ -11,6 +11,8 @@ from backend.core.migrations import (
     migrate_042,
     migrate_046,
     migrate_060,
+    migrate_068,
+    migrate_069,
 )
 from backend.domains.music_search import context as context_module
 from backend.domains.music_search import index as index_module
@@ -18,6 +20,7 @@ from backend.domains.music_search import normalization as normalization_module
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 from backend.domains.music_search.revisions import bump_music_search_revisions
 from backend.domains.music_search.variants import build_music_search_variant_contexts
+from backend.domains.playback.l3_album_attribution import L3_ALBUM_ATTRIBUTION_POLICY_VERSION
 from backend.services import music_search_maintenance_service as maintenance
 
 pytestmark = pytest.mark.unit
@@ -67,6 +70,13 @@ def _conn() -> sqlite3.Connection:
 def _seed_ready_candidate_and_statistics(
     conn: sqlite3.Connection,
 ) -> tuple:
+    migrate_068(conn)
+    migrate_069(conn)
+    conn.execute(
+        "UPDATE l3_album_attribution_revision_state SET status='ready',policy_version=?,mapping_digest='fixture-ready'",
+        (L3_ALBUM_ATTRIBUTION_POLICY_VERSION,),
+    )
+    conn.commit()
     maintenance.rebuild_music_search_index(conn)
     contexts = build_music_search_variant_contexts(
         conn,
@@ -91,6 +101,7 @@ def _seed_ready_candidate_and_statistics(
         ],
     )
     conn.commit()
+    _seed_ready_year_end_projection_states(conn, contexts)
     return contexts
 
 
@@ -298,6 +309,8 @@ def test_enqueue_queues_missing_projection_for_ready_snapshot_set_and_marks_warm
     contexts = _seed_ready_candidate_and_statistics(conn)
     migrate_042(conn)
     migrate_046(conn)
+    conn.execute("DELETE FROM music_search_year_end_projection_state")
+    conn.commit()
     captured = []
 
     class Queue:
@@ -326,6 +339,8 @@ def test_enqueue_failure_exposes_pending_projection_as_failed(monkeypatch) -> No
     _seed_ready_candidate_and_statistics(conn)
     migrate_042(conn)
     migrate_046(conn)
+    conn.execute("DELETE FROM music_search_year_end_projection_state")
+    conn.commit()
 
     class Queue:
         def enqueue_if_not_pending(self, job):
@@ -598,7 +613,7 @@ def test_year_end_failure_does_not_downgrade_ready_core_snapshots(monkeypatch) -
 
     report = maintenance.rebuild_current_music_search_derived_data(
         conn,
-        statistics_reuse_only=True,
+        statistics_reuse_only=False,
     )
 
     assert report["status"] == "ready"
@@ -657,6 +672,93 @@ def test_statistics_reuse_only_fails_before_any_expensive_rebuild(monkeypatch) -
             conn,
             statistics_reuse_only=True,
         )
+
+
+def test_statistics_reuse_only_revalidates_secondary_without_building(monkeypatch) -> None:
+    conn = _conn()
+    _seed_ready_candidate_and_statistics(conn)
+    before = list(conn.iterdump())
+    monkeypatch.setattr(
+        maintenance,
+        "ensure_year_end_projection_set",
+        lambda *_args, **_kwargs: pytest.fail("reuse-only called secondary builder"),
+    )
+    report = maintenance.rebuild_current_music_search_derived_data(conn, statistics_reuse_only=True)
+    assert report["year_end_projection"]["status"] == "ready"
+    assert report["year_end_projection"]["ready_count"] == 4
+    assert list(conn.iterdump()) == before
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "DELETE FROM music_search_year_end_projection_state WHERE snapshot_key=?",
+        "UPDATE music_search_year_end_projection_state SET status='pending' WHERE snapshot_key=?",
+        "UPDATE music_search_year_end_projection_state SET status='failed' WHERE snapshot_key=?",
+        "UPDATE music_search_year_end_projection_state SET builder_version='old' WHERE snapshot_key=?",
+        "DROP TABLE music_search_year_end_projection_state",
+    ],
+)
+def test_statistics_reuse_only_missing_secondary_fails_before_candidate_or_backfill(
+    monkeypatch,
+    mutation: str,
+) -> None:
+    conn = _conn()
+    contexts = _seed_ready_candidate_and_statistics(conn)
+    conn.execute(mutation, (contexts[0].filter_fingerprint,) if "?" in mutation else ())
+    conn.commit()
+    before = list(conn.iterdump())
+    for name in (
+        "_ensure_current_music_search_candidate_index",
+        "ensure_year_end_projection_set",
+        "build_music_search_snapshot_set",
+    ):
+        monkeypatch.setattr(
+            maintenance,
+            name,
+            lambda *_args, **_kwargs: pytest.fail("reuse-only failure entered rebuild/backfill"),
+        )
+    with pytest.raises(maintenance.MusicSearchStatisticsReuseRequiredError, match="Year-End"):
+        maintenance.rebuild_current_music_search_derived_data(conn, statistics_reuse_only=True)
+    assert list(conn.iterdump()) == before
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "DROP TABLE l3_album_attribution_revision_state",
+        "UPDATE l3_album_attribution_revision_state SET status='failed'",
+        "UPDATE l3_album_attribution_revision_state SET policy_version='stale'",
+        "UPDATE l3_album_attribution_revision_state SET track_identity_revision=track_identity_revision+1",
+        "UPDATE l3_album_attribution_revision_state SET album_project_revision=album_project_revision+1",
+    ],
+)
+def test_statistics_reuse_only_rejects_unready_attribution_without_planning_or_writes(
+    monkeypatch,
+    mutation: str,
+) -> None:
+    from backend.domains.playback import l3_album_attribution
+
+    conn = _conn()
+    _seed_ready_candidate_and_statistics(conn)
+    conn.execute(mutation)
+    conn.commit()
+    before = list(conn.iterdump())
+    for module, name in (
+        (maintenance, "_ensure_current_music_search_candidate_index"),
+        (maintenance, "ensure_year_end_projection_set"),
+        (l3_album_attribution, "reconcile_l3_album_attribution_dependencies"),
+    ):
+        monkeypatch.setattr(
+            module,
+            name,
+            lambda *_args, **_kwargs: pytest.fail("unready reuse-only invoked planning or rebuild"),
+        )
+    with pytest.raises(
+        maintenance.MusicSearchStatisticsReuseRequiredError, match="L3 album attribution"
+    ):
+        maintenance.rebuild_current_music_search_derived_data(conn, statistics_reuse_only=True)
+    assert list(conn.iterdump()) == before
 
 
 @pytest.mark.parametrize("revision_kind", ("playback", "billboard", "metadata", "settings"))
@@ -1086,6 +1188,7 @@ def test_source_equivalent_legacy_set_survives_candidate_generation_change(
             (legacy_fingerprint,),
         )
     conn.commit()
+    _seed_ready_year_end_projection_states(conn, contexts)
     old_generation = maintenance.get_music_search_index_state(conn)["active_generation_id"]
     conn.execute(
         "UPDATE music_search_index_state SET active_generation_id='replacement-generation'"
@@ -1100,7 +1203,7 @@ def test_source_equivalent_legacy_set_survives_candidate_generation_change(
 
     report = maintenance.rebuild_current_music_search_derived_data(
         conn,
-        statistics_reuse_only=True,
+        statistics_reuse_only=False,
     )
 
     assert report["snapshot_set"]["revalidated"] is True

@@ -52,6 +52,10 @@ DERIVED_TABLES = (
     "music_search_entity_context",
     "music_search_candidate_maintenance_state",
     "music_search_snapshot_variant_state",
+    "music_search_weekly_chart_context",
+    "music_search_year_end_meta",
+    "music_search_entity_year_end",
+    "music_search_year_end_projection_state",
     "agg_weekly_tracks",
     "agg_weekly_albums",
     "agg_weekly_track_sources",
@@ -59,6 +63,16 @@ DERIVED_TABLES = (
     "agg_config",
 )
 AGGREGATE_TABLES = tuple(table for table in DERIVED_TABLES if table.startswith("agg_"))
+SCOPED_SNAPSHOT_TABLES = frozenset(
+    {
+        "music_search_snapshot_meta",
+        "music_search_entity_context",
+        "music_search_weekly_chart_context",
+        "music_search_year_end_meta",
+        "music_search_entity_year_end",
+        "music_search_year_end_projection_state",
+    }
+)
 SOURCE_TABLES = tuple(
     dict.fromkeys(
         (
@@ -244,6 +258,13 @@ def _copy_derived_tables(quiescent: Path, staged: Path) -> None:
             staged_columns = _quoted_columns(conn, "staged", table)
             if main_columns != staged_columns:
                 raise ValueError(f"derived table schema mismatch: {table}")
+        contexts = build_music_search_variant_contexts(
+            candidate_lock, _current_filter_values(candidate_lock)
+        )
+        snapshot_keys = tuple(context.filter_fingerprint for context in contexts)
+        if len(set(snapshot_keys)) != 4:
+            raise ValueError("candidate current snapshot matrix is not exact")
+        placeholders = ",".join("?" for _ in snapshot_keys)
         conn.execute("BEGIN IMMEDIATE")
         with conn:
             if source_marker(quiescent) != expected_source:
@@ -253,17 +274,37 @@ def _copy_derived_tables(quiescent: Path, staged: Path) -> None:
                     # Keep target historical metadata referenced by its old
                     # weekly/year-end caches; their policy keys remain stale.
                     continue
-                if table == "music_search_entity_context":
+                if table in SCOPED_SNAPSHOT_TABLES:
                     conn.execute(
-                        "DELETE FROM main.music_search_entity_context WHERE snapshot_key IN (SELECT snapshot_key FROM staged.music_search_snapshot_meta)"
+                        f'DELETE FROM main."{table}" WHERE snapshot_key IN ({placeholders})',
+                        snapshot_keys,
                     )
                 else:
                     conn.execute(f'DELETE FROM main."{table}"')
             for table in tables:
                 columns = _quoted_columns(conn, "main", table)
+                scoped = table in SCOPED_SNAPSHOT_TABLES
+                where = f" WHERE snapshot_key IN ({placeholders})" if scoped else ""
                 conn.execute(
-                    f'INSERT OR REPLACE INTO main."{table}" ({columns}) SELECT {columns} FROM staged."{table}"'
+                    f'INSERT OR REPLACE INTO main."{table}" ({columns}) SELECT {columns} FROM staged."{table}"{where}',
+                    snapshot_keys if scoped else (),
                 )
+            for table in tables:
+                if table not in SCOPED_SNAPSHOT_TABLES or table == "music_search_snapshot_meta":
+                    continue
+                orphan = conn.execute(
+                    f'SELECT 1 FROM main."{table}" child LEFT JOIN main.music_search_snapshot_meta meta ON meta.snapshot_key=child.snapshot_key WHERE child.snapshot_key IN ({placeholders}) AND meta.snapshot_key IS NULL LIMIT 1',
+                    snapshot_keys,
+                ).fetchone()
+                if orphan is not None:
+                    raise ValueError(f"installed current snapshot has orphan rows: {table}")
+            if "music_search_entity_year_end" in tables:
+                orphan = conn.execute(
+                    f"SELECT 1 FROM main.music_search_entity_year_end child LEFT JOIN main.music_search_year_end_meta meta ON meta.snapshot_key=child.snapshot_key AND meta.year=child.year WHERE child.snapshot_key IN ({placeholders}) AND meta.snapshot_key IS NULL LIMIT 1",
+                    snapshot_keys,
+                ).fetchone()
+                if orphan is not None:
+                    raise ValueError("installed current Year-End entity has no annual metadata")
             if aggregate_ready:
                 for state in ("track_credit_state", "artist_identity_state"):
                     if state in available:
