@@ -1,7 +1,7 @@
 # 曲目署名覆盖与标题解析验收（进行中）
 
-> 问题：SS-2026-10-06-001；最后核验：2026-10-06。
-> 当前：S0–S3 已固定为 `1a9afc90`，推送到专用分支；S4 页面验收发现的空时长趋势与发布派生安装遗漏正在收口，尚未推送 main 或切换生产。
+> 问题：SS-2026-10-06-001；最后核验：2026-10-07。
+> 当前：业务代码固定 `e4929e812f90cfc5dfa9e42ef731b11b5897ff75`，已推送 main；S0–S4 完成，默认完整全栈八阶段 PASS。S5 正式发布进行中，现网业务镜像尚未切换。
 
 ## 真实副本前后对照
 
@@ -17,7 +17,7 @@
 | Mitchell Ayres / Jeff Goldblum 两首组合 | 完整组合及误拆实体同时存在 | 完整组合各一个，不展开成员 |
 | Easy | Kacey Musgraves feat. Mark Ronson 占位与独立成员同时存在 | Troye Sivan、Kacey Musgraves、Mark Ronson |
 | The Last Time、Rush、Mother I Sober | 带 of 团体说明的占位 | 独立成员，不添加所属团体 |
-| Quit Playing Games (With My Heart) | Backstreet Boys、My Heart | Backstreet Boys；仅副本已纠正，生产尚未执行 |
+| Quit Playing Games (With My Heart) | Backstreet Boys、My Heart | Backstreet Boys；正式覆盖层已完成曲目级纠正 |
 
 逐行核对 `plays`、`tracks`、`track_artists`、`artists`、`spotify_auto_track_credits` 完全一致；原有34条人工覆盖逐行一致，完整性检查ok。All Night Parking、Fields.、Machine Gun Kelly / mgk、98° / 98º、魏如萱 / Waa Wei 的有效署名保持；不猜别名，也不以Spotify缺席删除真实补充。
 
@@ -39,8 +39,37 @@ Come Alive 的历史改名、Henri René and / & 名称变体、Super Freaky Gir
 - 发布准备/重基原本只复制搜索6表，漏掉新规则聚合；补同源原子安装5个aggregate表、搜索和发布状态，不复制无关weekly/year-end缓存。源证明覆盖原始/自动/人工/身份与审计，current revision不改。最终专项29项及独立13项/新增1项通过；真实副本的治理38+旧派生目标升级后4精确变体ready，聚合与候选一致，credit state=(38,38,ready)，源事实完全一致。改一行plays后实际rebase拒绝且13张派生表不变；38对37拒绝且目标整库不变。漂移探针另发现旧helper会重复执行有失效副作用的migration36，已限定仅缺schema/登记时迁移，完整schema重跑不清空候选。候选写锁和只读WAL行为已独立核验。
 - 第三轮默认全栈预检/质量通过，在发现上述迁移幂等问题后主动停止backend；不计完整Pass。最终SHA重新启动默认完整门禁。
 
-验证服务早期启动遗漏显式Billboard/Analysis sidecar路径，曾在本地 `data/` 写入副本上下文的派生缓存；已停止并用六类明确临时sidecar路径重启。缓存不属于原始事实，本地主库仍保持旧时间戳；不声称所有本地缓存未写。当前验证及后续维护全部指向明确副本，生产原始库未修改。
+验证服务早期启动遗漏显式Billboard/Analysis sidecar路径，曾在本地 `data/` 写入副本上下文的派生缓存；已停止并用六类明确临时sidecar路径重启。缓存不属于原始事实，本地主库仍保持旧时间戳；不声称所有本地缓存未写。当前验证及后续统计准备全部指向明确副本，生产原始事实表未修改；正式覆盖层变更见下文。
 
-## 后续收口
+## 最终本地完整门禁
 
-完成最终副本聚合/搜索、默认完整全栈和桌面/手机视口显示与点击；按大阶段固定提交，再执行CI、受控准备和发布。生产My Heart纠正、备份、源漂移检测、四精确搜索变体及API/浏览器结果单独补记；结束后归档[实施计划](../plans/2026-10-06-track-credit-resolution-plan.md)。
+最终 SHA `e4929e81`、干净工作区，run `20261006T154229.183294Z-a862a8fcde5b`，默认完整模式八阶段全部 PASS，总耗时 1,787,021ms（29分47秒）。实际使用生产 Online Backup 的独立验收副本，HTTP 后端和浏览器均连接该副本。
+
+| 阶段 | 结果 | 耗时 ms |
+| --- | --- | ---: |
+| preflight | PASS | 8,586 |
+| quality | PASS；前端745 passed / 4 skipped，生产构建与hooks通过 | 76,412 |
+| backend | PASS；seed3,335、真实副本integration187 | 696,020 |
+| api | PASS；smoke157、boundary113；热态P95无超过500ms门槛 | 255,709 |
+| browser-routes | PASS；桌面/手机完整路由及五视口重点矩阵 | 400,304 |
+| browser-interactions | PASS；桌面/手机导航、查找和图表交互 | 79,583 |
+| browser-inventory | PASS；40路由视口组合、2,006控件、270主要触控目标，无违规 | 47,610 |
+| browser-compat | PASS；Chromium、Firefox、Playwright WebKit | 222,658 |
+
+第四轮完整门禁在API阶段因隔离sidecar缺少语言覆盖快照返回503，保持FAIL记录；用现有 `rebuild_governance.py` 仅准备验收副本的语言覆盖后，第五轮默认完整门禁全部通过，没有放宽200断言或修改语言业务逻辑。seed日志保留5项warning，其中一项为既有AI后台线程在测试副本清理时的SQLite I/O warning；integration保留LibreSSL warning，不称零警告。
+
+规范报告位于本机 `/var/folders/9h/n_gtpg9s1mgctkbpbn_hvdzw0000gn/T/spotify-fullstack-verification/20261006T154229.183294Z-a862a8fcde5b/summary.json`，兼容副本 `/tmp/spotify-credit-resolution.oIlhRJ/final-fullstack-v5-summary.json`。这些是本地门禁，不替代生产专项。
+
+## S5 正式维护与发布准备
+
+两次业务提交分别为 `1a9afc90`（共用规则、导入防复发与缓存合同）和 `e4929e81`（真实验收发现的空时长趋势、手机周榜及同源派生安装补修），已推送 main。最终版本独立[质量CI](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37487386847)、[部署契约CI](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37487387154)、[镜像运输非部署演练](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37487388404)均success。
+
+首次[正式发布](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37494217721)的质量、三模式和正式镜像构建均success，在准备精确本地ref时失败：维护过程中提前将演练镜像发布为e4929e81正式tag，正式流水线重新构建同一源码的image ID不同，不可变校验正确拒绝覆盖。尚未执行deploy、未停服或替换live DB，现网仍为daf098ca。保留原镜像及失败证据，不删除或覆盖精确tag；通过记录S4完整验收与S5同源准备的文档阶段提交取得新发布SHA，再手动触发既有正式workflow。相对e4929e81仅文档变化，业务代码不变，不再预先推广演练镜像。
+
+- 正式维护前 Online Backup：`/opt/spotify-stats/backups/spotify-stats-pre-credit-maintenance-20261006T154800Z.db`。用既有 `apply_track_credit_override` 仅移除track5585 / artist7727的错误关系，actor=`authorized-maintenance`，幂等键=`credit-policy-v2-my-heart-20261006`。event36、override35、revision37→38，重复调用不新增事件或revision。五张受保护事实表摘要及原有34条覆盖逐行保持，integrity_check=ok。
+- 维护后 Online Backup：`/opt/spotify-stats/backups/spotify-stats-post-credit-maintenance-20261006T161300Z.db`，确认revision38、35条覆盖。通过SSH传至本机独立副本准备，不上传数据库到Git或Actions。
+- 服务器可用内存不足2,304MiB冷建门槛，因此在本机正式备份副本冷建，不调低门槛、不重启旧Backend。实际采用min_ms30000、music_only=true、周五12:00、动态阈值true、合并间隔5分钟；新aggregate rows为tracks49,618 / track_sources69,153 / albums23,071 / artists16,629，state=(38,38,ready)。
+- 搜索四变体全部ready、schema88、当前署名policy；准备耗时32,165.568ms，进程峰值819MiB。封存副本integrity_check=ok、context orphan=0；source marker证明原始、自动、人工、身份及审计事实不变。
+- 上传后再次用目标镜像确认与live source一致、4精确变体ready。准备文件原子安装为 `/opt/spotify-stats/backups/music-search-resume.db`；原文件恢复性移至 `music-search-resume-pre-credit-20261006T162300Z.db`，没有删除。正式发布继续走640MiB候选预算和 `--statistics-reuse-only`，不在live DB冷建。
+
+生产镜像切换、两端API与真实浏览器专项待正式发布完成后补记；结束后归档[实施计划](../plans/2026-10-06-track-credit-resolution-plan.md)。

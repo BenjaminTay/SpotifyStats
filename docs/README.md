@@ -156,7 +156,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
-- [`plans/2026-10-06-track-credit-resolution-plan.md`](plans/2026-10-06-track-credit-resolution-plan.md)：曲目署名覆盖与标题解析修复，完整实施已授权，代码和副本专项已完成，完整验收与发布进行中
+- [`plans/2026-10-06-track-credit-resolution-plan.md`](plans/2026-10-06-track-credit-resolution-plan.md)：曲目署名覆盖与标题解析修复，S0–S4完成、完整全栈PASS，S5同源准备完成，正式发布进行中
 - [`reports/2026-10-06-track-credit-resolution-acceptance.md`](reports/2026-10-06-track-credit-resolution-acceptance.md)：真实生产副本前后对照、原始事实守恒、人工兼容与分阶段验收记录
 - [`plans/2026-09-23-multi-source-music-metadata-roadmap.md`](plans/2026-09-23-multi-source-music-metadata-roadmap.md)：MusicBrainz、Apple Music、曲目语言与封面替代等后续方向的分析记录和重新启动门槛；当前延后
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
