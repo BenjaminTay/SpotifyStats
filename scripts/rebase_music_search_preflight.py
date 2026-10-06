@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sqlite3
@@ -19,9 +20,12 @@ if str(PROJECT_ROOT) not in sys.path:
 from backend.core import db as db_mod  # noqa: E402
 from backend.core.migrations import migrate_035, migrate_036, run_migrations  # noqa: E402
 from backend.domains.metadata.artist_identity import get_identity_revision  # noqa: E402
-from backend.domains.metadata.track_credits import get_track_credit_revision  # noqa: E402
+from backend.domains.metadata.track_credits import (  # noqa: E402
+    TRACK_CREDIT_POLICY_VERSION,
+    get_track_credit_revision,
+)
+from backend.domains.metadata.track_identity import get_track_identity_revision  # noqa: E402
 from backend.domains.music_search.context import (  # noqa: E402
-    billboard_aggregation_revision,
     playback_source_revision,
 )
 from backend.domains.music_search.index import music_search_source_revision  # noqa: E402
@@ -34,6 +38,7 @@ from backend.domains.music_search.snapshot import (  # noqa: E402
 from backend.domains.music_search.variants import (  # noqa: E402
     build_music_search_variant_contexts,
 )
+from backend.services.analysis_snapshot_revision import COMMON, RECORDS, TASTE  # noqa: E402
 from backend.services.music_search_maintenance_service import (  # noqa: E402
     _current_filter_values,
 )
@@ -45,6 +50,35 @@ DERIVED_TABLES = (
     "music_search_index_state",
     "music_search_snapshot_meta",
     "music_search_entity_context",
+    "music_search_candidate_maintenance_state",
+    "music_search_snapshot_variant_state",
+    "agg_weekly_tracks",
+    "agg_weekly_albums",
+    "agg_weekly_track_sources",
+    "agg_weekly_artists",
+    "agg_config",
+)
+AGGREGATE_TABLES = tuple(table for table in DERIVED_TABLES if table.startswith("agg_"))
+SOURCE_TABLES = tuple(
+    dict.fromkeys(
+        (
+            *COMMON,
+            *RECORDS,
+            *TASTE,
+            "spotify_track_credit_sets",
+            "spotify_track_artist_credits",
+            "spotify_track_credit_events",
+            "spotify_album_credit_sets",
+            "spotify_album_credit_events",
+            "track_credit_events",
+            "track_credit_change_sets",
+            "artist_identity_events",
+            "track_identity_events",
+            "version_governance_events",
+            "track_group_migration_audit",
+            "settings",
+        )
+    )
 )
 EXPECTED_VARIANTS = {(level, dynamic) for level in (2, 3) for dynamic in (False, True)}
 
@@ -58,13 +92,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _connect(path: Path, *, readonly: bool) -> sqlite3.Connection:
+def _connect(path: Path, *, readonly: bool, sealed: bool = False) -> sqlite3.Connection:
     if not path.is_file():
         raise ValueError(f"database does not exist: {path.name}")
     if readonly:
-        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro&immutable=1", uri=True)
+        suffix = "&immutable=1" if sealed else ""
+        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro{suffix}", uri=True)
     else:
-        conn = sqlite3.connect(path)
+        conn = sqlite3.connect(path, uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -73,9 +108,41 @@ def _migration_34_ready(conn: sqlite3.Connection) -> bool:
     return conn.execute("SELECT 1 FROM schema_migrations WHERE version=34").fetchone() is not None
 
 
-def source_marker(path: Path) -> dict[str, Any]:
-    conn = _connect(path, readonly=True)
+def _source_contents(conn: sqlite3.Connection) -> dict[str, str]:
+    """Offline exact source proof, including governance and its audit history.
+
+    Aggregates and publication readiness are outputs. Their installation may
+    change while the raw rows and current human decisions stay identical.
+    """
+    values = {}
+    for table in SOURCE_TABLES:
+        info = conn.execute(f'PRAGMA table_info("{table}")').fetchall()
+        if not info:
+            values[table] = "absent"
+            continue
+        excluded = (
+            {"active_aggregate_revision", "rebuild_status", "last_error", "updated_at"}
+            if table in {"track_credit_state", "artist_identity_state"}
+            else set()
+        )
+        if table.endswith("_state"):
+            # Migration-created state timestamps are administrative, unlike
+            # source rows and immutable governance audit timestamps.
+            excluded.add("updated_at")
+        columns = [str(row[1]) for row in info if row[1] not in excluded]
+        quoted = ",".join(f'"{column}"' for column in columns)
+        digest = hashlib.sha256(json.dumps(columns).encode())
+        cursor = conn.execute(f'SELECT json_array({quoted}) FROM "{table}" ORDER BY {quoted}')
+        while rows := cursor.fetchmany(512):
+            digest.update(("\n".join(str(row[0]) for row in rows) + "\n").encode())
+        values[table] = digest.hexdigest()
+    return values
+
+
+def source_marker(path: Path, *, sealed: bool = False) -> dict[str, Any]:
+    conn = _connect(path, readonly=True, sealed=sealed)
     try:
+        conn.execute("BEGIN")
         if not _migration_34_ready(conn):
             raise ValueError(f"migration 34 is missing: {path.name}")
         revisions = get_music_search_revision_state(conn)
@@ -88,7 +155,7 @@ def source_marker(path: Path) -> dict[str, Any]:
                 "candidate": revisions.candidate_revision,
             },
             "playback_audit": playback_source_revision(conn),
-            "billboard_audit": billboard_aggregation_revision(conn),
+            "source_facts": _source_contents(conn),
             "index_source": music_search_source_revision(conn),
             "identity_revision": get_identity_revision(conn),
             "track_credit_revision": get_track_credit_revision(conn),
@@ -123,11 +190,16 @@ def _ensure_identity_split_schema(path: Path) -> None:
                 """INSERT OR IGNORE INTO schema_migrations(version, name)
                    VALUES (35, 'music_search_candidate_statistics_identity_split')"""
             )
-        migrate_036(conn)
-        conn.execute(
-            """INSERT OR IGNORE INTO schema_migrations(version, name)
-               VALUES (36, 'music_search_candidate_ngram_index')"""
-        )
+        ngram_schema = conn.execute("PRAGMA table_info(music_search_document_ngrams)").fetchall()
+        migration_36 = conn.execute("SELECT 1 FROM schema_migrations WHERE version=36").fetchone()
+        if not ngram_schema or migration_36 is None:
+            # This migration deliberately invalidates the old candidate. Do
+            # not rerun it on current backups, especially before drift checks.
+            migrate_036(conn)
+            conn.execute(
+                """INSERT OR IGNORE INTO schema_migrations(version, name)
+                   VALUES (36, 'music_search_candidate_ngram_index')"""
+            )
         conn.commit()
     finally:
         conn.close()
@@ -141,51 +213,113 @@ def _quoted_columns(conn: sqlite3.Connection, schema: str, table: str) -> str:
 
 
 def _copy_derived_tables(quiescent: Path, staged: Path) -> None:
-    conn = _connect(quiescent, readonly=False)
+    # The explicit candidate is an offline writable artifact. Reserve it for
+    # the entire proof/copy transaction so even derived-only updates cannot
+    # race the aggregate readiness proof without advancing source revisions.
+    candidate_lock = _connect(staged, readonly=False)
+    conn = None
     attached = False
     try:
+        candidate_lock.execute("BEGIN IMMEDIATE")
+        expected_source = source_marker(staged)
+        conn = _connect(quiescent, readonly=False)
         conn.execute("PRAGMA foreign_keys=OFF")
-        conn.execute("ATTACH DATABASE ? AS staged", (str(staged.resolve()),))
+        conn.execute("ATTACH DATABASE ? AS staged", (f"{staged.resolve().as_uri()}?mode=ro",))
         attached = True
-        for table in DERIVED_TABLES:
+        available = {
+            row[0] for row in conn.execute("SELECT name FROM main.sqlite_master WHERE type='table'")
+        }
+        source_available = {
+            row[0]
+            for row in conn.execute("SELECT name FROM staged.sqlite_master WHERE type='table'")
+        }
+        if (set(DERIVED_TABLES) & available) != (set(DERIVED_TABLES) & source_available):
+            raise ValueError("derived table inventory mismatch")
+        tables = tuple(table for table in DERIVED_TABLES if table in available)
+        aggregate_ready = current_aggregates_ready(staged)
+        if not aggregate_ready:
+            raise ValueError("candidate aggregate policy is not exact-ready")
+        for table in tables:
             main_columns = _quoted_columns(conn, "main", table)
             staged_columns = _quoted_columns(conn, "staged", table)
             if main_columns != staged_columns:
                 raise ValueError(f"derived table schema mismatch: {table}")
+        conn.execute("BEGIN IMMEDIATE")
         with conn:
-            for table in (
-                "music_search_entity_context",
-                "music_search_snapshot_meta",
-                "music_search_documents_fts",
-                "music_search_document_ngrams",
-                "music_search_documents",
-                "music_search_index_state",
-            ):
-                conn.execute(f'DELETE FROM main."{table}"')
-            for table in (
-                "music_search_index_state",
-                "music_search_documents",
-                "music_search_document_ngrams",
-                "music_search_documents_fts",
-                "music_search_snapshot_meta",
-                "music_search_entity_context",
-            ):
+            if source_marker(quiescent) != expected_source:
+                raise ValueError("search source changed before derived installation")
+            for table in reversed(tables):
+                if table == "music_search_snapshot_meta":
+                    # Keep target historical metadata referenced by its old
+                    # weekly/year-end caches; their policy keys remain stale.
+                    continue
+                if table == "music_search_entity_context":
+                    conn.execute(
+                        "DELETE FROM main.music_search_entity_context WHERE snapshot_key IN (SELECT snapshot_key FROM staged.music_search_snapshot_meta)"
+                    )
+                else:
+                    conn.execute(f'DELETE FROM main."{table}"')
+            for table in tables:
                 columns = _quoted_columns(conn, "main", table)
                 conn.execute(
-                    f'INSERT INTO main."{table}" ({columns}) SELECT {columns} FROM staged."{table}"'
+                    f'INSERT OR REPLACE INTO main."{table}" ({columns}) SELECT {columns} FROM staged."{table}"'
                 )
+            if aggregate_ready:
+                for state in ("track_credit_state", "artist_identity_state"):
+                    if state in available:
+                        conn.execute(
+                            f"UPDATE {state} SET active_aggregate_revision=current_revision,rebuild_status='ready',last_error=NULL,updated_at=datetime('now') WHERE state_id=1"
+                        )
+            if source_marker(staged) != expected_source:
+                raise ValueError("search source changed during derived installation")
         conn.execute("DETACH DATABASE staged")
         attached = False
     finally:
-        if attached:
+        if attached and conn is not None:
             try:
                 conn.execute("DETACH DATABASE staged")
             except sqlite3.Error:
                 pass
+        if conn is not None:
+            conn.close()
+        candidate_lock.rollback()
+        candidate_lock.close()
+
+
+def current_aggregates_ready(path: Path) -> bool:
+    """Require installed proof when aggregates exist; tiny pre-schema fixtures have none."""
+    conn = _connect(path, readonly=True)
+    try:
+        tables = {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        if not (set(AGGREGATE_TABLES) & tables):
+            return True
+        if not set(AGGREGATE_TABLES) <= tables:
+            return False
+        config = dict(conn.execute("SELECT key,value FROM agg_config"))
+        if config.get("track_credit_policy") != TRACK_CREDIT_POLICY_VERSION:
+            return False
+        filters = _current_filter_values(conn)
+        param_hash = db_mod._agg_param_hash(
+            filters["min_ms"],
+            filters["music_only"],
+            filters["bb_week_start_dow"],
+            filters["bb_week_start_hour"],
+            dynamic_threshold=True,
+            max_merge_gap_minutes=filters["max_merge_gap_minutes"],
+            identity_revision=get_identity_revision(conn),
+            track_credit_revision=get_track_credit_revision(conn),
+            track_identity_revision=get_track_identity_revision(conn),
+        )
+        return db_mod.check_agg_valid(conn, param_hash)
+    finally:
         conn.close()
 
 
 def validate_rebased_database(path: Path) -> dict[str, Any]:
+    if not current_aggregates_ready(path):
+        raise ValueError("rebased aggregate policy is not exact-ready")
     conn = _connect(path, readonly=False)
     try:
         contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
@@ -220,6 +354,9 @@ def validate_rebased_database(path: Path) -> dict[str, Any]:
         counts = {
             table: int(conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
             for table in DERIVED_TABLES
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ).fetchone()
         }
         return {
             "integrity_check": integrity,

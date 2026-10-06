@@ -31,7 +31,7 @@
 - Machine Gun Kelly / mgk、中英文名称、98° / 98º 等：存在未消解的身份候选；98° / 98º 和魏如萱 / Waa Wei 在现库还绑定不同 Spotify ID，不按相似名称自动合并。
 - `All Night Parking` 的 Erroll Garner、`Fields.` 的 Grandad Michael：已存 Spotify 数组未列入旧合作署名，不能仅因缺席而删除。
 
-当前标题解析见 [import_data.py](../../backend/core/import_data.py)，共用署名解析见 [track_credits.py](../../backend/domains/metadata/track_credits.py)。解析器只按逗号和 `&` 拆分，且将括号内 `with` 直接视为合作说明；共用规则保留旧行后追加 Spotify 行，canonical 去重不能消除不同实体之间的占位重复。
+修复前的标题入口见 [import_data.py](../../backend/core/import_data.py)，共用署名入口见 [track_credits.py](../../backend/domains/metadata/track_credits.py)。旧解析器按逗号和 `&` 拆分，并将括号内 `with` 直接视为合作说明；旧共用规则保留原有行后追加 Spotify 行，canonical 去重不能消除不同实体之间的占位重复。
 
 ## 2 范围和不做的事项
 
@@ -123,7 +123,7 @@ My Heart 这种未被 Spotify 覆盖、但已定位为普通歌名误识别的�
 | S4 | 专项测试、真实副本前后对照及桌面手机视口验收 | 显示、链接、统计、编辑及恢复均满足下表；本地完整门禁单独报告 |
 | S5 | 经授权固定提交、推送与发布，受控安装派生结果 | CI、备份、三模式门禁、生产 API 与浏览器专项均有实际结果；失败可联合回滚 |
 
-用户已授权完整执行。S0 生产基线已固定；S1–S3 代码实施中，S4 完整验收与 S5 发布尚未完成。只有实际生产验收完成后才将本计划标为完成。
+用户已授权完整执行。S0 生产基线已固定；S1–S3 已提交 `1a9afc90` 并推送专用分支。S4 页面专项已验证主要样本，正在补齐空时长趋势与发布聚合安装合同，再跑最终默认完整全栈；S5 正式发布尚未完成。只有实际生产验收完成后才将本计划标为完成。
 
 ## 7 验收矩阵
 

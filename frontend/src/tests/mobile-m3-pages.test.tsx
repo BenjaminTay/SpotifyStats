@@ -235,7 +235,7 @@ describe('M3 mobile page presentations', () => {
       </MemoryRouter>,
     )
 
-    const row = screen.getByRole('link', { name: /Current Song/ })
+    const row = screen.getByRole('link', { name: /Current Song/ }).closest('.mobile-entity-row') as HTMLElement
     expect(screen.getByRole('link', { name: /Second Song/ })).toBeInTheDocument()
     expect(within(row).getByText('Peak 2')).toBeInTheDocument()
     expect(within(row).getByText('在榜 7周')).toBeInTheDocument()
@@ -282,5 +282,32 @@ describe('M3 mobile page presentations', () => {
     )
     expect(screen.getByRole('heading', { level: 1, name: 'Week 31, 2026' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { level: 1, name: '本周榜单' })).not.toBeInTheDocument()
+  })
+
+  it('keeps a punctuated band intact and links mobile weekly artists independently', () => {
+    const entry = {
+      billboard_week: '2026-08-03', track_id: 5030,
+      track_name: 'Holidays', artist_name: 'Meghan Trainor, Earth, Wind & Fire',
+      artist_names: ['Meghan Trainor', 'Earth, Wind & Fire'],
+      album_name: 'A Very Trainor Christmas', play_count: 4, total_ms: 1, rank: 1,
+    } as WeeklyTrackEntry
+    render(
+      <MemoryRouter>
+        <MobileBillboardWeekly
+          data={{ meta: { all_weeks_desc: ['2026-08-03'] } } as BillboardWeeklyResponse}
+          activeTab="tracks" onTabChange={vi.fn()} selectedWeek="2026-08-03"
+          currentIndex={0} totalWeeks={1} onPreviousWeek={vi.fn()}
+          onNextWeek={vi.fn()} onGoToWeek={vi.fn()} entries={[entry]}
+          previousEntries={[]} historicalEntries={[]}
+          summary={{ maxPlays: 4, totalPlays: 4, newCount: 1, reCount: 0, total: 1 }}
+        />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: 'Holidays' })).toHaveAttribute('href', '/music/tracks/5030?tab=overview')
+    expect(screen.getByRole('link', { name: 'Earth, Wind & Fire' })).toHaveAttribute('href', '/music/artists/Earth%2C%20Wind%20%26%20Fire?tab=overview')
+    expect(screen.getByRole('link', { name: 'Meghan Trainor' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link')).toHaveLength(3)
+    expect(document.querySelector('a a')).toBeNull()
+    expect(document.querySelector('.mobile-entity-subtitle')).toHaveTextContent('Meghan Trainor · Earth, Wind & Fire')
   })
 })

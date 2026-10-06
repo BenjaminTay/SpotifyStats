@@ -31,6 +31,7 @@ from backend.services.music_search_maintenance_service import (  # noqa: E402
 from scripts.rebase_music_search_preflight import (  # noqa: E402
     DERIVED_TABLES,
     _copy_derived_tables,
+    current_aggregates_ready,
     source_marker,
 )
 
@@ -75,6 +76,9 @@ def _validate_partial(path: Path) -> dict[str, Any]:
         counts = {
             table: int(conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
             for table in DERIVED_TABLES
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ).fetchone()
         }
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         return {
@@ -99,6 +103,8 @@ def _recover_resume_artifact(path: Path) -> None:
 
 def _has_exact_reusable_statistics(path: Path) -> bool:
     """Only a complete current stable-fingerprint set may replace baseline data."""
+    if not current_aggregates_ready(path):
+        return False
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     try:

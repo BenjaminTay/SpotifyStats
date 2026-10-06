@@ -439,6 +439,7 @@ def _daily_trend(df: pd.DataFrame, duration_frame: pd.DataFrame | None = None) -
         if not duration_frame.empty
         else pd.Series(dtype="float64", name="hours")
     )
+    hours.index.name = "ts_date"
     daily = pd.concat([counts, hours], axis=1).fillna(0).reset_index().sort_values("ts_date")
     return [
         {"date": str(r.ts_date), "plays": int(r.plays), "hours": round(float(r.hours), 2)}
@@ -517,6 +518,7 @@ def _year_distribution(df: pd.DataFrame, duration_frame: pd.DataFrame | None = N
         if not duration_frame.empty
         else pd.Series(dtype="float64", name="hours")
     )
+    hours.index.name = "ts_year"
     yearly = pd.concat([counts, hours], axis=1).fillna(0).reset_index().sort_values("ts_year")
     return [
         {"year": int(r.ts_year), "plays": int(r.plays), "hours": round(float(r.hours), 2)}

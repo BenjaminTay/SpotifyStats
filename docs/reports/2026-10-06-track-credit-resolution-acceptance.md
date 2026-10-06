@@ -1,7 +1,7 @@
 # 曲目署名覆盖与标题解析验收（进行中）
 
 > 问题：SS-2026-10-06-001；最后核验：2026-10-06。
-> 当前：S0–S3代码与副本专项已完成；完整全栈、固定提交和生产发布尚未收口。
+> 当前：S0–S3 已固定为 `1a9afc90`，推送到专用分支；S4 页面验收发现的空时长趋势与发布派生安装遗漏正在收口，尚未推送 main 或切换生产。
 
 ## 真实副本前后对照
 
@@ -31,6 +31,13 @@ Come Alive 的历史改名、Henri René and / & 名称变体、Super Freaky Gir
 - 前端全量744 passed / 4 skipped，生产构建通过；合法歌曲ID修正仅限旧deployment-profile测试fixture。
 - Ruff、Mypy、detect-secrets hooks与文档审计通过。初次unit/contract2696通过、1个报告fixture失败（缺新policy字段），已在相关脚本组修复验证，不将初次运行记为全量Pass。
 - 首轮默认全栈预检/质量通过，在真实副本暴露成员所属说明边界后主动停止；最终版本另跑默认完整门禁。
+- 第二轮默认全栈预检/质量通过，seed suite 3,321 项通过；发现页面后续修复后，在 integration 阶段主动停止，不记为完整 Pass。
+- 桌面实际点击 Joy Williams、手机视口点击 John Paul White 均进入正确详情；Joy Williams 的 8 次播放、0 小时输入曾使日/年趋势报 500，补齐空时长索引名后相关专项 44 项通过，真实副本服务及页面正常。没有改变 featured 时长归属。
+- 390×844 手机视口的 Safe & Sound 只显示 Taylor Swift、Joy Williams、John Paul White，Holidays 只显示 Meghan Trainor、完整 Earth, Wind & Fire；点分隔、完整名称链接及无横向溢出已实查。完整乐队点击进入正确艺人页；合作曲排行点击 Sabrina Carpenter 同样正常。此处是浏览器视口，不是物理手机验收。
+- `1a9afc90` 镜像运输非部署演练已通过（Actions `37482838306`），现网容器和镜像未变；这不替代最终修复 SHA 的 CI 与发布。
+- 手机周榜此前仍用逗号串展示且整行包链接；改为共用 ArtistLinks 数组渲染，独立歌曲/艺人链接，不产生嵌套 anchor。真实 2023-03-17 周榜 Safe & Sound 显示三位艺人和点分隔，实际点击 Joy Williams 进入正确详情；新艺人目标至少44px。补修后前端全量745 passed / 4 skipped，production build通过。
+- 发布准备/重基原本只复制搜索6表，漏掉新规则聚合；补同源原子安装5个aggregate表、搜索和发布状态，不复制无关weekly/year-end缓存。源证明覆盖原始/自动/人工/身份与审计，current revision不改。最终专项29项及独立13项/新增1项通过；真实副本的治理38+旧派生目标升级后4精确变体ready，聚合与候选一致，credit state=(38,38,ready)，源事实完全一致。改一行plays后实际rebase拒绝且13张派生表不变；38对37拒绝且目标整库不变。漂移探针另发现旧helper会重复执行有失效副作用的migration36，已限定仅缺schema/登记时迁移，完整schema重跑不清空候选。候选写锁和只读WAL行为已独立核验。
+- 第三轮默认全栈预检/质量通过，在发现上述迁移幂等问题后主动停止backend；不计完整Pass。最终SHA重新启动默认完整门禁。
 
 验证服务早期启动遗漏显式Billboard/Analysis sidecar路径，曾在本地 `data/` 写入副本上下文的派生缓存；已停止并用六类明确临时sidecar路径重启。缓存不属于原始事实，本地主库仍保持旧时间戳；不声称所有本地缓存未写。当前验证及后续维护全部指向明确副本，生产原始库未修改。
 

@@ -36,6 +36,7 @@ from scripts.prepare_music_search_resume import (  # noqa: E402
     _migrate,
     _recover_resume_artifact,
     _validate_partial,
+    current_aggregates_ready,
     source_marker,
 )
 
@@ -77,6 +78,8 @@ def _has_compatible_partial_statistics(path: Path) -> bool:
                    OR filter_fingerprint IN ({placeholders})""",
             (semantic_base_key, *expected),
         ).fetchall()
+        if rows and not current_aggregates_ready(path):
+            return False
         seen: set[str] = set()
         for row in rows:
             fingerprint = str(row[1])

@@ -13,6 +13,7 @@ import pytest
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 from backend.domains.music_search.variants import build_music_search_variant_contexts
 from backend.services.music_search_maintenance_service import _current_filter_values
+from backend.tests.unit.test_rebase_music_search_preflight_script import _seed_aggregate_proof
 
 pytestmark = pytest.mark.unit
 
@@ -61,6 +62,7 @@ def _run_bootstrap(baseline: Path, resume: Path, report: Path) -> subprocess.Com
 def _seed_exact_statistics(path: Path) -> None:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
+    _seed_aggregate_proof(conn)
     contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
     conn.executemany(
         """INSERT INTO music_search_snapshot_meta(
@@ -143,6 +145,7 @@ def test_bootstrap_resume_preserves_source_equivalent_partial_statistics(tmp_pat
 
     conn = sqlite3.connect(resume)
     conn.row_factory = sqlite3.Row
+    _seed_aggregate_proof(conn)
     context = build_music_search_variant_contexts(conn, _current_filter_values(conn))[0]
     conn.execute(
         """INSERT INTO music_search_snapshot_meta(

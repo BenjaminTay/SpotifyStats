@@ -17,6 +17,9 @@ from backend.core.migrations import (
     migrate_035,
     run_migrations,
 )
+from backend.domains.metadata.artist_identity import get_identity_revision
+from backend.domains.metadata.track_credits import get_track_credit_revision
+from backend.domains.metadata.track_identity import get_track_identity_revision
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 from backend.domains.music_search.index import music_search_source_revision
 from backend.domains.music_search.variants import build_music_search_variant_contexts
@@ -26,6 +29,25 @@ pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts" / "rebase_music_search_preflight.py"
+
+
+def _seed_aggregate_proof(conn: sqlite3.Connection) -> None:
+    if not conn.execute("PRAGMA table_info(agg_config)").fetchall():
+        return
+    filters = _current_filter_values(conn)
+    param_hash = db_mod._agg_param_hash(
+        filters["min_ms"],
+        filters["music_only"],
+        filters["bb_week_start_dow"],
+        filters["bb_week_start_hour"],
+        dynamic_threshold=True,
+        max_merge_gap_minutes=filters["max_merge_gap_minutes"],
+        identity_revision=get_identity_revision(conn),
+        track_credit_revision=get_track_credit_revision(conn),
+        track_identity_revision=get_track_identity_revision(conn),
+    )
+    proof = {**db_mod._aggregation_fact_dependencies(conn), "param_hash": param_hash}
+    conn.executemany("INSERT OR REPLACE INTO agg_config(key,value) VALUES (?,?)", proof.items())
 
 
 def _create_baseline(path: Path) -> None:
@@ -58,6 +80,7 @@ def _create_baseline(path: Path) -> None:
 def _populate_staged(path: Path) -> None:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
+    _seed_aggregate_proof(conn)
     conn.execute(
         """UPDATE music_search_index_state
            SET active_generation_id='staged-generation', status='ready',
@@ -190,20 +213,73 @@ def test_rebase_fails_closed_when_search_source_revision_changes(tmp_path: Path)
     conn.commit()
     conn.close()
     output = tmp_path / "rebase.json"
-
     completed = _run_rebase(baseline, quiescent, staged, output)
-
     assert completed.returncode == 1
     assert "search source changed during preflight" in completed.stderr
     assert not output.exists()
-    conn = sqlite3.connect(f"{quiescent.resolve().as_uri()}?mode=ro&immutable=1", uri=True)
+    conn = sqlite3.connect(quiescent)
     assert (
-        conn.execute(
-            "SELECT active_generation_id FROM music_search_index_state WHERE state_id=1"
-        ).fetchone()[0]
+        conn.execute("SELECT active_generation_id FROM music_search_index_state").fetchone()[0]
         == "baseline-generation"
     )
     conn.close()
+
+
+def test_rebase_rejects_raw_content_drift_even_without_revision_change(tmp_path: Path) -> None:
+    baseline, quiescent, staged = _fixture_paths(tmp_path)
+    conn = sqlite3.connect(quiescent)
+    conn.execute("INSERT INTO plays VALUES (1, '2026-01-01', 42000, 1)")
+    conn.commit()
+    conn.close()
+    output = tmp_path / "raw-drift.json"
+    completed = _run_rebase(baseline, quiescent, staged, output)
+    assert completed.returncode == 1
+    assert "source_facts" in completed.stderr
+    assert not output.exists()
+    conn = sqlite3.connect(quiescent)
+    assert (
+        conn.execute("SELECT active_generation_id FROM music_search_index_state").fetchone()[0]
+        == "baseline-generation"
+    )
+    conn.close()
+
+
+def test_rebase_installs_new_aggregate_policy_without_overwriting_governance_or_old_caches(
+    tmp_path: Path,
+) -> None:
+    baseline = tmp_path / "baseline.db"
+    staged = tmp_path / "candidate.db"
+    quiescent = tmp_path / "target.db"
+    shutil.copy2(ROOT / "backend/tests/fixtures/seed.db", baseline)
+    db_mod.DB_PATH = str(baseline)
+    run_migrations()
+    shutil.copy2(baseline, quiescent)
+    shutil.copy2(baseline, staged)
+    _populate_staged(staged)
+    conn = sqlite3.connect(quiescent)
+    before = conn.execute("SELECT current_revision FROM track_credit_state").fetchone()
+    conn.execute(
+        "UPDATE track_credit_state SET active_aggregate_revision=-1,rebuild_status='pending'"
+    )
+    conn.execute("CREATE TABLE unrelated_weekly_cache(value TEXT)")
+    conn.execute("INSERT INTO unrelated_weekly_cache VALUES ('target-old-lkg')")
+    conn.commit()
+    conn.close()
+    completed = _run_rebase(baseline, quiescent, staged, tmp_path / "policy.json")
+    assert completed.returncode == 0, completed.stderr
+    conn = sqlite3.connect(quiescent)
+    assert conn.execute("SELECT current_revision FROM track_credit_state").fetchone() == before
+    assert conn.execute(
+        "SELECT active_aggregate_revision,rebuild_status FROM track_credit_state"
+    ).fetchone() == (before[0], "ready")
+    assert conn.execute("SELECT value FROM unrelated_weekly_cache").fetchone() == (
+        "target-old-lkg",
+    )
+    from scripts.rebase_music_search_preflight import current_aggregates_ready, source_marker
+
+    conn.close()
+    assert current_aggregates_ready(quiescent)
+    assert source_marker(quiescent) == source_marker(staged)
 
 
 def test_rebase_migrates_schema_33_quiescent_copy_without_touching_rollback(
@@ -244,3 +320,54 @@ def test_rebase_migrates_schema_33_quiescent_copy_without_touching_rollback(
         == 4
     )
     promoted.close()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "UPDATE track_credit_state SET current_revision=current_revision+1",
+        "UPDATE artist_identity_state SET current_revision=current_revision+1",
+        "UPDATE settings SET value='31000' WHERE key='min_ms'",
+        "INSERT INTO spotify_track_artist_credits VALUES ('track','artist','Name',0,'2026-01-01')",
+        "INSERT INTO track_credit_overrides(track_id,artist_id,action,reason,revision) VALUES (1,1,'add','human',1)",
+        "INSERT INTO track_credit_events(track_id,artist_id,action,actor,reason,revision,idempotency_key) VALUES (1,1,'add','human','audit',1,'event-key')",
+    ],
+)
+def test_source_marker_covers_governance_evidence_filters_and_audit(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    from scripts.rebase_music_search_preflight import source_marker
+
+    target = tmp_path / "source.db"
+    shutil.copy2(ROOT / "backend/tests/fixtures/seed.db", target)
+    db_mod.DB_PATH = str(target)
+    run_migrations()
+    before = source_marker(target)
+    conn = sqlite3.connect(target)
+    conn.execute(mutation)
+    conn.commit()
+    conn.close()
+    assert source_marker(target) != before
+
+
+def test_rejected_current_schema_rebase_does_not_rerun_candidate_invalidating_migration(
+    tmp_path: Path,
+) -> None:
+    from scripts.rebase_music_search_preflight import _ensure_identity_split_schema
+
+    target = tmp_path / "current.db"
+    shutil.copy2(ROOT / "backend/tests/fixtures/seed.db", target)
+    db_mod.DB_PATH = str(target)
+    run_migrations()
+    conn = sqlite3.connect(target)
+    conn.execute(
+        "UPDATE music_search_index_state SET status='ready',candidate_index_version='current',content_digest='verified'"
+    )
+    conn.commit()
+    before = conn.execute("SELECT * FROM music_search_index_state").fetchall()
+    conn.close()
+    _ensure_identity_split_schema(target)
+    conn = sqlite3.connect(target)
+    assert conn.execute("SELECT * FROM music_search_index_state").fetchall() == before
+    conn.close()

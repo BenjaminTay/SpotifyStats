@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import {
   MobileBottomSheet,
@@ -7,10 +8,11 @@ import {
   MobileRankList,
 } from '@/components/mobile'
 import { ChangeCell } from '@/components/shared/ChangeCell'
+import { ArtistLinks } from '@/components/shared/ArtistLinks'
 import { BillboardWeekCalendar } from '@/components/shared/WeekSelector'
 import { cn } from '@/lib/utils'
 import { displayName, useChineseTextVersion } from '@/lib/chinese'
-import type { BillboardWeeklyResponse } from '@/types/billboard'
+import type { BillboardWeeklyResponse, WeeklyTrackEntry } from '@/types/billboard'
 import {
   BILLBOARD_WEEKLY_TABS,
   computeWeeklyRankChange,
@@ -179,12 +181,24 @@ export function MobileBillboardWeekly({
       <MobileRankList
         rows={entries.map((entry) => {
           const change = computeWeeklyRankChange(entry, previousEntries, historicalEntries, activeTab)
+          const detailLink = weeklyEntryDetailLink(entry, activeTab)
+          const track = activeTab === 'tracks' ? entry as WeeklyTrackEntry : null
           return {
             entityType: activeTab === 'tracks' ? 'track' : activeTab === 'albums' ? 'album' : 'artist',
             rank: entry.rank,
             rankAdornment: <ChangeCell change={change} />,
-            title: displayName(weeklyEntryName(entry, activeTab)),
-            subtitle: displayName(weeklyEntrySubtitle(entry, activeTab)),
+            title: track ? (
+              <Link to={detailLink} className="inline-flex min-h-[44px] items-center">
+                {displayName(weeklyEntryName(entry, activeTab))}
+              </Link>
+            ) : displayName(weeklyEntryName(entry, activeTab)),
+            subtitle: track ? (
+              <ArtistLinks
+                artistName={track.artist_names?.[0] ?? track.artist_name}
+                artistNames={track.artist_names}
+                className="[&_a]:inline-flex [&_a]:min-h-[44px] [&_a]:min-w-[44px] [&_a]:items-center"
+              />
+            ) : displayName(weeklyEntrySubtitle(entry, activeTab)),
             coverUrl: entry.cover_url,
             metric: formatBillboardNumber(entry.play_count),
             metricLabel: '播放',
@@ -194,7 +208,8 @@ export function MobileBillboardWeekly({
               { label: '峰值', value: `${entry.running_peak_wks ?? 0}周` },
             ],
             factsLimit: 3,
-            to: weeklyEntryDetailLink(entry, activeTab),
+            // 独立艺人链接不能嵌套在整行的歌曲链接里。
+            to: track ? undefined : detailLink,
             className: 'mobile-weekly-rank-row',
           }
         })}
