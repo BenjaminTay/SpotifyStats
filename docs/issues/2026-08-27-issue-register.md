@@ -12,7 +12,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-07-001` | EntityStatsPanel 在空态判断前读取 nullable 趋势，Afterlife 详情崩溃 | `RESOLVED`（本地补丁范围）；未集成/部署 | 后端 `found=false` 允许趋势、分布及总量为 null；前端错误声明完整统计并在 hooks 中读取 length。修复前 8 用例中 6 失败/6 未捕获异常；修复后相关32项、全量前端763 passed/4 skipped及构建通过；真实副本双视口Afterlife/Midnights、指标/时间/零总量恢复无白屏和异常，无统计不请求排名。 | 9c360714已独立提交；联合集成验收进行中，尚未部署；原专项全栈仅局部Partial。见[本次报告](../reports/2026-10-07-entity-stats-empty-acceptance.md)。2026-10-07。 |
+| `SS-2026-10-07-001` | EntityStatsPanel 在空态判断前读取 nullable 趋势，Afterlife 详情崩溃 | `LOCAL_INTEGRATED`；本地收口，未部署 | 后端 `found=false` 允许趋势、分布及总量为 null；前端错误声明完整统计并在 hooks 中读取 length。修复前 8 用例中 6 失败/6 未捕获异常；修复后相关32项、全量前端763 passed/4 skipped及构建通过；真实副本双视口Afterlife/Midnights、指标/时间/零总量恢复无白屏和异常，无统计不请求排名。 | 9c360714独立提交，已通过7f7185cf合入本地main；新默认八阶段PASS（24分22秒）与联合空态/零总量专项通过，未推送/部署；[联合报告](../reports/2026-10-07-release-date-stats-integration.md)。原专项Partial保留历史。见[本次报告](../reports/2026-10-07-entity-stats-empty-acceptance.md)。2026-10-07。 |
 
 ### 2026-10-06 曲目署名重复与标题误拆
 
@@ -55,11 +55,11 @@
 
 ### 2026-10-02 新增元数据问题
 
-两个专辑证据事项的当前状态见上方最终集成登记；下表发行日期精度已完成隔离本地交付，正式集成/迁移与生产验收另列。
+两个专辑证据事项的当前状态见上方最终集成登记；下表发行日期精度已完成本地集成与联合验收，正式迁移与生产验收仍待执行。
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-09-24-003` | 发行日期精度丢失 | `LOCAL_VERIFIED` · 6edbe051 后独立详情补修 | 已复现详情/可信原版目录消费已存精度丢失，传递实际精度并保留身份/目录约束、拒绝冲突混拼；195 项相关、新默认八阶段 Pass（23分5秒）及两端专项通过，副本事实保持；独立本地提交，旧证据保留历史。 | [精度合同](../reference/release-date-precision.md)、[本地验收](../reports/2026-10-07-release-date-precision-acceptance.md)；正式迁移/发布未执行，2026-10-07。 |
+| `SS-2026-09-24-003` | 发行日期精度丢失 | `LOCAL_INTEGRATED` · 7f7185cf已合入本地main | 已复现详情/可信原版目录消费已存精度丢失，传递实际精度并保留身份/目录约束、拒绝冲突混拼；195 项相关、新默认八阶段 Pass（23分5秒）及两端专项通过，副本事实保持；独立本地提交；新联合版本八阶段PASS（24分22秒）、双视口专项与保护事实/有效署名守恒通过，旧证据保留历史。 | [精度合同](../reference/release-date-precision.md)、[本地验收](../reports/2026-10-07-release-date-precision-acceptance.md)；[联合报告](../reports/2026-10-07-release-date-stats-integration.md)；正式迁移/推送/发布未执行，2026-10-07。 |
 
 详细背景与其他待量化方向见 [元数据路线 §10](../plans/2026-09-23-multi-source-music-metadata-roadmap.md#10-2026-09-24-spotify-现有字段利用审计后续问题)。
 

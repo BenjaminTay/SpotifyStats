@@ -1,6 +1,7 @@
 # SpotifyStats 开发状态总表
 
-> 最后核验：2026-10-07（署名S0–S5完成，2faadc64正式发布与两端API、桌面/手机视口专项通过；其他事项保留各自原始证据日期）
+> 最后核验：2026-10-07（日期精度与详情空统计已本地合入，新默认八阶段全栈PASS；生产保留各自原验收证据）
+> 当前本地业务版本：`7f7185cf`，已合入main；联合门禁24分22秒、双视口专项和事实守恒通过，未推送/部署。
 > 最近已发布业务代码：`2faadc64c73dadbcca0f05b6a53d1a0aebef4611`；S0–S4署名业务e4929e81默认完整全栈八阶段PASS，S5补修94项专项及生产验收另列；后续仅文档收尾。
 > 生产业务版本：`2faadc64c73dadbcca0f05b6a53d1a0aebef4611`，schema88、dual、三容器healthy，两端网关SHA一致；原始事实和既有人工覆盖保持。
 > 本文件是开发状态与下一步工作的统一入口；详细规则、方案和原始验收证据继续在各自文档维护。
@@ -13,10 +14,10 @@
 
 | 状态维度 | 已确认结论 | 证据范围 |
 | --- | --- | --- |
-| 实现与仓库 | 署名S0–S5已完成，2faadc64提交、推送并发布；后续仅文档收尾 | [署名验收](reports/2026-10-06-track-credit-resolution-acceptance.md) |
+| 实现与仓库 | 日期精度98dea609/6edbe051/c5e3314b与空值9c360714已集成为7f7185cf并合入本地main；署名生产交付保留原证据 | [联合验收](reports/2026-10-07-release-date-stats-integration.md)、[署名验收](reports/2026-10-06-track-credit-resolution-acceptance.md) |
 | CI | 2faadc64质量、full/showcase/dual、镜像构建与部署全部success；两次此前失败保留 | [正式流水线](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37503310902) |
 | 生产发布 | 2faadc64、schema88、dual、三healthy；revision38聚合及四精确变体ready；生产事实逐行守恒、署名和链接专项通过 | 2026-10-07实际SSH隧道两端API和桌面/手机视口；[署名验收](reports/2026-10-06-track-credit-resolution-acceptance.md) |
-| 默认完整全栈 | 署名业务e4929e81八阶段同轮PASS，29分47秒；2faadc64必要发布补修另有94项、独立53项及实际生产证明，未重跑默认完整全栈 | [署名验收](reports/2026-10-06-track-credit-resolution-acceptance.md)，run `20261006T154229.183294Z-a862a8fcde5b` |
+| 默认完整全栈 | 本地7f7185cf干净版本八阶段同轮PASS，24分22秒；后端3424+186、前端763/4skip、API157+113和三浏览器通过。生产专项保持原版本与范围 | [联合验收](reports/2026-10-07-release-date-stats-integration.md)，run `20261007T150856.854749Z-290c0b989199` |
 | 真实模型与终端 | V6 有本地真实模型历史证据；封面及合作曲有实际 HTTPS/桌面手机视口验收 | 生产 LLM、真实 OAuth 与物理手机仍另行验收，不能由发布或模拟视口通过推定 |
 
 ## 已完成的主要开发
@@ -55,16 +56,16 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| SS-2026-10-07-001 | 非榜单音乐详情统计空值崩溃 | 已实现；相关32项、全量前端763/4skip和build通过；真实副本双视口与切换通过，局部门禁Partial | 9c360714已独立提交；与日期精度联合集成验收进行中，未推送/部署 | [本次报告](reports/2026-10-07-entity-stats-empty-acceptance.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07 |
-| SS-2026-09-24-003 | 发行日期精度 | 98dea609/6edbe051 历史证据保留；详情/Records 来源精度补修完成，195 项相关、新默认八阶段同轮 Pass（23分5秒）、两端专项及副本事实守恒 | 固定98dea609、6edbe051、c5e3314b；与空值补丁联合集成验收进行中，正式迁移/有界补证未执行，未推送/部署 | [精度合同](reference/release-date-precision.md)、[实施计划](plans/2026-10-07-release-date-precision-plan.md)、[本地验收](reports/2026-10-07-release-date-precision-acceptance.md) | 2026-10-07 |
-| SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-02（文档核对，未重新计时） |
+| SS-2026-10-07-001 | 非榜单音乐详情统计空值崩溃 | 代码本地收口：9c360714独立提交，7f7185cf集成并合入main；新默认八阶段PASS，真实空态/零总量/恢复及双视口专项通过 | 待与日期精度一并准备发布；未推送/部署 | [专项报告](reports/2026-10-07-entity-stats-empty-acceptance.md)、[联合验收](reports/2026-10-07-release-date-stats-integration.md) | 2026-10-07 |
+| SS-2026-09-24-003 | 发行日期精度 | 代码本地收口：98dea609/6edbe051/c5e3314b集成为7f7185cf并合入main；新默认八阶段PASS、日期与空统计联合专项及事实守恒通过 | P1：新生产副本88→89、有界来源补证、快照准备与发布；正式库未迁移，未推送/部署 | [精度合同](reference/release-date-precision.md)、[实施计划](plans/2026-10-07-release-date-precision-plan.md)、[联合验收](reports/2026-10-07-release-date-stats-integration.md) | 2026-10-07 |
+| SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付；本轮单次24分22秒 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07（单次计时，不代表三次稳定收口） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |
 | ACCEPT-01 | 当前版本业务验收 | 专辑、封面与合作曲生产专项已闭环；真实AI、OAuth和物理手机仍待验收 | P1：生产真实AI与目标终端分开登记，不以模拟视口推定 | [专辑生产报告](reports/2026-10-03-album-metadata-production-delivery.md)、[验证规则](reference/fullstack-verification.md) | 2026-10-03 |
 | DATA-01 | 存量 L1 身份歧义与自动署名冲突 | 数据审核：缺少唯一目标或可信身份时保留 review；不把审核队列清零作为开发完成条件 | P2：先刷新只读差异与数量，按新证据人工处理；历史约 600 条 L1 review 和 21 个署名冲突不是当前数量 | [L1 收口](reports/2026-09-13-l1-import-duration-and-manual-merge-closeout.md)、[署名记录](CHANGELOG.md) | 2026-10-02（未重测数据） |
 | DATA-02 / SS-2026-10-03-002 | 生产搜索派生外键遗留 | 已有60,294条FK orphan，Album维护前后集合不变；当前四精确变体读取门禁通过 | P2：先在副本调查轮转/清理合同；本轮未删除或修复 | [生产报告](reports/2026-10-03-album-metadata-production-delivery.md)、[台账](issues/2026-08-27-issue-register.md) | 2026-10-03 |
 | DATA-03 | Album未解析身份审核 | 13个Album的24条艺人行中17条未解析，保持来源证据；不猜测canonical，不批准关系 | P2：取得唯一稳定身份后人工治理；不是代码交付失败 | [生产报告](reports/2026-10-03-album-metadata-production-delivery.md) | 2026-10-03 |
 
-建议开发顺序：发行日期精度及受影响消费者 → 当前版本真实模型/终端验收与门禁效率。署名S0–S5已正式发布与生产收口；专辑分页/艺人ID、合作曲排行消费和全站封面已交付。13个Album身份、历史改名/拼写/跨ID署名歧义继续独立维护，不扩展为全库逐条审核。
+建议开发顺序：日期精度与详情空统计的生产副本演练、限定补证及发布 → 当前版本真实模型/终端验收与门禁效率。两项代码已本地合入并完成联合验收。署名S0–S5已正式发布与生产收口；专辑分页/艺人ID、合作曲排行消费和全站封面已交付。13个Album身份、历史改名/拼写/跨ID署名歧义继续独立维护，不扩展为全库逐条审核。
 
 ## 可以探索的方向
 

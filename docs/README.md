@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [发行日期精度与详情空统计联合集成验收](reports/2026-10-07-release-date-stats-integration.md)
+
 - [非榜单详情统计空值修复与本地验收](reports/2026-10-07-entity-stats-empty-acceptance.md)
 
 - [发行日期证据与精度](reference/release-date-precision.md)
