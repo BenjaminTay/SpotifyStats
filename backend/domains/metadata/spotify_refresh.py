@@ -519,7 +519,7 @@ def upsert_album_batch(
                    ON CONFLICT(spotify_album_id) DO UPDATE SET
                        album_name = excluded.album_name,
                        album_type = excluded.album_type,
-                       release_date = excluded.release_date,
+
                        popularity = excluded.popularity,
                        label = excluded.label,
                        genres = COALESCE(excluded.genres, spotify_album_meta.genres),
@@ -533,7 +533,7 @@ def upsert_album_batch(
                     album["id"],
                     album.get("name"),
                     album.get("album_type"),
-                    album.get("release_date"),
+                    None,
                     album.get("popularity"),
                     album.get("label"),
                     genres,
@@ -543,6 +543,13 @@ def upsert_album_batch(
                     json.dumps(track_ids, ensure_ascii=False) if track_ids else None,
                 ),
             )
+            from backend.domains.metadata.release_dates import persist_release_date
+
+            date_status = persist_release_date(
+                conn, album, source=source, source_run_id=source_run_id
+            )
+            if date_status not in {"accepted", "unchanged"} and outcomes is not None:
+                outcomes.append((str(album["id"]), "date_" + date_status, "release_date_evidence"))
             artist_state = persist_album_artists(
                 conn, album, source=source, source_run_id=source_run_id
             )
@@ -963,7 +970,7 @@ def refresh_missing_spotify_metadata(
             source_run_id=source_run_id,
         )
         errors.extend(
-            f"album_tracks_incomplete:{sid}:{error}"
+            f"{'album_date_unconfirmed' if status.startswith('date_') else 'album_tracks_incomplete'}:{sid}:{error}"
             for sid, status, error in album_outcomes
             if status != "complete"
         )

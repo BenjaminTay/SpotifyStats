@@ -20,6 +20,7 @@ from backend.core.cache import singleflight
 from backend.core.db import get_db
 from backend.domains.billboard.year_end import YEAR_END_SEMANTICS_VERSION
 from backend.domains.metadata.artist_languages import artist_language_fact_revision
+from backend.domains.metadata.release_dates import RELEASE_DATE_POLICY_VERSION, precision_expression
 from backend.domains.settings.repository import SettingsRepository
 from backend.domains.yearly_review.artifact_cache import (
     has_persisted_artifact,
@@ -149,10 +150,29 @@ def _report_source_revision(year):
         album_revision = album_credit_revision(conn)
     finally:
         conn.close()
-    playback = database_revision(year) + ":credits:" + TRACK_CREDIT_POLICY_VERSION
-    if not album_revision:
-        return playback
-    return playback + ":album:" + hashlib.sha256(repr(album_revision).encode()).hexdigest()[:20]
+    from backend.domains.metadata.release_dates import RELEASE_DATE_POLICY_VERSION
+
+    playback = (
+        database_revision(year)
+        + ":credits:"
+        + TRACK_CREDIT_POLICY_VERSION
+        + ":dates:"
+        + RELEASE_DATE_POLICY_VERSION
+    )
+    from backend.services.analysis_snapshot_revision import source_revision
+
+    conn = get_db(readonly=True)
+    try:
+        date_revision = source_revision(conn, "analysis_records")
+    finally:
+        conn.close()
+    return (
+        playback
+        + ":date:"
+        + date_revision
+        + ":album:"
+        + hashlib.sha256(repr(album_revision).encode()).hexdigest()[:20]
+    )
 
 
 def _language_revision() -> str:
@@ -196,6 +216,7 @@ def build_yearly_review_cache_key(
         "year": year,
         "schema_version": YEARLY_REVIEW_SCHEMA_VERSION,
         "content_version": YEARLY_REVIEW_CONTENT_VERSION,
+        "release_date_policy": RELEASE_DATE_POLICY_VERSION,
         "request_filter": request_filter,
         "relationship_policy_version": RELATIONSHIP_POLICY_VERSION,
         "highlight_policy_version": HIGHLIGHT_POLICY_VERSION,
@@ -512,7 +533,7 @@ def _year_scoped_dependency_revision(
             (
                 "spotify_album_meta",
                 f"""SELECT sam.spotify_album_id, sam.album_name, sam.album_type,
-                          sam.release_date, sam.popularity, sam.label, sam.genres,
+                          sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision, sam.popularity, sam.label, sam.genres,
                           sam.image_url, sam.album_artists, sam.total_tracks,
                           sam.track_list
                    FROM spotify_album_meta sam
@@ -576,8 +597,8 @@ def _year_scoped_dependency_revision(
             ),
             (
                 "album_project_tracks",
-                """SELECT ap.canonical_name, ap.artist_id, ap.primary_album_id,
-                      ap.release_date, ap.scope, ap.project_type,
+                f"""SELECT ap.canonical_name, ap.artist_id, ap.primary_album_id,
+                      ap.release_date, {precision_expression(conn, "album_projects", "ap")} AS release_date_precision, ap.scope, ap.project_type,
                       ap.include_in_charts, ap.is_manual,
                       apt.track_id, apt.membership_role, apt.min_merge_level,
                       apt.source_album_id, apt.is_exclusive, apt.inferred

@@ -809,19 +809,9 @@ def get_primary_release_date(canonical_name: str, artist_name: str):
         return None
 
     primary_id = row[0]
-    date_row = conn.execute(
-        """SELECT MIN(sam.release_date)
-           FROM albums al
-           JOIN track_albums ta ON ta.album_id = al.album_id
-           JOIN tracks t ON t.track_id = ta.track_id
-           JOIN spotify_track_meta stm
-             ON t.spotify_track_id = stm.spotify_track_id
-           JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
-           WHERE al.album_id = ?""",
-        [primary_id],
-    ).fetchone()
+    value = _get_release_date(conn, int(primary_id))
     conn.close()
-    return date_row[0] if date_row else None
+    return value
 
 
 def create_group(
@@ -2312,17 +2302,26 @@ def get_album_track_comparison(album_id_a: int, album_id_b: int) -> dict:
 
 def _get_release_date(conn, album_id: int):
     """获取专辑的发行日期（通过 Spotify 元数据链）。"""
-    row = conn.execute(
-        """SELECT MIN(sam.release_date)
+    from backend.domains.metadata.release_dates import (
+        parse_release_date,
+        precision_expression,
+        release_sort_key,
+    )
+
+    rows = conn.execute(
+        f"""SELECT DISTINCT sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")}
            FROM track_albums ta
            JOIN tracks t ON t.track_id = ta.track_id
-           JOIN spotify_track_meta stm
-             ON t.spotify_track_id = stm.spotify_track_id
+           JOIN spotify_track_meta stm ON t.spotify_track_id = stm.spotify_track_id
            JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id
            WHERE ta.album_id = ?""",
         (album_id,),
-    ).fetchone()
-    return row[0] if row else None
+    ).fetchall()
+    valid = [r for r in rows if parse_release_date(r[0], r[1]).start is not None]
+    if not valid:
+        return None
+    selected = min(valid, key=lambda r: release_sort_key(r[0], r[1]))
+    return parse_release_date(selected[0], selected[1]).display
 
 
 def _build_album_track_sets(conn, albums_df):

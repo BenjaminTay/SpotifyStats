@@ -44,6 +44,7 @@ def billboard_revision_state() -> tuple:
     from backend.domains.playback.l3_album_attribution import (
         get_l3_album_attribution_revision,
     )
+    from backend.services.analysis_snapshot_revision import source_revision
 
     conn = get_db()
     try:
@@ -60,6 +61,7 @@ def billboard_revision_state() -> tuple:
             get_l3_album_attribution_revision(conn),
             album_credit_revision(conn),
             TRACK_CREDIT_POLICY_VERSION,
+            source_revision(conn, "analysis_records"),
         )
     finally:
         conn.close()

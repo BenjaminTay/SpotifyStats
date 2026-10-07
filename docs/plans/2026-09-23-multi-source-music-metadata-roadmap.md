@@ -160,3 +160,5 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 官方参考：[Get Track](https://developer.spotify.com/documentation/web-api/reference/get-track)、[Get Album](https://developer.spotify.com/documentation/web-api/reference/get-an-album)、[Get Album Tracks](https://developer.spotify.com/documentation/web-api/reference/get-an-albums-tracks)、[Get Artist](https://developer.spotify.com/documentation/web-api/reference/get-an-artist)。
 
 2026-10-03 最终恢复：`SS-2026-09-24-001/002` 已以 `8464ffa6` 与封面主线整合，新默认完整全栈与两视口专项通过；已吸收封面收口 `85a44cb8` 并安全合入本地 main，未推送本任务/部署，正式迁移/回填仍需独立授权。见[最终报告](../reports/2026-10-03-album-metadata-final-integration.md)。日期精度 `003` 未实施。
+
+发行日期精度 SS-2026-09-24-003 已完成隔离本地实现、默认完整验收及独立交付：规则见[精度合同](../reference/release-date-precision.md)，证据见[交付报告](../reports/2026-10-07-release-date-precision-acceptance.md)，正式集成/迁移边界见[实施计划](2026-10-07-release-date-precision-plan.md)。本任务不引入第二来源，不清理搜索外键或批准艺人身份；尚未推送或发布。

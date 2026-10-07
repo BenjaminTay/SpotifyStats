@@ -9,6 +9,7 @@ from typing import Any
 
 from backend.core.cache import ttl_cached
 from backend.core.cache_manager import register_ttl
+from backend.domains.metadata.release_dates import parse_release_date, release_sort_key
 
 ARCHIVE_OVERVIEW_CACHE_TTL_SECONDS = 300
 
@@ -79,6 +80,9 @@ def load_saved_track_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         else ""
     )
 
+    from backend.domains.metadata.release_dates import precision_expression
+
+    source_precision = precision_expression(conn, "spotify_album_meta", "sam")
     rows = conn.execute(
         f"""
         SELECT
@@ -94,6 +98,7 @@ def load_saved_track_rows(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             {image_path_expr} AS image_path,
             {image_url_expr} AS image_url,
             COALESCE({local_release_expr}, sam.release_date) AS release_date,
+            CASE WHEN {local_release_expr} IS NULL THEN {source_precision} ELSE NULL END AS release_date_precision,
             stm.duration_ms AS duration_ms
         FROM saved_tracks st
         LEFT JOIN tracks t ON t.track_id = COALESCE(
@@ -142,7 +147,9 @@ def _feature_payload(role: str, row: dict[str, Any]) -> dict[str, Any]:
         "artist_name": row.get("artist_name") or "",
         "album_name": row.get("album_name"),
         "added_date": row.get("added_date"),
-        "release_date": row.get("release_date"),
+        "release_date": parse_release_date(
+            row.get("release_date"), row.get("release_date_precision")
+        ).display,
         "cover_url": cover_url,
         "deep_link": f"/music/tracks/{int(local_track_id)}" if local_track_id is not None else None,
     }
@@ -153,7 +160,8 @@ def _featured_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         (row for row in rows if row.get("added_date")), key=lambda row: row["added_date"]
     )
     released = sorted(
-        (row for row in rows if row.get("release_date")), key=lambda row: row["release_date"]
+        (row for row in rows if row.get("release_date")),
+        key=lambda row: release_sort_key(row["release_date"], row.get("release_date_precision")),
     )
     candidates = (
         ("first_saved", dated),

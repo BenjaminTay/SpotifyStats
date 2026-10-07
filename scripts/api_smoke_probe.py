@@ -676,6 +676,27 @@ def _prepare_required_analysis_snapshots() -> None:
         )
 
 
+def _prepare_required_governance_snapshots() -> None:
+    """Publish required governance facts explicitly before exercising GETs.
+
+    A new field/revision contract invalidates old health publications. The
+    isolated probe must not rely on a startup worker winning that race.
+    """
+    from backend.core.db import get_db
+    from backend.services.governance_snapshot_service import ensure
+
+    conn = get_db(readonly=True)
+    try:
+        started_at = time.perf_counter()
+        ensure(conn, families=("language_coverage", "import_health"))
+        print(
+            f"PREPARE governance duration_ms={(time.perf_counter() - started_at) * 1000:.1f}",
+            flush=True,
+        )
+    finally:
+        conn.close()
+
+
 def main() -> int:
     args = _parse_args()
     _configure_database_path(args.db_path)
@@ -685,6 +706,7 @@ def main() -> int:
 
     _prepare_required_analysis_snapshots()
     with TestClient(app) as client:
+        _prepare_required_governance_snapshots()
         results = run_cases(client, progress=True)
     coverage = get_openapi_get_coverage(app)
     passed = sum(1 for result in results if result.ok)

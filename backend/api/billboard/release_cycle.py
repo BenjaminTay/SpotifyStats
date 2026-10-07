@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from backend.core.json_helpers import df_to_json, py_val
 from backend.dependencies import BillboardFilters, MergeConfig
+from backend.domains.metadata.release_dates import parse_release_date
 from backend.services.billboard_service import (
     compute_album_weekly_rankings,
     compute_artist_weekly_rankings,
@@ -179,10 +180,12 @@ def _find_release_row(releases: pd.DataFrame, album_name: str):
             continue
         for sub in sub_albums:
             if sub.get("album_name") == album_name:
-                release_date = pd.to_datetime(sub.get("release_date"), errors="coerce")
-                if pd.isna(release_date):
-                    release_date = row["release_date"]
-                return row, row["album_name"], release_date
+                exact = parse_release_date(
+                    sub.get("release_date"), sub.get("release_date_precision")
+                ).exact_day
+                if exact is None:
+                    return None, album_name, None
+                return row, row["album_name"], pd.Timestamp(exact)
 
     return None, album_name, None
 
@@ -206,6 +209,8 @@ class ReleaseCycleAlbumDetailResponse(BaseModel):
     album_type: str | None = None
     release_date: str | None = None
     release_date_iso: str | None = None
+    status: str | None = None
+    reason: str | None = None
     canonical_name: str | None = None
     primary_name: str | None = None
     group_albums: list[str] | None = None
@@ -230,6 +235,8 @@ class ReleaseCycleAlbumDetailResponse(BaseModel):
 class ReleaseCycleArtistOverviewResponse(BaseModel):
     model_config = {"extra": "allow"}
     artist_name: str | None = None
+    status: str | None = None
+    reason: str | None = None
     summary: dict | None = None
     releases: list[dict] | None = None
     rank_trend: list[dict] | None = None
@@ -269,16 +276,21 @@ def get_album_detail(
     weeks_after: int = Query(default=24, ge=4, le=104),
 ):
     """Album detail: cycle chart data, advance singles, track matrix, reentries, bonus tracks."""
+    releases = load_artist_releases(artist_name)
+    album_releases = releases[releases["album_name"] == album_name]
+    if album_releases.empty:
+        return {
+            "album_name": album_name,
+            "artist_name": artist_name,
+            "status": "unavailable",
+            "reason": "release_day_unconfirmed",
+            "error": "缺少已确认的发行日，无法按发行日对齐",
+        }
     df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(
         filters,
         merge_level=merge_cfg.merge_level,
         include_compilations=include_compilations,
     )
-
-    releases = load_artist_releases(artist_name)
-    album_releases = releases[releases["album_name"] == album_name]
-    if album_releases.empty:
-        return {"error": f"未找到专辑「{album_name}」的发行信息"}
 
     rel = album_releases.iloc[0]
     release_date = rel["release_date"]
@@ -478,22 +490,24 @@ def get_artist_overview(
     weeks_after: int = Query(default=24, ge=4, le=52),
 ):
     """Full artist overview: KPIs, releases, cycles, metrics, rank trend data."""
-    df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(
-        filters,
-        merge_level=merge_cfg.merge_level,
-        include_compilations=include_compilations,
-    )
-
     releases = load_artist_releases(artist_name)
     if releases.empty:
         return {
             "artist_name": artist_name,
             "releases": [],
+            "status": "unavailable",
+            "reason": "release_day_unconfirmed",
             "summary": None,
             "rank_trend": [],
             "release_events": [],
             "cycles": [],
         }
+
+    df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(
+        filters,
+        merge_level=merge_cfg.merge_level,
+        include_compilations=include_compilations,
+    )
 
     artist_df, artist_median, total_daily = _precompute_artist_context(df_raw, artist_name)
 
@@ -619,6 +633,7 @@ class CompareReleaseResult(BaseModel):
 class CompareReleasesResponse(BaseModel):
     error: str | None = None
     comparisons: list[CompareReleaseResult] = Field(default_factory=list)
+    unavailable: list[dict[str, str]] = Field(default_factory=list)
 
 
 @router.post("/compare", response_model=CompareReleasesResponse, response_model_exclude_unset=True)
@@ -632,19 +647,32 @@ def compare_releases(
     if len(body.items) < 2:
         return {"error": "至少需要 2 张发行进行对比"}
 
+    eligible = []
+    unavailable = []
+    for item in body.items:
+        releases = load_artist_releases(item.artist_name)
+        rel_row, cycle_album_name, release_date = _find_release_row(releases, item.album_name)
+        if rel_row is None:
+            unavailable.append(
+                {
+                    "artist_name": item.artist_name,
+                    "album_name": item.album_name,
+                    "status": "unavailable",
+                    "reason": "release_day_unconfirmed",
+                }
+            )
+            continue
+        eligible.append((item, cycle_album_name, release_date))
+
+    if not eligible:
+        return {"comparisons": [], "unavailable": unavailable}
     df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(
         filters,
         merge_level=merge_cfg.merge_level,
         include_compilations=include_compilations,
     )
-
     result = []
-    for item in body.items:
-        releases = load_artist_releases(item.artist_name)
-        rel_row, cycle_album_name, release_date = _find_release_row(releases, item.album_name)
-        if rel_row is None:
-            continue
-
+    for item, cycle_album_name, release_date in eligible:
         cycle = compute_release_cycle(
             df_raw,
             item.artist_name,
@@ -675,4 +703,4 @@ def compare_releases(
             }
         )
 
-    return {"comparisons": result}
+    return {"comparisons": result, "unavailable": unavailable}

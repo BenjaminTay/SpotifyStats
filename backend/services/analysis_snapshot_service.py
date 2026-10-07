@@ -16,7 +16,10 @@ from backend.services.analysis_snapshot_revision import database_identity, sourc
 
 logger = logging.getLogger(__name__)
 JOB_TYPE = "analysis_snapshot_rebuild"
-VERSIONS = {"analysis_stats": "analysis_stats_taste_v1", "analysis_records": "analysis_records_v1"}
+VERSIONS = {
+    "analysis_stats": "analysis_stats_taste_v1",
+    "analysis_records": "analysis_records_release_precision_v2",
+}
 AUTOMATIC_PERIODS = ("lifetime", "last_4_weeks", "last_6_months")
 
 

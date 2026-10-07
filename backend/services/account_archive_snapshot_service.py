@@ -22,7 +22,7 @@ from backend.services.analysis_snapshot_store import digest
 
 logger = logging.getLogger(__name__)
 JOB_TYPE = "account_archive_snapshot_rebuild"
-BUILDER_VERSION = "archive_shared_events_v1"
+BUILDER_VERSION = "archive_shared_events_release_precision_v2"
 PUBLICATION_VERSION = "archive_result_v1"
 
 

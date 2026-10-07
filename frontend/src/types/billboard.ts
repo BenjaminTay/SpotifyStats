@@ -1413,6 +1413,9 @@ export interface ArtistSpotifyMeta {
 }
 
 export interface AlbumSpotifyMeta {
+  release_date_precision?: 'year' | 'month' | 'day' | null
+  release_date_status?: 'confirmed' | 'legacy' | 'missing' | 'invalid' | 'inconsistent'
+  release_date_display?: string | null
   [key: string]: any
   album_type?: string
   release_date?: string

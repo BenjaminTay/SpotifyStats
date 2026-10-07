@@ -23,6 +23,11 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+from backend.domains.metadata.release_dates import (
+    compare_release_dates,
+    parse_release_date,
+    precision_expression,
+)
 from backend.domains.playback.album_projects import (
     _ensure_album_project_revision_schema,
     ensure_album_project_schema,
@@ -39,7 +44,7 @@ _COMPILATION_NAME_MARKERS = (
     "compilation",
 )
 
-ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION = "spotify_complete_release_v3_album_artist_ids"
+ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION = "spotify_complete_release_v4_date_evidence"
 
 _RELEASE_PACKAGING_MARKERS = (
     "remaster",
@@ -174,6 +179,7 @@ class _ProjectReleaseEvidence:
     track_list: tuple[str, ...]
     link_track_count: int
     confidence: float
+    release_date_precision: str | None = None
     artist_identity_key: str = ""
 
 
@@ -581,9 +587,10 @@ def _strong_release_evidence_for_album(
     artist_resolver,
 ) -> list[_ProjectReleaseEvidence]:
     rows = conn.execute(
-        """SELECT asl.spotify_album_id, MAX(asl.confidence) AS confidence,
+        f"""SELECT asl.spotify_album_id, MAX(asl.confidence) AS confidence,
                   MAX(asl.track_count) AS link_track_count,
                   sam.album_name, sam.album_type, sam.release_date,
+                  {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision,
                   sam.album_artists, sam.total_tracks, sam.track_list
              FROM album_spotify_links asl
              JOIN spotify_album_meta sam
@@ -617,6 +624,10 @@ def _strong_release_evidence_for_album(
         album_artists = str(row["album_artists"] or "").strip()
         if not release_date or not album_artists:
             skipped["incomplete_release_metadata"] += 1
+            continue
+        date_evidence = parse_release_date(release_date, row["release_date_precision"])
+        if date_evidence.start is None:
+            skipped["invalid_release_date_evidence"] += 1
             continue
         provider_credits = artist_resolver.read(row["spotify_album_id"])
         if provider_credits:
@@ -655,6 +666,7 @@ def _strong_release_evidence_for_album(
                 spotify_album_id=str(row["spotify_album_id"]),
                 spotify_album_name=spotify_name,
                 release_date=release_date,
+                release_date_precision=row["release_date_precision"],
                 album_artists=album_artists,
                 total_tracks=len(track_list),
                 track_list=track_list,
@@ -934,8 +946,8 @@ def _ordered_track_subset(
 
 
 def _release_year(value: str) -> int | None:
-    match = re.match(r"^((?:19|20)\d{2})", value.strip())
-    return int(match.group(1)) if match else None
+    evidence = parse_release_date(value)
+    return evidence.start.year if evidence.start else None
 
 
 def _equivalent_release_relation(
@@ -1000,7 +1012,11 @@ def _equivalent_release_relation(
         return None
     if (
         len(left_tracks) >= 3
-        and left.release_date == right.release_date
+        and compare_release_dates(
+            parse_release_date(left.release_date, left.release_date_precision),
+            parse_release_date(right.release_date, right.release_date_precision),
+        )
+        == "same"
         and _ordered_track_lists_equivalent(left_tracks, right_tracks)
     ):
         return "catalog_alias_equivalent"
@@ -1101,10 +1117,14 @@ def _candidate_evidence_codes(relation_types: tuple[str, ...]) -> tuple[str, ...
     )
     relation_codes: list[str] = []
     if "exact_release" in relation_types:
-        relation_codes.extend(("release_date_match", "spotify_album_id_match"))
+        relation_codes.append("spotify_album_id_match")
     if "catalog_alias_equivalent" in relation_types:
         relation_codes.extend(
-            ("release_date_match", "different_spotify_album_ids", "catalog_alias_equivalent")
+            (
+                "confirmed_release_day_match",
+                "different_spotify_album_ids",
+                "catalog_alias_equivalent",
+            )
         )
     if "remaster_equivalent" in relation_types:
         relation_codes.extend(

@@ -138,7 +138,7 @@ export function AlbumDetailExperience() {
                     coverUrl={data.cover_url}
                     subtitle={<Link to={`/music/artists/${encodeURIComponent(data.artist_name)}`}>{displayName(data.artist_name)}</Link>}
                     meta={data.meta ? [
-                      data.meta.release_date,
+                      data.meta.release_date_display,
                       data.meta.total_tracks ? `发行 ${data.meta.total_tracks} 首` : null,
                       projectData?.album_project?.unique_canonical_songs != null
                         ? `已听 ${projectData.album_project.unique_canonical_songs} 首` : null,
@@ -195,7 +195,7 @@ export function AlbumDetailExperience() {
 
               {activeTab === 'stats' && (
                 <>
-                  <EntityStatsPanel kind="album" albumName={data.album_name} albumProjectId={data.album_project_id ?? stableProjectId} artistName={data.artist_name} mergeLevel={mergeLevel} releaseDate={data.meta?.release_date} />
+                  <EntityStatsPanel kind="album" albumName={data.album_name} albumProjectId={data.album_project_id ?? stableProjectId} artistName={data.artist_name} mergeLevel={mergeLevel} releaseDate={data.meta?.release_date_status === "confirmed" && data.meta?.release_date_precision === "day" ? data.meta?.release_date : undefined} />
                   {projectData?.meta?.release_group && projectData.meta.release_group.versions && projectData.meta.release_group.versions.length >= 2 && (
                     <div className="mt-8">
                       <VersionGroupSection

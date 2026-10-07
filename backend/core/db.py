@@ -13,6 +13,7 @@ from typing import Any
 
 from backend.core.cache import singleflight
 from backend.core.config import SPOTIFY_STATS_DB_PATH
+from backend.domains.metadata.release_dates import SCHEMA as RELEASE_DATE_SCHEMA
 from backend.domains.metadata.spotify_album_credits import SCHEMA as ALBUM_CREDIT_SCHEMA
 from backend.domains.playback.logical_timeline import reconstruct_logical_plays
 
@@ -507,6 +508,7 @@ CREATE TABLE IF NOT EXISTS album_projects (
     artist_id         INTEGER REFERENCES artists(artist_id),
     primary_album_id  INTEGER REFERENCES albums(album_id),
     release_date      TEXT,
+    release_date_precision TEXT,
     scope             TEXT NOT NULL DEFAULT 'release',
     project_type      TEXT NOT NULL DEFAULT 'album',
     include_in_charts INTEGER NOT NULL DEFAULT 1,
@@ -745,6 +747,7 @@ CREATE TABLE IF NOT EXISTS spotify_album_meta (
     album_name         TEXT NOT NULL,
     album_type         TEXT,
     release_date       TEXT,
+    release_date_precision TEXT,
     popularity         INTEGER,
     label              TEXT,
     genres             TEXT,
@@ -1243,7 +1246,7 @@ CREATE TABLE IF NOT EXISTS wikipedia_cache (
 """
 
 
-SCHEMA += ALBUM_CREDIT_SCHEMA
+SCHEMA += ALBUM_CREDIT_SCHEMA + RELEASE_DATE_SCHEMA
 
 
 def enforce_sqlite_foreign_keys(conn: sqlite3.Connection) -> sqlite3.Connection:
@@ -1467,7 +1470,7 @@ _AGG_SHADOW_TABLES = {
     "agg_weekly_artists": "agg_weekly_artists_shadow",
 }
 
-_BILLBOARD_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v4_all_duration"
+_BILLBOARD_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v5_release_precision"
 
 
 def _prepare_aggregation_shadows(conn: sqlite3.Connection) -> None:

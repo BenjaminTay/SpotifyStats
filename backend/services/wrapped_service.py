@@ -639,25 +639,25 @@ def _fetch_track_release_years(
     # Use composite concatenation to handle (track_name, artist_name) pairs
     # in bulk, since SQLite IN only accepts scalar values per placeholder slot.
     composite_keys = [f"{t}|||{a}" for t, a in pairs]
+    from backend.domains.metadata.release_dates import parse_release_date, precision_expression
+
+    prec = precision_expression(conn, "spotify_album_meta", "sam")
     sql = (
-        "SELECT t.track_name, a.artist_name, "
-        "  MIN(CAST(SUBSTR(sam.release_date, 1, 4) AS INTEGER)) AS release_year "
-        "FROM tracks t "
-        "JOIN artists a ON t.artist_id = a.artist_id "
-        "JOIN spotify_track_meta stm "
-        "  ON t.spotify_track_id = stm.spotify_track_id "
-        "JOIN spotify_album_meta sam ON stm.spotify_album_id = sam.spotify_album_id "
-        "WHERE (t.track_name || '|||' || a.artist_name) IN ({placeholders}) "
-        "  AND sam.release_date IS NOT NULL "
-        "GROUP BY t.track_name, a.artist_name"
+        "SELECT t.track_name, a.artist_name, sam.release_date, "
+        + prec
+        + " AS release_date_precision "
+        "FROM tracks t JOIN artists a ON t.artist_id=a.artist_id "
+        "JOIN spotify_track_meta stm ON t.spotify_track_id=stm.spotify_track_id "
+        "JOIN spotify_album_meta sam ON stm.spotify_album_id=sam.spotify_album_id "
+        "WHERE (t.track_name || '|||' || a.artist_name) IN ({placeholders})"
     )
     rows = _batch_query(conn, sql, composite_keys, batch_size=500)
     result = {}
     for r in rows:
-        key = (r[0], r[1])
-        val = r[2]
-        if val is not None:
-            result[key] = int(val)
+        evidence = parse_release_date(r[2], r[3])
+        if evidence.start is not None:
+            key = (r[0], r[1])
+            result[key] = min(result.get(key, evidence.start.year), evidence.start.year)
     return result
 
 

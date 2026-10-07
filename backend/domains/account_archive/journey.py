@@ -95,10 +95,12 @@ def _growth_points(rows: list[dict[str, Any]]) -> tuple[list[dict], list[dict], 
 def _release_years(rows: list[dict[str, Any]]) -> list[int]:
     years: list[int] = []
     for row in rows:
-        release_date = str(row.get("release_date") or "")
-        if len(release_date) < 4 or not release_date[:4].isdigit():
+        from backend.domains.metadata.release_dates import parse_release_date
+
+        evidence = parse_release_date(row.get("release_date"), row.get("release_date_precision"))
+        if evidence.start is None:
             continue
-        year = int(release_date[:4])
+        year = evidence.start.year
         if 1900 <= year <= 2100:
             years.append(year)
     return years

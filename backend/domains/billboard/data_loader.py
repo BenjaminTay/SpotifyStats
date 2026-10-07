@@ -444,10 +444,15 @@ def _match_album_artist(artist_name, album_artists):
 def _load_album_metadata():
     from backend.domains.metadata.artist_identity import get_identity_revision
     from backend.domains.metadata.spotify_album_credits import album_credit_revision
+    from backend.services.analysis_snapshot_revision import source_revision
 
     conn = get_db()
     try:
-        revision = (album_credit_revision(conn), get_identity_revision(conn))
+        revision = (
+            album_credit_revision(conn),
+            get_identity_revision(conn),
+            source_revision(conn, "analysis_records"),
+        )
     finally:
         conn.close()
     return _load_album_metadata_cached(revision)
@@ -455,14 +460,15 @@ def _load_album_metadata():
 
 @lru_cache(maxsize=8)
 def _load_album_metadata_cached(_revision):
+    from backend.domains.metadata.release_dates import parse_release_date, precision_expression
     from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
 
     conn = get_db()
     # Join by album_name only; filter by artist in pandas to handle
     # multi-artist formats (comma-separated, JSON array).
     df = pd.read_sql_query(
-        """SELECT DISTINCT al.album_name, a.artist_name, a.artist_id, sam.spotify_album_id, sam.album_artists,
-               sam.album_type, sam.release_date, sam.total_tracks
+        f"""SELECT DISTINCT al.album_name, a.artist_name, a.artist_id, sam.spotify_album_id, sam.album_artists,
+               sam.album_type, sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision, sam.total_tracks
            FROM albums al
            JOIN artists a ON al.artist_id = a.artist_id
            JOIN spotify_album_meta sam ON sam.album_name = al.album_name""",
@@ -488,6 +494,18 @@ def _load_album_metadata_cached(_revision):
     )
 
     date_df = df.dropna(subset=["release_date"])
+    date_df = date_df[
+        pd.Series(
+            [
+                parse_release_date(raw, precision).start is not None
+                for raw, precision in date_df[
+                    ["release_date", "release_date_precision"]
+                ].itertuples(index=False, name=None)
+            ],
+            index=date_df.index,
+            dtype=bool,
+        )
+    ]
     date_df = date_df.groupby(["album_name", "artist_name"], as_index=False)["release_date"].min()
 
     # 补充 release group canonical name 的元数据行

@@ -1171,7 +1171,13 @@ def build() -> str:
     from backend.domains.playback.album_projects import ensure_album_projects
     from backend.services.analysis_snapshot_revision import install_revision_tracking
 
+    conn.execute(
+        "UPDATE spotify_album_meta SET release_date_precision='day' WHERE release_date GLOB '????-??-??'"
+    )
     ensure_album_projects(conn)
+    conn.execute(
+        "UPDATE album_projects SET release_date_precision='day' WHERE release_date GLOB '????-??-??'"
+    )
     install_revision_tracking(conn)
     conn.execute("UPDATE analysis_source_revisions SET epoch='tracked-seed-analysis-v1'")
 

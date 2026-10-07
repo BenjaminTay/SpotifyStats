@@ -107,6 +107,10 @@ def _conn():
         );
         """
     )
+    from backend.core.migrations import migrate_089
+
+    migrate_089(conn)
+    conn.commit()
     return conn
 
 

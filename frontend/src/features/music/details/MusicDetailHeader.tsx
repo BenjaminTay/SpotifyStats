@@ -9,6 +9,8 @@ import { CapabilityGate } from '@/components/capabilities/CapabilityGate'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 function formatAlbumReleaseDate(iso: string): string {
+  if (/^\d{4}$/.test(iso)) return iso
+  if (/^\d{4}-\d{2}$/.test(iso)) return iso
   const [y, m, d] = iso.split('-')
   const months = [
     'Jan',
@@ -298,7 +300,7 @@ export function AlbumDetailHero({
             <p className="mt-1 break-words font-sans text-[14px] text-muted-foreground">
               {[
                 data.meta.album_type && formatAlbumKind(data.meta.album_type),
-                data.meta.release_date && formatAlbumReleaseDate(data.meta.release_date),
+                data.meta.release_date_display && formatAlbumReleaseDate(data.meta.release_date_display),
                 data.meta.total_tracks && `发行 ${data.meta.total_tracks} 首`,
                 projectTrackCount != null && `已听 ${projectTrackCount} 首`,
                 data.meta.label,

@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 88
+LATEST_SCHEMA_VERSION = 89
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4304,6 +4304,21 @@ def migrate_088(conn: sqlite3.Connection):
     from backend.domains.metadata.spotify_album_credits import create_schema
 
     create_schema(conn)
+
+
+@migration(89, "spotify_release_date_precision")
+def migrate_089(conn: sqlite3.Connection):
+    from backend.domains.metadata.release_dates import SCHEMA as DATE_SCHEMA
+
+    for table in ("spotify_album_meta", "album_projects"):
+        columns = {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')}
+        if columns and "release_date_precision" not in columns:
+            conn.execute(f'ALTER TABLE "{table}" ADD COLUMN release_date_precision TEXT')
+    # Existing raw values stay unchanged and explicitly lack source precision.
+    conn.executescript(DATE_SCHEMA)
+    from backend.domains.account_archive.snapshot_revision import install_revision_tracking
+
+    install_revision_tracking(conn)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

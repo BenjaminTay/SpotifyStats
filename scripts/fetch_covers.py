@@ -221,16 +221,18 @@ def resolve_album_via_track_api(db, token, client_id, client_secret, unresolved)
                                 (track_id, track["name"], track["duration_ms"], album_id),
                             )
                             # 也写入 album meta 基本信息
-                            db.execute(
-                                """INSERT OR IGNORE INTO spotify_album_meta(
-                                       spotify_album_id, album_name, album_type, release_date)
-                                   VALUES (?, ?, ?, ?)""",
-                                (
-                                    album_id,
-                                    album_name,
-                                    track["album"].get("album_type"),
-                                    track["album"].get("release_date"),
-                                ),
+                            _upsert_album_meta(
+                                db,
+                                album_id,
+                                album_name,
+                                track["album"].get("album_type"),
+                                track["album"].get("release_date"),
+                                None,
+                                None,
+                                None,
+                                None,
+                                track["album"].get("artists"),
+                                track["album"].get("release_date_precision"),
                             )
                             resolved += 1
                             break
@@ -484,6 +486,7 @@ def fetch_album_covers(
                     matched.get("genres"),
                     img_url,
                     matched.get("artists"),
+                    matched.get("release_date_precision"),
                 )
                 marker = "~" if matched["name"].lower() != name.lower() else ""
                 print(
@@ -548,6 +551,7 @@ def fetch_album_covers(
                     alb.get("genres"),
                     img_url,
                     alb.get("artists"),
+                    alb.get("release_date_precision"),
                 )
 
             db.commit()
@@ -564,7 +568,17 @@ def fetch_album_covers(
 
 
 def _upsert_album_meta(
-    db, spotify_id, name, album_type, release_date, popularity, label, genres, img_url, artists
+    db,
+    spotify_id,
+    name,
+    album_type,
+    release_date,
+    popularity,
+    label,
+    genres,
+    img_url,
+    artists,
+    release_date_precision=None,
 ):
     """写入 spotify_album_meta 表。"""
     from backend.domains.metadata.spotify_album_credits import persist_album_artists
@@ -577,7 +591,7 @@ def _upsert_album_meta(
            ON CONFLICT(spotify_album_id) DO UPDATE SET
                album_name=excluded.album_name,
                album_type=COALESCE(excluded.album_type, spotify_album_meta.album_type),
-               release_date=COALESCE(excluded.release_date, spotify_album_meta.release_date),
+
                popularity=COALESCE(excluded.popularity, spotify_album_meta.popularity),
                label=COALESCE(excluded.label, spotify_album_meta.label),
                genres=COALESCE(excluded.genres, spotify_album_meta.genres),
@@ -586,12 +600,23 @@ def _upsert_album_meta(
             spotify_id,
             name,
             album_type,
-            release_date,
+            None,
             popularity,
             label,
             json.dumps(genres, ensure_ascii=False) if genres else None,
             img_url,
         ),
+    )
+    from backend.domains.metadata.release_dates import persist_release_date
+
+    persist_release_date(
+        db,
+        {
+            "id": spotify_id,
+            "release_date": release_date,
+            "release_date_precision": release_date_precision,
+        },
+        source="fetch_covers",
     )
     persist_album_artists(db, {"id": spotify_id, "artists": artists}, source="fetch_covers")
 

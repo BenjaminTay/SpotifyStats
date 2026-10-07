@@ -23,7 +23,7 @@ SOURCES = {
     "artists": ("artists", "artist_id artist_name"),
     "albums": ("albums", "album_id album_name artist_id release_date image_path image_url"),
     "duration": ("spotify_track_meta", "spotify_track_id duration_ms spotify_album_id"),
-    "release": ("spotify_album_meta", "spotify_album_id release_date"),
+    "release": ("spotify_album_meta", "spotify_album_id release_date release_date_precision"),
     "identity": (
         "track_l1_identities",
         "l1_id fallback_track_id representative_track_id identity_status",

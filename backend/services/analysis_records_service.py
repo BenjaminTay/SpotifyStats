@@ -30,30 +30,46 @@ logger = logging.getLogger(__name__)
 
 # Bump this whenever record ranking/serialization semantics change so a
 # long-lived process cannot serve a pre-fix payload from its LRU cache.
-PLAYBACK_RECORDS_SORT_CONTRACT_VERSION = "2026-10-02-album-release-positions-v5"
+PLAYBACK_RECORDS_SORT_CONTRACT_VERSION = "2026-10-07-release-date-evidence-v6"
 
 
 def _load_reliable_album_release_dates(conn: sqlite3.Connection) -> pd.DataFrame:
     """Load unambiguous full-precision Spotify release dates for local albums."""
+    from backend.domains.metadata.release_dates import (
+        compare_release_dates,
+        parse_release_date,
+        precision_expression,
+    )
+
+    columns = ["album_name", "artist_name", "source_album_release_date"]
     try:
-        return pd.read_sql_query(
-            """SELECT al.album_name,
-                      ar.artist_name,
-                      MIN(sam.release_date) AS source_album_release_date
-               FROM album_spotify_links asl
-               JOIN albums al ON al.album_id = asl.album_id
-               JOIN artists ar ON ar.artist_id = al.artist_id
-               JOIN spotify_album_meta sam ON sam.spotify_album_id = asl.spotify_album_id
-               WHERE asl.confidence >= 0.9
-                 AND LOWER(COALESCE(sam.album_type, '')) IN ('album', 'ep')
-                 AND sam.release_date GLOB '????-??-??'
-               GROUP BY al.album_name, ar.artist_name
-               HAVING COUNT(DISTINCT sam.release_date) = 1""",
-            conn,
-        )
+        rows = conn.execute(f"""SELECT al.album_name, ar.artist_name,
+                 sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")}
+            FROM album_spotify_links asl JOIN albums al USING(album_id)
+            JOIN artists ar ON ar.artist_id=al.artist_id
+            JOIN spotify_album_meta sam USING(spotify_album_id)
+            WHERE asl.confidence>=0.9 AND lower(COALESCE(sam.album_type,'')) IN ('album','ep')""").fetchall()
+        from collections import defaultdict
+
+        grouped = defaultdict(list)
+        for row in rows:
+            grouped[(row[0], row[1])].append(parse_release_date(row[2], row[3]))
+        reliable = []
+        for (album_name, artist_name), evidence in grouped.items():
+            days = {item.exact_day for item in evidence if item.exact_day is not None}
+            if len(days) != 1:
+                continue
+            selected = next(item for item in evidence if item.exact_day is not None)
+            if any(
+                compare_release_dates(selected, item) in {"conflict", "unknown"}
+                for item in evidence
+            ):
+                continue
+            reliable.append((album_name, artist_name, selected.raw))
+        return pd.DataFrame(reliable, columns=columns)
     except Exception as exc:
         logger.warning("Reliable album release-date lookup failed: %s", exc)
-        return pd.DataFrame(columns=["album_name", "artist_name", "source_album_release_date"])
+        return pd.DataFrame(columns=columns)
 
 
 def _build_entity_frames(
@@ -143,11 +159,18 @@ def _build_entity_frames(
 
             if not membership.empty and "canonical_song_key" in events_with_keys.columns:
                 membership_join = membership[
-                    ["canonical_song_key", "project_id", "album_project_name", "release_date"]
+                    [
+                        "canonical_song_key",
+                        "project_id",
+                        "album_project_name",
+                        "release_date",
+                        "release_date_precision",
+                    ]
                 ].rename(
                     columns={
                         "project_id": "album_project_id",
                         "release_date": "album_project_release_date",
+                        "release_date_precision": "album_project_release_date_precision",
                     }
                 )
                 # Join each play event to its album project via canonical song key
@@ -189,11 +212,18 @@ def _build_entity_frames(
                 membership = load_album_project_membership(conn, merge_level, include_compilations)
             if not membership.empty and "canonical_song_key" in duration_with_keys.columns:
                 membership_join = membership[
-                    ["canonical_song_key", "project_id", "album_project_name", "release_date"]
+                    [
+                        "canonical_song_key",
+                        "project_id",
+                        "album_project_name",
+                        "release_date",
+                        "release_date_precision",
+                    ]
                 ].rename(
                     columns={
                         "project_id": "album_project_id",
                         "release_date": "album_project_release_date",
+                        "release_date_precision": "album_project_release_date_precision",
                     }
                 )
                 album_duration = duration_with_keys.merge(
@@ -228,6 +258,18 @@ def _build_entity_frames(
     if not album_frame.empty:
         if "album_project_release_date" not in album_frame.columns:
             album_frame["album_project_release_date"] = None
+        from backend.domains.metadata.release_dates import parse_release_date
+
+        precision = album_frame.get(
+            "album_project_release_date_precision", pd.Series(None, index=album_frame.index)
+        )
+        album_frame["album_project_release_day"] = [
+            evidence.exact_day.isoformat() if evidence.exact_day else None
+            for evidence in (
+                parse_release_date(raw, prec)
+                for raw, prec in zip(album_frame["album_project_release_date"], precision)
+            )
+        ]
         release_dates = _load_reliable_album_release_dates(conn)
         if not release_dates.empty:
             album_frame = album_frame.merge(
@@ -235,12 +277,12 @@ def _build_entity_frames(
                 on=["album_name", "artist_name"],
                 how="left",
             )
-            album_frame["album_release_date"] = album_frame["album_project_release_date"].fillna(
+            album_frame["album_release_date"] = album_frame["album_project_release_day"].fillna(
                 album_frame["source_album_release_date"]
             )
             album_frame = album_frame.drop(columns=["source_album_release_date"])
         else:
-            album_frame["album_release_date"] = album_frame["album_project_release_date"]
+            album_frame["album_release_date"] = album_frame["album_project_release_day"]
 
     # ── Artist fan-out with same filtering as event_frame ──
     try:

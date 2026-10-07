@@ -708,11 +708,15 @@ class TestReleaseCycleService:
         assert "track_count" in data[0]
         assert data[0]["track_count"] > 0
 
-    def test_load_artist_releases(self):
+    def test_load_artist_releases(self, has_source_release_day):
         from backend.services.release_cycle_service import load_artist_releases
 
         releases = load_artist_releases("Taylor Swift")
-        assert len(releases) > 10
+        if not has_source_release_day("Taylor Swift"):
+            assert releases.empty
+        else:
+            assert not releases.empty
+            assert set(releases["release_date_precision"]) == {"day"}
         cols = releases.columns.tolist()
         for c in ["album_name", "release_date", "album_type"]:
             assert c in cols
@@ -742,8 +746,8 @@ class TestReleaseCycleService:
             weekly_artist,
             weekly_album,
         )
-        assert summary["total_albums"] > 0
-        assert summary["total_singles"] > 0
+        assert summary["total_albums"] == int((releases.album_type == "album").sum())
+        assert summary["total_singles"] == int((releases.album_type == "single").sum())
 
 
 # ═══════════════════════════════════════════════════════════════════════════

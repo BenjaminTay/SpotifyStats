@@ -17,7 +17,6 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, replace
-from datetime import date
 from typing import Any, cast
 
 from backend.domains.metadata.album_detail_meta import _select_candidate
@@ -95,10 +94,10 @@ def _placeholders(values: Iterable[object]) -> str:
     return ",".join("?" for _ in values)
 
 
-def _date_key(value: str | None) -> tuple[int, str]:
-    if not value:
-        return (1, date.max.isoformat())
-    return (0, str(value))
+def _date_key(value: str | None) -> tuple:
+    from backend.domains.metadata.release_dates import release_sort_key
+
+    return release_sort_key(value)
 
 
 def _spotify_track_id(value: object) -> str:

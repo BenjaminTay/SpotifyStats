@@ -1134,3 +1134,7 @@ group / 873 个 membership；L3 album composition 新建 2 个父项目并挂接
 - 如果 Spotify API 凭据缺失或上游失败，导入仍应完成基础播放数据写入，并返回 `maintenance_status=partial`；不得让新歌播放记录整体不可用。
 - `build_aggregations()` 必须在 metadata refresh 和 album project rebuild 之后运行，避免榜单基于旧封面、旧 duration 或旧 album project membership。
 - 既有数据库可用 `scripts/refresh_import_derived_data.py` 手动运行同一条维护管线。
+
+## 发行日期证据边界
+
+发行后范围过滤与 Records 日级里程碑使用[发行日期精度合同](release-date-precision.md)：粗日期采用范围上界作保守过滤，日级里程碑要求来源确认 day；不补齐月日、不改变原始播放事实。

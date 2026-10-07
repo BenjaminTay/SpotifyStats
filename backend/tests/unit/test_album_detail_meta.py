@@ -94,6 +94,9 @@ def test_project_detail_prefers_release_matching_project_over_later_versions():
     assert meta == {
         "album_type": "album",
         "release_date": "2024-08-23",
+        "release_date_precision": None,
+        "release_date_status": "legacy",
+        "release_date_display": "2024",
         "popularity": 80,
         "label": "Original Label",
         "total_tracks": 12,

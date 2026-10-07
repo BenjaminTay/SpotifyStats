@@ -60,7 +60,7 @@ HEALTH_TABLES = {
     "artist_identity_members": "identity_id artist_id active",
     "track_artists": "track_id artist_id role",
     "spotify_track_meta": "spotify_track_id spotify_album_id",
-    "spotify_album_meta": "spotify_album_id album_name album_artists album_type total_tracks track_list image_url",
+    "spotify_album_meta": "spotify_album_id album_name album_artists album_type release_date release_date_precision total_tracks track_list image_url",
     "spotify_album_artist_credits": "spotify_album_id spotify_artist_id credited_name credit_order",
     "artist_identity_external_ids": "artist_id provider external_id",
     "album_spotify_links": "album_id spotify_album_id play_count",

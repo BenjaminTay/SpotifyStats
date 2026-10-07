@@ -7612,6 +7612,10 @@ export interface components {
             error?: string | null;
             /** Comparisons */
             comparisons?: components["schemas"]["CompareReleaseResult"][];
+            /** Unavailable */
+            unavailable?: {
+                [key: string]: string;
+            }[];
         };
         /** CompareRequest */
         CompareRequest: {
@@ -10748,6 +10752,10 @@ export interface components {
             release_date?: string | null;
             /** Release Date Iso */
             release_date_iso?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Reason */
+            reason?: string | null;
             /** Canonical Name */
             canonical_name?: string | null;
             /** Primary Name */
@@ -10819,6 +10827,10 @@ export interface components {
         ReleaseCycleArtistOverviewResponse: {
             /** Artist Name */
             artist_name?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Reason */
+            reason?: string | null;
             /** Summary */
             summary?: {
                 [key: string]: unknown;

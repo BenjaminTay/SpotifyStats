@@ -115,6 +115,7 @@ def test_advance_singles_cover_uses_shared_track_spotify_album_meta(monkeypatch)
             "album_name": "Fixture Lead Single (Spotify)",
             "album_type": "single",
             "release_date": "2024-01-05",
+            "release_date_precision": "day",
             "spotify_album_id": "spotify-single-album",
         },
     )

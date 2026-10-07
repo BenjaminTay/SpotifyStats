@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS album_projects (
     artist_id         INTEGER REFERENCES artists(artist_id),
     primary_album_id  INTEGER REFERENCES albums(album_id),
     release_date      TEXT,
+    release_date_precision TEXT,
     scope             TEXT NOT NULL DEFAULT 'release',
     project_type      TEXT NOT NULL DEFAULT 'album',
     include_in_charts INTEGER NOT NULL DEFAULT 1,
@@ -873,7 +874,7 @@ def load_album_project_membership(
                   ap.artist_id,
                   ar.artist_name,
                   ap.primary_album_id,
-                  ap.release_date,
+                  ap.release_date, ap.release_date_precision,
                   ap.scope,
                   ap.project_type,
                   ap.include_in_charts,
@@ -1961,6 +1962,12 @@ def _upsert_project(
             row["project_id"],
         ),
     )
+    from backend.domains.metadata.release_dates import project_date_precision
+
+    conn.execute(
+        "UPDATE album_projects SET release_date_precision=? WHERE project_id=?",
+        (project_date_precision(conn, primary_album_id, release_date), row["project_id"]),
+    )
     return int(row["project_id"])
 
 
@@ -2169,7 +2176,13 @@ def _filter_to_project_release_date(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     event_source = out["ts_date"] if "ts_date" in out.columns else out["ts"]
     out["_event_date"] = pd.to_datetime(event_source, errors="coerce")
-    out["_release_date"] = pd.to_datetime(out["release_date"], errors="coerce")
+    from backend.domains.metadata.release_dates import parse_release_date
+
+    precision = out.get("release_date_precision", pd.Series(None, index=out.index))
+    out["_release_date"] = pd.to_datetime(
+        [parse_release_date(raw, prec).end for raw, prec in zip(out["release_date"], precision)],
+        errors="coerce",
+    )
     return out[
         out["_release_date"].isna() | (out["_event_date"].dt.date >= out["_release_date"].dt.date)
     ].drop(columns=["_event_date", "_release_date"])

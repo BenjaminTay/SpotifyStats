@@ -673,10 +673,16 @@ class TestReleaseCycle:
         assert "track_count" in data[0]
         assert data[0]["track_count"] > 0
 
-    def test_artist_overview(self, taylor_release_cycle_overview):
+    def test_artist_overview(self, taylor_release_cycle_overview, has_source_release_day):
         d = taylor_release_cycle_overview
         assert d["artist_name"] == "Taylor Swift"
-        assert len(d["releases"]) > 10
+        if not has_source_release_day("Taylor Swift"):
+            assert d["status"] == "unavailable"
+            assert d["reason"] == "release_day_unconfirmed"
+            assert d["releases"] == d["cycles"] == d["release_events"] == []
+            assert d["summary"] is None
+            return
+        assert len(d["releases"]) > 0
         assert len(d["rank_trend"]) > 100
         assert d["summary"] is not None
         assert len(d["cycles"]) > 0
@@ -688,13 +694,17 @@ class TestReleaseCycle:
 
     def test_artist_overview_release_covers_resolve(self, client, taylor_release_cycle_overview):
         d = taylor_release_cycle_overview
-        target = next(c for c in d["cycles"] if c["album_name"] == "THE TORTURED POETS DEPARTMENT")
+        if not d["cycles"]:
+            assert d["status"] == "unavailable"
+            assert d["reason"] == "release_day_unconfirmed"
+            return
+        target = d["cycles"][0]
         assert target["cover_url"].startswith("/covers/albums/")
 
         cover = client.get(target["cover_url"], follow_redirects=False)
         assert cover.status_code in (200, 307)
 
-    def test_album_detail(self, client, default_params):
+    def test_album_detail(self, client, default_params, has_source_release_day):
         r = client.get(
             "/api/billboard/release-cycle/artist/Taylor Swift/album/Midnights",
             params=default_params,
@@ -703,8 +713,13 @@ class TestReleaseCycle:
         d = r.json()
         assert d["album_name"] == "Midnights"
         assert d["artist_name"] == "Taylor Swift"
-        assert "metrics" in d
-        assert "album_timeline" in d
+        if not has_source_release_day("Taylor Swift", "Midnights"):
+            assert d["status"] == "unavailable"
+            assert d["reason"] == "release_day_unconfirmed"
+            assert d["metrics"] is None and d["album_timeline"] is None
+        else:
+            assert d["metrics"] is not None
+            assert d["album_timeline"] is not None
 
     def test_album_detail_nonexistent(self, client, default_params):
         r = client.get(
@@ -731,7 +746,10 @@ class TestReleaseCycle:
         assert r.status_code == 200
         d = r.json()
         assert "comparisons" in d
-        assert len(d["comparisons"]) == 2
+        assert len(d["comparisons"]) + len(d["unavailable"]) == 2
+        for item in d["unavailable"]:
+            assert item["status"] == "unavailable"
+            assert item["reason"] == "release_day_unconfirmed"
 
     def test_compare_requires_two_items(self, client, default_params):
         r = client.post(

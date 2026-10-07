@@ -18,6 +18,7 @@ from backend.domains.billboard.chart_compute import compute_billboard_data
 from backend.domains.metadata.album_detail_meta import resolve_album_detail_meta
 from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
+from backend.domains.metadata.release_dates import parse_release_date, precision_expression
 from backend.domains.metadata.track_presentation import resolve_track_presentation
 from backend.domains.playback.track_groups import resolve_track_aggregation_scope
 
@@ -421,11 +422,11 @@ def _attach_track_version_group(
 
     if merge_level >= 3:
         versions = conn.execute(
-            """SELECT t.track_id, t.track_name, al.album_name, al.album_id,
+            f"""SELECT t.track_id, t.track_name, al.album_name, al.album_id,
                       al.image_path, al.image_url,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
-                      sam.album_type, sam.release_date,
+                      sam.album_type, sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision,
                       sam.image_url AS album_cover_url
                FROM track_group_members tgm
                JOIN track_groups tg ON tgm.group_id = tg.group_id
@@ -444,11 +445,11 @@ def _attach_track_version_group(
         ).fetchall()
     else:
         versions = conn.execute(
-            """SELECT t.track_id, t.track_name, al.album_name, al.album_id,
+            f"""SELECT t.track_id, t.track_name, al.album_name, al.album_id,
                       al.image_path, al.image_url,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
-                      sam.album_type, sam.release_date,
+                      sam.album_type, sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision,
                       sam.image_url AS album_cover_url
                FROM track_group_members tgm
                JOIN tracks t ON tgm.track_id = t.track_id
@@ -498,7 +499,9 @@ def _attach_track_version_group(
                 "is_primary": v["track_id"] == group_row["primary_track_id"],
                 "recording_kind": _classify_recording_kind(v["track_name"]),
                 "album_cover_url": _version_album_cover_url(v),
-                "release_date": v["release_date"],
+                "release_date": parse_release_date(
+                    v["release_date"], dict(v).get("release_date_precision")
+                ).display,
             }
             for v in versions
         ],
@@ -537,11 +540,11 @@ def _attach_l1_track_version_group(
         return
     effective_group_id = int(group_row["effective_group_id"])
     versions = conn.execute(
-        """SELECT li.l1_id AS track_id, t.track_name, al.album_name, al.album_id,
+        f"""SELECT li.l1_id AS track_id, t.track_name, al.album_name, al.album_id,
                   al.image_path, al.image_url,
                   COUNT(DISTINCT p.play_id) AS plays,
                   COALESCE(SUM(p.ms_played), 0) AS total_ms,
-                  sam.album_type, sam.release_date,
+                  sam.album_type, sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision,
                   sam.image_url AS album_cover_url
              FROM track_groups groups
              JOIN track_group_l1_members members ON members.group_id=groups.group_id
@@ -598,7 +601,9 @@ def _attach_l1_track_version_group(
                 "is_primary": int(version["track_id"]) == int(group_row["primary_l1_id"]),
                 "recording_kind": _classify_recording_kind(version["track_name"]),
                 "album_cover_url": _version_album_cover_url(version),
-                "release_date": version["release_date"],
+                "release_date": parse_release_date(
+                    version["release_date"], version.get("release_date_precision")
+                ).display,
             }
             for version in versions
         ],
@@ -731,12 +736,12 @@ def _attach_album_release_group(
 
     if merge_level >= 3:
         versions = conn.execute(
-            """SELECT al.album_id, al.album_name, ar.artist_name,
+            f"""SELECT al.album_id, al.album_name, ar.artist_name,
                       al.image_path, al.image_url,
                       COUNT(DISTINCT p.track_id) AS unique_tracks,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
-                      sam.album_type, sam.release_date, sam.total_tracks,
+                      sam.album_type, sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision, sam.total_tracks,
                       sam.image_url AS album_cover_url
                FROM release_group_members rgm
                JOIN release_groups rg ON rgm.group_id = rg.group_id
@@ -755,12 +760,12 @@ def _attach_album_release_group(
         ).fetchall()
     else:
         versions = conn.execute(
-            """SELECT al.album_id, al.album_name, ar.artist_name,
+            f"""SELECT al.album_id, al.album_name, ar.artist_name,
                       al.image_path, al.image_url,
                       COUNT(DISTINCT p.track_id) AS unique_tracks,
                       COUNT(p.play_id) AS plays,
                       COALESCE(SUM(p.ms_played), 0) AS total_ms,
-                      sam.album_type, sam.release_date, sam.total_tracks,
+                      sam.album_type, sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision, sam.total_tracks,
                       sam.image_url AS album_cover_url
                FROM release_group_members rgm
                JOIN albums al ON rgm.album_id = al.album_id
@@ -846,7 +851,9 @@ def _attach_album_release_group(
                 "total_ms": v["total_ms"],
                 "is_primary": v["album_id"] == group_row["primary_album_id"],
                 "album_cover_url": _version_album_cover_url(v),
-                "release_date": v["release_date"],
+                "release_date": parse_release_date(
+                    v["release_date"], dict(v).get("release_date_precision")
+                ).display,
                 "album_type": v["album_type"],
                 "total_tracks": v["total_tracks"],
             }
@@ -872,7 +879,7 @@ def _enrich_source_breakdown(conn: sqlite3.Connection, df: pd.DataFrame) -> pd.D
                   a.image_path, a.image_url,
                   ar.artist_name,
                   sam.image_url AS album_cover_url,
-                  sam.release_date,
+                  sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision,
                   (SELECT COUNT(*) FROM track_albums ta
                    WHERE ta.album_id = a.album_id) AS track_count
            FROM albums a
@@ -892,7 +899,9 @@ def _enrich_source_breakdown(conn: sqlite3.Connection, df: pd.DataFrame) -> pd.D
     meta_by_id: dict[int, dict] = {}
     for r in meta_rows:
         meta_by_id[r["album_id"]] = {
-            "release_date": r["release_date"],
+            "release_date": parse_release_date(
+                r["release_date"], r["release_date_precision"]
+            ).display,
             "track_count": r["track_count"] or 0,
             "album_name": r["album_name"],
             "artist_name": r["artist_name"],
@@ -904,7 +913,7 @@ def _enrich_source_breakdown(conn: sqlite3.Connection, df: pd.DataFrame) -> pd.D
         meta = meta_by_id.get(int(aid)) if aid is not None and pd.notna(aid) else None
         if meta:
             row["album_cover_url"] = meta["album_cover_url"]
-            row["release_date"] = meta["release_date"] or row.get("release_date")
+            row["release_date"] = meta["release_date"]
             row["track_count"] = meta["track_count"]
         else:
             row["album_cover_url"] = None
@@ -1029,7 +1038,14 @@ def _get_album_project_payload(
             "album_project_id": project_id,
             "album_project_name": project_name,
             "artist_name": project_artist_name,
-            "release_date": release_date,
+            "release_date": parse_release_date(
+                release_date,
+                conn.execute(
+                    "SELECT release_date_precision FROM album_projects WHERE project_id=?",
+                    (project_id,),
+                ).fetchone()[0],
+            ).display,
+            "release_date_raw": release_date,
             "play_count": play_count,
             "total_ms": total_ms,
             "unique_canonical_songs": unique_song_count,

@@ -13,6 +13,12 @@ import sqlite3
 from typing import Any
 
 from backend.core.version_merge import normalize_album_name
+from backend.domains.metadata.release_dates import (
+    compare_release_dates,
+    parse_release_date,
+    precision_expression,
+    release_sort_key,
+)
 from backend.domains.music_search.normalization import normalize_search_text
 
 _META_FIELDS = ("album_type", "release_date", "popularity", "label", "total_tracks")
@@ -35,16 +41,17 @@ def _resolve_project(
 ) -> sqlite3.Row | None:
     if not _table_exists(conn, "album_projects"):
         return None
+    precision = precision_expression(conn, "album_projects")
     if album_project_id is not None:
         return conn.execute(
-            """SELECT project_id, canonical_name, primary_album_id,
-                      release_date, project_type
+            f"""SELECT project_id, canonical_name, primary_album_id,
+                      release_date, {precision} AS release_date_precision, project_type
                FROM album_projects WHERE project_id=?""",
             (album_project_id,),
         ).fetchone()
     return conn.execute(
-        """SELECT ap.project_id, ap.canonical_name, ap.primary_album_id,
-                  ap.release_date, ap.project_type
+        f"""SELECT ap.project_id, ap.canonical_name, ap.primary_album_id,
+                  ap.release_date, {precision_expression(conn, "album_projects", "ap")} AS release_date_precision, ap.project_type
            FROM album_projects ap
            JOIN artists ar ON ar.artist_id=ap.artist_id
            WHERE lower(ap.canonical_name)=lower(?)
@@ -99,7 +106,7 @@ def _load_candidates(
     if _table_exists(conn, "album_spotify_links"):
         rows = conn.execute(
             f"""SELECT sam.spotify_album_id, sam.album_name, sam.album_type,
-                       sam.release_date, sam.popularity, sam.label,
+                       sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision, sam.popularity, sam.label,
                        sam.total_tracks,
                        MAX(asl.confidence) AS confidence,
                        SUM(asl.play_count) AS play_count,
@@ -125,7 +132,7 @@ def _load_candidates(
                  WHERE album_id IN ({placeholders})
                )
                SELECT sam.spotify_album_id, sam.album_name, sam.album_type,
-                      sam.release_date, sam.popularity, sam.label,
+                      sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision, sam.popularity, sam.label,
                       sam.total_tracks, 0.0 AS confidence, 0 AS play_count,
                       MIN(CASE WHEN at.album_id=? THEN 0 ELSE 1 END) AS source_rank
                FROM album_tracks at
@@ -142,10 +149,10 @@ def _load_candidates(
 def _date_matches(project_date: str | None, candidate_date: str | None) -> bool:
     if not project_date or not candidate_date:
         return False
-    precision = len(project_date)
-    if precision not in {4, 7, 10}:
-        return candidate_date == project_date
-    return candidate_date[:precision] == project_date
+    return (
+        compare_release_dates(parse_release_date(project_date), parse_release_date(candidate_date))
+        == "compatible"
+    )
 
 
 def _type_rank(project_type: str | None, album_type: str | None) -> int:
@@ -183,12 +190,12 @@ def _select_candidate(
                 0 if _date_matches(project_date, row.get("release_date")) else 1,
                 int(row.get("source_rank") or 0),
                 *common,
-                str(row.get("release_date") or "9999"),
+                release_sort_key(row.get("release_date"), row.get("release_date_precision")),
                 str(row.get("spotify_album_id") or ""),
             )
         return (
             *common,
-            str(row.get("release_date") or "9999"),
+            release_sort_key(row.get("release_date"), row.get("release_date_precision")),
             str(row.get("spotify_album_id") or ""),
         )
 
@@ -267,4 +274,17 @@ def resolve_album_detail_meta(
         meta["release_date"] = project_date
     if "album_type" not in meta and project_type:
         meta["album_type"] = "compilation" if project_type == "compilation_exclusive" else "album"
+    precision = (
+        project["release_date_precision"]
+        if project_date
+        else selected.get("release_date_precision")
+        if selected
+        else None
+    )
+    evidence = parse_release_date(meta.get("release_date"), precision)
+    meta.update(
+        release_date_precision=evidence.precision,
+        release_date_status=evidence.status,
+        release_date_display=evidence.display,
+    )
     return meta or None

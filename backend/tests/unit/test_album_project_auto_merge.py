@@ -33,12 +33,13 @@ def _add_spotify_release(
     release_date: str,
     track_ids: list[str],
     album_type: str = "album",
+    release_date_precision: str | None = "day",
 ) -> None:
     conn.execute(
         """INSERT INTO spotify_album_meta(
                spotify_album_id, album_name, album_type, release_date,
-               album_artists, total_tracks, track_list
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               album_artists, total_tracks, track_list, release_date_precision
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             spotify_album_id,
             album_name,
@@ -47,6 +48,7 @@ def _add_spotify_release(
             album_artists,
             len(track_ids),
             json.dumps(track_ids),
+            release_date_precision if len(release_date) == 10 else None,
         ),
     )
 
@@ -192,7 +194,7 @@ def test_case_only_duplicate_is_planned_and_applied_once() -> None:
         assert tuple(project_identity) == (
             "bad boy",
             "a-mei",
-            "spotify_complete_release_v3_album_artist_ids",
+            "spotify_complete_release_v4_date_evidence",
         )
         assert not plan_album_project_auto_merges(conn).candidates
     finally:
@@ -601,6 +603,22 @@ def test_catalog_alias_requires_same_date_and_complete_ordered_repertoire() -> N
 
         assert len(plan.candidates) == 1
         assert plan.candidates[0].relation_types == ("catalog_alias_equivalent",)
+        for raw, precision in [
+            ("2022", "year"),
+            ("2022-02", "month"),
+            ("2022-02-02", None),
+            ("2022-02-30", "day"),
+            ("2022-03-01", "day"),
+        ]:
+            conn.execute(
+                "UPDATE spotify_album_meta SET release_date=?,release_date_precision=? WHERE spotify_album_id='alias-right'",
+                (raw, precision),
+            )
+            assert plan_album_project_auto_merges(conn).candidates == ()
+        conn.execute(
+            "UPDATE spotify_album_meta SET release_date='2022-02-02',release_date_precision='day' WHERE spotify_album_id='alias-right'"
+        )
+        plan = plan_album_project_auto_merges(conn)
         apply_album_project_auto_merge_plan(conn, plan)
         project_id = int(
             conn.execute(

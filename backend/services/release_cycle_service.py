@@ -10,6 +10,11 @@ from backend.core.access_surface import public_readonly_db_guard_active
 from backend.core.cache import ttl_cached
 from backend.core.db import get_db
 from backend.core.version_merge import normalize_album_name
+from backend.domains.metadata.release_dates import (
+    RELEASE_DATE_POLICY_VERSION,
+    parse_release_date,
+    precision_expression,
+)
 from backend.providers.spotify.client import SpotifyProvider
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -103,6 +108,7 @@ def _save_album_meta_to_db(
     album_artists=None,
     image_url=None,
     artist_evidence=None,
+    release_date_precision=None,
 ):
     """Persist a simplified Album search result through the common evidence boundary."""
     from backend.domains.metadata.spotify_refresh import upsert_album_batch
@@ -117,6 +123,7 @@ def _save_album_meta_to_db(
                     "name": album_name,
                     "album_type": album_type,
                     "release_date": release_date,
+                    "release_date_precision": release_date_precision,
                     "artists": artist_evidence,
                     "images": [{"url": image_url}] if image_url else [],
                 }
@@ -136,7 +143,14 @@ def _album_identity_cache_revision():
     conn = None
     try:
         conn = get_db()
-        return (album_credit_revision(conn), get_identity_revision(conn))
+        from backend.services.analysis_snapshot_revision import source_revision
+
+        return (
+            album_credit_revision(conn),
+            get_identity_revision(conn),
+            RELEASE_DATE_POLICY_VERSION,
+            source_revision(conn, "analysis_records"),
+        )
     except Exception:
         return ()
     finally:
@@ -161,7 +175,7 @@ def _spotify_search_album_cached(album_name, artist_name, skip_db_check=False, _
             conn = get_db()
             resolver = AlbumArtistResolver(conn)
             rows = conn.execute(
-                """SELECT spotify_album_id, album_name, album_type, release_date, image_url, album_artists
+                f"""SELECT spotify_album_id, album_name, album_type, release_date, {precision_expression(conn, "spotify_album_meta")} AS release_date_precision, image_url, album_artists
                    FROM spotify_album_meta
                    WHERE album_name=? AND album_type IS NOT NULL AND release_date IS NOT NULL
                    ORDER BY spotify_album_id""",
@@ -209,6 +223,7 @@ def _spotify_search_album_cached(album_name, artist_name, skip_db_check=False, _
                     "album_name": album["name"],
                     "album_type": album.get("album_type"),
                     "release_date": album.get("release_date"),
+                    "release_date_precision": album.get("release_date_precision"),
                     "spotify_album_id": album["id"],
                     "image_url": album["images"][0]["url"] if album.get("images") else None,
                 }
@@ -220,6 +235,7 @@ def _spotify_search_album_cached(album_name, artist_name, skip_db_check=False, _
                     album_artists=album_artists,
                     image_url=result["image_url"],
                     artist_evidence=album.get("artists"),
+                    release_date_precision=album.get("release_date_precision"),
                 )
                 conn = get_db()
                 try:
@@ -270,10 +286,10 @@ def _load_artist_releases_cached(artist_name, _revision):
     """
     conn = get_db()
     df = pd.read_sql_query(
-        """SELECT DISTINCT
+        f"""SELECT DISTINCT
                sam.album_name,
                sam.album_type,
-               sam.release_date,
+               sam.release_date, {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision,
                sam.spotify_album_id,
                al.album_id AS db_album_id,
                al.album_name AS db_album_name,
@@ -298,7 +314,14 @@ def _load_artist_releases_cached(artist_name, _revision):
     if df.empty:
         return df
 
-    df["release_date"] = pd.to_datetime(df["release_date"], errors="coerce")
+    df["release_date_raw"] = df["release_date"]
+    df["release_date"] = pd.to_datetime(
+        [
+            parse_release_date(raw, prec).exact_day
+            for raw, prec in zip(df["release_date_raw"], df["release_date_precision"])
+        ],
+        errors="coerce",
+    )
     df = df.dropna(subset=["release_date"])
     df = df.sort_values("release_date", ascending=False).reset_index(drop=True)
 
@@ -459,6 +482,7 @@ def _filter_release_group_duplicates(releases_df):
         sub_albums_by_canonical.setdefault(canonical, []).append(
             {
                 "album_name": rel["album_name"],
+                "release_date_precision": "day",
                 "release_date": rel["release_date"].strftime("%Y-%m-%d")
                 if pd.notna(rel["release_date"])
                 else None,
@@ -546,6 +570,7 @@ def _ad_hoc_name_grouping(releases_df):
                 sub_albums.append(
                     {
                         "album_name": row["album_name"],
+                        "release_date_precision": "day",
                         "release_date": row["release_date"].strftime("%Y-%m-%d")
                         if pd.notna(row["release_date"])
                         else None,
@@ -697,12 +722,14 @@ def compute_track_timelines(df_raw, artist_name, album_name):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def align_to_release(weekly_df, release_date, weeks_before=12, weeks_after=24):
+def align_to_release(
+    weekly_df, release_date, weeks_before=12, weeks_after=24, *, release_date_precision=None
+):
     """Align weekly data to release date, adding week_offset column."""
     if weekly_df.empty:
         return weekly_df
 
-    release_date = pd.to_datetime(release_date)
+    release_date = _require_release_day(release_date, release_date_precision)
     weekly_df = weekly_df.copy()
     weekly_df["bw_dt"] = pd.to_datetime(weekly_df["billboard_week"])
     weekly_df["week_offset"] = ((weekly_df["bw_dt"] - release_date).dt.days / 7.0).apply(
@@ -717,7 +744,7 @@ def align_to_release(weekly_df, release_date, weeks_before=12, weeks_after=24):
 
 def _group_by_release_week(df, release_date, weeks_before, weeks_after):
     """Aggregate plays by precise 7-day windows anchored to release date."""
-    release_dt = pd.to_datetime(release_date)
+    release_dt = _require_release_day(release_date)
     week_offset = (df["ts_date_dt"] - release_dt).dt.days // 7
 
     mask = (week_offset >= -weeks_before) & (week_offset <= weeks_after)
@@ -757,6 +784,7 @@ def compute_release_cycle(
     artist_df=None,
     artist_median=None,
     total_daily=None,
+    release_date_precision=None,
 ):
     """Compute all data within a release cycle anchored to release date.
 
@@ -767,10 +795,29 @@ def compute_release_cycle(
         artist_median: all-time median weekly play count (float)
         total_daily:   df_raw aggregated by ts_date_dt as Series
     """
+    try:
+        release_dt = _require_release_day(release_date, release_date_precision)
+    except ValueError:
+        return {
+            "status": "unavailable",
+            "reason": "release_day_unconfirmed",
+            "release_date": release_date,
+            **{
+                key: pd.DataFrame()
+                for key in (
+                    "artist_timeline",
+                    "album_timeline",
+                    "track_timelines",
+                    "artist_ranks",
+                    "album_ranks",
+                    "total_timeline",
+                )
+            },
+            "artist_all_time_median": 0,
+        }
     album_info = _resolve_album_group(artist_name, album_name)
     canonical = album_info[1]
     album_names = album_info[0]
-    release_dt = pd.to_datetime(release_date)
 
     result = {
         "release_date": release_dt,
@@ -1344,7 +1391,7 @@ def get_advance_singles(artist_name, album_name):
 
         # Tier 1: DB lookup
         meta = pd.read_sql_query(
-            """SELECT spotify_album_id, album_type, release_date, image_url
+            f"""SELECT spotify_album_id, album_type, release_date, {precision_expression(conn, "spotify_album_meta")} AS release_date_precision, image_url
                FROM spotify_album_meta
                WHERE album_name = ?
                LIMIT 1""",
@@ -1361,7 +1408,9 @@ def get_advance_singles(artist_name, album_name):
             if db_type == "single":
                 db_rd = meta["release_date"].iloc[0]
                 if pd.notna(db_rd):
-                    release_date = pd.to_datetime(db_rd)
+                    prec = meta["release_date_precision"].iloc[0]
+                    exact = parse_release_date(db_rd, prec).exact_day
+                    release_date = pd.Timestamp(exact) if exact else None
             elif pd.notna(db_type):
                 db_has_wrong_type = True
 
@@ -1373,21 +1422,11 @@ def get_advance_singles(artist_name, album_name):
                 skip_db_check=db_has_wrong_type,
             )
             if spotify_meta and spotify_meta.get("album_type") == "single":
-                release_date = pd.to_datetime(spotify_meta["release_date"])
+                exact = parse_release_date(
+                    spotify_meta["release_date"], spotify_meta.get("release_date_precision")
+                ).exact_day
+                release_date = pd.Timestamp(exact) if exact else None
                 spotify_image_url = spotify_meta.get("image_url")
-
-        # Tier 3: earliest play date heuristic
-        if release_date is None and not db_has_wrong_type:
-            earliest = pd.read_sql_query(
-                """SELECT MIN(p.ts_date) AS first_play
-                   FROM track_albums ta
-                   JOIN plays p ON p.track_id = ta.track_id
-                   WHERE ta.album_id = ?""",
-                conn,
-                params=[int(row["album_id"])],
-            )
-            if not earliest.empty and earliest["first_play"].iloc[0] is not None:
-                release_date = pd.to_datetime(earliest["first_play"].iloc[0])
 
         if (
             release_date is not None
@@ -1425,7 +1464,7 @@ def detect_catalog_reentries(
     df_raw, artist_name, release_date, current_album_name, pre_window=4, post_window=24
 ):
     """Detect old songs that re-enter listening after a new release."""
-    release_date = pd.to_datetime(release_date)
+    release_date = _require_release_day(release_date)
     artist_df = df_raw[df_raw["artist_name"] == artist_name].copy()
 
     releases = load_artist_releases(artist_name)
@@ -1567,7 +1606,7 @@ def get_chart_ranks_for_tracks(
     if ranks.empty:
         return ranks
 
-    release_date = pd.to_datetime(release_date)
+    release_date = _require_release_day(release_date)
     ranks = align_to_release(ranks, release_date, weeks_before, weeks_after)
 
     if not ranks.empty:
@@ -1582,3 +1621,12 @@ from backend.core.cache_manager import register_lru, register_ttl  # noqa: E402
 register_lru("billboard", "release_cycle", load_artist_releases)
 register_ttl("billboard", "release_token", _get_spotify_token)
 register_ttl("billboard", "spotify_search", _spotify_search_album)
+
+
+def _require_release_day(value, precision=None):
+    if isinstance(value, pd.Timestamp) and pd.notna(value):
+        return value
+    exact = parse_release_date(value, precision).exact_day
+    if exact is None:
+        raise ValueError("release_day_unconfirmed")
+    return pd.Timestamp(exact)

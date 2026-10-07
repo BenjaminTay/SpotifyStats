@@ -119,7 +119,13 @@ def compute_hall_of_fame_records(
         ts_decade = track_summary.copy()
         ts_decade["release_date"] = None
 
-    ts_decade["release_year"] = pd.to_datetime(ts_decade["release_date"], errors="coerce").dt.year
+    from backend.domains.metadata.release_dates import parse_release_date
+
+    # Year/Month evidence supports decade analysis without inventing a day.
+    ts_decade["release_year"] = [
+        evidence.start.year if evidence.start else None
+        for evidence in (parse_release_date(raw) for raw in ts_decade["release_date"])
+    ]
     first_week_year = pd.to_datetime(ts_decade["first_week"]).dt.year
     ts_decade["release_year"] = ts_decade["release_year"].fillna(first_week_year)
     ts_decade["decade"] = (ts_decade["release_year"] // 10) * 10

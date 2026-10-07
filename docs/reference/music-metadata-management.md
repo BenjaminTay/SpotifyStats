@@ -252,3 +252,7 @@ SS-2026-09-24-002 的本地实现（migration 88）独立于 Track evidence；�
 ## 专辑证据联合更新边界
 
 完整目录/发行位置与 Album artists 分别校验；来源校验失败只阻止对应证据发布，不清空可靠旧证据。分页失败时可信艺人仍可更新；艺人 ID 冲突时可信完整目录/位置仍可更新。任一数据库写入失败回滚整批显示、两类证据和审计。共同写入支持 Provider/token/outcomes 和 source/source_run_id；不改原始播放、歌曲、原始/有效歌曲署名或人工批准关系。当前联合年度内容版本为 `yearly_review_v2_19_album_evidence`，准备层 revision 和播放来源专辑触达依赖均保留。
+
+## 发行日期精度
+
+日期原文、来源精度、legacy、范围比较与不可计算状态按[发行日期证据与精度](release-date-precision.md)执行（schema89，SS-2026-09-24-003）。缺失来源 day 不参与发行日/七日对齐，日期兼容不单独构成自动归并强证据。

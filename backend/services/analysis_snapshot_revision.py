@@ -277,6 +277,9 @@ def source_revision(conn, family: str, *, _attempt: int = 0) -> str:
     # Resolver code can change artist participation without a source-table write.
     # It is a fact dependency, not a new data revision or a GET-time migration.
     dependencies["track_credit_policy"] = TRACK_CREDIT_POLICY_VERSION
+    from backend.domains.metadata.release_dates import RELEASE_DATE_POLICY_VERSION
+
+    dependencies["release_date_policy"] = RELEASE_DATE_POLICY_VERSION
     if family == "analysis_stats":
         dependencies["taxonomy"] = GENRE_DISPLAY_TAXONOMY_VERSION
         dependencies["language"] = LANGUAGE_REGISTRY_VERSION

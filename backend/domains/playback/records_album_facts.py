@@ -125,7 +125,11 @@ def _trusted_original(
             project["artist_name"], candidate["album_artists"]
         ):
             continue
-        if expected_date and candidate["release_date"] != expected_date:
+        from backend.domains.metadata.release_dates import compare_release_dates, parse_release_date
+
+        if expected_date and compare_release_dates(
+            parse_release_date(expected_date), parse_release_date(candidate["release_date"])
+        ) in {"conflict", "unknown"}:
             continue
         total = int(candidate["total_tracks"] or 0)
         from backend.providers.spotify.album_tracks import complete_track_ids

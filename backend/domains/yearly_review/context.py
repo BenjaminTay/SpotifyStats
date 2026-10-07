@@ -59,8 +59,11 @@ def _album_project_semantic_revision(conn: sqlite3.Connection) -> str:
     if not _table_exists(conn, "album_projects"):
         return "unavailable"
     digest = hashlib.sha256()
+    from backend.domains.metadata.release_dates import precision_expression
+
     queries = (
-        """SELECT canonical_name, artist_id, primary_album_id, release_date,
+        f"""SELECT canonical_name, artist_id, primary_album_id, release_date,
+                  {precision_expression(conn, "album_projects")} AS release_date_precision,
                   scope, project_type, include_in_charts, is_manual
            FROM album_projects
            ORDER BY canonical_name, artist_id, scope, primary_album_id""",

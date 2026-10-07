@@ -273,28 +273,9 @@ def fetch_albums(
                 if alb is None:
                     failed_ids.add(None)
                     continue
-                img_url = alb["images"][0]["url"] if alb.get("images") else None
-                genres = (
-                    json.dumps(alb.get("genres", []), ensure_ascii=False)
-                    if alb.get("genres")
-                    else None
-                )
-                db.execute(
-                    """INSERT OR REPLACE INTO spotify_album_meta(
-                           spotify_album_id, album_name, album_type, release_date,
-                           popularity, label, genres, image_url)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        alb["id"],
-                        alb["name"],
-                        alb.get("album_type"),
-                        alb.get("release_date"),
-                        alb.get("popularity"),
-                        alb.get("label"),
-                        genres,
-                        img_url,
-                    ),
-                )
+                from backend.domains.metadata.spotify_refresh import upsert_album_batch
+
+                upsert_album_batch(db, [alb], source="fetch_track_durations")
                 bu += 1
             updated += bu
             print(f"✓ {bu} 已更新")

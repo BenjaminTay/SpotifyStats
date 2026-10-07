@@ -1,5 +1,10 @@
 # SpotifyStats 文档地图
 
+- [发行日期证据与精度](reference/release-date-precision.md)
+- [发行日期精度实施与集成计划](plans/2026-10-07-release-date-precision-plan.md)
+- [发行日期精度本地交付与验收](reports/2026-10-07-release-date-precision-acceptance.md)
+
+
 - [公开展示版完整时间选择修复](reports/2026-10-03-public-analysis-time-ranges.md)
 
 - [专辑目录与艺人证据生产交付](reports/2026-10-03-album-metadata-production-delivery.md)
