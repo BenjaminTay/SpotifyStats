@@ -44,7 +44,7 @@ _COMPILATION_NAME_MARKERS = (
     "compilation",
 )
 
-ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION = "spotify_complete_release_v4_date_evidence"
+ALBUM_PROJECT_AUTO_IDENTITY_POLICY_VERSION = "spotify_complete_release_v5_legacy_year"
 
 _RELEASE_PACKAGING_MARKERS = (
     "remaster",

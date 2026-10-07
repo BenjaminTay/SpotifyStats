@@ -194,7 +194,7 @@ def test_case_only_duplicate_is_planned_and_applied_once() -> None:
         assert tuple(project_identity) == (
             "bad boy",
             "a-mei",
-            "spotify_complete_release_v4_date_evidence",
+            "spotify_complete_release_v5_legacy_year",
         )
         assert not plan_album_project_auto_merges(conn).candidates
     finally:

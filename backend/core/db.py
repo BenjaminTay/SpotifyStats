@@ -1470,7 +1470,7 @@ _AGG_SHADOW_TABLES = {
     "agg_weekly_artists": "agg_weekly_artists_shadow",
 }
 
-_BILLBOARD_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v5_release_precision"
+_BILLBOARD_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v6_legacy_year"
 
 
 def _prepare_aggregation_shadows(conn: sqlite3.Connection) -> None:

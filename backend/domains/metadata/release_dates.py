@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
-RELEASE_DATE_POLICY_VERSION = "release_date_evidence_v1"
+RELEASE_DATE_POLICY_VERSION = "release_date_evidence_v2_legacy_year"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS spotify_album_date_observations (
@@ -32,8 +32,18 @@ class ReleaseDate:
     precision: str | None
     format_precision: str | None
     status: str
+    # Validated string bounds retain the legacy ordering/cutoff contract.
+    # They cannot establish month/day evidence without a declared precision.
     start: date | None
     end: date | None
+
+    @property
+    def comparison_start(self) -> date | None:
+        return date(self.start.year, 1, 1) if self.status == "legacy" and self.start else self.start
+
+    @property
+    def comparison_end(self) -> date | None:
+        return date(self.end.year, 12, 31) if self.status == "legacy" and self.end else self.end
 
     @property
     def exact_day(self) -> date | None:
@@ -76,9 +86,9 @@ def parse_release_date(value: object, precision: object = None) -> ReleaseDate:
 
 def compare_release_dates(left: ReleaseDate, right: ReleaseDate) -> str:
     """same = two confirmed identical days; compatible = overlapping ranges."""
-    if left.start is None or right.start is None:
+    if left.comparison_start is None or right.comparison_start is None:
         return "unknown"
-    if left.end < right.start or right.end < left.start:
+    if left.comparison_end < right.comparison_start or right.comparison_end < left.comparison_start:
         return "conflict"
     if left.exact_day is not None and left.exact_day == right.exact_day:
         return "same"
@@ -166,15 +176,18 @@ def project_date_precision(conn, album_id, release_date):
         (album_id,),
     ).fetchall()
     values = [parse_release_date(r[0], r[1]) for r in rows]
-    target = parse_release_date(release_date)
-    if not values or any(
-        compare_release_dates(target, item) in {"conflict", "unknown"} for item in values
-    ):
-        return None
     confirmed = {
         item.precision for item in values if item.status == "confirmed" and item.raw == release_date
     }
-    return next(iter(confirmed)) if len(confirmed) == 1 else None
+    if len(confirmed) != 1:
+        return None
+    precision = next(iter(confirmed))
+    target = parse_release_date(release_date, precision)
+    # Check the prospective confirmed pair, not a broadened legacy target:
+    # two conflicting confirmed days must never confirm a project date.
+    if any(compare_release_dates(target, item) in {"conflict", "unknown"} for item in values):
+        return None
+    return precision
 
 
 def sync_project_release_precisions(conn, spotify_album_ids):

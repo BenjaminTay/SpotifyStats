@@ -1137,4 +1137,4 @@ group / 873 个 membership；L3 album composition 新建 2 个父项目并挂接
 
 ## 发行日期证据边界
 
-发行后范围过滤与 Records 日级里程碑使用[发行日期精度合同](release-date-precision.md)：粗日期采用范围上界作保守过滤，日级里程碑要求来源确认 day；不补齐月日、不改变原始播放事实。
+发行后范围过滤与 Records 日级里程碑使用[发行日期精度合同](release-date-precision.md)：来源粗日期采用范围上界作保守过滤，legacy 的历史格式 cutoff 与可证明的年级比较范围分开；日级里程碑要求来源确认 day，不补齐月日、不改变非榜单统计或原始播放事实。

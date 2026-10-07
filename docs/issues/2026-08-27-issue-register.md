@@ -53,7 +53,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-09-24-003` | 发行日期精度丢失 | `LOCAL_VERIFIED` · 独立本地交付，待正式集成/发布 | schema89 保存来源 precision，legacy 不推定 day，统一比较/计算/展示及 revision；90 粗日期+2 day 有界来源证据已在副本安装，19 类事实守恒；默认八阶段同轮 PASS、两视口日期专项通过。 | [精度合同](../reference/release-date-precision.md)、[本地验收](../reports/2026-10-07-release-date-precision-acceptance.md)；正式迁移/发布未执行，2026-10-07。 |
+| `SS-2026-09-24-003` | 发行日期精度丢失 | `LOCAL_VERIFIED` · 原交付与独立复验补修完成，待正式集成/发布 | legacy 比较仅用年证据，保留确定冲突/人工保护；175 项相关、新默认八阶段同轮 PASS、两视口专项通过；来源重放只确认一个非人工项目 day，19 类事实/全部原文保持，归并和播放资格无新增。 | [精度合同](../reference/release-date-precision.md)、[本地验收](../reports/2026-10-07-release-date-precision-acceptance.md)；正式迁移/发布未执行，2026-10-07。 |
 
 详细背景与其他待量化方向见 [元数据路线 §10](../plans/2026-09-23-multi-source-music-metadata-roadmap.md#10-2026-09-24-spotify-现有字段利用审计后续问题)。
 
