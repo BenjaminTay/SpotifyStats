@@ -385,8 +385,11 @@ export interface AnalysisChartsResponse {
   rows: AnalysisChartRow[]
 }
 
-export interface EntityStatsResponse extends AnalysisStatsResponse {
-  found: boolean
+export interface EntityStatsData extends Pick<AnalysisStatsResponse,
+  'summary' | 'daily_metrics' | 'hourly_distribution' | 'daily_trend'
+  | 'cumulative_trend' | 'weekday_distribution' | 'month_distribution' | 'year_distribution'> {
+  found: true
+  period?: AnalysisResolvedPeriod | null
   entity?: {
     track_id?: number
     track_name?: string
@@ -396,26 +399,31 @@ export interface EntityStatsResponse extends AnalysisStatsResponse {
     requested_album_name?: string | null
     artist_name?: string
     cover_url?: string | null
-  }
-  first_played?: string
-  last_played?: string
+  } | null
+  first_played?: string | null
+  last_played?: string | null
   ranks?: {
     lifetime: number | null
     last_6_months: number | null
     last_4_weeks: number | null
     current_period: number | null
   } | null
-  recent_plays: RecentPlayRow[]
+  recent_plays?: RecentPlayRow[] | null
   top250_counts?: {
     lifetime: number
     last_6_months: number
     last_4_weeks: number
   } | null
   recent_50_count?: number | null
-  track_breakdown?: AnalysisChartRow[]
-  top_tracks?: AnalysisChartRow[]
-  top_albums?: AnalysisChartRow[]
+  track_breakdown?: AnalysisChartRow[] | null
+  top_tracks?: AnalysisChartRow[] | null
+  top_albums?: AnalysisChartRow[] | null
 }
+
+/** API fields are nullable/optional, including when no personal plays exist. */
+export type EntityStatsResponse = {
+  [K in Exclude<keyof EntityStatsData, 'found'>]?: EntityStatsData[K] | null
+} & { found?: boolean | null }
 
 export interface ArtistPersonalRankingResponse {
   found: boolean
