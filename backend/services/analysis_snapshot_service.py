@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 JOB_TYPE = "analysis_snapshot_rebuild"
 VERSIONS = {
     "analysis_stats": "analysis_stats_taste_v1",
-    "analysis_records": "analysis_records_release_precision_v3_legacy_year",
+    "analysis_records": "analysis_records_release_precision_v4_source_selection",
 }
 AUTOMATIC_PERIODS = ("lifetime", "last_4_weeks", "last_6_months")
 

@@ -55,7 +55,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| SS-2026-09-24-003 | 发行日期精度 | 98dea609 原交付；legacy 比较补修完成，175 项相关通过，新默认八阶段同轮 PASS（24分32秒）、两视口新日期专项通过，副本事实守恒 | codex/release-date-precision 新增独立修复提交交付复验；主线集成、正式迁移及有界补证另行推进，未推送/部署 | [精度合同](reference/release-date-precision.md)、[实施计划](plans/2026-10-07-release-date-precision-plan.md)、[本地验收](reports/2026-10-07-release-date-precision-acceptance.md) | 2026-10-07 |
+| SS-2026-09-24-003 | 发行日期精度 | 98dea609/6edbe051 历史证据保留；详情/Records 来源精度补修完成，195 项相关、新默认八阶段同轮 Pass（23分5秒）、两端专项及副本事实守恒 | codex/release-date-precision 新增本地修复提交；主线集成、正式迁移及有界补证另行推进，未推送/部署 | [精度合同](reference/release-date-precision.md)、[实施计划](plans/2026-10-07-release-date-precision-plan.md)、[本地验收](reports/2026-10-07-release-date-precision-acceptance.md) | 2026-10-07 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-02（文档核对，未重新计时） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |
 | ACCEPT-01 | 当前版本业务验收 | 专辑、封面与合作曲生产专项已闭环；真实AI、OAuth和物理手机仍待验收 | P1：生产真实AI与目标终端分开登记，不以模拟视口推定 | [专辑生产报告](reports/2026-10-03-album-metadata-production-delivery.md)、[验证规则](reference/fullstack-verification.md) | 2026-10-03 |

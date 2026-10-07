@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
 from backend.domains.metadata.album_detail_meta import resolve_album_detail_meta
 
 
@@ -137,3 +139,116 @@ def test_l1_detail_prefers_exact_physical_album_name():
     assert meta is not None
     assert meta["release_date"] == "2024-08-23"
     assert meta["total_tracks"] == 12
+
+
+def _precision_fixture(
+    project_date="2024-08-23",
+    project_precision="day",
+    original_date="2024-08-23",
+    original_precision="day",
+    deluxe_date="2024-11-14",
+    deluxe_precision="day",
+):
+    conn = _fixture_conn(project_date)
+    conn.execute("ALTER TABLE album_projects ADD COLUMN release_date_precision TEXT")
+    conn.execute("UPDATE album_projects SET release_date_precision=?", (project_precision,))
+    conn.execute("ALTER TABLE spotify_album_meta ADD COLUMN release_date_precision TEXT")
+    conn.execute(
+        "UPDATE spotify_album_meta SET release_date=?,release_date_precision=? WHERE spotify_album_id='original'",
+        (original_date, original_precision),
+    )
+    conn.execute(
+        "UPDATE spotify_album_meta SET album_name='Fixture Album',release_date=?,release_date_precision=? WHERE spotify_album_id='deluxe'",
+        (deluxe_date, deluxe_precision),
+    )
+    return conn
+
+
+def test_confirmed_project_day_does_not_mix_more_played_conflicting_version():
+    conn = _precision_fixture()
+    try:
+        meta = resolve_album_detail_meta(
+            conn, "Fixture Album", "Fixture Artist", album_project_id=100
+        )
+        assert (
+            meta["release_date"],
+            meta["release_date_precision"],
+            meta["label"],
+            meta["total_tracks"],
+            meta["popularity"],
+        ) == ("2024-08-23", "day", "Original Label", 12, 80)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "project_date,project_precision,original_date,original_precision,deluxe_date,deluxe_precision,label,total",
+    [
+        ("2024-08-23", "day", "2024-08-23", "day", "2024", "year", "Original Label", 12),
+        ("2024-08-23", "day", "2024-08", "month", "2024-11", "month", "Original Label", 12),
+        ("2024-08", "month", "2024-08-23", "day", "2024-11-14", "day", "Original Label", 12),
+        ("2024", "year", "2024-08-23", "day", "2024-11-14", "day", "Deluxe Label", 17),
+        ("2024-08-23", None, "2024-08-23", "day", "2024-11-14", "day", "Deluxe Label", 17),
+        ("2024-08-23", "day", None, None, "2024-11-14", "day", "Original Label", 12),
+    ],
+)
+def test_detail_uses_declared_ranges_and_retains_legacy_uncertainty(
+    project_date,
+    project_precision,
+    original_date,
+    original_precision,
+    deluxe_date,
+    deluxe_precision,
+    label,
+    total,
+):
+    c = _precision_fixture(
+        project_date,
+        project_precision,
+        original_date,
+        original_precision,
+        deluxe_date,
+        deluxe_precision,
+    )
+    try:
+        meta = resolve_album_detail_meta(c, "Fixture Album", "Fixture Artist", album_project_id=100)
+        assert (meta["label"], meta["total_tracks"]) == (label, total)
+        assert (meta["release_date"], meta["release_date_precision"]) == (
+            project_date,
+            project_precision,
+        )
+        if project_precision is None:
+            assert meta["release_date_display"] == "2024"
+    finally:
+        c.close()
+
+
+def test_detail_conflict_only_sources_cannot_supply_mixed_metadata():
+    c = _precision_fixture(original_date="2024-07-01")
+    try:
+        meta = resolve_album_detail_meta(c, "Fixture Album", "Fixture Artist", album_project_id=100)
+        assert meta["release_date"] == "2024-08-23" and meta["release_date_precision"] == "day"
+        assert not {"label", "total_tracks", "popularity"} & meta.keys()
+    finally:
+        c.close()
+
+
+def test_detail_same_day_does_not_override_primary_source_and_name_constraints():
+    c = _precision_fixture(
+        original_date="2024-08", original_precision="month", deluxe_date="2024-08-23"
+    )
+    try:
+        c.execute(
+            "UPDATE spotify_album_meta SET album_name='Unrelated Edition' WHERE spotify_album_id='deluxe'"
+        )
+        meta = resolve_album_detail_meta(c, "Fixture Album", "Fixture Artist", album_project_id=100)
+        assert (meta["label"], meta["total_tracks"]) == ("Original Label", 12)
+        c.execute(
+            "UPDATE spotify_album_meta SET album_name='Fixture Album' WHERE spotify_album_id='deluxe'"
+        )
+        c.execute("UPDATE album_spotify_links SET album_id=11 WHERE spotify_album_id='deluxe'")
+        c.execute("INSERT INTO album_project_albums VALUES(100,11,'version','deluxe',0)")
+        meta = resolve_album_detail_meta(c, "Fixture Album", "Fixture Artist", album_project_id=100)
+        assert (meta["label"], meta["total_tracks"]) == ("Original Label", 12)
+    finally:
+        c.close()

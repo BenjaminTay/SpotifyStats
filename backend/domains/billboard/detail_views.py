@@ -28,6 +28,7 @@ from backend.domains.billboard.details import (
     get_artist_chart_detail,
     get_track_history,
 )
+from backend.domains.metadata.album_detail_meta import ALBUM_DETAIL_META_POLICY_VERSION
 from backend.domains.metadata.artist_identity import get_identity_revision
 from backend.domains.metadata.track_credits import get_track_credit_revision
 from backend.domains.music_search.revisions import get_music_search_revision_state
@@ -41,6 +42,7 @@ def detail_revision_state() -> tuple:
     try:
         revisions = get_music_search_revision_state(conn)
         return (
+            ALBUM_DETAIL_META_POLICY_VERSION,
             revisions.playback_revision,
             revisions.billboard_revision,
             revisions.metadata_revision,

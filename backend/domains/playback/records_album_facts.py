@@ -13,11 +13,13 @@ import pandas as pd
 
 
 def load_original_memberships(conn, merge_level):
+    from backend.domains.metadata.release_dates import precision_expression
     from backend.domains.playback.album_projects import apply_canonical_song_keys
 
     try:
         projects = conn.execute(
-            """SELECT ap.project_id, ap.primary_album_id, ap.canonical_name, ap.release_date,
+            f"""SELECT ap.project_id, ap.primary_album_id, ap.canonical_name, ap.release_date,
+                      {precision_expression(conn, "album_projects", "ap")} AS release_date_precision,
                       al.album_name, ar.artist_name, ap.artist_id
                FROM album_projects ap
                JOIN album_project_albums apa
@@ -38,12 +40,13 @@ def load_original_memberships(conn, merge_level):
             (merge_level,),
         ).fetchall()
         candidates = conn.execute(
-            """WITH metadata AS MATERIALIZED (
+            f"""WITH metadata AS MATERIALIZED (
                    SELECT *, REPLACE(spotify_album_id, 'spotify:album:', '') AS normalized_id
                    FROM spotify_album_meta
                )
                SELECT asl.album_id, sam.normalized_id AS spotify_album_id,
                       sam.album_name, sam.album_artists, sam.release_date,
+                      {precision_expression(conn, "spotify_album_meta", "sam")} AS release_date_precision,
                       sam.total_tracks, sam.track_list,
                       MAX(COALESCE(asl.confidence, 0)) AS confidence,
                       SUM(COALESCE(asl.play_count, 0)) AS play_count,
@@ -128,7 +131,18 @@ def _trusted_original(
         from backend.domains.metadata.release_dates import compare_release_dates, parse_release_date
 
         if expected_date and compare_release_dates(
-            parse_release_date(expected_date), parse_release_date(candidate["release_date"])
+            parse_release_date(
+                expected_date,
+                project["release_date_precision"]
+                if "release_date_precision" in project.keys()
+                else None,
+            ),
+            parse_release_date(
+                candidate["release_date"],
+                candidate["release_date_precision"]
+                if "release_date_precision" in candidate.keys()
+                else None,
+            ),
         ) in {"conflict", "unknown"}:
             continue
         total = int(candidate["total_tracks"] or 0)

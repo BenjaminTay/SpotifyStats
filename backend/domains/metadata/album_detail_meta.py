@@ -22,6 +22,7 @@ from backend.domains.metadata.release_dates import (
 from backend.domains.music_search.normalization import normalize_search_text
 
 _META_FIELDS = ("album_type", "release_date", "popularity", "label", "total_tracks")
+ALBUM_DETAIL_META_POLICY_VERSION = "album_detail_meta_v2_source_precision"
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
@@ -146,12 +147,10 @@ def _load_candidates(
     return [dict(row) for row in rows]
 
 
-def _date_matches(project_date: str | None, candidate_date: str | None) -> bool:
-    if not project_date or not candidate_date:
-        return False
-    return (
-        compare_release_dates(parse_release_date(project_date), parse_release_date(candidate_date))
-        == "compatible"
+def _date_relation(project_date, project_precision, candidate):
+    return compare_release_dates(
+        parse_release_date(project_date, project_precision),
+        parse_release_date(candidate.get("release_date"), candidate.get("release_date_precision")),
     )
 
 
@@ -168,7 +167,15 @@ def _select_candidate(
     album_name: str,
     project_date: str | None,
     project_type: str | None,
+    project_precision: str | None = None,
 ) -> dict[str, Any] | None:
+    if project_date:
+        # A proven conflict cannot supply fields beside the project's date.
+        candidates = [
+            row
+            for row in candidates
+            if _date_relation(project_date, project_precision, row) != "conflict"
+        ]
     if not candidates:
         return None
     normalized_name = normalize_search_text(album_name)
@@ -186,10 +193,13 @@ def _select_candidate(
             -int(row.get("play_count") or 0),
         )
         if project_date:
+            relation = _date_relation(project_date, project_precision, row)
             return (
-                0 if _date_matches(project_date, row.get("release_date")) else 1,
+                0 if relation in {"same", "compatible"} else 1,
                 int(row.get("source_rank") or 0),
-                *common,
+                *common[:3],
+                {"same": 0, "compatible": 1, "unknown": 2}[relation],
+                *common[3:],
                 release_sort_key(row.get("release_date"), row.get("release_date_precision")),
                 str(row.get("spotify_album_id") or ""),
             )
@@ -263,6 +273,7 @@ def resolve_album_detail_meta(
         album_name=str(project["canonical_name"]) if project is not None else album_name,
         project_date=project_date,
         project_type=project_type,
+        project_precision=project["release_date_precision"] if project is not None else None,
     )
 
     meta = {

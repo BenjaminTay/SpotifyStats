@@ -115,7 +115,9 @@ def test_original_membership_query_count_is_constant():
         facts = load_original_memberships(conn, 1)
         assert len(facts) == size
         assert all(value == ({str(i * 2), str(i * 2 + 1)}, 2) for i, value in facts.items())
-        counts.append(len(sql))
+        introspection = [s for s in sql if s.startswith("PRAGMA table_info")]
+        assert len(introspection) == 2
+        counts.append(len(sql) - len(introspection))
         conn.close()
     assert counts[0] == counts[1]
     assert counts[1] <= 5
@@ -135,3 +137,42 @@ def test_album_total_batch_preserves_legacy_selection(isolated_test_database):
         assert len(statements) == 1
         for (album, artist), total in totals.items():
             assert total == _get_album_total_tracks(conn, album, artist)
+
+
+def test_confirmed_conflicting_catalog_does_not_hide_trusted_original():
+    import json
+
+    from backend.domains.playback.records_album_facts import _trusted_original
+
+    project = {
+        "canonical_name": "Fixture Album",
+        "album_name": "Fixture Album",
+        "artist_name": "artist",
+        "artist_id": 1,
+        "release_date": "2024-08-23",
+        "release_date_precision": "day",
+    }
+    base = {
+        "spotify_album_id": "original",
+        "album_name": "Fixture Album",
+        "album_artists": "artist",
+        "release_date": "2024-08-23",
+        "release_date_precision": "day",
+        "total_tracks": 2,
+        "track_list": json.dumps(["a", "b"]),
+        "linked_track_count": 2,
+        "play_count": 100,
+        "confidence": 1,
+    }
+    conflicting = {
+        **base,
+        "spotify_album_id": "deluxe",
+        "release_date": "2024-11-14",
+        "total_tracks": 3,
+        "track_list": json.dumps(["a", "b", "c"]),
+        "linked_track_count": 3,
+        "play_count": 900,
+    }
+    assert _trusted_original(
+        project, {"a": 1, "b": 2, "c": 3}, [base, conflicting], {1: "a", 2: "b", 3: "c"}
+    ) == ({"a", "b"}, 2)

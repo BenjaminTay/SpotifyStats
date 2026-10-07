@@ -35,6 +35,10 @@ legacy 的完整 ISO 字符串（包括 01-01、每月首日）不能证明真�
 
 同一 Spotify Album ID 仍需完整目录、稳定身份等既有证明。不同 ID 的 catalog alias 日期强证据必须为 same；兼容范围不能代替强证据。remaster/deluxe 的年份顺序仅是既有完整目录/有序录音证据的约束。规划候选保持只读，不自动批准关系；人工批准和 project membership 合同保持。
 
+详情代表元数据比较必须传入项目与候选的实际精度，不能只传字符串。明确 conflict 的候选不提供项目日期旁的厂牌、发行曲目数或热度；无可用候选时保留项目日期/类型，来源字段缺省。same/compatible 属于可用日期组，优先于 unknown；组内保留主来源、名称/基础名称和类型约束，再以 same、compatible、unknown 作日期证据排序，最后比较置信度、播放量和稳定键。legacy 同年仍只能算 compatible；日期不是身份或归并批准。Records 可信原版目录同样加载两侧精度，保持完整目录/稳定曲目与身份条件。
+
+详情 full/summary 回退使用 `album_detail_meta_v2_source_precision` 进入进程 revision key；轻量 summary 的元数据每次从当前 SQLite 重新选择，持久搜索快照只提供统计/身份，不缓存该代表元数据，无需为此重建全库搜索/Billboard。Records sort/build 版本升级，拒绝复用旧版目录选择结果。
+
 ## 计算与读取
 
 - 合法日期可支持年份分析；来源 month 可以支持月份分析。字符串形态推断有独立 legacy 标记。

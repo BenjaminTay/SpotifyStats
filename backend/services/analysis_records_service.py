@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Bump this whenever record ranking/serialization semantics change so a
 # long-lived process cannot serve a pre-fix payload from its LRU cache.
-PLAYBACK_RECORDS_SORT_CONTRACT_VERSION = "2026-10-07-release-date-evidence-v7-legacy-year"
+PLAYBACK_RECORDS_SORT_CONTRACT_VERSION = "2026-10-07-release-date-evidence-v8-source-selection"
 
 
 def _load_reliable_album_release_dates(conn: sqlite3.Connection) -> pd.DataFrame:

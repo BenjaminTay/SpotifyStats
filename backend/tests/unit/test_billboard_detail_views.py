@@ -274,3 +274,51 @@ def test_artist_views_preserve_order_and_pages_recombine_exactly():
     assert all(page["tracks_total"] == len(full["tracks"]) for page in pages)
     assert all(page["tracks_max_chart_plays"] == 99 for page in pages)
     assert select_artist_detail_view(full, "full") is full
+
+
+def test_album_metadata_policy_invalidates_full_detail_process_cache(monkeypatch):
+    from types import SimpleNamespace
+
+    from backend.domains.billboard import detail_views
+
+    monkeypatch.setattr(detail_views, "get_db", lambda: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(
+        detail_views,
+        "get_music_search_revision_state",
+        lambda _: SimpleNamespace(
+            playback_revision=1, billboard_revision=1, metadata_revision=1, settings_revision=1
+        ),
+    )
+    monkeypatch.setattr(detail_views, "get_identity_revision", lambda _: 1)
+    monkeypatch.setattr(detail_views, "get_track_credit_revision", lambda _: 1)
+    monkeypatch.setattr(detail_views, "billboard_revision_state", lambda: ())
+    calls = []
+    monkeypatch.setattr(
+        detail_views,
+        "get_album_chart_detail",
+        lambda *_: (
+            calls.append(1)
+            or {"meta": {"label": "Old Label" if len(calls) == 1 else "Correct Label"}}
+        ),
+    )
+    detail_views._album_detail_cached.cache_clear()
+    try:
+        monkeypatch.setattr(detail_views, "ALBUM_DETAIL_META_POLICY_VERSION", "old_rule")
+        old_revision = detail_views.detail_revision_state()
+        assert (
+            detail_views._album_detail_cached(("fixture",), old_revision)["meta"]["label"]
+            == "Old Label"
+        )
+        monkeypatch.setattr(
+            detail_views, "ALBUM_DETAIL_META_POLICY_VERSION", "source_precision_rule"
+        )
+        assert detail_views.detail_revision_state() != old_revision
+        assert (
+            detail_views._album_detail_cached(("fixture",), detail_views.detail_revision_state())[
+                "meta"
+            ]["label"]
+            == "Correct Label"
+        )
+        assert len(calls) == 2
+    finally:
+        detail_views._album_detail_cached.cache_clear()
