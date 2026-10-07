@@ -15,7 +15,7 @@ import type { ApiQueryParam } from '@/api/client'
 import { analysisApi, useAnalysisFilters } from '@/hooks/useAnalysis'
 import { api } from '@/lib/api'
 import { getDefaultMergeLevel } from '@/lib/merge-level'
-import type { AlbumPersonalRankingResponse, AnalysisFilters, AnalysisMetric, ArtistPersonalRankingResponse, EntityStatsResponse } from '@/types/analysis'
+import type { AlbumPersonalRankingResponse, AnalysisFilters, AnalysisMetric, ArtistPersonalRankingResponse, EntityStatsData, EntityStatsResponse } from '@/types/analysis'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileAnalysisTimeControl } from '@/features/mobile/analysis/MobileAnalysisTimeControl'
 import { cn } from '@/lib/utils'
@@ -79,7 +79,7 @@ function entityStatsRequest(
       if (kind === 'artist' && artistName) {
         return api.get<EntityStatsResponse>(`/music/artists/${encodeURIComponent(artistName)}/stats`, { ...filters, ...periodParams, include_rank_context: includeRankContext })
       }
-      return Promise.resolve({ found: false } as EntityStatsResponse)
+      return Promise.resolve({ found: false } satisfies EntityStatsResponse)
     },
   }
 }
@@ -106,12 +106,26 @@ function hours(n: number | undefined): string {
   return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 }).format(n ?? 0)}h`
 }
 
-function dateShort(value?: string): string {
+function dateShort(value?: string | null): string {
   return value ? value.slice(0, 10) : '—'
 }
 
 function rankLabel(value: number | null | undefined): string {
   return value ? `#${value}` : '—'
+}
+
+// Only consume actual statistics. Empty API responses legitimately contain nulls;
+// incomplete found=true responses must remain failures rather than fabricated zeros.
+function hasStats(data: EntityStatsResponse | undefined): data is EntityStatsData {
+  return data?.found === true
+    && data.summary != null
+    && data.daily_metrics != null
+    && Array.isArray(data.daily_trend)
+    && Array.isArray(data.cumulative_trend)
+    && Array.isArray(data.hourly_distribution)
+    && Array.isArray(data.weekday_distribution)
+    && Array.isArray(data.month_distribution)
+    && Array.isArray(data.year_distribution)
 }
 
 export function EntityStatsPanel({
@@ -135,11 +149,13 @@ export function EntityStatsPanel({
     apiParams,
   )
   const { entityId, resolvedMergeLevel } = request
-  const { data, isPending, error } = useQuery({
+  const { data: response, isPending, error } = useQuery({
     queryKey: request.queryKey,
     queryFn: request.queryFn,
     enabled: !filtersLoading && entityId !== '',
   })
+  const data = !error && hasStats(response) ? response : undefined
+  const invalidStats = response != null && response.found !== false && !data
   const rankRequest = entityStatsRequest(
     { kind, trackId, albumName, albumProjectId, artistName, mergeLevel },
     filters,
@@ -152,7 +168,7 @@ export function EntityStatsPanel({
     queryFn: rankRequest.queryFn,
     enabled: !filtersLoading && entityId !== '' && data?.found === true,
   })
-  const queryError = error instanceof Error ? error.message : error ? String(error) : null
+  const queryError = error instanceof Error ? error.message : error ? String(error) : invalidStats ? '统计响应不完整' : null
 
   const [mobileTrendView, setMobileTrendView] = useState<'daily' | 'cumulative'>('daily')
   const [mobileDistributionView, setMobileDistributionView] = useState<'weekday' | 'month' | 'year'>('weekday')
@@ -290,12 +306,12 @@ export function EntityStatsPanel({
       )}
     </div>
   )
-  if (queryError || isPending || !data || !data.found) return (
+  if (queryError || isPending || !data) return (
     <div className="entity-stats-panel space-y-8">
       {controls}
       {queryError ? (
         <GlassCard className="p-8 text-center text-destructive">加载失败：{queryError}</GlassCard>
-      ) : isPending || !data ? (
+      ) : isPending || !response ? (
         <Skeleton className="h-[560px] rounded-[16px]" />
       ) : (
         <GlassCard className="p-8 text-muted-foreground">暂无个人播放统计。</GlassCard>

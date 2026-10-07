@@ -1,7 +1,7 @@
 # SpotifyStats 开发状态总表
 
 > 最后核验：2026-10-07（署名S0–S5完成，2faadc64正式发布与两端API、桌面/手机视口专项通过；其他事项保留各自原始证据日期）
-> 当前本地与远端业务代码：`2faadc64c73dadbcca0f05b6a53d1a0aebef4611`；S0–S4署名业务e4929e81默认完整全栈八阶段PASS，S5补修94项专项及生产验收另列；后续仅文档收尾。
+> 最近已发布业务代码：`2faadc64c73dadbcca0f05b6a53d1a0aebef4611`；S0–S4署名业务e4929e81默认完整全栈八阶段PASS，S5补修94项专项及生产验收另列；后续仅文档收尾。
 > 生产业务版本：`2faadc64c73dadbcca0f05b6a53d1a0aebef4611`，schema88、dual、三容器healthy，两端网关SHA一致；原始事实和既有人工覆盖保持。
 > 本文件是开发状态与下一步工作的统一入口；详细规则、方案和原始验收证据继续在各自文档维护。
 
@@ -55,7 +55,8 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| SS-2026-09-24-003 | 发行日期精度 | 98dea609/6edbe051 历史证据保留；详情/Records 来源精度补修完成，195 项相关、新默认八阶段同轮 Pass（23分5秒）、两端专项及副本事实守恒 | codex/release-date-precision 新增本地修复提交；主线集成、正式迁移及有界补证另行推进，未推送/部署 | [精度合同](reference/release-date-precision.md)、[实施计划](plans/2026-10-07-release-date-precision-plan.md)、[本地验收](reports/2026-10-07-release-date-precision-acceptance.md) | 2026-10-07 |
+| SS-2026-10-07-001 | 非榜单音乐详情统计空值崩溃 | 已实现；相关32项、全量前端763/4skip和build通过；真实副本双视口与切换通过，局部门禁Partial | 9c360714已独立提交；与日期精度联合集成验收进行中，未推送/部署 | [本次报告](reports/2026-10-07-entity-stats-empty-acceptance.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07 |
+| SS-2026-09-24-003 | 发行日期精度 | 98dea609/6edbe051 历史证据保留；详情/Records 来源精度补修完成，195 项相关、新默认八阶段同轮 Pass（23分5秒）、两端专项及副本事实守恒 | 固定98dea609、6edbe051、c5e3314b；与空值补丁联合集成验收进行中，正式迁移/有界补证未执行，未推送/部署 | [精度合同](reference/release-date-precision.md)、[实施计划](plans/2026-10-07-release-date-precision-plan.md)、[本地验收](reports/2026-10-07-release-date-precision-acceptance.md) | 2026-10-07 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-02（文档核对，未重新计时） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |
 | ACCEPT-01 | 当前版本业务验收 | 专辑、封面与合作曲生产专项已闭环；真实AI、OAuth和物理手机仍待验收 | P1：生产真实AI与目标终端分开登记，不以模拟视口推定 | [专辑生产报告](reports/2026-10-03-album-metadata-production-delivery.md)、[验证规则](reference/fullstack-verification.md) | 2026-10-03 |

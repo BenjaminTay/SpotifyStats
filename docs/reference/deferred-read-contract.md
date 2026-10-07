@@ -24,3 +24,9 @@ Desktop 与 Phone 使用同一触发和事实合同。Query cache 沿用应用�
 ## 证据
 
 [阶段 2B 请求图、测量和回归结果](../reports/2026-09-19-deferred-community-details.md)。本地定向验证为 Partial，不代表完整全栈或生产 SLA。
+
+## 详情统计空响应
+
+EntityStatsResponse 的统计字段允许缺省或 null。found=false 表示服务端没有找到实体个人播放统计；前端显示“暂无个人播放统计”，保留时间与指标入口，不消费趋势、分布或总量，也不发 rank context、个人排行或最近记录请求。所有 hooks 必须保持固定顺序。
+
+found=true 的本组件必需统计容器缺失时显示明确加载失败，不用空数组或零值修补整份响应；合法空数组仍可与实际总量一起展示；已知实体在时间窗口内的真实总量0不等于 found=false。请求失败（含 snapshot_unavailable）与 loading 分别保留错误和 skeleton，不能转换成无统计或 ready。此边界在 EntityStatsPanel 消费层检查，不改变后端统计/快照和公开读取规则。
