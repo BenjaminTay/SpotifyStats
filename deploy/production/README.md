@@ -330,4 +330,4 @@ VERIFY_EXTERNAL_INGRESS=1 ./verify.sh  # 仅在确实配置了外部入口时使
 
 schema88→89和聚合v4→v6需要先在明确副本准备当前聚合，再按正常仅复用合同验证四套统计与Year-End。宿主独立预检常量必须与目标后端builder同步，旧v4不得重标成v6。预检期间源仅发生无关写入时，重基先升级quiescent副本到staged登记的迁移合同，再核对包含日期观测审计的source marker；恢复点不迁移。
 
-正式发布续建使用日期尚未补证、与迁移后正式源等价的候选。已补证候选不能覆盖旧正式源；日期证据在新版本的备份/预览/有界维护阶段单独安装，随后在生产自身文件身份准备sidecar。见[2026-10-08副本演练](../../docs/reports/2026-10-08-release-date-production-rehearsal.md)；本轮尚未正式部署。
+正式发布续建使用日期尚未补证、与迁移后正式源等价的候选。已补证候选不能覆盖旧正式源；日期证据在新版本的备份/预览/有界维护阶段单独安装，随后在生产自身文件身份准备sidecar。见[2026-10-08副本演练](../../docs/reports/2026-10-08-release-date-production-rehearsal.md)及[正式交付](../../docs/reports/2026-10-08-release-date-production-delivery.md)：76a4968/schema89、固定92来源/78项目补证及年度/API/两视口专项已完成。维护期间OOM及详情内存增长独立跟踪；逐年受监管新进程完成剩余年度是本轮运维缓解，不代表资源问题已代码修复。

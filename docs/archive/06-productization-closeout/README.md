@@ -1,6 +1,6 @@
 # 近期产品化收口归档
 
-本目录保存 2026-08 至 2026-09 产品化收口阶段已经完成、但仍有回溯价值的计划、设计和专项治理方案。
+本目录保存 2026-08 至 2026-10 产品化收口阶段已经完成、但仍有回溯价值的计划、设计和专项治理方案。
 
 ## 当前替代入口
 
@@ -13,6 +13,7 @@
 
 ## 已完成规划
 
+- [`2026-10-07-release-date-precision-plan.md`](2026-10-07-release-date-precision-plan.md)：发行日期精度、详情空统计联合集成、schema89、固定92来源/78项目补证及生产年度/API/两视口专项完成；维护OOM及详情内存增长独立开放，证据见[生产验收](../../reports/2026-10-08-release-date-production-delivery.md)。
 - [`2026-09-21-import-processing-governance-remediation-plan.md`](2026-09-21-import-processing-governance-remediation-plan.md)：导入批次一致性、阶段恢复、关键任务调度、身份治理与 S6 完整本地终验已完成；最终证据见 [`../../reports/2026-09-21-import-governance-final-acceptance.md`](../../reports/2026-09-21-import-governance-final-acceptance.md)。
 - [`2026-08-23-incremental-streaming-import-plan.md`](2026-08-23-incremental-streaming-import-plan.md)：串流数据关系识别、基础事实增量发布、派生分区更新、历史修正与恢复边界。当前运行规则以 [`../../reference/data-import-and-health.md`](../../reference/data-import-and-health.md) 为准，分阶段证据见 [`../../reports/README.md`](../../reports/README.md)。
 - [`2026-08-27-spotify-track-identity-l1-migration-plan.md`](2026-08-27-spotify-track-identity-l1-migration-plan.md)：已被最终 canonical track / L2 / L3 方案取代的早期 Spotify-L1 规划；只用于回溯决策过程。当前规则见 [`../../reference/music-metadata-management.md`](../../reference/music-metadata-management.md)，最终证据见 [`../../reports/2026-08-27-spotify-track-l1-identity-migration.md`](../../reports/2026-08-27-spotify-track-l1-identity-migration.md)。

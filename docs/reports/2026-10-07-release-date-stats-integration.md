@@ -57,4 +57,4 @@ Afterlife实际API `found=false`、趋势为null，正常展示“暂无个人�
 
 代码部分已收口。下一步先从新生产Online Backup做schema88→89演练，仅选择必要Album ID获取来源证据，预览冲突、精度变化与日级消费者降级；按同源证明准备受影响快照，再推进三模式门禁、CI、联合回滚及生产只读/API与桌面手机展示验收。不全库补取，不批准身份/归并，不以本地Pass替代正式迁移、生产模型/OAuth或真机验收。
 
-本轮24分22秒只是该版本单次门禁计时，不能据此关闭三次低干扰稳定验收或安全续跑/分片待办。原两任务历史范围保持：[日期专项](2026-10-07-release-date-precision-acceptance.md)、[空值专项](2026-10-07-entity-stats-empty-acceptance.md)；后续排期见[开发状态](../DEVELOPMENT_STATUS.md)和[日期计划](../plans/2026-10-07-release-date-precision-plan.md)。
+本轮24分22秒只是该版本单次门禁计时，不能据此关闭三次低干扰稳定验收或安全续跑/分片待办。原两任务历史范围保持：[日期专项](2026-10-07-release-date-precision-acceptance.md)、[空值专项](2026-10-07-entity-stats-empty-acceptance.md)；后续排期见[开发状态](../DEVELOPMENT_STATUS.md)和[日期计划](../archive/06-productization-closeout/2026-10-07-release-date-precision-plan.md)。

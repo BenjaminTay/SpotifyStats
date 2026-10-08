@@ -74,4 +74,4 @@ Analysis、Archive、治理、Billboard 进程与持久快照、年度 prepared/
 
 原本地实现与验收完成，以 `fix: 保留发行日期来源精度并限制日级计算` 独立提交；完整 SHA 与提交后工作树状态见最终交付和 Git 记录。README/AGENTS/CLAUDE 产品与执行边界适用且无须修改，AGENTS 与 CLAUDE 保持一致。本次提交仅 59 个任务白名单文件，唯一数据库文件是合成 seed；不推送、不合入 main、不部署、不写正式数据库。运行门禁时 HEAD 仍为基线且任务改动已在工作树，提交前只收尾文档，业务代码与最终完整门禁一致。
 
-主线集成、正式 Online Backup/迁移、有界来源补证、同源快照准备及生产验收步骤见[实施与集成计划](../plans/2026-10-07-release-date-precision-plan.md)。本地来源数量不能用于确定生产补证范围；生产需新副本重新量化和审阅冲突。
+主线集成、正式 Online Backup/迁移、有界来源补证、同源快照准备及生产验收步骤见[实施与集成计划](../archive/06-productization-closeout/2026-10-07-release-date-precision-plan.md)。本地来源数量不能用于确定生产补证范围；生产需新副本重新量化和审阅冲突。

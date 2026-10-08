@@ -18,7 +18,7 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 2. 元数据来源单一。平台的名称、封面、发行信息或身份关联发生错误时，本地缺少第二来源用于发现冲突。
 3. 语言粒度不够。当前语言事实以艺人为主体，适合稳定的艺人级统计，但无法可靠回答同一位多语言艺人的某一首歌究竟使用什么语言。
 
-这份文档只保存已经讨论过的方向、边界和重新启动条件。已完成的 Spotify Track `artists[]` 证据阶段见 [实施规划归档](../archive/06-productization-closeout/2026-09-23-spotify-track-artists-evidence-plan.md)及[交付报告](../reports/2026-09-24-spotify-track-artists-evidence-delivery.md)；Album 稳定艺人与完整分页已独立交付及有界生产验收；日期精度与第二来源仍未实施。
+这份文档只保存已经讨论过的方向、边界和重新启动条件。已完成的 Spotify Track `artists[]` 证据阶段见 [实施规划归档](../archive/06-productization-closeout/2026-09-23-spotify-track-artists-evidence-plan.md)及[交付报告](../reports/2026-09-24-spotify-track-artists-evidence-delivery.md)；Album 稳定艺人、完整分页及日期精度已独立交付和有界生产验收；第二来源仍未实施。
 
 ## 2. 规划形成时的事实（2026-09-23 / 24）
 
@@ -151,7 +151,7 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 |---|---|---|
 | 已生产交付 | SS-2026-09-24-002：有序稳定ID、canonical及冲突保留已实现，154份生产证据/177条艺人已安装；逗号/JOLIN实际修正，同名/改名边界保留测试证据。 | daf098ca已发布，13个Album未解析保留审核；见[生产报告](../reports/2026-10-03-album-metadata-production-delivery.md)。 |
 | 已生产交付 | SS-2026-09-24-001：完整分页与可靠发行位置已实现；生产54份目录/位置及必要简化曲目元数据已补齐。 | daf098ca已发布，Glee106/1、Lana位置、Mimi14共享/6独占、Records与两视口通过；见[生产报告](../reports/2026-10-03-album-metadata-production-delivery.md)。 |
-| 中 | Album 返回 `release_date_precision`（年/月/日），当前 `spotify_album_meta` 只保存日期字符串；专辑候选与归并比较无法区分日期精度。 | 先量化部分精度样本和被日期匹配影响的候选，再持久保存 precision 并修正规则。 |
+| 已生产交付 | SS-2026-09-24-003：Album/project来源日期精度、旧值降级及范围比较已实现；schema89、固定92来源与78项目精度正式安装。 | 76a4968已发布，年度/两端API/两视口及事实守恒通过；未知精度与身份审核边界保持，见[生产验收](../reports/2026-10-08-release-date-production-delivery.md)。 |
 | 中 | 已知 Spotify 专辑/艺人 ID 时 API 对象直接有 `images[]`。当前封面主链已使用它，但缺图兜底会按名称搜索专辑，甚至采用第一个有图结果，可能误配。 | 先统计走名称搜索的比例和错配样本；已有稳定 ID 时优先 ID 读取，不明身份则保留缺图。 |
 | 低 | Album Tracks 的每首歌有 `duration_ms`，而 `analysis_stats_service._resolve_album_category()` 用 `total_tracks × 210000` 估算专辑总时长。 | 依赖完整曲目表后，比较估算与真实时长对 LP/EP 分类的影响，再决定是否替换。 |
 
@@ -161,4 +161,4 @@ SpotifyStats 当前能够从 Spotify 补齐歌曲、专辑、封面和艺人外�
 
 2026-10-03 最终恢复：`SS-2026-09-24-001/002` 已以 `8464ffa6` 与封面主线整合，新默认完整全栈与两视口专项通过；已吸收封面收口 `85a44cb8` 并安全合入本地 main，未推送本任务/部署，正式迁移/回填仍需独立授权。见[最终报告](../reports/2026-10-03-album-metadata-final-integration.md)。日期精度 `003` 未实施。
 
-发行日期精度 SS-2026-09-24-003 已完成隔离本地实现、默认完整验收及独立交付：规则见[精度合同](../reference/release-date-precision.md)，证据见[交付报告](../reports/2026-10-07-release-date-precision-acceptance.md)，正式集成/迁移边界见[实施计划](2026-10-07-release-date-precision-plan.md)。本任务不引入第二来源，不清理搜索外键或批准艺人身份；尚未推送或发布。
+2026-10-08 发行日期精度 SS-2026-09-24-003 已完成本地实现、联合默认完整验收及76a4968生产发布：schema89、固定92来源/78项目精度、五年年度、两端API/双视口与事实守恒通过。规则见[精度合同](../reference/release-date-precision.md)，本地历史见[交付报告](../reports/2026-10-07-release-date-precision-acceptance.md)，正式范围见[归档计划](../archive/06-productization-closeout/2026-10-07-release-date-precision-plan.md)及[生产验收](../reports/2026-10-08-release-date-production-delivery.md)。本任务不引入第二来源、不清理搜索外键或批准艺人身份；维护OOM与详情内存增长独立待修复。
