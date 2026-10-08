@@ -19,9 +19,6 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import async_playwright
-
 VIEWPORTS = {
     360: 800,
     390: 844,
@@ -40,6 +37,32 @@ BASE_LABELS = [
 ]
 RANK_LABELS = ["全时段排名", "近6个月排名", "近4周排名"]
 PENDING = re.compile(r"加载中|更新中|待更新|暂不可用")
+# Keep this exact diagnostic phrase aligned with frontend_cross_browser_smoke.mjs.
+ACCEPTED_PRELOAD_DIAGNOSTIC = "preloaded using link preload but not used within a few seconds"
+
+
+def classify_console(messages):
+    """Separate the known browser warning while preserving every raw entry."""
+    accepted = []
+    blocking = []
+    for message in messages:
+        known_warning = (
+            message["type"] == "warning" and ACCEPTED_PRELOAD_DIAGNOSTIC in message["text"]
+        )
+        (accepted if known_warning else blocking).append(message)
+    return accepted, blocking
+
+
+def is_expected_forward_teardown(error, closing):
+    """Only ignore a known disposed/closed error after explicit context cleanup."""
+    message = str(error).lower()
+    return closing and any(
+        phrase in message
+        for phrase in (
+            "response has been disposed",
+            "target page, context or browser has been closed",
+        )
+    )
 
 
 def arguments():
@@ -185,6 +208,8 @@ async def verify_response_values(requests, kind, objects, measured, page):
 
 
 async def scenario(browser, engine, width, kind, args, explicit_items):
+    from playwright.async_api import Error as PlaywrightError
+
     context = await browser.new_context(viewport={"width": width, "height": VIEWPORTS[width]})
     page = await context.new_page()
     page.set_default_timeout(args.wait_ms)
@@ -193,6 +218,7 @@ async def scenario(browser, engine, width, kind, args, explicit_items):
     tasks = set()
     route_tasks = set()
     errors = []
+    context_closing = False
     result = {
         "engine": engine,
         "width": width,
@@ -201,6 +227,8 @@ async def scenario(browser, engine, width, kind, args, explicit_items):
         "counts": [],
         "requests": requests,
         "console": errors,
+        "accepted_console_diagnostics": [],
+        "blocking_console": [],
         "status": "FAIL",
     }
     lists = {}
@@ -272,7 +300,7 @@ async def scenario(browser, engine, width, kind, args, explicit_items):
                 }
                 await route.fulfill(status=response.status, headers=headers, body=body)
             except PlaywrightError as error:
-                if "closed" not in str(error).lower():
+                if not is_expected_forward_teardown(error, context_closing):
                     raise
             finally:
                 route_tasks.discard(task)
@@ -400,7 +428,10 @@ async def scenario(browser, engine, width, kind, args, explicit_items):
         )
         if result["legacy_detail_stats_requests"]:
             raise AssertionError("Versus requested heavy complete detail statistics")
-        if errors:
+        accepted, blocking = classify_console(errors)
+        result["accepted_console_diagnostics"] = accepted
+        result["blocking_console"] = blocking
+        if blocking:
             raise AssertionError("Browser console errors/warnings or page errors occurred")
         result["status"] = "PASS"
     except Exception as error:
@@ -418,15 +449,21 @@ async def scenario(browser, engine, width, kind, args, explicit_items):
                 )
         except PlaywrightError:
             pass
+        context_closing = True
         await context.close()
         if tasks or route_tasks:
             await asyncio.gather(*tasks, *route_tasks, return_exceptions=True)
+        accepted, blocking = classify_console(errors)
+        result["accepted_console_diagnostics"] = accepted
+        result["blocking_console"] = blocking
         for entry in requests:
             entry.pop("started_at", None)
     return result
 
 
 async def main(args):
+    from playwright.async_api import async_playwright
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     explicit_items = json.loads(args.entities_json.read_text()) if args.entities_json else None
     report = {

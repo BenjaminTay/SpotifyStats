@@ -120,17 +120,28 @@ def resolve_artist_id(conn: sqlite3.Connection, artist_id: int) -> ArtistIdentit
     return mapping[artist_id]
 
 
+def resolve_artist_names(
+    conn: sqlite3.Connection, artist_names: list[str]
+) -> list[ArtistIdentityResolution | None]:
+    """Share one identity map while preserving SQLite lower/minimum-id lookup."""
+    raw_ids = []
+    for name in artist_names:
+        row = conn.execute(
+            "SELECT artist_id FROM artists WHERE lower(artist_name)=lower(?) "
+            "ORDER BY artist_id LIMIT 1",
+            (name,),
+        ).fetchone()
+        raw_ids.append(int(row[0]) if row is not None else None)
+    if not any(raw_id is not None for raw_id in raw_ids):
+        return [None] * len(raw_ids)
+    mapping = get_artist_identity_map(conn)
+    return [mapping.get(raw_id) if raw_id is not None else None for raw_id in raw_ids]
+
+
 def resolve_artist_name(
     conn: sqlite3.Connection, artist_name: str
 ) -> ArtistIdentityResolution | None:
-    rows = conn.execute(
-        "SELECT artist_id FROM artists WHERE lower(artist_name)=lower(?) ORDER BY artist_id",
-        (artist_name,),
-    ).fetchall()
-    if not rows:
-        return None
-    mapping = get_artist_identity_map(conn)
-    return mapping.get(int(rows[0][0]))
+    return resolve_artist_names(conn, [artist_name])[0]
 
 
 def canonicalize_artist_frame(

@@ -329,6 +329,61 @@ def test_response_cache_is_bounded_and_reordering_reuses_union(seed_conn, monkey
     assert service._RESULT_CACHE.cache_stats()["size"] == 128
 
 
+@pytest.mark.parametrize("kind", ["track", "album", "artist"])
+@pytest.mark.parametrize("level,dynamic", [(2, False), (2, True), (3, False), (3, True)])
+def test_overlapping_batches_reuse_exact_small_facts_and_load_only_new_sources(
+    seed_conn, monkeypatch, kind, level, dynamic
+):
+    params = {"merge_level": level, "dynamic_threshold": dynamic}
+    items = selection(seed_conn, kind, level, 4)
+    service._RESULT_CACHE.cache_clear()
+    expected = service.build_personal_stats(seed_conn, kind, items, params)
+    service._RESULT_CACHE.cache_clear()
+    service.build_personal_stats(seed_conn, kind, items[:2], params)
+    new_entities = resolve_selection(seed_conn, kind, items[2:], level)
+    expected_sources = tuple(sorted({source for item in new_entities for source in item.track_ids}))
+    calls = []
+    original = service._load_target_timeline
+
+    def observed(conn, ids, filters, **options):
+        calls.append(ids)
+        return original(conn, ids, filters, **options)
+
+    monkeypatch.setattr(service, "_load_target_timeline", observed)
+    actual = service.build_personal_stats(seed_conn, kind, items, params)
+    assert actual == expected
+    assert calls == [expected_sources]
+    calls.clear()
+    # A different subset composes only exact aggregates; no source frame is kept.
+    subset = [items[3], items[0]]
+    composed = service.build_personal_stats(seed_conn, kind, subset, params)
+    assert composed["entities"] == [actual["entities"][3], actual["entities"][0]]
+    assert calls == []
+    assert service._RESULT_CACHE.cache_stats()["size"] == 3
+
+
+def test_overlap_cache_requires_lineage_revision_filter_and_kind():
+    cache = service._ResultCache()
+    key = (1, 2, "revision", "filter", "artist", ("a", "b"))
+    cache.put(
+        key,
+        {
+            "period": {"start_date": "2020-01-01"},
+            "entities": [{"entity_key": "a", "metrics": {"total_plays": 5}}],
+        },
+    )
+    for index, replacement in [(0, 9), (1, 9), (2, "new"), (3, "new"), (4, "album")]:
+        changed = list(key)
+        changed[index] = replacement
+        assert cache.selected_facts(tuple(changed), {"a"}) == (None, {})
+    period, ready = cache.selected_facts(key[:-1] + (("a", "c"),), {"a", "c"})
+    assert ready["a"]["metrics"]["total_plays"] == 5
+    ready["a"]["metrics"]["total_plays"] = -1
+    period["start_date"] = "changed"
+    assert cache.selected_facts(key, {"a"})[1]["a"]["metrics"]["total_plays"] == 5
+    assert cache.selected_facts(key, {"a"})[0]["start_date"] == "2020-01-01"
+
+
 def test_same_revision_parallel_batch_builds_one_union(seed_conn, monkeypatch):
     items = selection(seed_conn, "track", 2, 4)
     service._RESULT_CACHE.cache_clear()

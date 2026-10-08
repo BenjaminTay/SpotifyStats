@@ -472,3 +472,33 @@ def test_create_group_requires_confirmation_for_prospective_provider_conflict():
             reason="explicit confirmation is required",
             external_ids=links,
         )
+
+
+def test_batch_name_lookup_preserves_sqlite_lower_minimum_raw_id_and_identity_map_once(monkeypatch):
+    from backend.domains.metadata import artist_identity as identity
+
+    conn = _database()
+    try:
+        conn.executemany(
+            "INSERT INTO artists(artist_id,artist_name) VALUES(?,?)",
+            [(1000, "CASE"), (1001, "Case"), (1002, "Beyoncé"), (1003, "Straße")],
+        )
+        names = ["case", "JOLIN", "BEYONCÉ", "STRASSE", "Missing"]
+        expected = [identity.resolve_artist_name(conn, name) for name in names]
+        calls = []
+        original = identity.get_artist_identity_map
+
+        def mapping(*args):
+            calls.append(1)
+            return original(*args)
+
+        monkeypatch.setattr(identity, "get_artist_identity_map", mapping)
+        actual = identity.resolve_artist_names(conn, names)
+        assert actual == expected
+        assert calls == [1]
+        assert actual[0].raw_artist_id == 1000
+        assert actual[1].canonical_artist_id == 532
+        # SQLite lower() folds ASCII; Python Unicode casefold would change these.
+        assert actual[2:] == [None, None, None]
+    finally:
+        conn.close()

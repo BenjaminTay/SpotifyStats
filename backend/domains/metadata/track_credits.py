@@ -225,10 +225,17 @@ def _effective_raw_map(
     conn: sqlite3.Connection,
     track_ids: Iterable[int] | None = None,
     proposed: dict[str, Any] | None = None,
+    *,
+    identity: dict[int, Any] | None = None,
+    artists: dict[int, str] | None = None,
 ) -> dict[tuple[int, int], dict[str, Any]]:
+    if identity is None:
+        identity = get_artist_identity_map(conn)
     credit_map = _raw_credit_map(conn, track_ids)
     automatic = _automatic_spotify_credits(conn, track_ids)
-    _suppress_covered_title_products(conn, credit_map, automatic)
+    _suppress_covered_title_products(
+        conn, credit_map, automatic, identity=identity, artists=artists
+    )
     for credit in automatic:
         key = (int(credit["track_id"]), int(credit["artist_id"]))
         if key not in credit_map:
@@ -239,7 +246,6 @@ def _effective_raw_map(
                 "source": "spotify",
                 "override_id": None,
             }
-    identity = get_artist_identity_map(conn)
     for override in _active_overrides(conn, track_ids):
         _apply_override(credit_map, override, identity)
     if proposed:
@@ -251,6 +257,9 @@ def _suppress_covered_title_products(
     conn: sqlite3.Connection,
     credit_map: dict[tuple[int, int], dict[str, Any]],
     automatic: list[dict[str, Any]],
+    *,
+    identity: dict[int, Any] | None = None,
+    artists: dict[int, str] | None = None,
 ) -> None:
     """Discard only legacy title products explained by approved track credits.
 
@@ -261,11 +270,13 @@ def _suppress_covered_title_products(
     """
     if not automatic:
         return
-    identity = get_artist_identity_map(conn)
-    artists = {
-        int(row[0]): str(row[1])
-        for row in conn.execute("SELECT artist_id, artist_name FROM artists")
-    }
+    if identity is None:
+        identity = get_artist_identity_map(conn)
+    if artists is None:
+        artists = {
+            int(row[0]): str(row[1])
+            for row in conn.execute("SELECT artist_id, artist_name FROM artists")
+        }
 
     def canonical(artist_id: int) -> int:
         resolved = identity.get(artist_id)
@@ -295,6 +306,17 @@ def _suppress_covered_title_products(
         if _table_exists(conn, "track_artists")
         else set()
     )
+    aliases_by_canonical: dict[int, set[str]] = {}
+    affiliation_names: dict[str, set[int]] = {}
+    for artist_id, name in artists.items():
+        resolved_id = canonical(artist_id)
+        alias_names = aliases_by_canonical.setdefault(resolved_id, set())
+        if name:
+            alias_names.add(name)
+        if artist_id in identity and identity[artist_id].display_name:
+            alias_names.add(identity[artist_id].display_name)
+        if artist_id in affiliations and name:
+            affiliation_names.setdefault(name, set()).add(resolved_id)
     for track_id, raw_keys in raw_by_track.items():
         title = titles.get(track_id, "")
         blocks = extract_title_credit_blocks(title)
@@ -309,14 +331,14 @@ def _suppress_covered_title_products(
 
         for row in by_track[track_id]:
             add_name(str(row["credited_name"] or ""), canonical(int(row["artist_id"])))
-        for artist_id, name in artists.items():
-            resolved_id = canonical(artist_id)
-            if resolved_id in approved:
+        for resolved_id in approved:
+            for name in aliases_by_canonical.get(resolved_id, ()):
                 add_name(name, resolved_id)
-                if artist_id in identity:
-                    add_name(identity[artist_id].display_name, resolved_id)
-            elif artist_id in affiliations and " of " in title.casefold():
-                add_name(name, resolved_id)
+        if " of " in title.casefold():
+            # Approved primary names already occur in the alias index, so this
+            # union preserves the old if/elif without scanning all artists.
+            for name, resolved_ids in affiliation_names.items():
+                names.setdefault(name, set()).update(resolved_ids)
         for block in blocks:
             resolved = resolve_block_entities(block, names, supported_artist_ids=approved)
             if not resolved or not set(resolved).issubset(approved):
@@ -339,12 +361,12 @@ def get_effective_track_credits(
     proposed: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Return canonical effective credits, one row per track and identity."""
-    raw_rows = _effective_raw_map(conn, track_ids, proposed)
     identity = get_artist_identity_map(conn)
     artists = {
         int(row[0]): str(row[1])
         for row in conn.execute("SELECT artist_id, artist_name FROM artists").fetchall()
     }
+    raw_rows = _effective_raw_map(conn, track_ids, proposed, identity=identity, artists=artists)
     grouped: dict[tuple[int, int], dict[str, Any]] = {}
     for row in raw_rows.values():
         raw_artist_id = int(row["artist_id"])

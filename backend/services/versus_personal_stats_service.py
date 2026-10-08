@@ -54,6 +54,23 @@ class _ResultCache:
             while len(self.results) > 128:
                 self.results.popitem(last=False)
 
+    def selected_facts(self, key: tuple, entity_keys: set[str]) -> tuple[dict | None, dict]:
+        """Reuse tiny exact facts from overlapping batches within the same budget."""
+        found: dict[str, dict] = {}
+        period = None
+        with self.lock:
+            for cached_key, payload in reversed(self.results.items()):
+                if len(cached_key) != len(key) or cached_key[:-1] != key[:-1]:
+                    continue
+                for entity in payload["entities"]:
+                    entity_key = entity["entity_key"]
+                    if entity_key in entity_keys and entity_key not in found:
+                        found[entity_key] = deepcopy(entity)
+                        period = deepcopy(payload["period"])
+                if found.keys() >= entity_keys:
+                    break
+        return period, found
+
     def cache_clear(self):
         with self.lock:
             self.results.clear()
@@ -309,7 +326,7 @@ def _basic_duration_frame(durations: pd.DataFrame) -> pd.DataFrame:
     ends = durations["interval_end_at"] - pd.Timedelta(1, unit="ns")
     local_starts = starts.dt.tz_convert("Asia/Shanghai").dt.normalize()
     local_ends = ends.dt.tz_convert("Asia/Shanghai").dt.normalize()
-    out["ts_date"] = local_starts.dt.strftime("%Y-%m-%d")
+    out["ts_date"] = _date_labels(local_starts)
     start_ns = starts.astype("int64").to_numpy()
     end_ns = durations["interval_end_at"].astype("int64").to_numpy()
     crossed_hour = (end_ns - 1) // 3_600_000_000_000 > start_ns // 3_600_000_000_000
@@ -321,7 +338,7 @@ def _basic_duration_frame(durations: pd.DataFrame) -> pd.DataFrame:
     if not cross_day.any():
         return out
     extra = out.loc[cross_day].copy()
-    extra["ts_date"] = local_ends.loc[cross_day].dt.strftime("%Y-%m-%d")
+    extra["ts_date"] = _date_labels(local_ends.loc[cross_day])
     extra["ms_played"] = 0
     long_intervals = (local_ends - local_starts) > pd.Timedelta(days=1)
     intermediate = []
@@ -338,6 +355,47 @@ def _basic_duration_frame(durations: pd.DataFrame) -> pd.DataFrame:
     if intermediate:
         pieces.append(pd.DataFrame(intermediate))
     return pd.concat(pieces, ignore_index=True)
+
+
+def _date_labels(dates: pd.Series) -> pd.Series:
+    """Format each active local date once, retaining the source index."""
+    unique = dates.drop_duplicates()
+    labels = pd.Series(unique.dt.strftime("%Y-%m-%d").to_numpy(), index=unique)
+    return dates.map(labels)
+
+
+def _coverage_bounds(conn: sqlite3.Connection, music_only: bool) -> tuple:
+    """Use existing date-index edges, with the same NULL rules as MIN/MAX."""
+    where = "ts_date IS NOT NULL"
+    if music_only:
+        where += " AND track_id IS NOT NULL"
+    bounds = []
+    for order in ("ASC", "DESC"):
+        row = conn.execute(
+            f"SELECT ts_date FROM plays WHERE {where} ORDER BY ts_date {order} LIMIT 1"
+        ).fetchone()
+        bounds.append(row[0] if row is not None else None)
+    return tuple(bounds)
+
+
+def _album_song_frames(
+    conn: sqlite3.Connection, events: pd.DataFrame, durations: pd.DataFrame, merge_level: int
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Resolve one union of song identities for both listening tracks."""
+    from backend.domains.playback.album_projects import apply_canonical_song_keys
+
+    songs = pd.concat(
+        [frame.reindex(columns=["track_id", "track_name"]) for frame in (events, durations)],
+        ignore_index=True,
+    ).drop_duplicates("track_id")
+    keyed = apply_canonical_song_keys(songs, conn, merge_level)
+    key_map = keyed.set_index("track_id")["canonical_song_key"]
+    result = []
+    for frame in (events, durations):
+        out = frame.copy()
+        out["canonical_song_key"] = out["track_id"].map(key_map)
+        result.append(out)
+    return result[0], result[1]
 
 
 def _build_personal_stats_uncached(
@@ -362,8 +420,7 @@ def _build_personal_stats_uncached(
     started = perf_counter()
     events = events[events["source_track_id"].isin(source_ids)].copy()
     durations = durations[durations["source_track_id"].isin(source_ids)].copy()
-    where = "WHERE track_id IS NOT NULL" if params["music_only"] else ""
-    bounds = conn.execute(f"SELECT MIN(ts_date), MAX(ts_date) FROM plays {where}").fetchone()
+    bounds = _coverage_bounds(conn, params["music_only"])
     period = {
         "period": "lifetime",
         "label": "全部时间",
@@ -381,10 +438,7 @@ def _build_personal_stats_uncached(
             selection=resolved,
         )
     elif kind == "album":
-        from backend.domains.playback.album_projects import apply_canonical_song_keys
-
-        events = apply_canonical_song_keys(events, conn, params["merge_level"])
-        durations = apply_canonical_song_keys(durations, conn, params["merge_level"])
+        events, durations = _album_song_frames(conn, events, durations, params["merge_level"])
     duration_slices = _basic_duration_frame(durations)
     _record_timing(timings, "attribution", started)
     started = perf_counter()
@@ -453,14 +507,21 @@ def _cached_batch(work: _BatchWork) -> dict:
     cached = _RESULT_CACHE.get(work.key)
     if cached is not None:
         return cached
-    result = _build_personal_stats_uncached(
-        work.conn,
-        work.kind,
-        work.params,
-        work.selection,
-        work.metadata,
-        work.timings,
+    period, ready = _RESULT_CACHE.selected_facts(
+        work.key, {item.entity_key for item in work.selection}
     )
+    missing = [item for item in work.selection if item.entity_key not in ready]
+    if missing:
+        result = _build_personal_stats_uncached(
+            work.conn, work.kind, work.params, missing, work.metadata, work.timings
+        )
+        period = result["period"]
+        ready.update({entity["entity_key"]: entity for entity in result["entities"]})
+    result = {
+        **work.metadata,
+        "period": period,
+        "entities": [ready[item.entity_key] for item in work.selection],
+    }
     _RESULT_CACHE.put(work.key, result)
     return result
 

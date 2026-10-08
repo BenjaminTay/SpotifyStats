@@ -1566,17 +1566,14 @@ def apply_l3_album_attribution_plan(
     )
 
 
-def load_l3_song_album_attributions(
-    conn: sqlite3.Connection,
-    *,
-    require_ready: bool = True,
-) -> pd.DataFrame:
-    """Return the published one-row-per-song L3 owner projection."""
-
+def validate_l3_song_album_attributions(
+    conn: sqlite3.Connection, *, require_ready: bool = True
+) -> bool:
+    """Validate published L3 ownership without loading rows or preparing facts."""
     if not _table_exists(conn, "l3_song_album_attributions"):
         if require_ready:
             raise RuntimeError("L3 album attribution has not been built")
-        return pd.DataFrame()
+        return False
     state = get_l3_album_attribution_state(conn)
     if require_ready:
         expected_track_revision = _track_identity_revision(conn)
@@ -1593,6 +1590,17 @@ def load_l3_song_album_attributions(
                 f"track_revision={state['track_identity_revision']}/{expected_track_revision}, "
                 f"album_revision={state['album_project_revision']}/{expected_album_revision}"
             )
+    return True
+
+
+def load_l3_song_album_attributions(
+    conn: sqlite3.Connection,
+    *,
+    require_ready: bool = True,
+) -> pd.DataFrame:
+    """Return the published one-row-per-song L3 owner projection."""
+    if not validate_l3_song_album_attributions(conn, require_ready=require_ready):
+        return pd.DataFrame()
     return pd.read_sql_query(
         """SELECT attribution.canonical_song_key,
                   attribution.representative_track_id,

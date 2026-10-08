@@ -12,13 +12,13 @@ from typing import Any
 from backend.core.access_surface import snapshot_unavailable
 from backend.core.cache import singleflight
 from backend.core.cache_manager import register_ttl
-from backend.domains.metadata.artist_identity import get_identity_revision, resolve_artist_name
+from backend.domains.metadata.artist_identity import get_identity_revision, resolve_artist_names
 from backend.domains.metadata.track_credits import (
     TRACK_CREDIT_POLICY_VERSION,
     get_effective_track_credits,
     get_track_credit_revision,
 )
-from backend.domains.playback.album_project_identity import resolve_album_project_identity
+from backend.domains.playback.album_project_identity import resolve_album_project_identities
 from backend.domains.playback.logical_timeline import LISTENING_DURATION_POLICY_VERSION
 from backend.domains.playback.track_groups import resolve_track_aggregation_scope
 from backend.domains.settings.repository import SettingsRepository
@@ -169,43 +169,74 @@ def _l1_tracks(conn: sqlite3.Connection, source_ids: tuple[int, ...]) -> tuple[i
     )
 
 
-def _album_song_keys(conn: sqlite3.Connection, merge_level: int) -> dict[int, set[str]]:
-    """Read published membership without schema/bootstrap side effects."""
+def _album_selection_scope(
+    conn: sqlite3.Connection, merge_level: int, project_ids: tuple[int, ...]
+) -> tuple[Any, dict[int, set[str]]]:
+    """Read selected membership and share one canonical graph within the batch."""
     import pandas as pd
 
+    from backend.domains.playback.album_projects import apply_canonical_song_keys
+
+    if _table_exists(conn, "track_l1_identities"):
+        candidates = pd.read_sql_query(
+            "SELECT i.l1_id AS track_id,t.track_name FROM track_l1_identities i "
+            "JOIN tracks t ON t.track_id=i.representative_track_id "
+            "WHERE i.identity_status IN ('active','unresolved')",
+            conn,
+        )
+    else:
+        candidates = pd.read_sql_query("SELECT track_id,track_name FROM tracks", conn)
+    markers = ",".join("?" for _ in project_ids)
     if merge_level >= 3:
-        from backend.core.access_surface import snapshot_unavailable
-        from backend.domains.playback.l3_album_attribution import load_l3_song_album_attributions
+        from backend.domains.playback.l3_album_attribution import (
+            validate_l3_song_album_attributions,
+        )
 
         try:
-            membership = load_l3_song_album_attributions(conn, require_ready=True)
+            validate_l3_song_album_attributions(conn, require_ready=True)
         except RuntimeError:
             raise snapshot_unavailable("versus_personal_context") from None
-        if not membership.empty:
-            membership = membership[membership["include_in_charts"] == 1]
-    else:
-        from backend.domains.playback.album_projects import apply_canonical_song_keys
-
         membership = pd.read_sql_query(
-            """SELECT DISTINCT apt.project_id,
-                      COALESCE(links.l1_id,apt.track_id) AS track_id,
-                      COALESCE(rep.track_name,t.track_name) AS track_name
-                 FROM album_project_tracks apt
-                 JOIN tracks t ON t.track_id=apt.track_id
-                 LEFT JOIN track_l1_source_links links ON links.track_id=apt.track_id
-                 LEFT JOIN track_l1_identities li ON li.l1_id=links.l1_id
-                 LEFT JOIN tracks rep ON rep.track_id=li.representative_track_id
-                WHERE apt.min_merge_level<=?""",
+            f"""SELECT attribution.canonical_song_key,target.project_id
+                 FROM l3_song_album_attributions attribution
+                 JOIN tracks representative
+                   ON representative.track_id=attribution.representative_track_id
+                 JOIN album_projects target
+                   ON target.project_id=attribution.target_project_id
+                WHERE target.project_id IN ({markers}) AND target.include_in_charts=1""",
             conn,
-            params=(merge_level,),
+            params=project_ids,
         )
-        membership = apply_canonical_song_keys(membership, conn, merge_level)
-    if membership.empty:
-        return {}
-    return {
+        keyed_tracks = apply_canonical_song_keys(candidates, conn, merge_level)
+    else:
+        membership = pd.read_sql_query(
+            f"""SELECT DISTINCT apt.project_id,
+                       COALESCE(links.l1_id,apt.track_id) AS track_id,
+                       COALESCE(rep.track_name,t.track_name) AS track_name
+                  FROM album_project_tracks apt
+                  JOIN tracks t ON t.track_id=apt.track_id
+                  LEFT JOIN track_l1_source_links links ON links.track_id=apt.track_id
+                  LEFT JOIN track_l1_identities li ON li.l1_id=links.l1_id
+                  LEFT JOIN tracks rep ON rep.track_id=li.representative_track_id
+                 WHERE apt.project_id IN ({markers}) AND apt.min_merge_level<=?""",
+            conn,
+            params=(*project_ids, merge_level),
+        )
+        # Membership can include an owner outside active/unresolved candidates.
+        # Retain its key fallback while keeping reverse expansion candidate-only.
+        key_input = pd.concat(
+            [candidates, membership[["track_id", "track_name"]]], ignore_index=True
+        ).drop_duplicates("track_id")
+        keys = apply_canonical_song_keys(key_input, conn, merge_level).set_index("track_id")[
+            "canonical_song_key"
+        ]
+        keyed_tracks = candidates.assign(canonical_song_key=candidates["track_id"].map(keys))
+        membership["canonical_song_key"] = membership["track_id"].map(keys)
+    song_keys = {
         int(str(project_id)): set(rows["canonical_song_key"].dropna())
         for project_id, rows in membership.groupby("project_id")
     }
+    return keyed_tracks, song_keys
 
 
 class _SelectionCache:
@@ -331,26 +362,24 @@ def _resolve_selection_uncached(
     if not 2 <= len(items) <= 4:
         raise ValueError("请选择2至4个对象进行对决")
     result: list[SelectedEntity] = []
-    credits = get_effective_track_credits(conn) if kind == "artist" else []
-    keyed_tracks = None
-    album_song_keys = {}
-    if kind == "album":
-        import pandas as pd
-
-        from backend.domains.playback.album_projects import apply_canonical_song_keys
-
-        if _table_exists(conn, "track_l1_identities"):
-            candidates = pd.read_sql_query(
-                "SELECT i.l1_id AS track_id,t.track_name FROM track_l1_identities i "
-                "JOIN tracks t ON t.track_id=i.representative_track_id "
-                "WHERE i.identity_status IN ('active','unresolved')",
-                conn,
+    credits_by_artist: dict[int, set[int]] = {}
+    artists = []
+    if kind == "artist":
+        artists = resolve_artist_names(conn, [str(item) for item in items])
+        for credit in get_effective_track_credits(conn):
+            credits_by_artist.setdefault(int(credit["artist_id"]), set()).add(
+                int(credit["track_id"])
             )
-        else:
-            candidates = pd.read_sql_query("SELECT track_id,track_name FROM tracks", conn)
-        keyed_tracks = apply_canonical_song_keys(candidates, conn, merge_level)
-        album_song_keys = _album_song_keys(conn, merge_level)
-    for item in items:
+    keyed_tracks = None
+    album_song_keys: dict[int, set[str]] = {}
+    album_identities = []
+    if kind == "album":
+        album_identities = resolve_album_project_identities(conn, items, merge_level=merge_level)
+        project_ids = tuple(
+            sorted({identity.project_id for identity in album_identities if identity is not None})
+        )
+        keyed_tracks, album_song_keys = _album_selection_scope(conn, merge_level, project_ids)
+    for index, item in enumerate(items):
         key = requested_key(kind, item)
         if kind == "track":
             track_id = int(item)
@@ -384,12 +413,7 @@ def _resolve_selection_uncached(
                 )
             )
         elif kind == "album":
-            identity = resolve_album_project_identity(
-                conn,
-                album_name=item["album_name"],
-                artist_name=item["artist_name"],
-                merge_level=merge_level,
-            )
+            identity = album_identities[index]
             if identity is None:
                 result.append(
                     SelectedEntity(
@@ -428,19 +452,11 @@ def _resolve_selection_uncached(
                 )
             )
         elif kind == "artist":
-            artist = resolve_artist_name(conn, str(item))
+            artist = artists[index]
             if artist is None:
                 result.append(SelectedEntity(key, f"unavailable:{key}", "", artist_name=str(item)))
                 continue
-            credited_ids = tuple(
-                sorted(
-                    {
-                        int(row["track_id"])
-                        for row in credits
-                        if int(row["artist_id"]) == artist.canonical_artist_id
-                    }
-                )
-            )
+            credited_ids = tuple(sorted(credits_by_artist.get(artist.canonical_artist_id, set())))
             source_ids = _source_tracks(conn, _l1_tracks(conn, credited_ids))
             result.append(
                 SelectedEntity(

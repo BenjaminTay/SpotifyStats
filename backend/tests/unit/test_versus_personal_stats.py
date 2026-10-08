@@ -334,3 +334,63 @@ def test_compact_duration_projection_keeps_long_intervals_and_fractional_hour_ro
         assert set(projected.loc[projected["track_id"] == track_id, "ts_date"]) == set(
             oracle.loc[oracle["track_id"] == track_id, "ts_date"]
         )
+
+
+@pytest.mark.parametrize("music_only", [False, True])
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [],
+        [(None, None)],
+        [(None, "2020-01-01"), (1, None)],
+        [(None, "2020-01-01"), (1, "2023-01-01"), (2, "2021-01-01"), (None, "2024-01-01")],
+    ],
+)
+def test_coverage_edges_preserve_aggregate_null_and_music_rules(timeline_conn, music_only, rows):
+    timeline_conn.executemany("INSERT INTO plays(track_id,ts_date) VALUES(?,?)", rows)
+    where = "WHERE track_id IS NOT NULL" if music_only else ""
+    expected = tuple(
+        timeline_conn.execute(f"SELECT MIN(ts_date),MAX(ts_date) FROM plays {where}").fetchone()
+    )
+    assert service._coverage_bounds(timeline_conn, music_only) == expected
+
+
+def test_date_labels_preserve_repeated_dates_nat_and_nonsequential_index():
+    dates = pd.Series(
+        pd.to_datetime(["2026-01-01", "2026-01-01", None, "2026-01-03"]), index=[9, 4, 8, 1]
+    ).dt.tz_localize("Asia/Shanghai")
+    pd.testing.assert_series_equal(service._date_labels(dates), dates.dt.strftime("%Y-%m-%d"))
+
+
+def test_album_song_union_preserves_keys_for_each_frame_and_empty_selection(
+    monkeypatch, timeline_conn
+):
+    from backend.domains.playback import album_projects
+
+    calls = []
+
+    def resolve(frame, conn, level):
+        calls.append(frame["track_id"].tolist())
+        assert level == 3
+        return frame.assign(canonical_song_key=frame["track_id"].map({1: "work:7", 2: "l1:2"}))
+
+    monkeypatch.setattr(album_projects, "apply_canonical_song_keys", resolve)
+    events = pd.DataFrame(
+        {"track_id": [1, 1], "track_name": ["Alias", "Song"], "ms_played": [10, 20]}, index=[5, 8]
+    )
+    durations = pd.DataFrame(
+        {"track_id": [2, 1], "track_name": ["Other", "Song"], "ms_played": [5, 40]}, index=[3, 9]
+    )
+    actual_events, actual_durations = service._album_song_frames(
+        timeline_conn, events, durations, 3
+    )
+    assert calls == [[1, 2]]
+    pd.testing.assert_frame_equal(
+        actual_events, events.assign(canonical_song_key=["work:7", "work:7"])
+    )
+    pd.testing.assert_frame_equal(
+        actual_durations, durations.assign(canonical_song_key=["l1:2", "work:7"])
+    )
+    empty = pd.DataFrame(columns=["track_id"])
+    a, b = service._album_song_frames(timeline_conn, empty, empty, 3)
+    assert a.empty and b.empty and "canonical_song_key" in a and "canonical_song_key" in b

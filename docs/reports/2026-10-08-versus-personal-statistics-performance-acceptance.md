@@ -2,7 +2,7 @@
 
 创建：2026-10-08；最后核验：2026-10-09。问题：`SS-2026-10-08-002`。对应[实施规划](../plans/2026-10-08-versus-personal-statistics-performance-plan.md)。关联 `SS-2026-10-08-001` 的资源风险，本报告不宣称整站 OOM 或其他详情冷路径已解决。
 
-状态：**S0–S4本地验收 PASS，S5正式CI失败后的并发补修及默认完整重验 PASS**。目标后端检查、生产 Online Backup 副本上的最终 API 性能、资源和事实对账、真实浏览器矩阵及默认完整全栈保留各自版本证据；补修后238项专项、原顺序冷6样本及八必需阶段通过。新固定SHA的正式CI与生产仍待完成。
+状态：**d2c4afce 版本本地 S4、正式 CI、三模式及部署通过；S5 生产专项 Partial，首次公开客户端有三项性能失败**。历史本地与生产证据保留各自版本。新CPU版本本地S4已重新收口（第10节）：适用专项与八阶段默认完整PASS；固定新SHA、正式CI及新生产首轮待完成。
 
 ## 1. 数据、版本与测量合同
 
@@ -341,3 +341,48 @@ run `20261008T185707.659770Z-44ace7878d97` 退出0，最终summary为`selection.
 只修测试协调：在实际unlink前标记已进入删除，仍执行真实unlink、FileNotFound及main identity/bytes全部断言；正式`path_safety`不变。在该测试增加两个参数，其中一个仅在作用域内委托原路径解析后真实stat（保留None与FileNotFound语义），模拟Linux重入。旧顺序确定性复现1 failed及同链teardown 1 error；修后整模块 **16 passed/3.73s**，包含原一次decode并发测试，Ruff/format/diff通过。日志`linux-unlink-recursion-before.log`、`linux-unlink-recursion-after.log/.xml`与checks保留。16与之前238存在覆盖，不累计。
 
 本次差异仅测试及文档，应用源码与第8.3节默认完整运行完全相同；不声称重跑全部238或八阶段。新固定SHA的真实Linux CI、三模式、镜像、部署及双入口生产专项继续执行。
+
+### 9. d2c4afce 实际部署与首次生产客户端
+
+`d2c4afce8e04cf9c805de201995e6fb5dee54f08` 已提交、推送并实际部署。正式 [CI Quality 37833933166](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37833933166) 和 [Production Release 37833933155](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37833933155) 全部实际 job 成功，包含共享质量、showcase/full/dual 合同、镜像及 deploy。该 SHA 没有独立 production-contract workflow，三模式证据来自 release 内真实 job。四份既有 ready 仅 verify/export/validate，未重建；765,982 bytes 清单 digest 为 `0e2a9c2d2ea0370c22458840ca65b823f0a7eefcc2f1e5fc58e3b7846831b4fc`，私密原子上传回执保留。
+
+正式 verify.sh 退出0，三个运行容器 OCI 标签均为上述完整 SHA。四排名组合 `entity_rank_context_v2` ready 且 source revision 为 bb7cb368…；搜索 schema89 四变体 exact/fuzzy/cjk/short-cjk 通过、orphans0。只监听 loopback3001/3002，3000/8000未开放。正常启动新增11项其他维护任务，全部结束后 jobs6,288（done6,250/failed38、pending/running0），versus rank rebuild 总任务0；保留既有38失败，不声称部署没有新增其他任务。
+
+公开 HTTPS 首次 Chromium360 按歌曲→专辑→艺人连续选2→4，随后覆盖其余视口与 Firefox/WebKit；没有个人接口预暖、额外 idle 或人工 Surface header。14场景/28样本实际指标与排名、DOM及最终计分一致，56个人 HTTP 全200；重排新增请求、中间三对象请求、旧完整 stats 请求和溢出均0。生产冻结门槛仍为基础可见≤2,000ms、全部个人≤3,000ms，25/28达标，首轮以下失败原样保留：
+
+| 首次对象组 | 基础可见 | 全部个人 | stats 服务端 total | 主要耗时 |
+| --- | ---: | ---: | ---: | --- |
+| 四专辑 | 3,071.75ms | 3,071.75ms | 2,481.624ms | identity1,590.123ms；SQL246.316ms、timeline330.384ms |
+| 两艺人 | 2,847.13ms | 未超过3,000ms | 2,681.216ms | 冷身份与目标时间线 |
+| 四艺人 | 3,596.36ms | 3,596.36ms | 3,221.249ms | identity1,089.190ms；SQL936.053ms、timeline686.097ms、attribution445.718ms |
+
+rank 请求同批等待 selection singleflight，不将身份等待解释为排名重建。后续热样本不能替代这些失败。WebKit三场景另保留原始脚本 FAIL：只有已知 preload 未及时使用提示，业务数值及性能均通过，无 API/page error；该诊断与项目跨浏览器脚本已有精确忽略规则一致，后续探针分类将保留 raw diagnostics 并单列。不会放宽耗时门槛或重写旧报告。
+
+首次客户端前后 schema、19源表、完整 jobs、全部 Analysis publications 和 rank metadata 七组保护对照全 PASS；new job IDs0。源码与本地禁止 builder 测试、线上队列/发布前后守恒共同支持公开读取边界，未独立观测线上直接 builder 调用计数。原始 evidence 为 `production-public-d2c4afce/production-summary.json`、`offline-threshold-judgment.json` 和 `d2c4afce-public-browser-guard-comparison.json`。
+
+私有 SSH loopback 的真实 capability 已确认 private-admin/full 及同 SHA；仅属于 HTTP 经 SSH 的功能路径，尚未完成48请求功能组，不等于私有 HTTPS 验收。配置私有 HTTPS 的 Tailscale 当前 Stopped，未擅自启用。公开首轮性能失败后重新进入有界 CPU 优化：共享署名/名称身份映射、选中项目成员读取、两轨 canonical key 复用、日期索引边缘与唯一日期格式化；保持原统计事实、exact-ready 和缓存容量。新业务版本验收前本项仍 IN_PROGRESS。
+
+### 10. 生产冷失败后的有界 CPU 优化与当前验证
+
+本轮六个业务文件有改动，当前工作树尚未提交，不能用 d2c4afce 表示新代码。API 测量固定12个调用链文件的 before/after SHA256；业务冻结后完整性能运行中这些 hash 保持一致。没有变更统计合同、builder/policy 版本、公开读取权限或缓存容量。
+
+- 有效署名解析共享一次 identity map 与原始艺人名；预索引 canonical aliases/raw primary affiliations，每批标题不再反复遍历全艺人。覆盖优先顺序和 ambiguity suppression 保持；11,771条真实完整署名前后字节相等。138项治理/parser专项通过，独立模块证据不与后续209项叠加计数。
+- 同批专辑共享名称视图及规范化结果，先解析项目再读取选中成员；L2一次 canonical key 映射复用。L3只读 readiness helper由原完整loader和选中项目读取共享，保留全部状态、policy及双revision拒绝。艺人名称共享map，完整有效署名一次分组。真实12组 SelectedEntity 全字段相等，129项专项通过；mypy仍报告 imported L3旧行11项pandas-stub错误，新修改区无错误，未扩大修复。
+- lifetime覆盖首尾使用既有日期索引 LIMIT1边缘查询，NULL/music_only语义与MIN/MAX相等；每个唯一当地日期只格式化一次。39,396真实收听区间的完整frame（index、columns、dtype、ms和日期）精确相等；NaT、跨午夜、多日也相等。album4 L2/L3 canonical keys逐行相等，其余原列保持。上述局部 helper 报告先于下一项缓存复用，不能冒充全部新service hash的最终证明。
+- 原128条小payload缓存内查找同lineage/source/filter/kind的已完成实体；2→4只计算未完成对象，其他子集可组合精确小指标，仍无额外缓存或frame驻留。12组三类/L2/L3/dynamic/fixed seed验证2→4结果与独立完整批次相等、仅读新增source IDs；另验证五项key隔离与返回深拷贝。合并10模块单次 **209 passed/9.49s**，包含上述相关subset，不累计。
+
+SQL 单一候选仅在隔离副本实验：去掉早于目标timestamp的嵌套查找，完整47,833行raw相等，但交错三次均值298.29→298.82ms无收益，按停止条件放弃；原SQL不变，无新索引或迁移。
+
+冻结后 `post-production-cpu-api-run/report.json` 为 PASS：30独立冷进程、6热进程，共444真实HTTP及130门槛全通过，12调用链hash前后不变，source/owned各19表相等且守恒。冷基础最大歌曲109.76ms、专辑243.22ms、艺人1,022.83ms；排名22.56ms。各kind/count/endpoint 21热观测P95均≤17.28ms；四对象新增峰值最大171.55MiB（门槛256），20不同队列稳态增量最大11.52MiB（门槛128）。builder/publish/enqueue均0、全局播放frames驻留0。原 `final-api-run` 报告未覆盖。
+
+新后端使用独立runtime主库和全部sidecar启动，未预暖个人接口；原顺序冷6样本 PASS：歌曲2/4基础362.78/481.71ms、专辑476.19/710.11ms、艺人921.90/743.18ms。220ms窗口计入四对象点击耗时，新增对象复用小事实结果。冷6加自然暖42共45唯一场景/90样本全部达到原local门槛，真实指标/排名/计分、重排映射一致；中间三对象请求、重排新增请求、旧完整stats和溢出均0。基础/全部个人最大歌曲500.96ms、专辑710.11ms、艺人921.90ms；最终计分可见最大502.03/711.09/923.04ms。周期deferred可在离页取消，full_visible包括个人/榜单/计分，不冒称周期完整加载。
+
+本轮probe原32场景业务样本均PASS，但关闭WebKit context时 `Response has been disposed` 引起driver exit1；原文件保留。仅在明确closing阶段接受两条完整已知disposed/closed短语，live请求错误及其他诊断仍阻塞；17项边界测试通过。新probe e33de4c7…补剩13，不重复已完成或冷样本；两新driver exit0。少量pending route task关闭stderr单列，不冒称无驱动诊断。probe变动仅关闭及console分类，12条API业务hash与上述性能运行一致。汇总 `post-production-cpu-local/summary.json` digest为916b9d20…，旧异常与生产失败未覆盖。
+
+`post-production-cpu-oracle/report.json` 退出0/PASS：16group连续2→3→4的48基础+48排名API全部与旧独立full oracle逐项一致，所有metadata/实体数/status守恒；未重算全库oracle或重建rank。source/owned各19表与旧expected一致且前后守恒，builder/publish/enqueue0，12源码、HEAD、probe、oracle driver及旧JSON前后hash相同。耗时11.70s、报告digest736a0ad4…；旧报告保留自身版本，不冒称旧发布全集重新build。
+
+新默认完整首轮 run `20261008T205628.696307Z-0fcdc94b0661` 在quality FAIL：preflight PASS，mypy报新增测试旧算法oracle中 `by_track` 的两个int(object)类型错误，其余后续阶段未运行。只将该测试容器标注与实际自动署名形状一致为dict[str,Any]，未变测试逻辑或业务源码；专项单模块26项复验通过。原 `fullstack-post-production-cpu.log` 保留。
+
+修补后的默认完整 run `20261008T205855.815078Z-38cb6461d4f2` 为 **PASS**，selection=full，八个必需阶段同轮完成，用时1,426,837ms（23分46.837秒）。preflight 7,672ms、quality 64,529ms、backend 520,975ms、API 164,169ms、browser-routes 399,372ms、browser-interactions 79,390ms、browser-inventory 45,634ms、browser-compat 144,952ms。quality实际all-files hooks的ruff/format/mypy/detect-secrets、前端787 passed/4 skipped及build通过；后端常规3,669 passed/4 warnings、真实集成187 passed/2 warnings，警告不写成零。API及51目标性能通过，Chromium/Firefox/WebKit通过。
+
+完整日志为 `output/versus-personal-acceptance/fullstack-post-production-cpu-after-type-fix.log`；summary及API原始结果另存 `post-production-cpu-fullstack/`。运行记录为d2c4afce+dirty工作树；最终12调用链SHA256仍与上述性能及oracle运行相等，不能描述为旧d2c4afce clean HEAD验收。新业务S4已收口，固定SHA、正式CI及新生产首轮仍待执行，S5继续Partial。

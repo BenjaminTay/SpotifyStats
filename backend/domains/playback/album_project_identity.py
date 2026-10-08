@@ -6,7 +6,7 @@ import re
 import sqlite3
 import unicodedata
 from dataclasses import asdict, dataclass
-from typing import Literal
+from typing import Callable, Literal
 
 AlbumProjectMatch = Literal["project_id", "canonical_name", "member_album_name"]
 
@@ -54,13 +54,14 @@ def _project_rows(conn: sqlite3.Connection, *, project_id: int | None = None) ->
     ).fetchall()
 
 
-def resolve_album_project_identity(
-    conn: sqlite3.Connection,
+def _resolve_project_rows(
+    rows: list[sqlite3.Row],
     *,
     album_name: str | None = None,
     artist_name: str | None = None,
     project_id: int | None = None,
     merge_level: int = 2,
+    normalize: Callable[[str], str] = normalize_album_project_lookup,
 ) -> AlbumProjectIdentity | None:
     """Resolve one unambiguous project by stable ID, canonical name, or member name.
 
@@ -70,7 +71,6 @@ def resolve_album_project_identity(
     across artists fail closed unless ``artist_name`` disambiguates them.
     """
 
-    rows = _project_rows(conn, project_id=project_id)
     if project_id is not None:
         matching = [row for row in rows if int(row["project_id"]) == int(project_id)]
         if not matching:
@@ -92,23 +92,23 @@ def resolve_album_project_identity(
 
     if not album_name:
         return None
-    normalized_album = normalize_album_project_lookup(album_name)
-    normalized_artist = normalize_album_project_lookup(artist_name) if artist_name else None
+    normalized_album = normalize(album_name)
+    normalized_artist = normalize(artist_name) if artist_name else None
     matches: dict[int, tuple[sqlite3.Row, AlbumProjectMatch, int | None, str | None]] = {}
     for row in rows:
         if (
             normalized_artist is not None
-            and normalize_album_project_lookup(str(row["artist_name"] or "")) != normalized_artist
+            and normalize(str(row["artist_name"] or "")) != normalized_artist
         ):
             continue
         matched_by: AlbumProjectMatch | None = None
         matched_album_id: int | None = None
         matched_album_name: str | None = None
-        if normalize_album_project_lookup(str(row["canonical_name"])) == normalized_album:
+        if normalize(str(row["canonical_name"])) == normalized_album:
             matched_by = "canonical_name"
         elif (
             row["member_album_name"]
-            and normalize_album_project_lookup(str(row["member_album_name"])) == normalized_album
+            and normalize(str(row["member_album_name"])) == normalized_album
         ):
             matched_by = "member_album_name"
             matched_album_id = int(row["member_album_id"])
@@ -149,3 +149,50 @@ def resolve_album_project_identity(
         matched_album_id=matched_album_id,
         matched_album_name=matched_album_name,
     )
+
+
+def resolve_album_project_identity(
+    conn: sqlite3.Connection,
+    *,
+    album_name: str | None = None,
+    artist_name: str | None = None,
+    project_id: int | None = None,
+    merge_level: int = 2,
+) -> AlbumProjectIdentity | None:
+    """Resolve one project with the same name and scope rules as batch lookup."""
+    return _resolve_project_rows(
+        _project_rows(conn, project_id=project_id),
+        album_name=album_name,
+        artist_name=artist_name,
+        project_id=project_id,
+        merge_level=merge_level,
+    )
+
+
+def resolve_album_project_identities(
+    conn: sqlite3.Connection,
+    items: list[dict[str, str]],
+    *,
+    merge_level: int = 2,
+) -> list[AlbumProjectIdentity | None]:
+    """Read one project view and normalize each stored spelling once per batch."""
+    if not items:
+        return []
+    rows = _project_rows(conn)
+    normalized: dict[str, str] = {}
+
+    def normalize(value: str) -> str:
+        if value not in normalized:
+            normalized[value] = normalize_album_project_lookup(value)
+        return normalized[value]
+
+    return [
+        _resolve_project_rows(
+            rows,
+            album_name=item["album_name"],
+            artist_name=item["artist_name"],
+            merge_level=merge_level,
+            normalize=normalize,
+        )
+        for item in items
+    ]
