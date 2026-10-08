@@ -306,7 +306,10 @@ def test_empty_wal_metadata_race_does_not_split_readonly_projection_singleflight
     assert service._weekly_projection.cache_info().currsize == 1
 
 
-def test_empty_wal_deleted_during_state_sampling_retains_main_identity(isolated, monkeypatch):
+@pytest.mark.parametrize("resolve_stats", [False, True])
+def test_empty_wal_deleted_during_state_sampling_retains_main_identity(
+    isolated, monkeypatch, resolve_stats
+):
     filters = _filters()
     _publish_oracle(filters)
     path = isolated[1] / "billboard.db"
@@ -329,9 +332,27 @@ def test_empty_wal_deleted_during_state_sampling_retains_main_identity(isolated,
 
         def stat(self, *args, **kwargs):
             if self == wal and not deleted:
-                wal.unlink()
                 deleted.append(True)
+                wal.unlink()
             return original_stat(self, *args, **kwargs)
+
+        if resolve_stats:
+            from backend.tests import path_safety
+
+            original_resolved_path = path_safety.resolved_path
+
+            def resolved_path(value):
+                resolved = original_resolved_path(value)
+                if resolved is not None:
+                    # Linux Python 3.9 Path.resolve performs this final stat.
+                    # Preserve the actual guard and tolerate only disappearance.
+                    try:
+                        resolved.stat()
+                    except FileNotFoundError:
+                        pass
+                return resolved
+
+            monkeypatch.setattr(path_safety, "resolved_path", resolved_path)
 
         monkeypatch.setattr(Path, "exists", exists)
         monkeypatch.setattr(Path, "stat", stat)

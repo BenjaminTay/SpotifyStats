@@ -331,3 +331,13 @@ run `20261008T185707.659770Z-44ace7878d97` 退出0，最终summary为`selection.
 版本为`d41264cac5b6f7bc286434b2342833e6d23fba73`加本次发行周期service/测试补修及五份文档，`dirty=true`；常规5条、集成2条警告仍保留（含前述AI线程独立边界）。本轮不覆盖旧CI失败或证明生产已发布。
 
 完整门禁结束后，仅调整新unlink回归的fixture连接生命周期：显式保持maintenance holder到实际空WAL unlink、main身份及字节守恒断言结束后再close，避免Linux最后连接close删除sidecar。所有原断言、真实unlink与业务service均不变；该单例独立 **1 passed/0.23s**，Ruff/format/diff通过，`wal-holder-portability.log/.xml`保存。不声称这项测试setup变动已包含在上面的完整运行，新固定SHA的CI将另行验证。
+
+### 8.4 Linux路径审计的测试重入补修
+
+上述业务与本地收口于`14267e836a2330485d164fe03d1ccbe57c00e259`提交并推送；all-files及提交hooks通过。四现有精确发布仅重新verify/export/validate，未build，私密清单765,982 bytes，digest `b97ffda7c735341af13875f649b589a693fc320ffb0a94e42e4333c96ed00345`；权限600、上传校验后原子改名。生产19事实表仍与原baseline全等，plays94,760；jobs仍6,277（done6,239/failed38，pending/running0）。d41264旧清单与失败回执保留。
+
+14267e的[Production Release 37832258677](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37832258677)及[CI Quality 37832261800](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37832261800)均**FAIL**：原并发解码检查通过，新unlink回归发生`RecursionError`，均2,434 passed/1 failed/2 skipped/1,347 deselected。路径为测试`stat→wal.unlink→path_safety audit_guard→Path.resolve→stat`；Linux Python3.9.25在resolve末尾重新stat，而删除标记尚未设置。三模式、镜像、部署均skipped，生产仍76a4968；没有独立production-contract run，不能把缺运行写成通过。逐job与准确失败日志存`workflow-14267e…/`。
+
+只修测试协调：在实际unlink前标记已进入删除，仍执行真实unlink、FileNotFound及main identity/bytes全部断言；正式`path_safety`不变。在该测试增加两个参数，其中一个仅在作用域内委托原路径解析后真实stat（保留None与FileNotFound语义），模拟Linux重入。旧顺序确定性复现1 failed及同链teardown 1 error；修后整模块 **16 passed/3.73s**，包含原一次decode并发测试，Ruff/format/diff通过。日志`linux-unlink-recursion-before.log`、`linux-unlink-recursion-after.log/.xml`与checks保留。16与之前238存在覆盖，不累计。
+
+本次差异仅测试及文档，应用源码与第8.3节默认完整运行完全相同；不声称重跑全部238或八阶段。新固定SHA的真实Linux CI、三模式、镜像、部署及双入口生产专项继续执行。
