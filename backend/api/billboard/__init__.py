@@ -6,6 +6,7 @@ from backend.api.billboard.data import _billboard_params
 from backend.api.billboard.data import router as data_router
 from backend.api.billboard.details import router as details_router
 from backend.api.billboard.enrichment import router as enrichment_router
+from backend.api.billboard.personal_comparison import router as personal_comparison_router
 from backend.api.billboard.release_cycle import router as release_cycle_router
 from backend.api.billboard.year_end import router as year_end_router
 from backend.core.access_surface import public_readonly_db_guard_active
@@ -61,4 +62,5 @@ router.include_router(
     dependencies=[Depends(require_public_detail_publication)],
 )
 router.include_router(details_router, dependencies=[Depends(require_public_detail_publication)])
+router.include_router(personal_comparison_router)
 router.include_router(enrichment_router, prefix="/enrichment")

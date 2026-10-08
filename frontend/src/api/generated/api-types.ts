@@ -1533,6 +1533,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/billboard/versus/{kind}/personal-stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Personal Stats */
+        post: operations["personal_stats_api_billboard_versus__kind__personal_stats_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/billboard/versus/{kind}/personal-ranks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Personal Ranks */
+        post: operations["personal_ranks_api_billboard_versus__kind__personal_ranks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/billboard/enrichment/album/{album_name}": {
         parameters: {
             query?: never;
@@ -4729,6 +4763,18 @@ export interface components {
             /** Candidate Album Id */
             candidate_album_id: number;
         };
+        /** AlbumRequest */
+        AlbumRequest: {
+            /** Albums */
+            albums: components["schemas"]["AlbumSelection"][];
+        };
+        /** AlbumSelection */
+        AlbumSelection: {
+            /** Album Name */
+            album_name: string;
+            /** Artist Name */
+            artist_name: string;
+        };
         /** AllTimeProjectionResponse */
         AllTimeProjectionResponse: {
             snapshot?: components["schemas"]["SnapshotReadState"] | null;
@@ -6960,6 +7006,11 @@ export interface components {
             album_power_rank?: number | null;
         } & {
             [key: string]: unknown;
+        };
+        /** ArtistRequest */
+        ArtistRequest: {
+            /** Artist Names */
+            artist_names: string[];
         };
         /** ArtistTierEntry */
         ArtistTierEntry: {
@@ -9855,6 +9906,99 @@ export interface components {
             /** Overlap */
             overlap: number;
         };
+        /** PersonalMetrics */
+        PersonalMetrics: {
+            /** Total Plays */
+            total_plays: number;
+            /** Total Hours */
+            total_hours: number;
+            /** Active Days */
+            active_days: number;
+            /** Avg Daily Plays */
+            avg_daily_plays: number;
+            /** Avg Daily Hours */
+            avg_daily_hours: number;
+            /** Max Daily Plays */
+            max_daily_plays: number | null;
+        };
+        /** PersonalPeriod */
+        PersonalPeriod: {
+            /** Period */
+            period: string;
+            /** Label */
+            label: string;
+            /** Start Date */
+            start_date: string | null;
+            /** End Date */
+            end_date: string | null;
+        };
+        /** PersonalRanks */
+        PersonalRanks: {
+            /** Lifetime */
+            lifetime: number | null;
+            /** Last 6 Months */
+            last_6_months: number | null;
+            /** Last 4 Weeks */
+            last_4_weeks: number | null;
+        };
+        /** PersonalRanksEntity */
+        PersonalRanksEntity: {
+            /** Requested Key */
+            requested_key: string;
+            /** Entity Key */
+            entity_key: string;
+            /** Found */
+            found: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "found" | "empty" | "unavailable";
+            ranks?: components["schemas"]["PersonalRanks"] | null;
+        };
+        /** PersonalRanksResponse */
+        PersonalRanksResponse: {
+            /** Filter Fingerprint */
+            filter_fingerprint: string;
+            /** Source Revision */
+            source_revision: string;
+            /** Statistics Contract Version */
+            statistics_contract_version: string;
+            /** Periods */
+            periods: {
+                [key: string]: components["schemas"]["PersonalPeriod"];
+            };
+            snapshot: components["schemas"]["RankPublication"];
+            /** Entities */
+            entities: components["schemas"]["PersonalRanksEntity"][];
+        };
+        /** PersonalStatsEntity */
+        PersonalStatsEntity: {
+            /** Requested Key */
+            requested_key: string;
+            /** Entity Key */
+            entity_key: string;
+            /** Found */
+            found: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "found" | "empty" | "unavailable";
+            metrics?: components["schemas"]["PersonalMetrics"] | null;
+        };
+        /** PersonalStatsResponse */
+        PersonalStatsResponse: {
+            /** Filter Fingerprint */
+            filter_fingerprint: string;
+            /** Source Revision */
+            source_revision: string;
+            /** Statistics Contract Version */
+            statistics_contract_version: string;
+            period: components["schemas"]["PersonalPeriod"];
+            /** Entities */
+            entities: components["schemas"]["PersonalStatsEntity"][];
+        };
         /** PersonalityDimension */
         PersonalityDimension: {
             /** Label */
@@ -10661,6 +10805,27 @@ export interface components {
             last_played: string;
             /** Total Plays */
             total_plays: number;
+        };
+        /** RankPublication */
+        RankPublication: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "ready";
+            /**
+             * Freshness
+             * @constant
+             */
+            freshness: "current";
+            /** Source Revision */
+            source_revision: string;
+            /** Target Revision */
+            target_revision: string;
+            /** Builder Version */
+            builder_version: string;
+            /** Request Key */
+            request_key: string;
         };
         /** ReasonDist */
         ReasonDist: {
@@ -12131,6 +12296,11 @@ export interface components {
             power_rank: number;
         } & {
             [key: string]: unknown;
+        };
+        /** TrackRequest */
+        TrackRequest: {
+            /** Track Ids */
+            track_ids: number[];
         };
         /** TrendingItem */
         TrendingItem: {
@@ -17469,6 +17639,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MultiVersusResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
+        };
+    };
+    personal_stats_api_billboard_versus__kind__personal_stats_post: {
+        parameters: {
+            query?: {
+                include_compilations?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本归并级别（L2/L3） */
+                merge_level?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                kind: "track" | "album" | "artist";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackRequest"] | components["schemas"]["AlbumRequest"] | components["schemas"]["ArtistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotUnavailableResponse"];
+                };
+            };
+        };
+    };
+    personal_ranks_api_billboard_versus__kind__personal_ranks_post: {
+        parameters: {
+            query?: {
+                include_compilations?: boolean;
+                /** @description 最短播放时长 (毫秒) */
+                min_ms?: number;
+                /** @description 仅音乐 */
+                music_only?: boolean;
+                /** @description 合并连续播放 */
+                merge_enabled?: boolean;
+                /** @description 使用动态有效播放阈值 */
+                dynamic_threshold?: boolean;
+                /** @description 连续播放最大实际空闲时间；未传时使用设置值（默认 5 分钟） */
+                max_merge_gap_minutes?: number | null;
+                /** @description 版本归并级别（L2/L3） */
+                merge_level?: number;
+                readonly?: boolean;
+            };
+            header?: never;
+            path: {
+                kind: "track" | "album" | "artist";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackRequest"] | components["schemas"]["AlbumRequest"] | components["schemas"]["ArtistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalRanksResponse"];
                 };
             };
             /** @description Validation Error */

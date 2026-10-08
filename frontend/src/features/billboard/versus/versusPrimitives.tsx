@@ -133,6 +133,7 @@ export function SearchableAddSelect({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="输入关键词搜索..."
+            aria-label="搜索对决对象"
             className="w-full border-b border-border bg-transparent px-3 py-2 text-[13px] outline-none placeholder:text-muted-foreground"
           />
           <div className="max-h-52 overflow-auto">

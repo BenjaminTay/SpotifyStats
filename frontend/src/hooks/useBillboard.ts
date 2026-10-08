@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { keepPreviousData, type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { queryClient } from '@/api/query-client'
+import { canonicalVersusRequest } from '@/features/billboard/versus/versusRequestData'
 import { queryKeys } from '@/api/query-keys'
 import { SnapshotUnavailableError } from '@/api/errors'
 import type { BillboardContextParams } from '@/features/billboard/billboardContext'
@@ -355,18 +356,21 @@ export function useVersus(
   params: Record<string, string | number | boolean> = {},
 ) {
   const enabled = body !== null
+  const canonical = canonicalVersusRequest(kind, body)
   const query = useQuery({
-    queryKey: queryKeys.billboard.versus(kind, { body, filters: params }),
-    queryFn: () =>
+    queryKey: queryKeys.billboard.versus(kind, { body: canonical.body, filters: params }),
+    queryFn: ({ signal }) =>
       api.postWithParams<import('@/types/billboard').VersusResponse>(
         `/billboard/versus/${kind}`,
-        body,
+        canonical.body,
         params,
+        undefined,
+        signal,
       ),
     enabled,
   })
   return {
-    data: query.data ?? null,
+    data: query.data?.entities ? { ...query.data, entities: canonical.order.map((index) => query.data!.entities![index]) } : query.data ?? null,
     loading: query.isLoading,
     error: errorMessage(query.error),
     refetch: () => void query.refetch(),
@@ -376,20 +380,26 @@ export function useVersus(
 export function useReleaseCycleCompare(
   items: { artist_name: string; album_name: string }[] | null,
   params: Record<string, string | number | boolean> = {},
+  allowRequest = true,
 ) {
-  const enabled = !!items && items.length >= 2
+  const sortedItems = items ? [...items].sort((a, b) => JSON.stringify([a.artist_name, a.album_name]).localeCompare(JSON.stringify([b.artist_name, b.album_name]))) : null
+  const enabled = allowRequest && !!items && items.length >= 2
   const query = useQuery({
-    queryKey: queryKeys.billboard.releaseCycleCompare({ items, filters: params }),
-    queryFn: () =>
+    queryKey: queryKeys.billboard.releaseCycleCompare({ items: sortedItems, filters: params }),
+    queryFn: ({ signal }) =>
       api.postWithParams<import('@/types/billboard').ReleaseCycleCompareResponse>(
         '/billboard/release-cycle/compare',
-        { items, weeks_before: 12, weeks_after: 24 },
+        { items: sortedItems, weeks_before: 12, weeks_after: 24 },
         params,
+        undefined,
+        signal,
       ),
     enabled,
   })
   return {
-    data: query.data ?? null,
+    data: query.data ? { ...query.data, comparisons: (items ?? []).map((item) => query.data.comparisons.find((comparison) => comparison.artist_name === item.artist_name && comparison.album_name === item.album_name) ?? {
+      ...item, release_date: '', label: item.album_name, metrics: {}, album_timeline: [], album_ranks: [],
+    }) } : null,
     loading: query.isLoading,
     error: errorMessage(query.error),
     refetch: () => void query.refetch(),

@@ -31,6 +31,13 @@ def test_public_allowlist_only_references_registered_routes() -> None:
     registered_posts = {
         route.path for route in app.routes if "POST" in (getattr(route, "methods", None) or set())
     }
+    # The two bounded comparison routers constrain {kind} with Literal.
+    registered_posts |= {
+        path.replace("{kind}", kind)
+        for path in registered_posts
+        if path.startswith("/api/billboard/versus/{kind}/personal-")
+        for kind in ("track", "album", "artist")
+    }
 
     assert PUBLIC_SAFE_GET_TEMPLATES <= registered_gets
     assert PUBLIC_SAFE_POST_PATHS <= registered_posts

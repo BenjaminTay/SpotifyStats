@@ -1138,3 +1138,13 @@ group / 873 个 membership；L3 album composition 新建 2 个父项目并挂接
 ## 发行日期证据边界
 
 发行后范围过滤与 Records 日级里程碑使用[发行日期精度合同](release-date-precision.md)：来源粗日期采用范围上界作保守过滤，legacy 的历史格式 cutoff 与可证明的年级比较范围分开；日级里程碑要求来源确认 day，不补齐月日、不改变非榜单统计或原始播放事实。
+
+## 对决个人统计读取合同
+
+`POST /api/billboard/versus/{track|album|artist}/personal-stats` 一次接收2–4个不重复的 canonical 对象，计算目标范围的总次数、总时长、活跃天数、活跃日均次数/时长及单日最多次数。上下文行只参与连续事件和区间边界重建，不计入目标对象。专辑通过 project membership/canonical song keys 归属，艺人通过有效署名和 canonical ID 去重。
+
+`personal-ranks` 只读取 `entity_rank_context_v2` 精确发布，提供 lifetime、last_6_months、last_4_weeks 的完整集合名次；缺失、过期、损坏返回503，不冷建、不排队，不以旧发布参与胜负。排序保持次数降序、时长降序及既有稳定实体键。基础与排名必须具有相同过滤指纹、来源 revision 和 `versus_personal_v1` 合同版本。
+
+新合同的 lifetime 时长包含所有目标收听区间，包括历史两端未达到有效计次阈值的片段（R2 / R4.1）；不能用首次/末次有效计次日期裁剪。日期边界表示实际播放覆盖。滚动排名窗口继续使用现有 `resolve_period`，以历史覆盖而非服务器当天确定。旧完整详情 lifetime 的边缘裁剪行为保持兼容，差异由回归测试和验收证据单列。
+
+公开端点只读，拒绝未知类型、超长/过量输入、类型不匹配与重复 canonical 对象。真实空历史返回 empty 与0，未知身份返回 unavailable 与null；null或缺少任一对象的指标不计分。前端独立展示基础与排名状态，全部指标齐备后才给最终胜负。

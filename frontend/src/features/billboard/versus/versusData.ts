@@ -74,6 +74,7 @@ export const METRIC_DEFS: VersusMetricDef[] = [
 /** Find the best (lowest or highest) value index among row values, or -1 if no winner */
 /** Returns all winning indices. Empty = no valid data, [idx] = clear winner, [a,b,…] = tie. */
 export function bestIndices(values: (unknown)[], higherIsBetter: boolean): number[] {
+  if (values.length < 2 || values.some((value) => value == null || typeof value === 'boolean' || value === '' || !Number.isFinite(Number(value)))) return []
   const nums: { idx: number; val: number }[] = []
   for (let i = 0; i < values.length; i++) {
     const v = values[i]

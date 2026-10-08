@@ -48,6 +48,8 @@ export const queryKeys = {
       ["billboard", "entity-lists", params] as const,
     versus: (kind: string, params: Record<string, unknown>) =>
       ["billboard", "versus", kind, params] as const,
+    versusPersonal: (group: 'stats' | 'ranks', kind: string, params: Record<string, unknown>) =>
+      ["billboard", "versus-personal", "versus_personal_v1", group, kind, params] as const,
     releaseCycleCompare: (params: Record<string, unknown>) =>
       ["billboard", "release-cycle", "compare", params] as const,
   },

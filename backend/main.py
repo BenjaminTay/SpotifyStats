@@ -219,6 +219,14 @@ async def lifespan(_app: FastAPI):
     )
 
     job_queue.register(RANK_CONTEXT_JOB_TYPE, handle_rank_context_rebuild)
+    from backend.services.versus_rank_context_service import (
+        JOB_TYPE as PERSONAL_RANK_JOB_TYPE,
+    )
+    from backend.services.versus_rank_context_service import (
+        handle_rebuild as handle_personal_rank_rebuild,
+    )
+
+    job_queue.register(PERSONAL_RANK_JOB_TYPE, handle_personal_rank_rebuild)
     job_queue.register("cover_download", handle_cover_download)
     job_queue.register("wikipedia_enrich", handle_wikipedia_enrich)
     job_queue.register("genius_lyrics", handle_genius_lyrics)
@@ -255,6 +263,11 @@ async def lifespan(_app: FastAPI):
         )
 
         enqueue_rank_context("application startup", queue=job_queue)
+        from backend.services.versus_rank_context_service import (
+            enqueue_defaults as enqueue_personal_ranks,
+        )
+
+        enqueue_personal_ranks("application startup", queue=job_queue)
         enqueue_community_defaults("application startup", queue=job_queue)
         enqueue_archive_defaults("application startup", queue=job_queue)
         enqueue_governance_defaults("application startup", queue=job_queue)
@@ -422,6 +435,11 @@ async def public_readonly_surface_middleware(request: Request, call_next):
                 )
 
                 await run_in_threadpool(enqueue_rank_context, "committed " + request.url.path)
+                from backend.services.versus_rank_context_service import (
+                    enqueue_defaults as enqueue_personal_ranks,
+                )
+
+                await run_in_threadpool(enqueue_personal_ranks, "committed " + request.url.path)
             except Exception:
                 logger.exception("Analysis maintenance scheduling failed after committed mutation")
         if snapshot_mutation or (

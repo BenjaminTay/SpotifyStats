@@ -282,6 +282,11 @@ PUBLIC_SAFE_POST_PATHS = frozenset(
         "/api/billboard/versus/album",
         "/api/billboard/versus/artist",
         "/api/billboard/versus/track",
+        *(
+            f"/api/billboard/versus/{kind}/{view}"
+            for kind in ("track", "album", "artist")
+            for view in ("personal-stats", "personal-ranks")
+        ),
     }
 )
 

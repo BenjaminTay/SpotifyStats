@@ -8,6 +8,7 @@ import logging
 import os
 import sqlite3
 from functools import lru_cache
+from inspect import unwrap
 from pathlib import Path
 from typing import Any
 
@@ -2042,12 +2043,13 @@ def _load_plays_cached(
     max_merge_gap_minutes: int | None = 5,
     boundary_column: str | None = None,
     track_identity_revision: int = 0,
+    _source_connection: sqlite3.Connection | None = None,
 ) -> pd.DataFrame:
     """Cacheable inner loader — connection is created internally so it
     doesn't appear in the LRU cache key."""
     import pandas as pd
 
-    conn = get_db()
+    conn = _source_connection if _source_connection is not None else get_db()
     try:
         params: list[Any] = []
 
@@ -2201,7 +2203,8 @@ def _load_plays_cached(
 
         return _downcast_ints(df)
     finally:
-        conn.close()
+        if _source_connection is None:
+            conn.close()
 
 
 def load_plays(
@@ -2270,6 +2273,7 @@ def _load_plays_for_artists_cached(
     track_credit_revision: int = 0,
     track_identity_revision: int = 0,
     track_credit_policy: str = "",
+    _source_connection: sqlite3.Connection | None = None,
 ) -> pd.DataFrame:
     """Same as _load_plays_cached but fans out through effective credits after merge
     so featured artists get their own rows. One play on a multi-artist track
@@ -2280,7 +2284,7 @@ def _load_plays_for_artists_cached(
     """
     import pandas as pd
 
-    conn = get_db()
+    conn = _source_connection if _source_connection is not None else get_db()
     try:
         params: list[Any] = []
 
@@ -2473,7 +2477,8 @@ def _load_plays_for_artists_cached(
 
         return _downcast_ints(df)
     finally:
-        conn.close()
+        if _source_connection is None:
+            conn.close()
 
 
 def load_plays_for_artists(
@@ -2523,6 +2528,40 @@ def load_plays_for_artists(
         track_identity_revision=get_track_identity_revision(conn),
         track_credit_policy=TRACK_CREDIT_POLICY_VERSION,
     ).copy()
+
+
+def load_plays_uncached(
+    conn: sqlite3.Connection,
+    *,
+    for_artists: bool = False,
+    columns: str = "*",
+    min_ms: int = 30000,
+    music_only: bool = True,
+    merge_enabled: bool = True,
+    dynamic_threshold: bool = False,
+    max_merge_gap_minutes: int | None = 5,
+) -> pd.DataFrame:
+    """Own one maintenance frame without retaining or evicting interactive caches.
+
+    Reuse the exact logical timeline and credit loaders on the caller's source
+    connection. The caller owns both the connection and the returned frame;
+    normal interactive ``load_plays`` functions continue using their LRU.
+    """
+    loader = _load_plays_for_artists_cached if for_artists else _load_plays_cached
+    return unwrap(loader)(
+        min_ms=min_ms,
+        music_only=music_only,
+        merge_enabled=merge_enabled,
+        filtered=True,
+        join_albums=True,
+        columns=columns,
+        extra_where="",
+        extra_params=(),
+        dynamic_threshold=dynamic_threshold,
+        max_merge_gap_minutes=max_merge_gap_minutes,
+        boundary_column="source_album_id",
+        _source_connection=conn,
+    )
 
 
 def db_exists() -> bool:

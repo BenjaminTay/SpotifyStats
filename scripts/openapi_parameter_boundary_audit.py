@@ -76,6 +76,12 @@ class ParameterBoundaryAudit:
 
 
 BOUNDARY_EVIDENCE_BY_KEY: dict[tuple[str, str, str], ParameterEvidence] = {
+    ("path", "kind", "string|enum=track,album,artist"): ParameterEvidence(
+        "targeted_contract",
+        (),
+        "Personal comparison routes reject unknown kinds and mismatched bounded request bodies.",
+        ("backend/tests/contract/test_versus_personal_api_contract.py",),
+    ),
     ("query", "family", "string|enum=analysis_stats,analysis_records"): ParameterEvidence(
         "targeted_contract",
         (),

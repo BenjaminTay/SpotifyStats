@@ -13,13 +13,15 @@ interface AlbumSlot {
 interface VersusReleaseCycleSectionProps {
   albums: AlbumSlot[]
   billboardParams: Record<string, string | number | boolean>
+  enabled?: boolean
 }
 
-export function VersusReleaseCycleSection({ albums, billboardParams }: VersusReleaseCycleSectionProps) {
+export function VersusReleaseCycleSection({ albums, billboardParams, enabled = true }: VersusReleaseCycleSectionProps) {
   useChineseTextVersion()
   const { data, loading } = useReleaseCycleCompare(
     albums.map((a) => ({ artist_name: a.artistName, album_name: a.albumName })),
     billboardParams,
+    enabled,
   )
 
   const comparisons: ReleaseCycleCompareItem[] = data?.comparisons ?? []

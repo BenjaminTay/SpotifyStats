@@ -159,6 +159,9 @@ PY
 compose_all exec -T backend python - \
   < "$DEPLOY_DIR/verify-music-search-runtime.py"
 
+source "$DEPLOY_DIR/versus-rank-release.sh"
+verify_running_versus_ranks
+
 if [[ "${VERIFY_EXTERNAL_INGRESS:-0}" == "1" ]]; then
   if [[ ( "$mode" == "full" || "$mode" == "dual" ) && -n "$private_url" ]]; then
     curl --fail --silent --show-error --max-time 15 "$private_url/api/health" >/dev/null

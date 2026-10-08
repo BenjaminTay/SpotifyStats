@@ -26,6 +26,7 @@ interface MobileVersusScoreboardProps {
   personalMetrics: MobileVersusMetric[]
   wins: number[]
   personalLoading: boolean
+  scoreComplete?: boolean
 }
 
 function entityStyle(index: number): CSSProperties {
@@ -74,18 +75,19 @@ export function MobileVersusScoreboard({
   personalMetrics,
   wins,
   personalLoading,
+  scoreComplete = true,
 }: MobileVersusScoreboardProps) {
   useChineseTextVersion()
   const maxWins = Math.max(...wins)
   const winnerIndices = wins.map((value, index) => value === maxWins ? index : -1).filter((index) => index >= 0)
   const winnerLabel = winnerIndices.length === 1 ? displayName(entities[winnerIndices[0]]?.name ?? '') : '并列胜出'
-  const totalWinners = maxWins > 0 ? winnerIndices : []
+  const totalWinners = scoreComplete && maxWins > 0 ? winnerIndices : []
 
   return (
     <section className="mobile-versus-scoreboard" aria-label="移动端对决结果">
       <header className="mobile-versus-winner">
         <Crown aria-hidden="true" />
-        <div><p>对决结果</p><h2>{winnerLabel}</h2><span>{maxWins > 0 ? `在 ${maxWins} 项指标中胜出` : '当前数据暂无明确胜者'}</span></div>
+        <div><p>{scoreComplete ? '对决结果' : '已完成指标得分'}</p><h2>{scoreComplete ? winnerLabel : '指标尚未齐备'}</h2><span>{scoreComplete ? maxWins > 0 ? `在 ${maxWins} 项指标中胜出` : '当前数据暂无明确胜者' : '全部指标齐备后显示最终结果'}</span></div>
       </header>
 
       <section className="mobile-versus-matrix-shell" aria-label="对决指标矩阵">
@@ -139,7 +141,7 @@ export function MobileVersusScoreboard({
               )}
 
               <tr className="mobile-versus-matrix-group">
-                <th scope="colgroup" colSpan={entities.length + 1}>总分</th>
+                <th scope="colgroup" colSpan={entities.length + 1}>{scoreComplete ? '总分' : '已完成指标得分'}</th>
               </tr>
               <MetricRows
                 metrics={[{

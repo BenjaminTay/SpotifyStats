@@ -79,7 +79,7 @@ server {
         return 404;
     }
 
-    location ~ ^/api/billboard/(versus/(track|album|artist)|release-cycle/compare)$ {
+    location ~ ^/api/billboard/(versus/(track|album|artist)(/(personal-stats|personal-ranks))?|release-cycle/compare)$ {
         limit_req zone=public_showcase_api burst=30 nodelay;
         limit_except GET HEAD OPTIONS POST {
             deny all;

@@ -322,7 +322,7 @@ jobs:
         run: |
           tar -C deploy/production -czf "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
             compose.yml nginx.conf private-nginx.conf.template \
-            public-nginx.conf.template .env.example deploy.sh backup.sh rollback.sh \
+            public-nginx.conf.template .env.example deploy.sh versus-rank-release.sh backup.sh rollback.sh \
             restore.sh configure-tailscale.sh configure-public-funnel.sh \
             showcase-auth.sh showcase-access-entrypoint.sh temporary-showcase.sh \
             install-backup-timer.sh verify.sh set-deployment-mode.sh \
@@ -339,6 +339,26 @@ jobs:
           ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$SERVER_USER@$SERVER_HOST" \
             'sudo install -d -m 700 -o "$USER" -g "$USER" /opt/spotify-stats /opt/spotify-stats/data /opt/spotify-stats/backups && tar -xzf /tmp/spotify-stats-deploy.tgz -C /opt/spotify-stats && chmod 700 /opt/spotify-stats/*.sh && rm -f /tmp/spotify-stats-deploy.tgz'
+      - name: Check pre-staged personal rank manifest for this exact SHA
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" bash -s -- "$GITHUB_SHA" <<'REMOTE'
+          set -Eeuo pipefail
+          revision="$1"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          manifest="/opt/spotify-stats/backups/versus-ranks-${revision}.json"
+          if [[ -f "$manifest" ]]; then
+            chmod 600 "$manifest"
+            echo "Found private rank manifest for $revision; deploy will validate its source and SHA."
+          else
+            echo "No rank manifest staged; deploy requires existing exact-ready ranks and never builds them."
+          fi
+          REMOTE
+
       - name: Deploy commit
         env:
           SERVER_HOST: ${{ secrets.SERVER_HOST }}

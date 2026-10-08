@@ -149,7 +149,10 @@ def test_public_gateway_keeps_defence_in_depth_rules() -> None:
     assert 'X-Robots-Tag "noindex, nofollow, noarchive"' in public_nginx
     assert "client_max_body_size 1m" in public_nginx
     assert "ai-insights" in public_nginx
-    assert "versus/(track|album|artist)|release-cycle/compare" in public_nginx
+    assert (
+        "versus/(track|album|artist)(/(personal-stats|personal-ranks))?|release-cycle/compare"
+        in public_nginx
+    )
     assert "limit_except GET HEAD OPTIONS {" in public_nginx
     assert "location = /docs" in public_nginx
     assert "location = /openapi.json" in public_nginx

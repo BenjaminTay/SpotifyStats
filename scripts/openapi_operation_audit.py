@@ -62,6 +62,14 @@ class OperationAudit:
 
 
 TARGETED_CONTRACT_OPERATIONS: dict[tuple[str, str], OperationEvidence] = {
+    **{
+        ("POST", f"/api/billboard/versus/{{kind}}/{suffix}"): OperationEvidence(
+            "targeted_contract",
+            "backend/tests/contract/test_versus_personal_api_contract.py",
+            "Bounded canonical selections, public read-only facts, exact ranks and unavailable snapshots are verified.",
+        )
+        for suffix in ("personal-stats", "personal-ranks")
+    },
     ("POST", "/api/analysis/snapshots/prepare"): OperationEvidence(
         "targeted_contract",
         "backend/tests/unit/test_analysis_snapshots.py",

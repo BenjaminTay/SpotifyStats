@@ -7,10 +7,11 @@ COMPOSE_FILE="$DEPLOY_DIR/compose.yml"
 NEW_TAG="${1:-}"
 MODE_OVERRIDE=""
 IMAGE_SOURCE_OVERRIDE=""
+VERSUS_RANK_MANIFEST="${VERSUS_RANK_MANIFEST:-}"
 
 usage() {
   cat >&2 <<'EOF'
-用法：deploy.sh <git-commit-sha> [--mode full|showcase|dual] [--image-source registry|local]
+用法：deploy.sh <git-commit-sha> [--mode full|showcase|dual] [--image-source registry|local] [--versus-rank-manifest <path>]
 
 不提供 --mode 时沿用 .env 中的 DEPLOYMENT_MODE。部署只管理 Docker
 loopback 网关，不会启用或关闭 Tailscale、Funnel、域名或云防火墙入口。
@@ -30,6 +31,11 @@ while (( $# > 0 )); do
     --image-source)
       [[ $# -ge 2 && -z "$IMAGE_SOURCE_OVERRIDE" ]] || { usage; exit 2; }
       IMAGE_SOURCE_OVERRIDE="$2"
+      shift 2
+      ;;
+    --versus-rank-manifest)
+      [[ $# -ge 2 && -z "$VERSUS_RANK_MANIFEST" ]] || { usage; exit 2; }
+      VERSUS_RANK_MANIFEST="$2"
       shift 2
       ;;
     *)
@@ -275,6 +281,7 @@ prepare_images_for_tag() {
 create_offline_backup() {
   local image="$1"
   local output_path="$2"
+  local database_name="${3:-spotify_stats.db}"
   if [[ -e "$output_path" ]]; then
     echo "离线备份目标已存在，拒绝覆盖：$output_path" >&2
     return 1
@@ -290,16 +297,15 @@ from shutil import copyfile
 
 source_dir = Path("/tmp/offline-source")
 source_dir.mkdir()
-for name in (
-    "spotify_stats.db",
-    "spotify_stats.db-wal",
-    "spotify_stats.db-shm",
-):
+database_name = sys.argv[1]
+if database_name not in {"spotify_stats.db", "analysis_cache.db"}:
+    raise SystemExit("unsupported offline backup database")
+for name in (database_name, database_name + "-wal", database_name + "-shm"):
     mounted = Path("/source") / name
     if mounted.exists():
         copyfile(mounted, source_dir / name)
 source = sqlite3.connect(
-    "file:/tmp/offline-source/spotify_stats.db?mode=ro", uri=True, timeout=30
+    f"file:/tmp/offline-source/{database_name}?mode=ro", uri=True, timeout=30
 )
 target_path = "/tmp/spotify_stats.backup.db"
 target = sqlite3.connect(target_path)
@@ -313,7 +319,7 @@ if integrity != "ok":
 with open(target_path, "rb") as stream:
     while chunk := stream.read(1024 * 1024):
         sys.stdout.buffer.write(chunk)
-' > "$output_path"
+' "$database_name" > "$output_path"
   then
     rm -f -- "$output_path" "$output_path-journal" \
       "$output_path-wal" "$output_path-shm"
@@ -459,6 +465,7 @@ PY
     compose_mode "$mode" exec -T backend python - \
       < "$DEPLOY_DIR/verify-music-search-runtime.py" || return 1
   fi
+  verify_running_versus_ranks || return 1
 
   case "$mode" in
     full)
@@ -487,8 +494,9 @@ restore_previous_release() {
   if [[ "$database_promoted" == "true" && -n "$release_backup_path" && \
         -f "$release_backup_path" ]]; then
     echo "正在恢复发布前 SQLite 备份：$release_backup_path" >&2
-    replace_live_database "$release_backup_path" || return 1
+    replace_live_database "${rollback_database_path:-$release_backup_path}" || return 1
   fi
+  restore_versus_rank_release || return 1
   if [[ ! "$current_tag" =~ ^[0-9a-f]{7,64}$ ]]; then
     echo "没有合法的上一镜像 SHA，无法自动回滚。" >&2
     return 1
@@ -509,6 +517,14 @@ fi
 release_backup_path=""
 database_promoted="false"
 release_stage_dir=""
+rollback_database_path=""
+versus_rank_enabled="false"
+versus_rank_sidecar_changed="false"
+versus_rank_sidecar_existed="false"
+versus_rank_sidecar_backup=""
+versus_rank_release_manifest=""
+versus_rank_previous_manifest=""
+source "$DEPLOY_DIR/versus-rank-release.sh"
 cleanup_release_stage() {
   if [[ -n "$release_stage_dir" && -d "$release_stage_dir" ]]; then
     rm -rf -- "$release_stage_dir"
@@ -529,6 +545,9 @@ if [[ "$target_image_source" == "local" && "$current_tag" =~ ^[0-9a-f]{7,64}$ ]]
   fi
   rollback_image_source="local"
 fi
+
+target_backend_image="$(backend_image_for_tag "$NEW_TAG")"
+release_stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 
 if [[ "$current_tag" != "$NEW_TAG" ]]; then
   mkdir -p "$DEPLOY_DIR/backups"
@@ -577,6 +596,10 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
       echo "停服后的源数据库复核备份失败；没有替换生产数据库。" >&2
       exit 1
     fi
+    # Keep the stopped old-code source before the search rebase upgrades its
+    # separate candidate. Both source facts and the old schema survive rollback.
+    rollback_database_path="$release_stage_dir/quiescent-rollback.db"
+    cp -- "$quiescent_database" "$rollback_database_path"
     if cmp -s -- "$release_backup_path" "$quiescent_database"; then
       :
     else
@@ -607,6 +630,15 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
     fi
   fi
 
+  if ! prepare_versus_rank_release "$target_backend_image" "$staged_database" || \
+      ! backup_versus_rank_release "$target_backend_image"; then
+    if [[ "$backend_was_running" == "true" ]]; then
+      activate_mode "$current_mode" "$rollback_image_source" || true
+    fi
+    echo "个人排名精确发布准备失败；没有替换生产数据库或冷建排名。" >&2
+    exit 1
+  fi
+
   if ! replace_live_database "$staged_database"; then
     if [[ "$backend_was_running" == "true" ]]; then
       activate_mode "$current_mode" "$rollback_image_source" || true
@@ -615,6 +647,17 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
     exit 1
   fi
   database_promoted="true"
+  if ! install_versus_rank_release; then
+    echo "个人排名安装或四默认 ready 验收失败，正在联合恢复。" >&2
+    restore_previous_release || echo "自动恢复未通过，需要人工检查。" >&2
+    exit 1
+  fi
+elif versus_rank_image_supported "$target_backend_image"; then
+  if ! versus_rank_command "$target_backend_image" verify \
+      "$DEPLOY_DIR/data/spotify_stats.db" "" "$NEW_TAG"; then
+    echo "当前 SHA 的四默认个人排名不是 exact-ready，拒绝激活；没有冷建或排队。" >&2
+    exit 1
+  fi
 fi
 
 set_env IMAGE_TAG "$NEW_TAG"

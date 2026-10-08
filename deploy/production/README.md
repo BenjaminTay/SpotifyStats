@@ -331,3 +331,25 @@ VERIFY_EXTERNAL_INGRESS=1 ./verify.sh  # 仅在确实配置了外部入口时使
 schema88→89和聚合v4→v6需要先在明确副本准备当前聚合，再按正常仅复用合同验证四套统计与Year-End。宿主独立预检常量必须与目标后端builder同步，旧v4不得重标成v6。预检期间源仅发生无关写入时，重基先升级quiescent副本到staged登记的迁移合同，再核对包含日期观测审计的source marker；恢复点不迁移。
 
 正式发布续建使用日期尚未补证、与迁移后正式源等价的候选。已补证候选不能覆盖旧正式源；日期证据在新版本的备份/预览/有界维护阶段单独安装，随后在生产自身文件身份准备sidecar。见[2026-10-08副本演练](../../docs/reports/2026-10-08-release-date-production-rehearsal.md)及[正式交付](../../docs/reports/2026-10-08-release-date-production-delivery.md)：76a4968/schema89、固定92来源/78项目补证及年度/API/两视口专项已完成。维护期间OOM及详情内存增长独立跟踪；逐年受监管新进程完成剩余年度是本轮运维缓解，不代表资源问题已代码修复。
+
+## 榜单对决个人排名发布
+
+支持 `entity_rank_context_v2` 的目标镜像在激活前、启动后均要求当前服务端 L2/L3 × dynamic/fixed 四个默认配置为 `exact-ready`。普通发布只读取已发布排名，缺失、过期、损坏或来源不一致即拒绝；不调用全库 builder，不排队补建。首次发布须先在目标 SHA 的已迁移 Online Backup 副本构建四份排名，私密 manifest 与数据库、封面一样不得进入 Git、镜像或公开 CI artifact。
+
+在明确副本执行（替换路径和完整 SHA）：
+
+```bash
+python scripts/versus_rank_publication.py build \
+  --closed-source \
+  --source-db /safe/spotify_stats.copy.db \
+  --analysis-cache /safe/versus-analysis.db \
+  --manifest /safe/versus-ranks-<sha>.json --release-sha <sha>
+```
+
+`export` 模式只导出已有 exact 发布；`validate` 只核对源、版本、family、规范化过滤条件、payload 校验与形状；`install`（或 `import`）在目标只读源上重算文件 lineage key，四配置单事务写入 Analysis sidecar。部署使用 `--require-defaults`，拒绝不完整集合；`verify` 独立读取全部四默认配置。
+
+源连接始终使用 SQLite URI `mode=ro`。`--closed-source` 仅用于已停服主库或静态副本，并要求不存在 WAL 文件；此时以 `immutable=1` 读取闭库备份的 WAL header，无需改写源库的 journal mode 或生成 WAL/SHM。部署 helper 只在停服或静态预检阶段、确认无 WAL 时传此参数；运行中验证使用普通只读连接。闭库模式另核对文件身份、大小和修改时间，安装提交前源文件变化会回滚整批 sidecar 发布。
+
+首版将 manifest 通过已有 SSH/SCP 访问上传为服务器 `/opt/spotify-stats/backups/versus-ranks-<完整目标SHA>.json`，权限 `600`。生产 workflow 使用现有部署 SSH 凭证检查这一私密服务器文件，不新增 GitHub Secret，也不从 Git 或公开 artifact 获取数据。`deploy.sh` 自动发现此精确 SHA 路径，亦可显式传 `--versus-rank-manifest <path>` 或 `VERSUS_RANK_MANIFEST`。没有 manifest 时，只允许从当前 live DB 的目标 builder exact-ready 发布导出并重绑到替换后的 lineage；源发生变化即失败。
+
+Backend 停服期间先核对已完成搜索预检的副本，再备份 Analysis sidecar、保存上一镜像可消费的排名 manifest，替换主库后安装并验证四默认 ready，最后才激活新镜像。安装或后续网关验收失败时联合恢复主库、sidecar、上一 SHA 和部署模式；若上一镜像支持排名安装器，再重绑其精确旧发布到恢复后的 lineage。功能出现前的旧镜像继续使用原健康门禁，不调用不存在的安装器。停止后的原源副本单独保留，不用已升级搜索预检副本作为旧代码恢复点。

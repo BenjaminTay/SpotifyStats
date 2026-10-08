@@ -61,19 +61,23 @@ def ttl_cached(ttl_seconds: float, namespace: str = "default"):
     return decorator
 
 
-def singleflight(fn):
+def singleflight(fn=None, *, key_fn=None):
     """Deduplicate concurrent calls by key without serializing unrelated work.
 
     The previous implementation used one global lock per wrapped function.  A
     slow cold miss for one entity therefore blocked cache hits and misses for
     every other entity.  Per-key locks retain identical-call deduplication while
     allowing independent home/detail/stat requests to proceed concurrently.
+    ``key_fn`` can exclude a caller-owned resource such as a DB connection
+    while retaining the normalized semantic request key.
     """
+    if fn is None:
+        return lambda target: singleflight(target, key_fn=key_fn)
     locks_guard = RLock()
     locks: dict[tuple, tuple[Lock, int]] = {}
 
     def call_key(args, kwargs) -> tuple:
-        return args, tuple(sorted(kwargs.items()))
+        return key_fn(args, kwargs) if key_fn is not None else (args, tuple(sorted(kwargs.items())))
 
     @wraps(fn)
     def wrapper(*args, **kwargs):

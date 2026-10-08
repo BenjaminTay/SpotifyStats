@@ -53,6 +53,7 @@ _CRITICAL_JOB_TYPES = {
     "account_archive_snapshot_rebuild",
     "governance_snapshot_rebuild",
     "artist_rank_context_rebuild",
+    "versus_rank_context_rebuild",
     "startup_cache_warmup",
 }
 
@@ -61,6 +62,10 @@ _CRITICAL_JOB_TYPES = {
 # construction time, which made delayed retries fail in unrelated importer tests.
 _THREAD_CLASS = threading.Thread
 _EVENT_CLASS = threading.Event
+
+
+class PendingTargetCapacityError(RuntimeError):
+    """A bounded maintenance request could not claim another pending target."""
 
 
 class _DelayedCall:
@@ -475,13 +480,29 @@ class JobQueue:
         logger.debug("Job %s (%s) enqueued.", job.job_id, job.job_type)
         return job.job_id
 
-    def enqueue_if_not_pending(self, job: Job) -> str | None:
-        """Atomically enqueue one pending/running job for an exact target."""
+    def enqueue_if_not_pending(
+        self, job: Job, *, max_pending_targets: int | None = None
+    ) -> str | None:
+        """Claim an exact target, optionally bounded per job type/entity type.
+
+        Persistent limits are checked in the same write transaction as the
+        target claim. Existing targets still deduplicate when capacity is full.
+        """
+        if max_pending_targets is not None and (
+            type(max_pending_targets) is not int or max_pending_targets < 1
+        ):
+            raise ValueError("Pending target capacity must be a positive integer")
         identity = self._job_identity(job)
         with self._lock:
             if identity in self._active_targets:
                 return None
-            if not self._insert_db_job_if_target_available(job):
+            if not self._db_path and max_pending_targets is not None:
+                occupied = sum(target[:2] == identity[:2] for target in self._active_targets)
+                if occupied >= max_pending_targets:
+                    raise PendingTargetCapacityError("Pending maintenance target capacity reached")
+            if not self._insert_db_job_if_target_available(
+                job, max_pending_targets=max_pending_targets
+            ):
                 return None
             self._active_targets.add(identity)
             if self._prepared and not self._running:
@@ -520,7 +541,9 @@ class JobQueue:
             return entity_id
         return str(payload.get(_TARGET_KEY_PAYLOAD_KEY) or _target_key(entity_id, payload))
 
-    def _insert_db_job_if_target_available(self, job: Job) -> bool:
+    def _insert_db_job_if_target_available(
+        self, job: Job, *, max_pending_targets: int | None = None
+    ) -> bool:
         """Claim a target and insert its job in one SQLite write transaction."""
         if not self._db_path:
             return True
@@ -535,13 +558,16 @@ class JobQueue:
                      AND status IN ('pending','running')""",
                 (job.job_type, job.entity_type),
             ).fetchall()
-            if any(
+            targets = {
                 self._persisted_target_key(str(row["entity_id"] or ""), row["payload_json"])
-                == job.target_key
                 for row in rows
-            ):
+            }
+            if job.target_key in targets:
                 conn.rollback()
                 return False
+            if max_pending_targets is not None and len(targets) >= max_pending_targets:
+                conn.rollback()
+                raise PendingTargetCapacityError("Pending maintenance target capacity reached")
             row = job.to_row()
             cursor = conn.execute(
                 """INSERT OR IGNORE INTO background_jobs
@@ -561,9 +587,15 @@ class JobQueue:
             )
             conn.commit()
             return cursor.rowcount == 1
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as exc:
             if conn is not None:
                 conn.rollback()
+            if max_pending_targets is not None:
+                # Falling back to a local queue would bypass a persistent
+                # quota shared by concurrent processes.
+                raise PendingTargetCapacityError(
+                    "Cannot verify persistent target capacity"
+                ) from exc
             logger.debug("background_jobs table unavailable; job will run in-memory only.")
             return True
         finally:
@@ -684,6 +716,7 @@ class JobQueue:
                 "account_archive_snapshot_rebuild",
                 "governance_snapshot_rebuild",
                 "artist_rank_context_rebuild",
+                "versus_rank_context_rebuild",
                 "startup_cache_warmup",
             }
             with self._cpu_heavy_gate if cpu_heavy else nullcontext():
@@ -698,6 +731,15 @@ class JobQueue:
 
                 try:
                     enqueue_defaults(job.job_type, queue=self)
+                    from backend.services.entity_rank_context_service import (
+                        enqueue_default as enqueue_artist_ranks,
+                    )
+                    from backend.services.versus_rank_context_service import (
+                        enqueue_defaults as enqueue_personal_ranks,
+                    )
+
+                    enqueue_artist_ranks(job.job_type, queue=self)
+                    enqueue_personal_ranks(job.job_type, queue=self)
                 except Exception:
                     logger.exception(
                         "Analysis maintenance scheduling failed after %s", job.job_type

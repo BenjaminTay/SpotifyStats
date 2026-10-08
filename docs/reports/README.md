@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [榜单对决个人播放性能与正确性验收](2026-10-08-versus-personal-statistics-performance-acceptance.md)：真实副本 API、资源与完整发布对账通过；浏览器、完整全栈与生产专项正在收口。
+
 - [日期精度与详情空统计生产专项验收、OOM资源跟踪](2026-10-08-release-date-production-delivery.md)
 
 - [日期精度生产副本演练与发布准备](2026-10-08-release-date-production-rehearsal.md)

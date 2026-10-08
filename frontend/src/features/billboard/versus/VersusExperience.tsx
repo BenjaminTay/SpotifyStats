@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useVersusPersonal } from './useVersusPersonal'
+import { useVersusSelectionReady } from './useVersusSelectionReady'
 import { Plus, Sparkles } from 'lucide-react'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { useEntityLists, useVersus } from '@/hooks/useBillboard'
@@ -64,9 +66,12 @@ export function VersusExperience() {
 
   const { data: lists } = useEntityLists(billboardParams, undefined, !filtersLoading)
 
-  // Build POST body and fetch
-  const body = queue.length >= 2 ? buildVersusBody(kind, queue) : null
+  // Share one current-context stability gate across all three reads.
+  const selectionReady = useVersusSelectionReady(kind, queue, billboardParams)
+  const body = queue.length >= 2 && selectionReady ? buildVersusBody(kind, queue) : null
   const versus = useVersus(kind, filtersLoading ? null : body, billboardParams)
+
+  const personal = useVersusPersonal(kind, queue, personalStatsParams, !filtersLoading && selectionReady)
 
   const versusData: VersusResponse | null = versus.data
   const versusLoading = versus.loading
@@ -182,6 +187,7 @@ export function VersusExperience() {
       {readyToCompare && versusError && (
         <GlassCard className="p-8 text-center">
           <p className="text-[13px] text-red-500">{versusError}</p>
+          <button type="button" className="mt-2 min-h-11 rounded-full px-4 text-accent-foreground" onClick={versus.refetch}>重试榜单成绩</button>
         </GlassCard>
       )}
 
@@ -193,17 +199,20 @@ export function VersusExperience() {
         </GlassCard>
       )}
 
+      {readyToCompare && (
+        <VersusScoreboardSection
+          entities={versusData?.found ? versusData.entities ?? null : null}
+          kind={kind}
+          queue={queue}
+          buildDetailLink={(item) => buildDetailLink(kind, item)}
+          personal={personal}
+          chartUnavailable={!!versusError || versusData?.found === false}
+        />
+      )}
+
       {/* Results */}
       {readyToCompare && versusData && versusData.found && versusData.entities && (
-        <div className="space-y-8">
-          <VersusScoreboardSection
-            entities={versusData.entities}
-            kind={kind}
-            queue={queue}
-            buildDetailLink={(item) => buildDetailLink(kind, item)}
-            personalStatsParams={personalStatsParams}
-          />
-
+        <div className="mt-8 space-y-8">
           <VersusChartSection
             rankHistories={versusData.entities.map((e) => e.rank_history)}
             names={entityNames}
@@ -217,6 +226,7 @@ export function VersusExperience() {
                 name: q.display,
               }))}
               billboardParams={billboardParams}
+              enabled={selectionReady && !filtersLoading && !personal.stats.isLoading && !personal.ranks.isLoading && !personal.stats.isFetching && !personal.ranks.isFetching}
             />
           )}
         </div>

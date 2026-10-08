@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from backend.core.json_helpers import df_to_json, py_val
 from backend.dependencies import BillboardFilters, MergeConfig
 from backend.domains.metadata.release_dates import parse_release_date
+from backend.models.snapshot import SnapshotUnavailableResponse
 from backend.services.billboard_service import (
     compute_album_weekly_rankings,
     compute_artist_weekly_rankings,
@@ -19,6 +20,7 @@ from backend.services.billboard_service import (
     load_billboard_raw,
     load_billboard_raw_for_artists,
 )
+from backend.services.release_cycle_comparison_service import prepare_comparison_data
 from backend.services.release_cycle_service import (
     _resolve_album_group,
     compute_artist_play_timeline,
@@ -636,7 +638,12 @@ class CompareReleasesResponse(BaseModel):
     unavailable: list[dict[str, str]] = Field(default_factory=list)
 
 
-@router.post("/compare", response_model=CompareReleasesResponse, response_model_exclude_unset=True)
+@router.post(
+    "/compare",
+    response_model=CompareReleasesResponse,
+    response_model_exclude_unset=True,
+    responses={503: {"model": SnapshotUnavailableResponse}},
+)
 def compare_releases(
     body: CompareRequest,
     filters: BillboardFilters = Depends(),
@@ -666,8 +673,9 @@ def compare_releases(
 
     if not eligible:
         return {"comparisons": [], "unavailable": unavailable}
-    df_raw, weekly, weekly_artist, weekly_album = _get_weekly_data(
+    df_raw, weekly_artist, weekly_album, total_daily = prepare_comparison_data(
         filters,
+        [item.artist_name for item, _, _ in eligible],
         merge_level=merge_cfg.merge_level,
         include_compilations=include_compilations,
     )
@@ -682,6 +690,7 @@ def compare_releases(
             weekly_album=weekly_album,
             weeks_before=body.weeks_before,
             weeks_after=body.weeks_after,
+            total_daily=total_daily,
         )
         metrics = compute_release_metrics(cycle, "album")
 

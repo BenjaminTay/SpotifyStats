@@ -1,5 +1,9 @@
 # SpotifyStats 文档地图
 
+- [榜单对决个人播放统计优化规划](plans/2026-10-08-versus-personal-statistics-performance-plan.md)：目标范围批量统计、共享排名、加载与胜负状态已实现；真实副本性能与对账通过，完整全栈与生产验收进行中
+
+- [榜单对决个人播放性能与正确性验收](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)：fresh5 / warm21、四配置维护资源、实际完整发布与基础事实对账；浏览器真实竞争瓶颈正在收口
+
 - [日期精度与详情空统计生产专项验收、OOM资源跟踪](reports/2026-10-08-release-date-production-delivery.md)
 
 - [日期精度生产副本演练与发布准备](reports/2026-10-08-release-date-production-rehearsal.md)
@@ -170,6 +174,7 @@ issue register 继续使用 `OPEN / IN_PROGRESS / PARTIAL / RESOLVED / NOT_A_BUG
 
 `plans/` 只保留尚未完成、仍需外部验收或持续维护的路线。已完成计划已经移入 [`archive/06-productization-closeout/`](archive/06-productization-closeout/)。
 
+- [`plans/2026-10-08-versus-personal-statistics-performance-plan.md`](plans/2026-10-08-versus-personal-statistics-performance-plan.md)：`SS-2026-10-08-002` S0–S3 已完成，真实副本 API 与资源专项通过；S4 完整全栈与 S5 生产验收进行中，不等同于关联生产 OOM 已修复
 - [`reports/2026-10-06-track-credit-resolution-acceptance.md`](reports/2026-10-06-track-credit-resolution-acceptance.md)：真实生产副本前后对照、原始事实守恒、人工兼容与分阶段验收记录
 - [`plans/2026-09-23-multi-source-music-metadata-roadmap.md`](plans/2026-09-23-multi-source-music-metadata-roadmap.md)：MusicBrainz、Apple Music、曲目语言与封面替代等后续方向的分析记录和重新启动门槛；当前延后
 - [`plans/2026-08-06-appification-pwa-capacitor-plan.md`](plans/2026-08-06-appification-pwa-capacitor-plan.md)：PWA 与服务器工程已有历史证据；当前外部可用性、异机备份、双平台真机、OAuth 和 Capacitor 决策待闭环
