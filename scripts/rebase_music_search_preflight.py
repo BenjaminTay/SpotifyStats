@@ -10,6 +10,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +85,7 @@ SOURCE_TABLES = tuple(
             "spotify_track_credit_events",
             "spotify_album_credit_sets",
             "spotify_album_credit_events",
+            "spotify_album_date_observations",
             "track_credit_events",
             "track_credit_change_sets",
             "artist_identity_events",
@@ -224,6 +226,26 @@ def _quoted_columns(conn: sqlite3.Connection, schema: str, table: str) -> str:
     if not rows:
         raise ValueError(f"missing derived table: {schema}.{table}")
     return ", ".join(f'"{str(row[1])}"' for row in rows)
+
+
+def _ensure_staged_schema(path: Path, staged: Path) -> None:
+    """Upgrade only the disposable quiescent copy to the staged source contract."""
+    _ensure_identity_split_schema(path)
+    with closing(_connect(staged, readonly=True)) as conn:
+        staged_versions = {
+            int(row[0]) for row in conn.execute("SELECT version FROM schema_migrations")
+        }
+    with closing(_connect(path, readonly=True)) as conn:
+        quiescent_versions = {
+            int(row[0]) for row in conn.execute("SELECT version FROM schema_migrations")
+        }
+    if staged_versions - quiescent_versions:
+        previous_path = db_mod.DB_PATH
+        try:
+            db_mod.DB_PATH = str(path.resolve())
+            run_migrations()
+        finally:
+            db_mod.DB_PATH = previous_path
 
 
 def _copy_derived_tables(quiescent: Path, staged: Path) -> None:
@@ -440,7 +462,7 @@ def main() -> int:
         # fully migrated quiescent copy so schema-33 production can upgrade
         # without ever mutating the rollback backup.
         baseline_marker = source_marker(args.staged_db)
-        _ensure_identity_split_schema(args.quiescent_db)
+        _ensure_staged_schema(args.quiescent_db, args.staged_db)
         quiescent_marker = source_marker(args.quiescent_db)
         changed = sorted(
             key for key in baseline_marker if baseline_marker[key] != quiescent_marker[key]

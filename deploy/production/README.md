@@ -242,7 +242,7 @@ Online Backup，但不得停服或替换数据库。
    候选，统计 fingerprint 没有变化时四个变体必须精确复用；当前四个 Year-End 投影也必须已准备，
    缺失时直接拒绝，不能在候选预算内补建周榜明细或年度统计。准备副本同源移植当前四个 fingerprint
    的搜索 context、周榜明细和年度投影，保留目标其他历史 key；
-3. 只有 migration 69、当前语义精确四个 fingerprint、搜索 builder v10、Billboard 聚合 v4、
+3. 只有搜索兼容基线 migration 69 及目标镜像当前 schema（本次89）、当前语义精确四个 fingerprint、搜索 builder v12、Billboard 聚合 v6、
    收听时长策略 `all_music_intervals_v1`、搜索 context orphan=0、
    `integrity_check=ok` 以及宿主容量全部通过，才保留预检副本；报告写入
    `backups/music-search-preflight-<sha>-<timestamp>.json`；
@@ -253,7 +253,7 @@ Online Backup，但不得停服或替换数据库。
 6. 任一新版本验收失败，同时恢复发布前 SQLite、上一 SHA 和上一 deployment mode。
 
 旧生产库第一次升级到 migration 69 时，先单独运行手动
-`one-time-search-snapshot-bootstrap.yml` 在 Online Backup 副本建立 Billboard v4 与四套搜索统计；该 workflow 需要显式输入
+`one-time-search-snapshot-bootstrap.yml` 在 Online Backup 副本建立目标镜像当前 Billboard 聚合与四套搜索统计；该 workflow 需要显式输入
 `INITIALIZE_SEARCH_SNAPSHOTS`，且不部署应用。完成一次性引导后，
 正常 UI、部署脚本、查询匹配或 Git SHA 变化不得再次冷建四套统计。
 
@@ -314,8 +314,8 @@ VERIFY_EXTERNAL_INGRESS=1 ./verify.sh  # 仅在确实配置了外部入口时使
 - 能力响应分别为 `private-admin` / `public-readonly`；
 - 简化版设置写操作返回 403；
 - SQLite `PRAGMA integrity_check` 返回 `ok`。
-- 当前服务端 Settings 推导出的四个搜索 fingerprint 精确存在且全部 `ready + builder v10`；
-- `agg_config` 为 `billboard_aggregation_v4_all_duration`，且时长策略为 `all_music_intervals_v1`；
+- 当前服务端 Settings 推导出的四个搜索 fingerprint 精确存在且全部 `ready + builder v12`；
+- `agg_config` 为目标镜像当前 `billboard_aggregation_v6_legacy_year`，且时长策略为 `all_music_intervals_v1`；
 - `music_search_entity_context` 不存在指向已删除 snapshot meta 的孤儿。
 
 静态发布门禁可在开发机或 CI 执行：
@@ -325,3 +325,9 @@ VERIFY_EXTERNAL_INGRESS=1 ./verify.sh  # 仅在确实配置了外部入口时使
 ./validate-deployment-config.sh showcase
 ./validate-deployment-config.sh dual
 ```
+
+## 日期精度规则升级的发布准备
+
+schema88→89和聚合v4→v6需要先在明确副本准备当前聚合，再按正常仅复用合同验证四套统计与Year-End。宿主独立预检常量必须与目标后端builder同步，旧v4不得重标成v6。预检期间源仅发生无关写入时，重基先升级quiescent副本到staged登记的迁移合同，再核对包含日期观测审计的source marker；恢复点不迁移。
+
+正式发布续建使用日期尚未补证、与迁移后正式源等价的候选。已补证候选不能覆盖旧正式源；日期证据在新版本的备份/预览/有界维护阶段单独安装，随后在生产自身文件身份准备sidecar。见[2026-10-08副本演练](../../docs/reports/2026-10-08-release-date-production-rehearsal.md)；本轮尚未正式部署。

@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [日期精度生产副本演练与发布准备](2026-10-08-release-date-production-rehearsal.md)
+
 - [发行日期精度与详情空统计联合集成验收](2026-10-07-release-date-stats-integration.md)
 
 - [非榜单详情统计空值修复与本地验收](2026-10-07-entity-stats-empty-acceptance.md)

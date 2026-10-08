@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 import yaml  # type: ignore[import-untyped]
 
+from backend.core.db import _BILLBOARD_AGGREGATION_BUILDER_VERSION
 from backend.core.migrations import LATEST_SCHEMA_VERSION
 from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
 from backend.domains.music_search.context import MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
@@ -25,8 +26,26 @@ BUILDER_VERSION = MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
 # The standalone production preflight validates the L3/search release baseline,
 # while the runtime gate separately requires the repository's latest schema.
 REQUIRED_MUSIC_SEARCH_MIGRATION = 69
-AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v4_all_duration"
+AGGREGATION_BUILDER_VERSION = _BILLBOARD_AGGREGATION_BUILDER_VERSION
 VARIANTS = ((2, True), (3, True), (2, False), (3, False))
+
+
+def test_preflight_aggregation_contract_matches_backend_and_rejects_previous_builder(tmp_path):
+    database, rebuild_report, _ = _build_preflight_fixture(tmp_path)
+    spec = importlib.util.spec_from_file_location(
+        "aggregation_policy_preflight", PRODUCTION / "validate-music-search-preflight.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.EXPECTED_AGGREGATION_BUILDER_VERSION == AGGREGATION_BUILDER_VERSION
+    semantic, variants = module.validate_rebuild_report(json.loads(rebuild_report.read_text()))
+    module.validate_database(database, semantic, variants)
+    with sqlite3.connect(database) as conn:
+        conn.execute(
+            "UPDATE agg_config SET value='billboard_aggregation_v4_all_duration' WHERE key='builder_version'"
+        )
+    with pytest.raises(SystemExit, match="Billboard aggregation builder is not current"):
+        module.validate_database(database, semantic, variants)
 
 
 @pytest.mark.parametrize("stale_source", ["report", "aggregate"])
@@ -82,12 +101,15 @@ def _build_preflight_fixture(
         CREATE TABLE agg_weekly_albums(play_count INTEGER, total_ms INTEGER);
         CREATE TABLE agg_weekly_artists(play_count INTEGER, total_ms INTEGER);
         INSERT INTO agg_config(key, value) VALUES
-            ('builder_version', 'billboard_aggregation_v4_all_duration'),
             ('listening_duration_policy_version', 'all_music_intervals_v1');
         INSERT INTO agg_weekly_tracks VALUES (1, 30000);
         INSERT INTO agg_weekly_albums VALUES (1, 30000);
         INSERT INTO agg_weekly_artists VALUES (1, 30000);
         """
+    )
+    conn.execute(
+        "INSERT INTO agg_config(key,value) VALUES ('builder_version',?)",
+        (AGGREGATION_BUILDER_VERSION,),
     )
     conn.execute(
         "INSERT INTO agg_config(key,value) VALUES ('track_credit_policy',?)",
