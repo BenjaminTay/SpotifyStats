@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [日期精度生产发布与补证进展（Partial）](reports/2026-10-08-release-date-production-delivery.md)
+
 - [日期精度生产副本演练与发布准备](reports/2026-10-08-release-date-production-rehearsal.md)
 
 - [发行日期精度与详情空统计联合集成验收](reports/2026-10-07-release-date-stats-integration.md)
