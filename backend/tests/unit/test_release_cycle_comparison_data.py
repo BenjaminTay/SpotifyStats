@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from threading import Event
 
 import pandas as pd
 import pytest
@@ -237,6 +240,229 @@ def test_concurrent_comparisons_decode_exact_projection_once_and_never_rank(isol
     )
     assert all(isinstance(rows, tuple) for rows in projected)
     assert all(isinstance(row, tuple) for rows in projected for row in rows)
+
+
+def test_empty_wal_metadata_race_does_not_split_readonly_projection_singleflight(
+    isolated, monkeypatch
+):
+    filters = _filters()
+    raw, _, _ = _publish_oracle(filters)
+    names = list(raw["artist_name"].unique())[:2]
+    path = isolated[1] / "billboard.db"
+    wal = path.with_name(path.name + "-wal")
+    # Finish private fixture maintenance before holding only real RO readers.
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+    finally:
+        conn.close()
+    before = path.read_bytes()
+    reader_open = Event()
+    second_sampled = Event()
+    original_read = cache.load_persisted_snapshot
+    original_state = service._publication_state
+    reads = []
+    states = []
+
+    def state():
+        observed = original_state()
+        states.append(observed)
+        if len(states) == 2:
+            second_sampled.set()
+        return observed
+
+    def read(*args, **kwargs):
+        reads.append(kwargs)
+        if len(reads) == 1:
+            conn = cache._connect()  # Real mode=ro under the service's public guard.
+            try:
+                conn.execute("SELECT COUNT(*) FROM billboard_snapshots").fetchall()
+                assert wal.exists() and wal.stat().st_size == 0
+                # VFS sidecar lifecycle differs by platform. Coordinate its
+                # irrelevant empty-file mtime change, never publication data.
+                stat = wal.stat()
+                os.utime(wal, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+                reader_open.set()
+                assert second_sampled.wait(5)
+                return original_read(*args, **kwargs)
+            finally:
+                conn.close()
+        return original_read(*args, **kwargs)
+
+    monkeypatch.setattr(service, "_publication_state", state)
+    monkeypatch.setattr(cache, "load_persisted_snapshot", read)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(service.prepare_comparison_data, filters, names)
+        if not reader_open.wait(5):
+            first.result(timeout=1)
+            pytest.fail("first reader must open the real read-only database")
+        second = pool.submit(service.prepare_comparison_data, filters, names)
+        results = [first.result(timeout=10), second.result(timeout=10)]
+    assert len(reads) == 1, states
+    assert reads[0]["allow_lkg"] is False
+    assert states[0] == states[1]
+    assert path.read_bytes() == before
+    assert results[0][0].equals(results[1][0])
+    assert service._weekly_projection.cache_info().currsize == 1
+
+
+def test_empty_wal_deleted_during_state_sampling_retains_main_identity(isolated, monkeypatch):
+    filters = _filters()
+    _publish_oracle(filters)
+    path = isolated[1] / "billboard.db"
+    wal = path.with_name(path.name + "-wal")
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        assert wal.exists() and wal.stat().st_size == 0
+        main = path.stat()
+        before = path.read_bytes()
+        original_stat = Path.stat
+        original_exists = Path.exists
+        sampled_exists = wal.exists()
+        deleted = []
+
+        def exists(self):
+            # This was a real successful exists sample before the coordinated
+            # unlink; it models the old exists->stat window without fake facts.
+            return sampled_exists if self == wal else original_exists(self)
+
+        def stat(self, *args, **kwargs):
+            if self == wal and not deleted:
+                wal.unlink()
+                deleted.append(True)
+            return original_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "exists", exists)
+        monkeypatch.setattr(Path, "stat", stat)
+        assert service._publication_state() == (
+            str(path.resolve()),
+            main.st_ino,
+            main.st_size,
+            main.st_mtime_ns,
+            None,
+        )
+        assert deleted == [True]
+        with pytest.raises(FileNotFoundError):
+            original_stat(wal)
+        assert path.read_bytes() == before
+    finally:
+        conn.close()
+
+
+def test_nonempty_wal_publication_invalidates_projection_without_main_change(isolated, monkeypatch):
+    filters = _filters()
+    raw, _, _ = _publish_oracle(filters)
+    names = list(raw["artist_name"].unique())
+    _, params = service._resolve(
+        (), {**vars(filters), "merge_level": 2, "include_compilations": False}
+    )
+    context = cache.build_cache_context("weekly", params)
+    original_read = cache.load_persisted_snapshot
+    payload = original_read(context, allow_lkg=False)
+    assert payload is not None and payload["weekly_artist"]
+    reads = []
+
+    def read(*args, **kwargs):
+        reads.append(kwargs)
+        return original_read(*args, **kwargs)
+
+    monkeypatch.setattr(cache, "load_persisted_snapshot", read)
+    first = service.prepare_comparison_data(filters, names)
+    path = isolated[1] / "billboard.db"
+    holder = cache._connect()  # Explicit private maintenance, outside the read request.
+    try:
+        holder.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchall()
+        before = path.read_bytes()
+        before_stat = path.stat()
+        # A corrected derived publication, with the same source/context key.
+        payload["weekly_artist"][0]["rank"] += 1
+        cache.store_persisted_snapshot(context, payload)
+        assert path.read_bytes() == before
+        after_stat = path.stat()
+        assert (after_stat.st_ino, after_stat.st_size, after_stat.st_mtime_ns) == (
+            before_stat.st_ino,
+            before_stat.st_size,
+            before_stat.st_mtime_ns,
+        )
+        assert path.with_name(path.name + "-wal").stat().st_size > 0
+        second = service.prepare_comparison_data(filters, names)
+    finally:
+        holder.close()
+    assert len(reads) == 2
+    assert not first[1].equals(second[1])
+    expected = pd.DataFrame(payload["weekly_artist"], columns=service.RANK_COLUMNS)
+    expected["billboard_week"] = pd.to_datetime(expected["billboard_week"]).dt.date
+    expected = expected.loc[expected["artist_name"].isin(names)].reset_index(drop=True)
+    pd.testing.assert_frame_equal(
+        second[1].drop(columns="album_name"), expected.drop(columns="album_name")
+    )
+
+
+def test_main_cache_replacement_invalidates_projection_with_same_size_and_mtime(
+    isolated, monkeypatch
+):
+    filters = _filters()
+    raw, _, _ = _publish_oracle(filters)
+    names = list(raw["artist_name"].unique())
+    original_read = cache.load_persisted_snapshot
+    reads = []
+
+    def read(*args, **kwargs):
+        reads.append(kwargs)
+        return original_read(*args, **kwargs)
+
+    monkeypatch.setattr(cache, "load_persisted_snapshot", read)
+    first = service.prepare_comparison_data(filters, names)
+    path = isolated[1] / "billboard.db"
+    main = path.stat()
+    replacement = path.with_name("replacement.db")
+    source = sqlite3.connect(path)
+    target = sqlite3.connect(replacement)
+    try:
+        source.backup(target)
+    finally:
+        target.close()
+        source.close()
+    assert replacement.stat().st_size == main.st_size
+    os.utime(replacement, ns=(main.st_atime_ns, main.st_mtime_ns))
+    replacement.replace(path)
+    assert path.stat().st_ino != main.st_ino
+    assert path.stat().st_mtime_ns == main.st_mtime_ns
+    second = service.prepare_comparison_data(filters, names)
+    assert len(reads) == 2
+    assert first[1].equals(second[1])
+    assert first[2].equals(second[2])
+
+
+def test_real_source_change_rejects_old_projection_before_count_build(isolated, monkeypatch):
+    filters = _filters()
+    raw, _, _ = _publish_oracle(filters)
+    names = list(raw["artist_name"].unique())
+    service.prepare_comparison_data(filters, names)
+    _, params = service._resolve(
+        (), {**vars(filters), "merge_level": 2, "include_compilations": False}
+    )
+    before = cache.build_cache_context("weekly", params)
+    conn = sqlite3.connect(isolated[0])
+    try:
+        conn.execute(
+            "UPDATE plays SET ms_played=ms_played+1 WHERE play_id=(SELECT MIN(play_id) FROM plays)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    assert (
+        cache.build_cache_context("weekly", params)["source_revision"] != before["source_revision"]
+    )
+    monkeypatch.setattr(
+        service,
+        "_count_events",
+        lambda *a, **kw: pytest.fail("old publication triggered count rebuilding"),
+    )
+    with pytest.raises(HTTPException) as unavailable:
+        service.prepare_comparison_data(filters, names)
+    assert unavailable.value.status_code == 503
 
 
 def test_coverage_edge_retains_playback_but_only_complete_week_ranks(isolated):

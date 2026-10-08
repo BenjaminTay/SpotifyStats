@@ -2,7 +2,7 @@
 
 创建：2026-10-08；最后核验：2026-10-09。问题：`SS-2026-10-08-002`。对应[实施规划](../plans/2026-10-08-versus-personal-statistics-performance-plan.md)。关联 `SS-2026-10-08-001` 的资源风险，本报告不宣称整站 OOM 或其他详情冷路径已解决。
 
-状态：**S0–S4本地实现与验收 PASS**：目标后端检查、生产 Online Backup 副本上的最终 API 性能、资源和事实对账、真实浏览器矩阵及默认完整全栈均通过。S5的CI和生产专项尚待独立完成，不把本地副本结果描述为已部署行为。
+状态：**S0–S4本地验收 PASS，S5正式CI失败后的并发补修及默认完整重验 PASS**。目标后端检查、生产 Online Backup 副本上的最终 API 性能、资源和事实对账、真实浏览器矩阵及默认完整全栈保留各自版本证据；补修后238项专项、原顺序冷6样本及八必需阶段通过。新固定SHA的正式CI与生产仍待完成。
 
 ## 1. 数据、版本与测量合同
 
@@ -238,9 +238,9 @@
 
 原用户可见基础门槛保持歌曲/专辑≤1,500ms、艺人≤2,000ms；浏览器探针同时要求全部个人指标≤2,000ms，排名和完整总分时间单独记录。点击起点与220ms集合稳定窗口没有缩减。两份最终报告三类横向溢出最大0、重排新增个人请求最大0；补修前矩阵失败及三个预检失败仍保留，最终Pass不覆盖或删除失败证据。本地真实客户端验收通过不等于生产HTTPS已部署或验收。
 
-### 7.7 最终版本待补表
+### 7.7 d41264前的收口记录与历史待补表
 
-S0–S3 实现及专项证据已于 `aacf9b98655fab71a8b2655cd602229f2e599525` 提交，尚未推送。提交前核对第7.5节8个测量源码文件的hash与提交内容一致；全部文件hooks（Ruff、format、mypy和secret检查）、文档审计及生成类型检查通过。
+S0–S3 实现及专项证据于 `aacf9b98655fab71a8b2655cd602229f2e599525` 提交，当时尚未推送；其后随d41264一并推送，见第8节。提交前核对第7.5节8个测量源码文件的hash与提交内容一致；全部文件hooks（Ruff、format、mypy和secret检查）、文档审计及生成类型检查通过。
 
 该提交上的首次默认完整全栈 run `20261008T172809.434908Z-dbb9ea43778b` 为 **FAIL**：preflight和quality通过，quality再次运行前端787 passed/4 skipped及build；backend_seed为2,484 passed/1 failed。失败在旧部署静态测试仍要求写死主库WAL/SHM文件名，而双库备份函数已使用受限数据库名参数，后续必需阶段未运行。原日志 `output/versus-personal-acceptance/fullstack-final-aacf9b98.log` 与summary保留。
 
@@ -252,7 +252,7 @@ S0–S3 实现及专项证据已于 `aacf9b98655fab71a8b2655cd602229f2e599525` �
 
 发布前再次只读核对生产19张可达事实表（`production-facts-before-release-readonly.json`），与最初`production-facts-before.json`及上述Online Backup逐表digest/行数相同，plays仍94,760；三容器image revision标签、镜像tag和部署.env均为76a4968，均healthy。可用内存快照1,338MiB。full/showcase/dual三种静态配置门禁已通过，不能代替目标SHA的CI或部署。公开HTTPS `stats.benjaminlei.site` 可达且为public-readonly；原私有Tailscale域名目前不可达，服务器Tailscale处于Stopped，外层入口未被本项修改。
 
-| 范围 | 当前状态 | 待补证据 |
+| 范围 | 当时状态 | 当时待补证据 |
 | --- | --- | --- |
 | 最终固定 SHA、提交/推送 | 实现aacf9b98已提交，未推送 | 本节与四测试文件修补同次提交后固定发布SHA |
 | 全量后端、前端 test/build、hooks | 3,592常规+187真实集成、前端787/4skip、build和全部文件hooks通过 | 同轮日志见第7.8节，警告单列 |
@@ -282,3 +282,52 @@ S0–S3 实现及专项证据已于 `aacf9b98655fab71a8b2655cd602229f2e599525` �
 完整日志为`output/versus-personal-acceptance/fullstack-after-real-weekly-fixture.log`；summary与API性能原始数据位于对应run目录。版本记录为业务实现`aacf9b98655fab71a8b2655cd602229f2e599525`、`dirty=true`：本轮未提交范围仅四个备份/真实集成测试文件及本验收文档，业务源码未变。后续固定发布SHA需独立登记，不把dirty运行伪称为clean HEAD运行。
 
 常规测试含5条警告：已有LibreSSL/urllib3和422弃用警告，另有年度AI任务后台线程在fixture退出附近出现`sqlite3.OperationalError: disk I/O error`。保留原trace，不描述为零警告，也不把它归因于个人统计或声称该独立AI线程边界已修复。真实集成2条警告保留于日志。本项不扩大为该AI任务的修复。
+
+### 8. S5首次CI失败与并发补修
+
+S4测试与证据在`d41264cac5b6f7bc286434b2342833e6d23fba73`阶段提交，hooks通过，已推送main。正式发布前再次采集生产19事实表，与原baseline逐表全等，plays94,760；jobs基线6,277（done6,239/failed38，pending/running0），不删除既有失败任务。四份既有ready仅verify/export/validate，未重新build；绑定d41264的manifest为765,982 bytes、`versus_rank_publication_v1`/`entity_rank_context_v2`，单source bb7cb368…，私密路径权限600、父目录700，SCP暂存校验SHA256后原子改名。digest为`e1687d504ba4a7277d7f56d7f58a40c4c3ff36041fb899048fdcc9a28f6e4e84`，回执保存在ignored输出。
+
+对应SHA三次正式workflow均为**FAIL**：生产发布[37824675027](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37824675027)、质量[37824675026](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37824675026)、三模式合同[37824675075](https://github.com/BenjaminTay/SpotifyStats/actions/runs/37824675075)。逐个失败日志确认同一后端unit失败：`test_concurrent_comparisons_decode_exact_projection_once_and_never_rank`期望一次exact快照解码，实际两次；均2,429 passed/1 failed/2 skipped/1,347 deselected。release的profiles/images/deploy被依赖门禁跳过，生产仍旧76a4968，不能把main推送或manifest上传写成已部署。
+
+初诊为SQLite真实mode=ro读取产生零字节WAL，其presence/mtime被`_publication_state`误计入缓存键，使同一publication的并发请求拆成不同singleflight key。确定性复现与最小修补见下文；保留一次decode断言、非空WAL、文件替换和source变化的失效能力。d41264本地PASS和本次CI失败均保留版本边界。
+
+平台复现边界：本机SQLite对完全无WAL/SHM的WAL-header只读备份会报unable-open，因此不声称已在本机复现Linux的“首次RO创建空WAL”。本地确定性测试使用实际已发布SQLite及真实RO读取，协调零字节WAL物理mtime变化，核对无内容变化仍拆key；另协调empty WAL删除期间的stat竞态。Linux行为以正式CI失败及修补后的实际CI为证据。
+
+### 8.1 最小WAL竞态修补与回归
+
+仅修改发行周期`_publication_state`：零字节WAL等同无内容；WAL stat一次采样，FileNotFoundError仅令wal_state为空、保留main的inode/size/mtime，其他OSError保留原fallback；非空WAL保留inode/mtime/size。没有修改原singleflight、容量4、source fence或HTTP只读合同。
+
+新增5个有意义回归：真实RO读取时协调空WAL mtime变化，修前严格一次decode断言失败（实际2）、修后通过；真实unlink竞态保留main身份；同context真实非空WAL发布在main bytes/inode/size/mtime不变时读到新rank；同size/mtime的main原子替换触发新decode；真实源ms_played变化拒绝旧projection503且不重建counts。原三线程一次decode断言保留。相关两模块18项通过，12模块单次合集 **238 passed/24.40s**（18包含在238内，不重复累计）；非空WAL断言去除读取会改变的atime后仅该例重验通过。Ruff/格式/diff检查通过。修前/修后日志、最终XML保存在`empty-wal-race-before.log`、`empty-wal-race-after.log`、`wal-race-related.log`及专项输出中。
+
+个人基础/排名测量的8个源码文件逐个SHA256与第7.5节相同（`api-source-reuse-after-wal-fix.json`），本次cycle service不属于该独立API测量调用链，因此保留原444 HTTP/130门槛、资源与oracle证据；不将8文件相等扩大为全仓库相等或声称重跑36worker。
+
+### 8.2 修补后原冷顺序真实客户端
+
+关闭前一隔离后端并启动修补版本、全部sidecar显式指向runtime验收副本后，未预暖个人API，实际Chromium360按track→album→artist连续执行。`matrix-after-wal-fix-cold-sequence.json` 的3场景/6样本全部PASS，220ms稳定窗口计入点击时间，没有额外idle。
+
+| 种类 | 两对象基础/排名 | 四对象基础/排名 | 四对象全部个人 |
+| --- | ---: | ---: | ---: |
+| 歌曲 | 334.87/334.87ms | 481.58/412.79ms | 482.42ms |
+| 专辑 | 552.23/430.23ms | 1,054.31/702.45ms | 1,055.20ms |
+| 艺人 | 1,149.79/558.80ms | 1,494.69/721.89ms | 1,495.61ms |
+
+每类真实API/DOM及最终计分2/2匹配，控制台/横向溢出/重排新请求/中间三对象POST均0，旧完整stats请求0；picker第三至第四对象间隔47.7/48.4/47.4ms。四艺人stats HTTP1,171.36ms、服务端total1,159.292ms，rank HTTP409.77ms。探针内部route wrapper stderr warning单列且页面console0。浏览器退出后再执行默认完整全栈；该冷复验不代替新版本完整门禁、Linux CI或生产HTTPS。
+
+### 8.3 并发补修后的默认完整门禁
+
+run `20261008T185707.659770Z-44ace7878d97` 退出0，最终summary为`selection.mode=full`、`overall_status=PASS`。仍使用94,760播放Online Backup的隔离runtime，无`--only`/`--from`/跳过跨浏览器；八必需阶段全部通过，optional未请求。完整日志`fullstack-after-empty-wal-fix.log`与对应run目录保存。
+
+| 必需阶段 | 结果 | 实际耗时 |
+| --- | --- | ---: |
+| preflight | 文档、OpenAPI及diff检查通过 | 8.193s |
+| quality | all-files hooks、前端787/4skip及build通过 | 65.064s |
+| backend | 3,597常规、187真实集成通过 | 522.980s |
+| api | 157/157 smoke、113/113 boundary；51目标最大warm P95 308.293ms，门槛500ms | 170.944s |
+| browser-routes | 桌面/手机路由及五视口通过 | 399.827s |
+| browser-interactions | 核心、手机及图表交互通过 | 79.431s |
+| browser-inventory | 控件清单及分页通过 | 45.665s |
+| browser-compat | Chromium/Firefox/WebKit通过 | 143.675s |
+
+版本为`d41264cac5b6f7bc286434b2342833e6d23fba73`加本次发行周期service/测试补修及五份文档，`dirty=true`；常规5条、集成2条警告仍保留（含前述AI线程独立边界）。本轮不覆盖旧CI失败或证明生产已发布。
+
+完整门禁结束后，仅调整新unlink回归的fixture连接生命周期：显式保持maintenance holder到实际空WAL unlink、main身份及字节守恒断言结束后再close，避免Linux最后连接close删除sidecar。所有原断言、真实unlink与业务service均不变；该单例独立 **1 passed/0.23s**，Ruff/format/diff通过，`wal-holder-portability.log/.xml`保存。不声称这项测试setup变动已包含在上面的完整运行，新固定SHA的CI将另行验证。

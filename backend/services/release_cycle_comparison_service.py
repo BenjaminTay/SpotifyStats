@@ -132,11 +132,24 @@ def _publication_state():
     path = Path(persistent_cache.BILLBOARD_CACHE_PATH)
     try:
         stat = path.stat()
-        wal = path.with_name(path.name + "-wal")
-        wal_state = (wal.stat().st_mtime_ns, wal.stat().st_size) if wal.exists() else None
-        return str(path.resolve()), stat.st_ino, stat.st_size, stat.st_mtime_ns, wal_state
     except OSError:
         return str(path.resolve()), None
+    wal = path.with_name(path.name + "-wal")
+    try:
+        wal_stat = wal.stat()
+    except FileNotFoundError:
+        wal_state = None
+    except OSError:
+        return str(path.resolve()), None
+    else:
+        # Read-only SQLite connections can create/remove an empty WAL. It has
+        # no publication content and must not split the singleflight key.
+        wal_state = (
+            (wal_stat.st_ino, wal_stat.st_mtime_ns, wal_stat.st_size)
+            if wal_stat.st_size > 0
+            else None
+        )
+    return str(path.resolve()), stat.st_ino, stat.st_size, stat.st_mtime_ns, wal_state
 
 
 @singleflight
