@@ -730,7 +730,9 @@ class TestReleaseCycle:
         d = r.json()
         assert "error" in d
 
-    def test_compare_releases(self, client, default_params):
+    def test_compare_releases(
+        self, client, default_params, published_release_cycle_weekly_snapshot
+    ):
         r = client.post(
             "/api/billboard/release-cycle/compare",
             params=default_params,

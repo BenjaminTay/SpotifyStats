@@ -502,8 +502,20 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
     assert 'install -m 600 /dev/null "$output_path"' in deploy
     assert "docker run --rm --init --network none" in deploy
     assert 'source_dir = Path("/tmp/offline-source")' in deploy
-    assert '"spotify_stats.db-wal"' in deploy
-    assert '"spotify_stats.db-shm"' in deploy
+    backup = deploy.split("create_offline_backup() {", 1)[1].split("replace_live_database() {", 1)[
+        0
+    ]
+    assert 'local database_name="${3:-spotify_stats.db}"' in backup
+    assert 'database_name not in {"spotify_stats.db", "analysis_cache.db"}' in backup
+    assert 'for name in (database_name, database_name + "-wal", database_name + "-shm")' in backup
+    assert "copyfile(mounted, source_dir / name)" in backup
+    assert "src=$DEPLOY_DIR/data,dst=/source,readonly" in backup
+    assert "?mode=ro" in backup
+    assert "source.backup(target)" in backup
+    assert "PRAGMA integrity_check" in backup
+    assert 'integrity != "ok"' in backup
+    assert 'rm -f -- "$output_path" "$output_path-journal"' in backup
+    assert '"$output_path-wal" "$output_path-shm"' in backup
     assert 'target_path = "/tmp/spotify_stats.backup.db"' in deploy
     assert "sys.stdout.buffer.write(chunk)" in deploy
     assert "离线备份容器执行失败；已移除未完成副本" in deploy

@@ -2,7 +2,7 @@
 
 创建：2026-10-08；最后核验：2026-10-09。问题：`SS-2026-10-08-002`。对应[实施规划](../plans/2026-10-08-versus-personal-statistics-performance-plan.md)。关联 `SS-2026-10-08-001` 的资源风险，本报告不宣称整站 OOM 或其他详情冷路径已解决。
 
-状态：**目标后端检查、生产 Online Backup 副本上的最终 API 性能、资源和事实对账、真实浏览器矩阵 PASS；S4 整体仍 PARTIAL**。默认完整全栈、CI 和生产专项尚待独立完成。下文只记录已取得的证据，不把本地副本结果描述为已部署行为。
+状态：**S0–S4本地实现与验收 PASS**：目标后端检查、生产 Online Backup 副本上的最终 API 性能、资源和事实对账、真实浏览器矩阵及默认完整全栈均通过。S5的CI和生产专项尚待独立完成，不把本地副本结果描述为已部署行为。
 
 ## 1. 数据、版本与测量合同
 
@@ -240,16 +240,45 @@
 
 ### 7.7 最终版本待补表
 
-发布前只读核对生产19张可达事实表（`production-facts-before.json`），与上述Online Backup逐表digest及行数均相同，plays仍94,760；正式代码尚为76a4968。full/showcase/dual三种静态配置门禁已通过，不能代替目标SHA的CI或部署。公开HTTPS `stats.benjaminlei.site` 可达且为public-readonly；原私有Tailscale域名目前不可达，服务器Tailscale处于Stopped，外层入口未被本项修改。
+S0–S3 实现及专项证据已于 `aacf9b98655fab71a8b2655cd602229f2e599525` 提交，尚未推送。提交前核对第7.5节8个测量源码文件的hash与提交内容一致；全部文件hooks（Ruff、format、mypy和secret检查）、文档审计及生成类型检查通过。
+
+该提交上的首次默认完整全栈 run `20261008T172809.434908Z-dbb9ea43778b` 为 **FAIL**：preflight和quality通过，quality再次运行前端787 passed/4 skipped及build；backend_seed为2,484 passed/1 failed。失败在旧部署静态测试仍要求写死主库WAL/SHM文件名，而双库备份函数已使用受限数据库名参数，后续必需阶段未运行。原日志 `output/versus-personal-acceptance/fullstack-final-aacf9b98.log` 与summary保留。
+
+本轮仅同步该测试合同，并增加实际部署备份函数的SQLite WAL验证：主库/Analysis库均保留只存在于已提交WAL的第二行，源main/WAL/SHM字节不变；非法库名与路径穿越拒绝后清除四种部分输出。相关四文件58项回归以及full/showcase/dual配置门禁通过，部署业务代码未改变。修补两个测试后执行了下述第二轮默认完整全栈，结果不能由58项局部通过替代。
+
+第二轮默认完整 run `20261008T174455.760076Z-6e6035b819ae` 的preflight/quality通过，backend seed **3,592 passed**；真实数据integration **70 passed/1 failed**，`TestReleaseCycle.test_compare_releases` 请求返回503。该fixture尚未显式准备发行周期新只读路径要求的精确weekly发布，正在检查发布参数/源context；保留原200及结果断言，不通过恢复HTTP冷建或接受503来获得Pass。本轮整体仍 **FAIL**，后续API及浏览器必需阶段未运行；原日志 `fullstack-after-backup-contract.log` 保留。
+
+独立真实分布副本复现该compare单项503后，只在integration fixture显式准备真实weekly发布：服务端configured过滤与本次请求参数合并，使用API的L2/不含精选集默认值，在POST前构建并核验exact weekly artist/album事实。原请求200及全部结果断言保留，`TestReleaseCycle`完整类 **7 passed**；不修改HTTP读取策略、源统计合同或共享全局warm行为。该局部结果仍不能替代下一轮默认完整门禁。
+
+发布前再次只读核对生产19张可达事实表（`production-facts-before-release-readonly.json`），与最初`production-facts-before.json`及上述Online Backup逐表digest/行数相同，plays仍94,760；三容器image revision标签、镜像tag和部署.env均为76a4968，均healthy。可用内存快照1,338MiB。full/showcase/dual三种静态配置门禁已通过，不能代替目标SHA的CI或部署。公开HTTPS `stats.benjaminlei.site` 可达且为public-readonly；原私有Tailscale域名目前不可达，服务器Tailscale处于Stopped，外层入口未被本项修改。
 
 | 范围 | 当前状态 | 待补证据 |
 | --- | --- | --- |
-| 最终固定 SHA、提交/推送 | 待完成 | 最终提交及实际 staged 范围 |
-| 全量后端、前端 test/build、hooks | 待补修最终版本收口 | 同轮命令、结果与日志 |
-| 默认完整本地全栈 | 待完成 | 全部必需阶段通过的 run ID；局部成功仍为 Partial |
+| 最终固定 SHA、提交/推送 | 实现aacf9b98已提交，未推送 | 本节与四测试文件修补同次提交后固定发布SHA |
+| 全量后端、前端 test/build、hooks | 3,592常规+187真实集成、前端787/4skip、build和全部文件hooks通过 | 同轮日志见第7.8节，警告单列 |
+| 默认完整本地全栈 | 第三轮八必需阶段同轮PASS | run 20261008T175717.453395Z-a31484e3798c；前两轮失败保留 |
 | 真实冷浏览器 | 最终45场景/90样本与额外冷顺序6样本PASS | 原门槛及历史失败已保留；生产真实客户端另行验收 |
 | 周期边缘排名与补修回归 | 部分已核验 | 完整结束周修正单列；最终周期输入、输出与源保护对账，不冒称旧edge rank全等价 |
 | CI、三模式与镜像门禁 | 待完成 | 对应最终 SHA 的实际运行 |
 | 生产私有/公开 HTTPS | 待完成 | 安装与源 fence、双入口真实请求、视口、网络及 Server-Timing、资源与保护事实 |
 
-在这些证据补齐之前，本报告结论限定为目标后端专项、真实生产副本及本地真实客户端验收 Pass，S4/S5 整体未完成。
+本地S4已完成；S5尚未完成，不能据此宣称生产已优化。
+
+### 7.8 默认完整全栈最终通过
+
+默认完整命令未使用`--only`、`--from`或`--skip-cross-browser`。使用项目venv、`SPOTIFY_STATS_TEST_SOURCE_DB`及`PERFORMANCE_DB_PATH`明确指向独立runtime/main.db，数据集标记为`online_backup`，实际localhost后端与Vite前端运行。run `20261008T175717.453395Z-a31484e3798c` 的summary为`selection.mode=full`、`overall_status=PASS`，退出码0；八个必需阶段均PASS，optional未请求并不计入必需阶段。
+
+| 必需阶段 | 结果 | 实际耗时 |
+| --- | --- | ---: |
+| preflight | 文档审计、OpenAPI操作/参数边界及diff检查通过 | 8.097s |
+| quality | all-files hooks、前端787 passed/4 skipped及build通过 | 64.987s |
+| backend | 3,592常规测试+187真实数据集成通过 | 519.266s |
+| api | 157/157 smoke、113/113 boundary；51性能目标最大hot P95 301.60ms，门槛500ms | 253.745s |
+| browser-routes | 桌面/手机完整路由及五视口核心页面通过 | 399.929s |
+| browser-interactions | 核心、手机及图表交互通过 | 79.410s |
+| browser-inventory | 控件清单和长列表分页通过 | 45.966s |
+| browser-compat | Chromium、Firefox、WebKit通过 | 143.582s |
+
+完整日志为`output/versus-personal-acceptance/fullstack-after-real-weekly-fixture.log`；summary与API性能原始数据位于对应run目录。版本记录为业务实现`aacf9b98655fab71a8b2655cd602229f2e599525`、`dirty=true`：本轮未提交范围仅四个备份/真实集成测试文件及本验收文档，业务源码未变。后续固定发布SHA需独立登记，不把dirty运行伪称为clean HEAD运行。
+
+常规测试含5条警告：已有LibreSSL/urllib3和422弃用警告，另有年度AI任务后台线程在fixture退出附近出现`sqlite3.OperationalError: disk I/O error`。保留原trace，不描述为零警告，也不把它归因于个人统计或声称该独立AI线程边界已修复。真实集成2条警告保留于日志。本项不扩大为该AI任务的修复。

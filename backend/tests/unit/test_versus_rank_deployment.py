@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
+import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -171,3 +174,108 @@ def test_workflow_ships_helper_and_uses_preuploaded_sha_manifest_without_new_sec
     assert "secrets.SERVER_USER" in segment
     assert "spotify-stats-deploy-key" in segment
     assert "actions/upload-artifact" not in segment
+
+
+def _offline_backup_function(tmp_path):
+    """Execute the deployment function and its actual Python body without Docker."""
+    deploy = (ROOT / "deploy/production/deploy.sh").read_text()
+    function = (
+        "create_offline_backup() {"
+        + deploy.split("create_offline_backup() {", 1)[1].split("\nreplace_live_database() {", 1)[0]
+    )
+    # Only remap the container's filesystem locations. Keep SQL, allowlist,
+    # WAL/SHM copy, Online Backup, integrity and shell failure cleanup intact.
+    return (
+        function.replace('"/tmp/offline-source"', json.dumps(str(tmp_path / "offline-source")))
+        .replace('"/source"', json.dumps(str(tmp_path / "data")))
+        .replace("file:/tmp/offline-source/", (tmp_path / "offline-source").as_uri() + "/")
+        .replace(
+            '"/tmp/spotify_stats.backup.db"', json.dumps(str(tmp_path / "container-backup.db"))
+        )
+    )
+
+
+def _run_offline_backup(tmp_path, database_name):
+    state = (
+        _offline_backup_function(tmp_path)
+        + r"""
+set -Eeuo pipefail
+DEPLOY_DIR="$FIXTURE_DIR"
+docker() {
+  while [[ "$1" != python ]]; do shift; done
+  shift
+  "$PYTHON_BIN" "$@"
+}
+create_offline_backup fixture-image "$FIXTURE_DIR/result.db" "$DATABASE_NAME"
+"""
+    )
+    return subprocess.run(
+        ["bash", "-c", state],
+        env={
+            **os.environ,
+            "FIXTURE_DIR": str(tmp_path),
+            "DATABASE_NAME": database_name,
+            "PYTHON_BIN": sys.executable,
+        },
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.parametrize("database_name", ["spotify_stats.db", "analysis_cache.db"])
+def test_actual_offline_backup_includes_committed_wal_without_source_mutation(
+    tmp_path, database_name
+):
+    (tmp_path / "data").mkdir()
+    source_path = tmp_path / "data" / database_name
+    writer = sqlite3.connect(source_path)
+    try:
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("CREATE TABLE facts(id INTEGER PRIMARY KEY,value TEXT)")
+        writer.execute("INSERT INTO facts VALUES(1,'checkpointed')")
+        writer.commit()
+        writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        writer.execute("INSERT INTO facts VALUES(2,'committed-only-in-WAL')")
+        writer.commit()
+        files = [source_path, Path(str(source_path) + "-wal"), Path(str(source_path) + "-shm")]
+        before = {path: path.read_bytes() for path in files}
+        assert before[files[1]]
+        # A closed, independent main-file copy proves the second row resides
+        # only in WAL, rather than accidentally exercising a checkpointed DB.
+        main_only = tmp_path / "main-only.db"
+        main_only.write_bytes(before[source_path])
+        control = sqlite3.connect(main_only.as_uri() + "?mode=ro&immutable=1", uri=True)
+        try:
+            assert control.execute("SELECT * FROM facts").fetchall() == [(1, "checkpointed")]
+        finally:
+            control.close()
+        result = _run_offline_backup(tmp_path, database_name)
+        assert result.returncode == 0, result.stderr
+        assert {path: path.read_bytes() for path in files} == before
+        backup = sqlite3.connect(
+            (tmp_path / "result.db").as_uri() + "?mode=ro&immutable=1", uri=True
+        )
+        try:
+            assert backup.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            assert backup.execute("SELECT * FROM facts ORDER BY id").fetchall() == [
+                (1, "checkpointed"),
+                (2, "committed-only-in-WAL"),
+            ]
+        finally:
+            backup.close()
+    finally:
+        writer.close()
+
+
+@pytest.mark.parametrize("database_name", ["unsupported.db", "../spotify_stats.db"])
+def test_actual_offline_backup_rejects_other_names_and_removes_partial_output(
+    tmp_path, database_name
+):
+    (tmp_path / "data").mkdir()
+    result = _run_offline_backup(tmp_path, database_name)
+    assert result.returncode != 0
+    assert "unsupported offline backup database" in result.stderr
+    assert "已移除未完成副本" in result.stderr
+    for suffix in ("", "-journal", "-wal", "-shm"):
+        assert not (tmp_path / ("result.db" + suffix)).exists()
