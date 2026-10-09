@@ -1,5 +1,7 @@
 # 历史归档索引
 
+- [榜单对决个人播放统计已完成规划](06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)：S0–S5完成，c58775f0已发布；人类明确仅公开HTTPS，原FIRST14/28、完整资源/守恒及96API/三denial通过，详情独立验收与OOM另行跟踪。见[验收报告](../reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)。
+
 - [专辑艺人证据已完成方案](06-productization-closeout/2026-10-02-album-artist-evidence-plan.md)与[联合集成方案](06-productization-closeout/2026-10-03-album-metadata-integration-plan.md)：固定daf098ca发布与有界生产维护，详见[生产报告](../reports/2026-10-03-album-metadata-production-delivery.md)。
 
 归档资料用于回溯产品演进、设计决策、迁移过程和验收证据。归档文件不代表当前实现，也不应直接作为新任务的实施计划。

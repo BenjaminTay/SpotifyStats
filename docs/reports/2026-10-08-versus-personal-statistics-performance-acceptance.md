@@ -1,8 +1,10 @@
-# 榜单对决个人播放统计 S0–S4 性能与正确性验收
+# 榜单对决个人播放统计 S0–S5 性能与正确性验收
 
-创建：2026-10-08；最后核验：2026-10-09。问题：`SS-2026-10-08-002`。对应[实施规划](../plans/2026-10-08-versus-personal-statistics-performance-plan.md)。关联 `SS-2026-10-08-001` 的资源风险，本报告不宣称整站 OOM 或其他详情冷路径已解决。
+创建：2026-10-08；最后核验：2026-10-09。问题：`SS-2026-10-08-002`。对应[实施规划](../archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)。关联 `SS-2026-10-08-001` 的资源风险，本报告不宣称整站 OOM 或其他详情冷路径已解决。
 
-状态：**d5ba3094 本地S4、正式CI、三模式及部署通过；S5生产专项Partial，首次公开客户端仍有两项基础性能失败**。d2c4afce历史三项生产失败及各版本证据保留。d5ba3094首次公开28样本数值及计分正确，26项达全部性能门槛、全部个人指标均≤3秒；四专辑2.191秒、两艺人2.283秒超过基础2秒。第11节记录该版本生产；第12节记录新增计次投影工作树，不能沿用d5ba3094完整门禁或以热重跑覆盖首次失败。
+当前状态：**已完成并发布，固定业务版本 c58775f0；按人类明确调整的公开 HTTPS 范围完成 S0–S5**。正式三流水线与11实际jobs、安装、独立runtime、原首次14/28、完整资源/守恒、公开48＋私有SSH HTTP48及三denial分别通过。私有HTTPS保持原状并明确排除本轮验收；详情独立首次与整体OOM另行跟踪。最终证据见21.9–21.12。
+
+历史状态：**d5ba3094 本地S4、正式CI、三模式及部署通过；S5生产专项Partial，首次公开客户端仍有两项基础性能失败**。d2c4afce历史三项生产失败及各版本证据保留。d5ba3094首次公开28样本数值及计分正确，26项达全部性能门槛、全部个人指标均≤3秒；四专辑2.191秒、两艺人2.283秒超过基础2秒。第11节记录该版本生产；第12节记录新增计次投影工作树，不能沿用d5ba3094完整门禁或以热重跑覆盖首次失败。
 
 ## 1. 数据、版本与测量合同
 
@@ -690,3 +692,63 @@ Release attempt3 deploy113800562035实际failure，11:40:58UTC完成；monitor�
 新helper固定SHA`71e03de656a3a006a028e9dbab5ac8c84841f70ceb95e911dcfef36c82abdbab`的LinuxOWN tiny真实checkpoint/preserve四正例actual0、提交行保留、三库inode不换、hardlink同inode、最终无WAL。Analysis真实pinned reader负例actual1且路径明确，main/非零WAL的inode/size/mtime/hash保持、未gate/link，SHM的SQLite bookkeeping变化单列；reader释放actual0，wrapper41363最终actual0。新reportSHA`15837e101a1215754269a1bac88e98f5b418cee7f4d2b5b5c17254ba2d2bbc5f`，同目录原字节/退出记录齐备。这仅新准备/封闭读取前置验证，不冒称完整BB/rank ready或新镜像验收。业务13链、4CLI及6UI与cb8完整门禁绑定相同；新patch没有新的默认full8，旧cb8full8只复用其原业务边界。未再次推送/部署。
 
 第三次失败新增main备份444,588,032B、incoming tar475,238,400B及BB备份35,139,584B，已只读确认分别与保留6430正式main/BB备份、cb8 records tar完整SHA一致、普通单链接无holder。拟三文件范围约910.727MiB；仅两文件的晚期估计126.602MiB不满足128MiB，方案已标superseded而未执行。三文件fresh估计入口约2,004.53MiB、晚期约159.371MiB，仍须执行前重算，原生产门禁不变，不称未来Pass。精确三文件及新修补版一次发布仍需新授权，不额外删除或重试。
+
+### 21.7 c587本地固定、新SHA成品准备与完整新范围
+
+本地阶段提交`c58775f0df53ec05d2524a06b84f3b9945b6d024`（parent cb8），8明确文件225/18，ruff/format/mypy/detect-secrets hooks全通过，提交后工作树clean。未push/未deploy。新SHA三份原成品verify/export/validate九步actual0，rank4/detail4/BB48，source19与原同、四输入DB/WAL字节/身份保持；总清单153,432,401B。rankSHA`198bd602956b1246f7841509ed446e19a03f424dce30874687bcf86b7294d0a2`；detail/BB payload与cb8同，新文件完整SHA分别ff918…/c54ff…。未上传，`release-c587…/prepared-local-release-receipt.json`。
+
+新SHA预算另计清单153,432,401B及64MiB新CAS/镜像规划余量，此前只按同版重试预算形成的三文件方案不足，标superseded、不执行；两文件/三文件所有历史估计保留，不降低余量标准。唯一额外候选是已不用的历史OWN详情准备源`spotify-stats-music-detail-108a5f41-preparation-20261009.db`，444,588,032B/inode702701/600；普通读取PermissionError记录，后续仅sudo -n只读完整hash/metadata，无chmod/写入。SHA`a54d117c34c3cee230dcddf2715e1cda969fef6904810fbc8224283b891262c4`，与根独立核验的本地完整`production-preparation/current-runtime/source.db`相同，详情任务确认不再是S5必要输入，既有原报告保留。不能称它与当前正式库字节相同，清理依据是历史OWN可由同SHA本地完整副本恢复。
+
+新审阅方案仅第三次失败main备份、incoming tar、第三次失败BB备份和上述历史OWN四文件，共1,399,554,048B（1,334.719MiB）。前三个保留对应正式server文件，第四保留完整local源。最新观测可用2,509,742,080B；计入前述新SHA额外分配后，预计入口2,216.664MiB、晚期371.504MiB；执行前fresh核验文件/保留副本/holder及原after门槛+256MiB和晚期128MiB，否则不删。实际新CAS/镜像若超64MiB需重新核算；规划不称严格最大值或未来Pass。ignored `RELEASE_APPROVAL.md`和`exact-four-cleanup-and-release-plan.json`提供精确路径及身份。
+
+此前“授权清理”四文件及同cb8一次重试均实际完成；新增四文件和c587新发布是另一范围，仍待具体人类授权。授权后最多一次新固定SHA正式发布；额外重启与Tailscale/私有HTTPS范围独立保持，不把局部新helper验证或SSH HTTP称完整生产验收。
+
+### 21.8 人类确认后四文件精确完成及单次c587发布启动
+
+根通过read_thread核实协调聊天真实userMessage“可以，继续下一步”（turn01a12096-8624-7e01-b014-5576e638df3f）及其上一条具体RELEASE_APPROVAL.md提案：仅新增四文件、保留对应server备份/record及本地同SHA源，再正常推送c587并正式发布一次。额外backend重启/Tailscale/私有范围不在授权内。
+
+唯一sudo Python精确清理session19237 actual0，12:17:11.479969UTC。新鲜核验目标/三server保留文件路径、普通独立单链接、inode/设备/字节/模式/SHA、四目标fuser无holder，local源wholeSHA/身份清理前后相同。只删原四文件，释放1,399,554,048B（1,334.719MiB）；available2,507,964,416→3,907,534,848B，server保留完整record全同。含新manifest+64MiB余量后的入口估计2,322,579,119B、晚期387,788,463B，fresh原规划余量通过；不称未来Pass。`cleanup-command.json`、`cleanup-receipt.json`与更新授权状态计划保留，未清其它备份/报告/CAS/images。
+
+私密清单上传五步actual0：三个文件600、完整SHA匹配后原子rename，旧清单保留、staging不存在。root正常fetch确认origin/main仍cb8，source/helper和未暂存四docs白名单检查后，正常push cb8→c587 actual0（12:20:18.297189→12:20:21.210780UTC），未force、未新增碎片提交。新CI37929372415、Release37929372279、NoDeploy37929372233于12:20:24UTC真实启动，均完整c587 SHA，沿本轮attempt1，不盲目rerun。此时实际安装/独立runtime及原首次验收尚未完成，S5开放。
+
+c587原14/28FIRST计划哈希3303d8553553fd1c9745a0d6454ccbc3a30a053f7b636845d6b612d23294e1dd已离线冻结；PRIMARY API执行器新SHA绑定/原96expecteds/guards/500ms及未来420秒资源冻结，旧所有证据保持。任何生产UI/个人API/采样尚未执行，先实际所有jobs成功、三OCI/host三helper精确hash、合法surface/SHA、4/4/48ready及startup settled，再按before/采样第一点/原UI顺序开始。
+
+### 21.9 c587正式安装与独立只读核验
+
+本次单一attempt1三workflow实际全部completed/success：CI37929372415、Release37929372279、NoDeploy37929372233，11实际jobs全success；deploy113822444726，完整workflow回执captured12:45:30.660398UTC。质量、三模式、镜像及实际安装分别成功，不以CI替代生产。固定c587版本准备后三库checkpoint进入原严格联合门禁并完成安装，未降低容量、无WAL或源fence门槛；部署过程初始旧详情exact探测unavailable后按既定成品安装，最终detail4/BB48/rank4复核均ready。完整deploy log 89,896B及600回执独立保留，不覆盖cb8三次失败。
+
+冻结verifier SHA5127e1413abb286946240ac2665222c6c75fa0bf9f585909bcdd6175b0376666唯一执行session99676 terminal0、全部8步骤0。三OCI完整c587且healthy；实际3001 full/private-admin及3002 showcase/public-readonly releaseSHA相同、只监听loopback。宿主三部署helper及容器13调用链/4CLI共17文件hash全匹配；schema90、search4、rank4/source bb7cb36811f58d12c3f285e9c3861a8c777c70a4c00b5dcb1b81062b4a9feb2e、detail4、BB48/v4均ready。production-verification.json wholeSHA40ca5829b92e3af6cfed7f6739b3a4a2c94c27610ecfbbe071046d8bf6b337b9，业务个人请求0，无预暖/维护/重启。
+
+初始12:46:43UTC jobs done6292/failed38/running1，治理快照启动维护仍在运行；此时不准入浏览器。根12:47:43.897570UTC仅复查jobs/schema，done6293/failed38、无pending/running，维护自然结束；原初始证据保留，未清队列或改状态。准入本任务独立browser-before完整guard、实际uvicorn PID/startticks及420秒/500ms整页sampler，必须首条sample真实落盘后才开启原公开FIRST14/28；本节尚不声明浏览器、资源或96 API通过。私有HTTPS及详情独立首次所需额外受控重启仍待具体授权。
+
+### 21.10 c587原公开首次与自然完整资源窗口
+
+原公开同源HTTPS FIRST14场景/28个人样本，实际UTC12:50:01.754819→12:52:23.198556，五driver真实exit[0,0,0,0,0]，所有contexts/browser关闭，随后不再UI访问。原六cold样本Chrome360、歌曲2/4→专辑2/4→艺人2/4；随后十一场景自然warm，360/390/430/768/1280与Chromium/Firefox/WebKit原矩阵不减。无额外idle、预暖、私有转发或warm重测。独立纯离线原base≤2s/allpersonal≤3s判定actual0：14/14功能、28/28性能PASS。原cold6 base/allpersonal ms分别歌曲584.12/745.48、专辑786.76/1090.43、艺人1668.73/1180.19，包含220ms选择稳定窗，third/fourth gap47.9/47.9/46.7ms。
+
+全部28基础/全部个人最大1668.73ms，排名最大944.74ms；歌曲/专辑/艺人最大745.48/1090.43/1668.73ms。56/56个人HTTP200、API/DOM/最终计分/重排映射与ready/current精确source匹配；batch异常、中间3对象请求、重排新个人POST、legacy详情stats、document overflow、blocking/accepted console均0。13调用链+unit/6UI/probe/entities/HEAD前后冻结与计划同；旧9dd首轮失败证据完整且不变。原始timings、日志、28截图、UTC边界、五退出与afterbinding分别保存。production-summary SHA9f23e81b89812ed4eeee4e80894e4cc3a3dc25b1638b0b7cfcaca430c212cdc2，阈值judgment SHA4dc0ef457ed3a2da1fe38af50fb55f152d90eb06cd4b81729589d2bf2d797df0。
+
+整页资源原500ms/420秒SSH采样session2040自然exit0，end duration_complete/420.00009秒/no signal，840sample sequence0–839连续，stderr空；unique uvicorn PID1488259/start_ticks137303694前后和每样本一致。sample UTC12:49:16.785→12:56:16.285、end12:56:16.785，完整覆盖上述实际UI窗口。RSS首950.711→峰/末1144.0625MiB，新增193.3515625MiB，末20sample稳定；CPU新增41.94秒、MemAvailable最小1853.117MiB。数值属于整个页面及资源窗口（含榜单/发行周期和窗口余时），不归单个个人API、不以lifetime VmHWM充cohort峰值、不据此关闭整体OOM或冒称物理真机/P95。500ms采样可能遗漏更短峰值。
+
+process-after及browser-after完整capture均0，guard judgment12check全true：schema90、19源表/94760播放与9dd完整digests相等，所有jobs字段/全部Analysis payload+metadata/rank metadata前后相同。JSONL SHA f0d0f7890cdc9c80cdb7330b8bde79147dd02ac81677d4540b3087856c09757a。primary release-c587目录原before/after/guard/resource完整保存；没有提前kill采样。资源/本项公开FIRST已通过后，才准入独立公开48、私有合法SSH HTTP48和三denial，各自完整before/after守恒；结果仍待实际执行。私有HTTPS与详情独立首次仍未获准入。
+
+### 21.11 c587两面功能、公开拒绝与剩余边界
+
+在本版原公开FIRST/自然资源窗及完整守恒全部通过后，才顺序执行原公开48、合法私有SSH HTTP48、独立三public-denial。两入口原完整七参数/四filters×三类×2/4对象×stats/ranks共96请求，实际各execute0、96/96HTTP200；原六基础指标/三范围排名、versus_personal_v1/context/source bb7完整值、实体顺序及每filter一个精确rank key/共四distinct keys全部PASS。没有重算oracle、改原expecteds、暖retry或维护。公开guard bracket12:58:46.659514→12:59:43.943965UTC；私有request13:00:39.831337→13:00:46.474934、guard13:00:26.907397→13:01:28.128294UTC，bracket不能冒称单个HTTP时间。功能测量不算fresh进程/P95/独立私有浏览器性能。
+
+私有只经本任务owned127.0.0.1:19000 SSH→远端合法127.0.0.1:3001 full/private-admin网关，capabilities前后完整c587/surface/policy全部正确，无造可信header/直连backend。唯一forward create0、control-close0，13:01:44.729958UTC关闭，仅结束owned SSH、没有后端signal。该证据为private-via-ssh-loopback-http，明确不是私有HTTPS。
+
+随后唯一public-denial三GET：/api/admin/cache-stats、/api/jobs、/api/jobs/__versus_probe__/status，实际原状态404/404/404，execute0；前后capabilities完整c587/public门禁通过，requestUTC13:02:15.273745→13:02:15.773266、独立guard13:02:07.651041→13:02:25.246568。三个cohort before/after capture及judge各0、各12check全true：schema90、94760播放和19源digests与原同，所有jobs行/全部Analysis payload+metadata/rank发布元数据完全守恒。三judge同wholeSHA47c38d0ac019a3cb8130e9f32999dc0fda5172226e23b1d09910ecae1bd934f1。它们证明零观测持久副作用，不是内部builder调用计数器；本轮未调用维护/build/publish/enqueue端点，函数禁止fallback的代码/专项回归证据单列复用。
+
+PRIMARY新release汇总api-denial-acceptance-summary.json SHA cc613072d7e5b14ef00c72534d23d8258d2aadc05ca7e79585a7e72dfbb2b4ab，公开functional SHAab70569545fcd214a49c43346bbbf67005f0d497d2bb1c1d3923d54023de28bc，私有functional SHA6c7a55054b163f510fdafe1baa78bbc875e61c5f80adc4ef18bd78ce09f79e44，denialfunctional SHA1981221e1febbb44b307658da7b9d9e68677f1d7c517772e4e3984914f7b63c5。原脚本hash仍same、sourceoracle不改，所有原raw/UTC/exit/guard齐备；本任务生产访问已停止。
+
+13:01:15.068061UTC根仅SSH只读再次确认Tailscale BackendState Stopped、WantRunning false、Serve配置{}，Self DNS spotify-stats.tail8916b1.ts.net.；命令均0，没有服务或配置修改。原私有HTTPS https://spotify-stats.tail8916b1.ts.net 的历史入口经Serve到full3001，当前尚不可用/未验。本项公开HTTPS已验证，原计划双HTTPS S5仍Partial，不能由SSH HTTP替代；本轮范围调整或恢复Tailscale须真实人类决定。详情独立原FIRST90所需额外一次受控backend重启按其规划5.2另行授权，在根上述全部窗口结束后才可执行，不把正常部署重启重复借为独立first。两项实现、正式发布、各自首次与整体OOM分别登记；不将本项193.35MiB整页RSS变动推论为整站OOM修复。
+
+### 21.12 人类公开范围决定与唯一详情受控重启交接
+
+本聊天真实用户对call_41e1314e381d4ec9b4dcacf1e4b14698明确选择“仅验收公开 HTTPS，保留私有入口现状”及“授权这一次受控重启并继续详情验收”。本项验收范围正式从原双HTTPS调整为只验公开HTTPS，私有不启动、不改Serve、也不虚写其Pass；原私有SSH48仅作为补充功能证据。对决SS-2026-10-08-002的S0–S5至此完成，完成规划移入archive/06-productization-closeout/，原失败、各版本与范围调整历史完整保留。详情SS-2026-10-09-001的独立首次及整体OOM不随本项关闭。
+
+独立详情首次的一次受控重启已有具体计划，target仅spotify-stats-production-backend-1，docker restart --timeout 30。前两wrapper分别在jobs-before、identity-before的SSH握手关闭/reset时退出255，restart_attempts均0、尚未发restart；两份receipt与脚本原样保留，不能称发生两次重启。按项目network-proxy-retry skill三层排障及现有7897 SOCKS ProxyCommand，小ssh true验证0；仅传输出口适配，未改用户网络/SSH全局配置。v3 wrapper session3639 terminal0，唯一实际restart命令exit0（root本地UTC13:13:57.152447→13:13:57.954707），restart_attempts1，无第二次重启。
+
+重启前后全部三容器同container ID/image ID/完整c587 OCI/config+HostConfig+mounts digest，web/public-web init PID不变、全部healthy。后端宿主uvicorn1488259/start_ticks137303694→1520161/start_ticks137481646；后者服务端13:14:10.003UTC独立确认。13:14:10.683189UTC schema90、done6293/failed38/noactive，正常启动维护自然结束；合法3001/3002 capabilities完整c587/surface同。没有summary/overview/stats预暖、源维护、清cache/queue或外层入口修改。正式detail-controlled-restart-execution-v3.json SHA f0880b4dd0ec3087460f8610f3b72e1181ee72f8207a5041c1a057bb812c1c9e；真实人类授权和独立计划另存。
+
+根将实际新进程及收口receipt明确HANDOFF_READY交接详情任务，对https://stats.benjaminlei.site执行其独立自然90、whole-window资源、116全字段HTTPS与完整源/治理/发布守恒；本报告不预记详情结果。本项原28首次窗口发生在这次独立重启前，时间/进程边界不混用。详情接手首SSH检查握手关闭，未开始before/采样/90/116，仍零业务请求；仅恢复传输，不再次restart或用warm测代首次。

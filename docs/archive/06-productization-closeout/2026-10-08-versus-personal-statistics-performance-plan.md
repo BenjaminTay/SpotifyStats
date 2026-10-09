@@ -2,8 +2,8 @@
 
 > 创建：2026-10-08；最后核验：2026-10-09
 > 问题 ID：`SS-2026-10-08-002`
-> 状态：`IN_PROGRESS`；用户已授权完整执行与按大阶段自主提交，正在实现与验收
-> 诊断范围：当前源码、94,760 条播放的 Online Backup、隔离API及真实生产；`PARTIAL`，acdd0d0d首次公开四专辑一项基础性能失败，旧d5两项及d2三项失败保留
+> 状态：`COMPLETED`；S0–S5完成，c58775f0已发布；人类明确本轮仅公开HTTPS验收，私有入口保持现状。详见报告21.9–21.12。
+> 诊断与验收范围：94,760条播放Online Backup、同源隔离API及真实生产公开HTTPS；原公开FIRST14/28、资源/完整守恒、96API/三denial通过。各历史首次失败独立保留，不以热重测覆盖。
 > 规划时仓库 HEAD：`34f22db94ecc7766608f513908000792a56c7b1b`
 > 关联问题：`SS-2026-10-08-001` 生产 OOM；本项测量不能证明生产 OOM 的具体根因
 
@@ -34,12 +34,12 @@
 
 源码入口：
 
-- [对决编排](../../frontend/src/features/billboard/versus/VersusExperience.tsx)。
-- [个人统计请求、栏目门控与胜负计算](../../frontend/src/features/billboard/versus/VersusScoreboardSection.tsx)。
-- [完整实体统计与请求级排名临时缓存](../../backend/services/entity_stats_service.py)。
-- [播放排行聚合与稳定排序](../../backend/services/analysis_stats_service.py)。
-- [既有艺人排名发布机制](../../backend/services/entity_rank_context_service.py)。
-- [Analysis 持久结果存储](../../backend/services/analysis_snapshot_store.py)。
+- [对决编排](../../../frontend/src/features/billboard/versus/VersusExperience.tsx)。
+- [个人统计请求、栏目门控与胜负计算](../../../frontend/src/features/billboard/versus/VersusScoreboardSection.tsx)。
+- [完整实体统计与请求级排名临时缓存](../../../backend/services/entity_stats_service.py)。
+- [播放排行聚合与稳定排序](../../../backend/services/analysis_stats_service.py)。
+- [既有艺人排名发布机制](../../../backend/services/entity_rank_context_service.py)。
+- [Analysis 持久结果存储](../../../backend/services/analysis_snapshot_store.py)。
 
 ### 2.2 隔离 API 样本
 
@@ -65,7 +65,7 @@
 3. 排名读取经过通用榜单行生成，包含时长切片、展示元数据和完整行序列化。专辑完整统计还计算 Top 250、曲目明细与最近播放；对决不消费这些字段。
 4. 桌面端隐藏未取得数据的栏目，个人请求错误缺少明确呈现；`bestIndices` 在仅一个对象有值时也可能返回胜者。分批加载必须同时修复此消费边界。
 
-**不能直接删除排名的时长计算。** 当前播放排行按 `plays DESC → hours DESC → 稳定实体键 → 规范化名称` 排序，名次为稳定排序后的序号。优化须保留时长的排序事实，减少重复切片与展示工作；不得换成仅次数排序或自行改为 competition rank。参考[当前排序规则](../issues/2026-08-27-issue-register.md#排序规则当前实现)。
+**不能直接删除排名的时长计算。** 当前播放排行按 `plays DESC → hours DESC → 稳定实体键 → 规范化名称` 排序，名次为稳定排序后的序号。优化须保留时长的排序事实，减少重复切片与展示工作；不得换成仅次数排序或自行改为 competition rank。参考[当前排序规则](../../issues/2026-08-27-issue-register.md#排序规则当前实现)。
 
 ## 3. 目标架构与 API 合同
 
@@ -156,7 +156,7 @@ POST 用于有界对象数组，与现有对决请求保持一致；两者均无
 - 不采用 placeholderData 展示另一种类型或过滤条件的旧结果。已有当前上下文结果可在同 key 重新获取时保留并显示更新状态。
 - 专辑发行周期继续在原条件下请求，不因重排个人统计顺便扩大功能入口。
 
-真实浏览器集成发现发行周期冷准备与个人请求竞争 CPU。实现增加两项有界收口：发行周期只复用 exact 周榜发布、共享紧凑全局计次基线并读取目标主艺人事件；不重算全库周排名或对周期不消费的时长事实。第三、第四对象变化使用共享 220ms 稳定窗口，两个对象仍立即开始；等待计入基础行可见门槛，重排同集合不触发请求。发行周期在当前个人请求结束后启动，其计次口径、主艺人/source album 范围与既有周期指标保持，周排名的完整结束周边缘规则单独核对。具体失败与对账见[验收报告](../reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)。
+真实浏览器集成发现发行周期冷准备与个人请求竞争 CPU。实现增加两项有界收口：发行周期只复用 exact 周榜发布、共享紧凑全局计次基线并读取目标主艺人事件；不重算全库周排名或对周期不消费的时长事实。第三、第四对象变化使用共享 220ms 稳定窗口，两个对象仍立即开始；等待计入基础行可见门槛，重排同集合不触发请求。发行周期在当前个人请求结束后启动，其计次口径、主艺人/source album 范围与既有周期指标保持，周排名的完整结束周边缘规则单独核对。具体失败与对账见[验收报告](../../reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)。
 
 ## 5. 实施阶段与退出条件
 
@@ -212,7 +212,7 @@ POST 用于有界对象数组，与现有对决请求保持一致；两者均无
 
 浏览器矩阵：360/390/430/768/1280宽度，Phone/Compact/Desktop不同时挂载；Chromium/Firefox/WebKit。公开/私有API与实际HTTPS浏览器另验，模拟视口不当作物理真机。
 
-最终报告置于 `docs/reports/`，记录SHA、数据规模/revision、输入参数、schema/发布版本、分阶段耗时、并发请求轨迹、事实对账、资源序列和失败样本。保护事实只检查本次可达源表/治理关系的守恒，不扩大为无关全库审核。遵守[全栈验证合同](../reference/fullstack-verification.md)。
+最终报告置于 `docs/reports/`，记录SHA、数据规模/revision、输入参数、schema/发布版本、分阶段耗时、并发请求轨迹、事实对账、资源序列和失败样本。保护事实只检查本次可达源表/治理关系的守恒，不扩大为无关全库审核。遵守[全栈验证合同](../../reference/fullstack-verification.md)。
 
 ## 7. 发布准备、回退与停止条件
 
@@ -234,7 +234,7 @@ POST 用于有界对象数组，与现有对决请求保持一致；两者均无
 - [x] S2：共享排名发布与只读读取；实际发布完整 map / API 对账、四串行维护资源、严格安装器与部署回退专项通过。
 - [x] S3：页面请求与状态收口；最终787项前端测试（4跳过）及 build 通过；三浏览器五视口90样本和原顺序冷6样本通过。
 - [x] S4：R3日级聚合复用114回归、1,527日计次exact、96真实API、36进程/130性能资源门槛及45场景90浏览器样本通过；默认完整run 20261009T043213.567518Z-22473bd44432八必需阶段同轮PASS（3,722+187后端、787/4skip前端），13调用链及unit文件hash冻结。旧acdd的原外部图片失败/独立窄复验及生产四专辑失败继续保留。
-- [ ] S5：固定版本、发布准备及授权后的生产专项。
+- [x] S5：固定c587版本、正式三流水线/三模式/镜像/实际安装、独立runtime、原公开FIRST14/28、资源/守恒及两面96 API/三denial通过；人类明确本轮仅公开HTTPS。
 
 每类证据按实际范围记录；真实副本专项不代表生产请求或默认完整全栈通过。
 
@@ -340,3 +340,13 @@ cb8正式CI/NoDeploy/三模式/镜像全部成功，deploy113781382823在Online 
 第三次部署原容量/search4及stage详情4/BB48通过，旧闭库联合gate拒绝任何残留WAL，未promote；旧9dd自动恢复、独立三healthy及19源守恒。日志未标具体库，恢复后的metadata不能当失败瞬间状态。隔离tiny/Linux复现准备缺口，不放宽gate或再未经授权发布，见报告21.5。
 
 三库闭库准备最小补修完成，83相关回归及Linux旧镜像四WAL正例/busy拒绝通过，原任何WAL/源fence/完整联合恢复保持；业务链与cb8全绑定同，新patch不冒称新full8。准备固定提交及清单，第三次新增三重复文件约910.7MiB范围与新修补版一次发布需新授权，见报告21.6。
+
+c587本地阶段固定/hooks通过，新SHA原成品九步准备实际0、19源和输入DB/WAL保持。新SHA预算另计153.4MB清单与64MiB CAS/镜像余量，三文件旧估计方案标superseded；新增历史OWN源有独立同SHA本地完整副本且已无后续用途。精确四文件约1334.7MiB方案与新SHA一次发布待新授权，预算预计入口2216.664/晚期371.504MiB，fresh检查保持原门槛，不称未来通过。见报告21.7。
+
+read_thread已核实协调聊天真实人类“可以，继续下一步”具体批准c587方案；唯一精确四文件清理actual0/释放1334.719MiB，保留server/local完整，上传五步0及正常push0。12:20:24UTC CI37929372415/Release37929372279/NoDeploy37929372233单次实际启动，安装与独立runtime/原首次尚待验证，不rerun，不改私有/额外重启范围。见报告21.8。
+
+2026-10-09 c587单次正式发布三workflow/11jobs均实际success，独立只读verifier0：三OCI完整SHA/healthy、3001私有/3002公开合法surface、host3helpers/13+4CLI匹配，schema90/search4/rank4bb7/detail4/BB48ready。启动治理任务自然结束后原browser-before源19/完整状态核验0；420秒/500ms整页sampler首点12:49:16.785UTC落盘，原公开FIRST14/28从12:50:01.754819UTC开始，功能与资源结果待实际结束，不能预记Pass。私有HTTPS及详情额外受控重启仍独立待授权。见报告21.9。
+
+2026-10-09 c587公开FIRST14/28原阈值全PASS、最大1668.73ms；420秒自然采样840连续点/PIDticks固定/完整UI覆盖，整页RSS新增193.35MiB/CPU41.94s，完整12guard全部true。随后公开48＋合法私有SSH HTTP48全部200/原指标与排名及四key全同，三public-denial404/404/404；三个独立cohort各12完整guard全true，SSH forward已关闭，所有生产访问结束。原私有HTTPS13:01UTC仍TailscaleStopped/WantRunningfalse/Serve{}，未擅改；原双HTTPS S5仍Partial，公开范围调整或恢复入口需人类决定。详情独立首次所需额外受控backend重启另授权；不关闭OOM、不用SSH HTTP称HTTPS。详见报告21.10–21.11。
+
+2026-10-09 人类明确仅公开HTTPS、私有入口保持现状，本项S0–S5完成并归档。详情独立首次另获一次backend重启授权且唯一实际成功；新进程/健康/维护核验后已交接原90/116矩阵，本项结果不预记为详情通过。报告21.12保存真实授权、两份未restart的SSH失败及唯一成功回执。
