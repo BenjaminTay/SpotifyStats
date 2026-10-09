@@ -1433,6 +1433,9 @@ def merge_consecutive_plays(
     max_gap_minutes: int | None = 5,
     boundary_column: str | list[str] | None = None,
     dynamic_threshold: bool = False,
+    *,
+    count_only: bool = False,
+    parsed_timestamp_ns: Any = None,
 ) -> pd.DataFrame:
     """Compatibility facade for logical-play timeline reconstruction.
 
@@ -1447,6 +1450,8 @@ def merge_consecutive_plays(
         dynamic_threshold=dynamic_threshold,
         max_gap_minutes=max_gap_minutes,
         boundary_column=boundary_column,
+        count_only=count_only,
+        parsed_timestamp_ns=parsed_timestamp_ns,
     )
 
 

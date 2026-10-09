@@ -2,7 +2,7 @@
 
 创建：2026-10-08；最后核验：2026-10-09。问题：`SS-2026-10-08-002`。对应[实施规划](../plans/2026-10-08-versus-personal-statistics-performance-plan.md)。关联 `SS-2026-10-08-001` 的资源风险，本报告不宣称整站 OOM 或其他详情冷路径已解决。
 
-状态：**d2c4afce 版本本地 S4、正式 CI、三模式及部署通过；S5 生产专项 Partial，首次公开客户端有三项性能失败**。历史本地与生产证据保留各自版本。新CPU版本本地S4已重新收口（第10节）：适用专项与八阶段默认完整PASS；固定新SHA、正式CI及新生产首轮待完成。
+状态：**d5ba3094 本地S4、正式CI、三模式及部署通过；S5生产专项Partial，首次公开客户端仍有两项基础性能失败**。d2c4afce历史三项生产失败及各版本证据保留。d5ba3094首次公开28样本数值及计分正确，26项达全部性能门槛、全部个人指标均≤3秒；四专辑2.191秒、两艺人2.283秒超过基础2秒。第11节记录该版本生产；第12节记录新增计次投影工作树，不能沿用d5ba3094完整门禁或以热重跑覆盖首次失败。
 
 ## 1. 数据、版本与测量合同
 
@@ -386,3 +386,43 @@ SQL 单一候选仅在隔离副本实验：去掉早于目标timestamp的嵌套�
 修补后的默认完整 run `20261008T205855.815078Z-38cb6461d4f2` 为 **PASS**，selection=full，八个必需阶段同轮完成，用时1,426,837ms（23分46.837秒）。preflight 7,672ms、quality 64,529ms、backend 520,975ms、API 164,169ms、browser-routes 399,372ms、browser-interactions 79,390ms、browser-inventory 45,634ms、browser-compat 144,952ms。quality实际all-files hooks的ruff/format/mypy/detect-secrets、前端787 passed/4 skipped及build通过；后端常规3,669 passed/4 warnings、真实集成187 passed/2 warnings，警告不写成零。API及51目标性能通过，Chromium/Firefox/WebKit通过。
 
 完整日志为 `output/versus-personal-acceptance/fullstack-post-production-cpu-after-type-fix.log`；summary及API原始结果另存 `post-production-cpu-fullstack/`。运行记录为d2c4afce+dirty工作树；最终12调用链SHA256仍与上述性能及oracle运行相等，不能描述为旧d2c4afce clean HEAD验收。新业务S4已收口，固定SHA、正式CI及新生产首轮仍待执行，S5继续Partial。
+
+### 11. d5ba3094 实际发布、首次生产复验及剩余瓶颈
+
+完整CPU阶段提交 `d5ba3094f2c843fe903078b7306d930deba5e27d` 已正常推送；提交中的12调用链blob与第10节实测SHA256相等，提交hooks通过。四份既有ready只verify/export/validate，未重建；manifest绑定完整SHA、765,982 bytes，digest `0369ebc0633065b64d90a98a54b3718076764858f11aa8495ff6a957d3997b9a`，原子SCP暂存校验改名、文件600/目录700，回执保留。
+
+实际CI run `37846780581` / job `113549503794` success；正式release run `37846780536`全部success：quality `113549504170`、full `113553770651`、dual `113553770718`、showcase `113553770753`、images `113553847145`、deploy `113554271747`。实际部署日志validated4→installed4→ready4→上线后ready4，builder v2/source bb7cb368…不变。逐job/step与deploy原log位于 `workflow-d5ba3094f2c843fe903078b7306d930deba5e27d/`，不声称另有独立production-contract run。
+
+独立SSH verify.sh退出0，三容器OCI完整SHA+healthy、migration89、搜索4变体与rank4 ready通过，端口边界保持。正式源19表与发布前逐表全等；正常启动新增11项其他任务，已settled为6,299（done6,261/failed38、pending/running0），不删除历史失败。guard脚本的schema字段是PRAGMA user_version=0，前后守恒；schema89证据来自schema_migrations及runtime gate，不能混淆这两个来源。
+
+首次公开HTTPS保持Chromium360歌曲→专辑→艺人原顺序、2/4对象、220ms计入、无个人预暖/额外idle/人工role或API redirect；14场景28样本功能PASS、性能26/28 PASS。唯一失败为Chromium360四专辑基础2,191.15ms及两艺人2,282.70ms；28/28全部个人≤3秒。首次四专辑stats HTTP1,885.67ms/server1,617.205ms，identity1,218.803、source_context117.509、SQL100.668、timeline139.396ms；首次两艺人HTTP2,152.46ms/server2,133.295ms，identity562.689、SQL734.485、timeline652.495、attribution114.994ms。其余11场景未热补首次，均达到原门槛。56 personal HTTP全部200，DOM指标、exact ranks、最终计分及重排映射一致，3对象POST、新重排请求、旧stats、溢出和blocking console均0；一条WebKit exact preload warning原文保留并单列accepted。五driver退出0、contexts关闭，旧d2九份报告hash全部保持。汇总 `production-public-d5ba3094f2c843fe903078b7306d930deba5e27d/production-summary.json` digest a67c0d7d…；offline原门槛判定exit1，digest50e5c9b8…。
+
+浏览器前后guard七项全部PASS：19源表、完整jobs、所有Analysis发布及rank metadata守恒；cap-before/after为真实公开surface/showcase/完整SHA。纯/proc采样实际uvicorn PID570534/start131890819，445条、间隔0.5秒、UTC21:46:06.622–21:49:48.622身份稳定。整个页面cohort RSS基线880.95MiB、采样最大及末值1,172.70MiB、增量291.74MiB，CPU增量43.78秒、最小MemAvailable1,801.67MiB；HWM1,238.03MiB是自进程启动峰值。此cohort同时包含榜单、周期和多个个人队列，不能归为单个四对象个人统计增量，采样也不能覆盖短于0.5秒的峰值；不依据本地171.55MiB掩盖这一生产内存观察。所有浏览器关闭后root主动Ctrl-C结束自有SSH采样，SSH255属受控采样退出，无end marker，不表示后端失败。
+
+另行实际API功能对账：公开HTTPS48请求及私有SSH loopback HTTP48请求全部PASS，四filter群各单rank key、四key不同、capability完整SHA/真实surface一致；96请求前后七项guard再次PASS。私有原forward因长时间闲置timeout，capability preflight未发个人POST；该失败保留，恢复自有loopback forward后执行一次完整功能组，不能称私有HTTPS或其性能通过。公开admin/jobs三GET实际404拒绝；探针原预期403错误保留，按既有Nginx隐藏路由404合同离线纠正，不重发请求。线上builder直接调用计数未观测；只读源码、本地forbid及生产完整队列/发布守恒分别构成证据，不能声称直接测得其0次。
+
+当前S5继续Partial。静态核对发现已取消的发行周期同步计算可能与后续个人请求竞争；首次daily baseline仍全库计次重建，尚需时间线证明其在上述失败中的占比。下一步在隔离副本细分timeline、日期与阈值成本，验证已有精确source聚合可否限定复用；不加预暖/等待idle、不放宽门槛、不混用覆盖边缘周或旧source。私有HTTPS仍为外部待确认条件；独立OOM事项保持开放。
+
+## 12. 计次投影整合：当前工作树完整门禁通过
+
+本轮仅在对决基础路径启用计次投影与共享时间解析；完整详情、排名builder及其他调用维持默认完整输出。局部真实帧交替测量包含解析成本：两艺人160.055→91.006ms，四艺人203.724→123.169ms。默认完整帧、消费字段、过滤事件和收听帧精确相等，19张事实表、source context及主库/WAL保持，SHM内容保持但mtime被只读连接触碰；不称所有物理属性不变。
+
+整合后的六个unit/contract模块共198项通过（9.96秒，1项既有LibreSSL警告）；四文件Ruff及格式检查通过，timeline与service的mypy检查通过。真实API复核96个请求对旧独立oracle逐字段一致，builder/publish/enqueue均0，源与副本19表守恒、旧预期文件及测量调用链hash保持。证据：`output/versus-personal-acceptance/count-projection-oracle.json`；没有重新准备数据库或构建排名。
+
+独立冷启动、重复读取及资源测量已通过：36个进程（每类2/4对象各5个独立首次进程和1个重复读取进程）、130项门槛全部通过；基础首次最大歌曲175.02ms、专辑309.71ms、艺人929.25ms，排名首次最大20.91ms。各接口21个重复观测P95最大19.23ms；四对象读取新增峰值最大128.48MiB，20组切换稳态新增最大6.25MiB。builder/publish/enqueue均0、无全库frame驻留，源/副本19表与测量调用链保持。报告为`output/versus-personal-acceptance/count-projection-api-run/report.json`，旧版本报告保留。当前业务工作树尚未提交；上述专项与下述默认完整全栈共同构成S4证据，生产浏览器尚未复验，不能视为S5完成。
+
+当前工作树本地三浏览器、五视口45场景90个人样本已实际完成，90个样本的数值、排名、DOM及最终计分、性能门槛全部通过；180个个人HTTP全200，重排新增请求、三对象中间批次、旧完整stats和溢出均0。原顺序Chromium360无个人预暖、220ms计入：四歌曲基础501.98ms、四专辑584.25ms、两艺人1,018.73ms、四艺人908.47ms。全矩阵歌曲/专辑/艺人基础及全部个人最大697.48/708.95/1,018.73ms，12调用链、probe、实体清单和HEAD前后相等。
+
+原45场景整体仍记录44/45功能PASS、overall FAIL：Firefox768艺人出现外部Spotify图片`Image corrupt or truncated` console error，该场景个人2/4指标、DOM、计分和性能正常。旧d5同场景与当前提供相同封面URL，旧日志没有外链HTTP状态，不能证明外部响应无差异。仅一次独立fresh Firefox768艺人复验通过、console及stderr无错误，基础/全部个人303.37与420.57ms；这只证明该错误没有重复，不能证明外链根因或长期稳定。原45矩阵和失败保留，不拼接为首次45全PASS。证据目录`output/playwright/versus-personal/count-projection-local/`：原summary digest6337c6ec…，独立04复验digestb85960b1…；owned浏览器及context均已关闭。
+
+默认完整run `20261009T025926.864416Z-acc84dac10e3` 已实际退出0，selection=full、八个必需阶段同轮 **PASS**，耗时1,561,616ms（26分1.616秒）。各阶段依次为preflight 8,654ms、quality 77,028ms、backend 558,683ms、API 216,307ms、browser-routes 402,967ms、browser-interactions 82,644ms、browser-inventory 50,307ms、browser-compat 164,822ms。all-files Ruff/format/mypy/detect-secrets、前端787 passed/4 skipped及build通过；后端常规3,694 passed/4 warnings、真实集成187 passed/2 warnings；API smoke157/157、boundary113/113、51性能目标slow_count0，warm P95最大381.272ms（门槛500ms），三浏览器兼容均通过。日志`output/versus-personal-acceptance/fullstack-count-projection.log`，兼容summary `count-projection-fullstack-summary.json`，原始API/XML及锁记录保存在同run目录。运行记录为d5ba3094+dirty；最终12调用链hash逐一仍与本次API性能测量相等，不能称旧d5 clean HEAD验收。另一个线程的音乐详情规划未纳入本次提交；新增计次投影S4收口，固定SHA、正式CI、生产首次与私有HTTPS仍待完成。生产只读准备确认三容器仍d5ba3094/healthy，19源表与最初baseline相同，完整jobs和全部发布与d5验收后相同，pending/running0。Tailscale当前Stopped且serve配置为空，未修改外层入口，私有HTTPS仍为独立外部依赖。
+
+## 13. 私有入口只读调查：历史接法与当前服务器
+
+用户说明一直使用`https://stats.benjaminlei.site`，并要求核对旧私有入口。实际GET capabilities确认该域名仍为public-readonly/showcase/d5ba3094；未把它视为私有HTTPS、未自行调整S5双入口范围。
+
+历史交付报告`2026-08-13-private-cloud-pwa-delivery.md`记录私有URL`https://spotify-stats.tail8916b1.ts.net`：Tailscale Serve tailnet-only HTTPS→127.0.0.1:3001完全版网关，需同tailnet授权设备，无Funnel；当时HTTPS/PWA及TLS证书曾验收通过。同日后续双运行面报告记录Tailscale保持Stopped，自动部署不恢复外层入口。
+
+当前服务器只读核验：原节点DNSName仍相同，tailscaled systemd active/running/enabled；prefs WantRunning=false、LoggedOut=false，BackendState=Stopped，Serve配置为空。近期重启日志继承关闭意愿，无法确定最初停止时间或操作者。完全版网关3001实际GET capabilities为200/private-admin/full、完整SHA d5ba3094，三容器健康；应用本身可用不等于私有HTTPS可访问。公开域名由宿主Caddy `/etc/caddy/Caddyfile` reverse_proxy到127.0.0.1:3002，不是宿主Nginx；未发现该站点auth directive，仍由公共运行面限制能力。
+
+配置入口是现有`deploy/production/configure-tailscale.sh`：读取APP_GATEWAY_PORT（默认3001）、检查loopback健康，再执行Tailscale Serve后台HTTPS转发。恢复需要另行确认启用原tailnet节点、重新设置Serve→3001并从同tailnet授权客户端验证；仅启用节点不能补回空Serve。调查不执行这些变更，也不更改Caddy、Funnel、端口或防火墙。sanitized证据保存在ignored `output/versus-personal-acceptance/private-entry-investigation/`，目录700/文件600，无密钥、环境文件原文或节点状态原文。

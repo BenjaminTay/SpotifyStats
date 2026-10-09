@@ -256,14 +256,21 @@ def reconstruct_listening_intervals(
     max_gap_minutes: int | None = DEFAULT_MAX_MERGE_GAP_MINUTES,
     boundary_column: str | Sequence[str] | None = None,
     overlap_tolerance_seconds: int = OVERLAP_TOLERANCE_SECONDS,
+    parsed_timestamp_ns: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Retain every valid inferred music-listening interval before count filtering.
 
     The result deliberately has no play-count meaning. It preserves positive
     ``ms_played`` rows with valid timestamps, including isolated fragments and
-    below-threshold remainders. Small timestamp overlaps inside one merge run
+    below-threshold remainders. A supplied ``parsed_timestamp_ns`` reuses the
+    caller's UTC nanoseconds without mutating it or changing source ``ts``.
+    Small timestamp overlaps inside one merge run
     receive the same monotonic correction as logical-event reconstruction.
     """
+    if parsed_timestamp_ns is not None and (
+        parsed_timestamp_ns.ndim != 1 or len(parsed_timestamp_ns) != len(frame)
+    ):
+        raise ValueError("parsed_timestamp_ns must be one-dimensional and match the source rows")
     if frame.empty:
         result = frame.copy()
         result[LISTENING_INTERVALS_COLUMN] = pd.Series(dtype=object)
@@ -275,7 +282,7 @@ def reconstruct_listening_intervals(
         raise ValueError(f"listening interval reconstruction missing columns: {sorted(missing)}")
 
     df = frame.copy().reset_index(drop=True)
-    end_ns = _timestamp_ns(df["ts"])
+    end_ns = _timestamp_ns(df["ts"]) if parsed_timestamp_ns is None else parsed_timestamp_ns
     nat_ns = np.iinfo("int64").min
     valid_timestamp = end_ns != nat_ns
     played_ms = pd.to_numeric(df["ms_played"], errors="coerce").fillna(0).clip(lower=0)
@@ -339,6 +346,43 @@ def reconstruct_listening_intervals(
     return result
 
 
+def _counting_projection(
+    frame: pd.DataFrame,
+    indices: list[int],
+    played_ms: list[int],
+    counted_ns: list[int],
+    event_ids: list[str],
+    *,
+    identity_column: str,
+    boundary_column: str | Sequence[str] | None,
+) -> pd.DataFrame:
+    """Keep only source identity, count-filter inputs and exact counted dates."""
+    retained = {
+        identity_column,
+        *_normalise_boundary_columns(boundary_column),
+        "play_id",
+        "source_track_id",
+        "representative_track_id",
+        "l1_id",
+        "track_id",
+        "source_album_id",
+        "track_album_id",
+        "track_name",
+        "artist_id",
+        "artist_name",
+        "album_name",
+        "duration_ms",
+        "ms_played",
+    }
+    columns = [column for column in frame.columns if column in retained]
+    result = frame.loc[:, columns].iloc[indices].copy().reset_index(drop=True)
+    result["ms_played"] = pd.Series(played_ms, dtype="int64")
+    utc = pd.to_datetime(pd.Series(counted_ns, dtype="int64"), unit="ns", utc=True)
+    result["ts_date"] = utc.dt.tz_convert(PLAYBACK_TIMEZONE).dt.date.astype(str).to_numpy()
+    result["_logical_event_id"] = pd.Series(event_ids, dtype=object)
+    return result
+
+
 def reconstruct_logical_plays(
     frame: pd.DataFrame,
     min_ms: int,
@@ -348,6 +392,8 @@ def reconstruct_logical_plays(
     max_gap_minutes: int | None = DEFAULT_MAX_MERGE_GAP_MINUTES,
     boundary_column: str | Sequence[str] | None = None,
     overlap_tolerance_seconds: int = OVERLAP_TOLERANCE_SECONDS,
+    parsed_timestamp_ns: np.ndarray | None = None,
+    count_only: bool = False,
 ) -> pd.DataFrame:
     """Reconstruct logical play events from ordered raw playback rows.
 
@@ -359,8 +405,28 @@ def reconstruct_logical_plays(
     all ``ts_*`` columns describe ``counted_at`` and ``ms_played`` is the
     credited duration of that logical event.  Internal listened intervals are
     retained in :data:`LISTENING_INTERVALS_COLUMN` for exact time slicing.
+
+    ``count_only`` keeps source/owner identity, count-filter inputs, stable
+    event IDs and exact counted local dates. Both projections share the same
+    timeline math and ordering; the compact projection omits interval/display
+    outputs that its consumer does not need. A supplied ``parsed_timestamp_ns``
+    reuses caller-owned UTC nanoseconds without changing the source ``ts``.
     """
+    if parsed_timestamp_ns is not None and (
+        parsed_timestamp_ns.ndim != 1 or len(parsed_timestamp_ns) != len(frame)
+    ):
+        raise ValueError("parsed_timestamp_ns must be one-dimensional and match the source rows")
     if frame.empty:
+        if count_only:
+            return _counting_projection(
+                frame,
+                [],
+                [],
+                [],
+                [],
+                identity_column=identity_column,
+                boundary_column=boundary_column,
+            )
         result = frame.copy()
         if LISTENING_INTERVALS_COLUMN not in result.columns:
             result[LISTENING_INTERVALS_COLUMN] = pd.Series(dtype=object)
@@ -372,7 +438,7 @@ def reconstruct_logical_plays(
         raise ValueError(f"logical playback reconstruction missing columns: {sorted(missing)}")
 
     df = frame.copy().reset_index(drop=True)
-    end_ns = _timestamp_ns(df["ts"])
+    end_ns = _timestamp_ns(df["ts"]) if parsed_timestamp_ns is None else parsed_timestamp_ns
     nat_ns = np.iinfo("int64").min
     played_ms = pd.to_numeric(df["ms_played"], errors="coerce").fillna(0).clip(lower=0)
     played_ms_np = played_ms.astype("int64").to_numpy()
@@ -496,84 +562,91 @@ def reconstruct_logical_plays(
             effective_start_ns[qualification_rows] + qualification_offsets * 1_000_000
         )
 
-        global_range_start = group_offsets[event_groups] + range_start
-        global_range_end = group_offsets[event_groups] + range_end
-        range_start_rows = np.searchsorted(global_cumulative, global_range_start, side="right")
-        range_end_rows = np.searchsorted(global_cumulative, global_range_end, side="left")
+        if not count_only:
+            global_range_start = group_offsets[event_groups] + range_start
+            global_range_end = group_offsets[event_groups] + range_end
+            range_start_rows = np.searchsorted(global_cumulative, global_range_start, side="right")
+            range_end_rows = np.searchsorted(global_cumulative, global_range_end, side="left")
 
-        raw_gap_ns = start_ns - np.roll(end_ns, 1)
-        rounding_overlap = (
-            valid_timestamp
-            & np.roll(valid_timestamp, 1)
-            & (raw_gap_ns < 0)
-            & (raw_gap_ns >= -int(overlap_tolerance_seconds) * 1_000_000_000)
-            & ~starts_group
-        )
-        rounding_overlap[0] = False
-        group_adjusted = np.maximum.reduceat(rounding_overlap.astype("int8"), group_starts) > 0
-
-        first_interval_start = (
-            effective_start_ns[range_start_rows]
-            + (range_start - row_cumulative_start[range_start_rows]) * 1_000_000
-        ).astype("int64")
-        first_interval_end = (
-            effective_start_ns[range_start_rows]
-            + (
-                np.minimum(range_end, row_cumulative_end[range_start_rows])
-                - row_cumulative_start[range_start_rows]
+            raw_gap_ns = start_ns - np.roll(end_ns, 1)
+            rounding_overlap = (
+                valid_timestamp
+                & np.roll(valid_timestamp, 1)
+                & (raw_gap_ns < 0)
+                & (raw_gap_ns >= -int(overlap_tolerance_seconds) * 1_000_000_000)
+                & ~starts_group
             )
-            * 1_000_000
-        ).astype("int64")
-        last_interval_start = (
-            effective_start_ns[range_end_rows]
-            + (
-                np.maximum(range_start, row_cumulative_start[range_end_rows])
-                - row_cumulative_start[range_end_rows]
-            )
-            * 1_000_000
-        ).astype("int64")
-        last_interval_end = (
-            effective_start_ns[range_end_rows]
-            + (range_end - row_cumulative_start[range_end_rows]) * 1_000_000
-        ).astype("int64")
+            rounding_overlap[0] = False
+            group_adjusted = np.maximum.reduceat(rounding_overlap.astype("int8"), group_starts) > 0
 
-        event_intervals: list[tuple[tuple[int, int], ...]] = []
-        for index, (first_row, last_row) in enumerate(
-            zip(range_start_rows.tolist(), range_end_rows.tolist())
-        ):
-            if first_row == last_row:
-                event_intervals.append(
-                    ((int(first_interval_start[index]), int(last_interval_end[index])),)
+            first_interval_start = (
+                effective_start_ns[range_start_rows]
+                + (range_start - row_cumulative_start[range_start_rows]) * 1_000_000
+            ).astype("int64")
+            first_interval_end = (
+                effective_start_ns[range_start_rows]
+                + (
+                    np.minimum(range_end, row_cumulative_end[range_start_rows])
+                    - row_cumulative_start[range_start_rows]
                 )
-                continue
-            pieces: list[tuple[int, int]] = [
-                (int(first_interval_start[index]), int(first_interval_end[index]))
-            ]
-            if last_row > first_row + 1:
-                pieces.extend(
-                    (int(effective_start_ns[row]), int(effective_end_ns[row]))
-                    for row in range(first_row + 1, last_row)
-                    if effective_end_ns[row] > effective_start_ns[row]
+                * 1_000_000
+            ).astype("int64")
+            last_interval_start = (
+                effective_start_ns[range_end_rows]
+                + (
+                    np.maximum(range_start, row_cumulative_start[range_end_rows])
+                    - row_cumulative_start[range_end_rows]
                 )
-            pieces.append((int(last_interval_start[index]), int(last_interval_end[index])))
-            event_intervals.append(tuple(pieces))
+                * 1_000_000
+            ).astype("int64")
+            last_interval_end = (
+                effective_start_ns[range_end_rows]
+                + (range_end - row_cumulative_start[range_end_rows]) * 1_000_000
+            ).astype("int64")
+
+            event_intervals: list[tuple[tuple[int, int], ...]] = []
+            for index, (first_row, last_row) in enumerate(
+                zip(range_start_rows.tolist(), range_end_rows.tolist())
+            ):
+                if first_row == last_row:
+                    event_intervals.append(
+                        ((int(first_interval_start[index]), int(last_interval_end[index])),)
+                    )
+                    continue
+                pieces: list[tuple[int, int]] = [
+                    (int(first_interval_start[index]), int(first_interval_end[index]))
+                ]
+                if last_row > first_row + 1:
+                    pieces.extend(
+                        (int(effective_start_ns[row]), int(effective_end_ns[row]))
+                        for row in range(first_row + 1, last_row)
+                        if effective_end_ns[row] > effective_start_ns[row]
+                    )
+                pieces.append((int(last_interval_start[index]), int(last_interval_end[index])))
+                event_intervals.append(tuple(pieces))
 
         event_anchor_positions = group_starts[event_groups]
         event_run_ids = [group_run_ids[index] for index in event_groups]
-        group_qualities = np.where(group_adjusted, "rounding_adjusted", "inferred").astype(object)
-        group_qualities[overlap_split[group_starts]] = "overlap_split"
+        if not count_only:
+            group_qualities = np.where(group_adjusted, "rounding_adjusted", "inferred").astype(
+                object
+            )
+            group_qualities[overlap_split[group_starts]] = "overlap_split"
         template_indices.extend(event_anchor_positions.astype(int).tolist())
         output_ms.extend((range_end - range_start).astype(int).tolist())
         counted_ns.extend(mapped_counted_ns.astype(int).tolist())
-        event_start_ns.extend([intervals[0][0] for intervals in event_intervals])
-        event_end_ns.extend([intervals[-1][1] for intervals in event_intervals])
-        intervals_output.extend(event_intervals)
+        if not count_only:
+            event_start_ns.extend([intervals[0][0] for intervals in event_intervals])
+            event_end_ns.extend([intervals[-1][1] for intervals in event_intervals])
+            intervals_output.extend(event_intervals)
         event_ids.extend(
             f"{run_id}:{int(sequence)}" for run_id, sequence in zip(event_run_ids, event_sequence)
         )
-        run_ids.extend(event_run_ids)
+        if not count_only:
+            run_ids.extend(event_run_ids)
         event_ordinals.extend(event_sequence.astype(int).tolist())
-        qualities.extend(group_qualities[event_groups].tolist())
+        if not count_only:
+            qualities.extend(group_qualities[event_groups].tolist())
 
     # Duration-missing rows cannot be expanded. Preserve one candidate per
     # raw row and let the standard effective filter apply the fallback min_ms.
@@ -595,15 +668,22 @@ def reconstruct_logical_plays(
             template_indices.append(position)
             output_ms.append(value_ms)
             counted_ns.append(counted)
-            event_start_ns.append(row_start)
-            event_end_ns.append(row_end)
-            intervals_output.append(((row_start, row_end),))
+            if not count_only:
+                event_start_ns.append(row_start)
+                event_end_ns.append(row_end)
+                intervals_output.append(((row_start, row_end),))
             event_ids.append(f"{run_id}:{ordinal}")
-            run_ids.append(run_id)
+            if not count_only:
+                run_ids.append(run_id)
             event_ordinals.append(ordinal)
-            qualities.append("duration_fallback")
+            if not count_only:
+                qualities.append("duration_fallback")
 
     if not template_indices:
+        if count_only:
+            return _counting_projection(
+                df, [], [], [], [], identity_column=identity_column, boundary_column=boundary_column
+            )
         empty = df.iloc[0:0].copy()
         empty[LISTENING_INTERVALS_COLUMN] = pd.Series(dtype=object)
         return empty.reset_index(drop=True)
@@ -614,10 +694,20 @@ def reconstruct_logical_plays(
     template_indices = [template_indices[index] for index in order]
     output_ms = [output_ms[index] for index in order]
     counted_ns = [counted_ns[index] for index in order]
+    event_ids = [event_ids[index] for index in order]
+    if count_only:
+        return _counting_projection(
+            df,
+            template_indices,
+            output_ms,
+            counted_ns,
+            event_ids,
+            identity_column=identity_column,
+            boundary_column=boundary_column,
+        )
     event_start_ns = [event_start_ns[index] for index in order]
     event_end_ns = [event_end_ns[index] for index in order]
     intervals_output = [intervals_output[index] for index in order]
-    event_ids = [event_ids[index] for index in order]
     run_ids = [run_ids[index] for index in order]
     event_ordinals = [event_ordinals[index] for index in order]
     qualities = [qualities[index] for index in order]

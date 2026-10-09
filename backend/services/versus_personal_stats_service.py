@@ -25,7 +25,10 @@ from backend.core.db import merge_consecutive_plays
 from backend.domains.metadata.artist_identity import canonicalize_artist_frame
 from backend.domains.metadata.track_credits import get_effective_track_credit_frame
 from backend.domains.playback.counting import assign_logical_event_id, filter_effective_plays
-from backend.domains.playback.logical_timeline import reconstruct_listening_intervals
+from backend.domains.playback.logical_timeline import (
+    _timestamp_ns,
+    reconstruct_listening_intervals,
+)
 
 
 class _ResultCache:
@@ -109,6 +112,7 @@ def _load_target_timeline(
     *,
     include_duration: bool = True,
     canonicalize_artists: bool = True,
+    basic_event_projection: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Read one union, then reconstruct counts and unthresholded listening.
 
@@ -192,12 +196,14 @@ def _load_target_timeline(
     _record_timing(timings, "target_sql", started)
     started = perf_counter()
     raw["track_id"] = raw["l1_id"]
+    parsed_timestamp_ns = _timestamp_ns(raw["ts"]) if basic_event_projection else None
     durations = (
         reconstruct_listening_intervals(
             raw,
             identity_column="l1_id",
             max_gap_minutes=filters["max_merge_gap_minutes"],
             boundary_column="source_album_id",
+            parsed_timestamp_ns=parsed_timestamp_ns,
         )
         if include_duration
         else pd.DataFrame()
@@ -210,6 +216,8 @@ def _load_target_timeline(
             max_gap_minutes=filters["max_merge_gap_minutes"],
             boundary_column="source_album_id",
             dynamic_threshold=filters["dynamic_threshold"],
+            count_only=basic_event_projection,
+            parsed_timestamp_ns=parsed_timestamp_ns,
         )
     events = filter_effective_plays(
         events, min_ms=filters["min_ms"], dynamic_threshold=filters["dynamic_threshold"]
@@ -412,10 +420,21 @@ def _build_personal_stats_uncached(
     source_ids = tuple(sorted({track_id for item in resolved for track_id in item.track_ids}))
     events, durations = (
         _load_target_timeline(
-            conn, source_ids, params, timings, canonicalize_artists=kind != "artist"
+            conn,
+            source_ids,
+            params,
+            timings,
+            canonicalize_artists=kind != "artist",
+            basic_event_projection=True,
         )
         if timings is not None
-        else _load_target_timeline(conn, source_ids, params, canonicalize_artists=kind != "artist")
+        else _load_target_timeline(
+            conn,
+            source_ids,
+            params,
+            canonicalize_artists=kind != "artist",
+            basic_event_projection=True,
+        )
     )
     started = perf_counter()
     events = events[events["source_track_id"].isin(source_ids)].copy()
