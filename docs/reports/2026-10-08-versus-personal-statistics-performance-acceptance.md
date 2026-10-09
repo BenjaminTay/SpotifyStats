@@ -488,3 +488,67 @@ SQL 单一候选仅在隔离副本实验：去掉早于目标timestamp的嵌套�
 all-files Ruff/format/mypy/detect-secrets、前端787 passed/4 skipped（97 files passed/1 skipped）与build通过；后端3,722 passed/5 warnings、真实集成187 passed/2 warnings。API smoke157/157、boundary113/113，51性能目标slow_count0，51个warm组最大P95 225.94ms（Billboard data，门槛500ms）。桌面/移动路由、真实交互、控件清单以及Chromium/Firefox/WebKit兼容全部通过。摘要`release-cycle-aggregate-fullstack-summary.json`，原API/XML/locks位于同run目录，日志`fullstack-release-cycle-aggregate.log`。
 
 运行记录为acdd0d0d+dirty R3工作树；验收前后13调用链与unit文件hash完全相同，不能把新helper验收写成旧acdd clean HEAD。另一个线程的SS-2026-10-09-001规划及docs地图不属于本次提交范围，源代码冻结仍有效。S4 R3收口，S5固定SHA、实际CI/发布/首次生产与私有HTTPS验收尚未完成；已向用户请求明确授权恢复原私有入口或调整仅公开验收，未擅自启用Tailscale。
+
+## 16. R3固定提交与实际正式流水线
+
+阶段提交`9dd7fd9bc649172e16f9ba118075adfe2a4c3cf1`，标题“perf: 复用每日计次减少榜单对决请求竞争”，7份限定路径/466插入14删除，pre-commit Ruff/format/mypy/detect-secrets全部actual Pass。commit blobs与已测13调用链及unit文件逐一hash相等，defaultfullrun仍为上述R3工作树验收，不伪称在旧acdd或clean HEAD直接运行。其它线程的docs地图、新规划以及两份共享文档的SS-2026-10-09-001行/小节完整保留，未纳入提交，证据`release-cycle-aggregate-commit-binding.json`与`r3-unrelated-before-stage.json`。
+
+只对现有maintenance-run2执行verify/export/validate，actual exit均0、ready4/source bb7cb368…/builder entity_rank_context_v2，未build、补写agg_config或使用closed-source；源有零字节WAL时仍不视为closed。新清单765,982字节、digest`0c34d3f78fa978e3c26de5a8cedbbb928b5be4c3f0e923693c0adb5439d37af2`，600权限上传至`/opt/spotify-stats/backups/versus-ranks-9dd7fd9bc649172e16f9ba118075adfe2a4c3cf1.json`，远端SHA核验后原子改名，临时.upload不存在；旧清单保留。回执`release-9dd7fd9bc649172e16f9ba118075adfe2a4c3cf1/manifest-{readiness,upload-receipt}.json`。
+
+root正常push actual exit0（acdd→9dd/main），随后实际发现同完整SHA的CI `37886787174`与ProductionRelease `37886787245`，均in_progress。05:06:46 UTC CI job113678459466、release quality113678460564均Backend unit运行；此时不能记为CI/三模式/镜像/部署通过。沿同run监测，不手动重触发或因观测超时重启。部署当前仍以最后独立实测acdd记录为准，新版本首次公开、私有功能/HTTPS及保护事实尚待实际上线；私有范围授权未收到，不启停外层入口。
+
+05:24:59 UTC同两run已actual completed/success：CI job `113678459466`；release quality `113678460564`、showcase `113681718628`、full `113681718689`、dual `113681718745`、images `113681760303`、deploy `113681964329`均success。独立SSH verify.sh于05:25:55 UTC实际退出0，schema89、search4 strict-ready、rank4 ready及source bb7cb368…通过，三容器完整9dd SHA/healthy；backend实际R3 helper SHA256为`0cac248cc9638a862e67b4b5f36088c50226fef2bdc624978a680af81150bcf2`，精确匹配本地已测文件。启动任务此时仍pending2/running1，不在这一时点启动首次浏览器或个人API；尚不能称生产性能验收通过。
+
+用户要求的私有入口调查追加当前服务器核验：05:25:10 UTC原DNS仍`spotify-stats.tail8916b1.ts.net`，Tailscale BackendState=Stopped、Serve配置为空；3001为private-admin/full，3002为public-readonly/showcase，两个实际capability均完整9dd SHA。只读脚本实际退出0，证据`private-entry-investigation/current-route-state-latest.json`。外层入口没有修改，恢复授权或调整公开验收范围仍待用户答复。
+
+## 17. R3生产首次验收：四专辑达标，两艺人仍有基础延迟
+
+05:28:25 UTC启动自然settled后保存新beforeguards：jobs6,321（done6,283/failed38，pending/running0），20份Analysis发布及4份rank完整元数据，19源表与最初基线逐表相同、plays94,760。新增11个启动任务及派生snapshot变化与浏览器读取分开记录。首次个人请求前启动实际uvicorn PID1,025,801/start_ticks134,660,988的500ms只读采样，首样本05:28:55.908 UTC；没有个人API预暖、缓存清理或额外idle等待。
+
+公开原5驱动14场景28样本全部完成，五driver实际退出0；14/14功能、56个人HTTP200、API/DOM数值、计分及同集合重排均PASS，3对象额外批次、重排请求、legacy、溢出及阻塞console均0。全部28个人样本≤3秒，27/28满足原基础2秒/全部3秒门槛；唯一失败为原Chrome360两艺人基础/全部2,097.71ms。原first六样本基础/排名可见耗时（ms）：track2 633.10/404.81、track4 761.97/626.98、album2 910.69/552.97、album4 1,023.55/741.13、artist2 2,097.71/937.75、artist4 1,523.52/1,112.35。四专辑已达标，原acdd2,385.25ms失败保留，不热重跑或放宽门槛。两艺人stats HTTP1,956.71/server1,917.627ms，identity703.646、SQL730.870、timeline351.143、attribution91.642、source_context14.525；rank实际HTTP763.65/server717.630ms与UI排名计时937.75ms分列。
+
+原始证据目录`output/playwright/versus-personal/production-public-9dd7fd9bc649172e16f9ba118075adfe2a4c3cf1/`。summary SHA256 `d28f7ec407ae2a6ad506cb57165504b8a6c8b7cc04122d779bb78f368148d604`，judgment SHA256 `38e341279ca80ec21095f3851bd39f9c4ec703c572d69af8e650befa9eb01f55`（性能判定实际exit1）；五浏览器driver的exit0只代表各自功能完成，不能据此写全部性能通过。13调用链、probe和实体文件前后不变；旧acdd原始失败、summary/judgment hash守恒。所有owned browser/context关闭后才执行功能API，未新增首次热复验。
+
+浏览器前后7组guard全PASS；随后实际公开HTTPS48和私有SSH loopback HTTP48请求均complete/functional_pass，四filter群各一个rank key、四key不同，capability完整9dd SHA与真实surface/能力位一致。三个公开admin/jobs只读GET按既有隐藏路由合同返回404，API和拒绝探针结束后7组guard再次全PASS。source19、完整jobs、20Analysis发布及4rank元数据守恒。私有SSH是功能HTTP证据，不能替代私有HTTPS；外层入口仍未启用。证据`release-9dd…/{browser,api}-guard-judgment.json`及两份`*-api-functional.json`；guard脚本遗留note写12 API，本次真实输入以14场景/56个人HTTP和另行96功能请求为准。
+
+整页cohort资源535个样本（500ms）：基线RSS972.80MiB，采样峰值1,205.54MiB、新增232.73MiB，CPU增加42.18秒，最小MemAvailable1,822.99MiB。范围包括榜单与发行周期，不能归为单个人请求或宣称OOM/泄漏修复；500ms可能遗漏更短峰值，进程lifetime HWM也不能视为本轮峰值。采样原始SHA256 `a8577637ebebf38f3356f5cebc73f746413f515bf19d278d7c04bd55f7b6fea8`。关闭浏览器后只对本次精确命令的sampler发送SIGTERM15，end marker完整、同SSH实际退出0，后端未终止；首次停止命令因远端引号解析失败退出2且未发信号，修正后完成。
+
+当前S5仍Partial，S4重新进入剩余计算竞争诊断：当前批次发行周期已经等待个人stats/ranks settled；旧周期fetch取消不能证明同步后端已经停止。两艺人榜单响应则仍与个人请求并行，读取exact-ready完整payload后构建全局DataFrame及跨层派生成绩。这两条路径的实际CPU重叠尚未证明，下一步仅在既有精确ready隔离源测量个人单独、与周期目标阶段、与榜单读取后计算三组，不在生产热缓存上复验、不重测已消除的每日全局计次、不补建快照。私有恢复授权或范围调整仍为独立待答条件。
+
+## 18. R4隔离诊断与艺人署名候选等价证明
+
+既有ignored OWNruntime的main.db/billboard.db真实绝对路径、mode=ro/query_only；未修改持久context key、路径别名或补建快照。九个fresh进程（个人单独/并发周期目标阶段/并发榜单读取后计算，各3次）全部实际exit0，weekly/full_data现成exact-ready均匹配，初始五项应用缓存均0，OS页缓存共享。两艺人六基础指标均精确等于既有96 API oracle；19源表、8调用链hash前后相同，禁止build/publish/enqueue且违反计数0。证据`artist-cold-contention-20261009/{report.json,alone-*,cycle-*,chart-*}`。这些是受控诊断，不是生产首次性能Pass。
+
+个人单独wall497.987–600.644ms/threadCPU496.603–515.042ms；周期并发wall680.480–755.439ms/CPU520.176–565.544ms；榜单并发wall624.627–948.075ms/CPU540.446–566.662ms。identity单独102.83–122.15ms，周期并发254.84–268.00ms，榜单并发209.33–248ms。周期三次均走R3精确聚合命中，无raw全局计次，handler894–943ms/CPU800–818ms；其primary艺人source-ID读取CPU105.6–114.2ms，目标完整计次时间轴CPU292.8–303.2ms。原请求包含4专辑，但隔离metadata仅1张eligible、actual comparisons=1，不能称生产4张指标全部参与。榜单handler111.8–120.3ms/CPU107.9–113.5ms，其中payload decode47.1–48.6ms、全局跨层排名合计约14ms。chart第三样本SQL541.194ms/CPU282.983ms异常保留：chart在SQL开始前148ms已结束、重叠0，不能归因或重跑清除。实验表明竞争可侵蚀97.71ms预算余量，但没有生产任务绝对起止，不能声称解释了全部1,917.627ms服务耗时。
+
+候选纯读取实验：将目标canonical artist展开为raw aliases，从tracks主艺人、track_artists、Spotify自动署名及active人工覆盖四来源读取candidate曲目超集，再调用原get_effective_track_credits完整规则，最后选目标canonical署名。规则中的标题抑制只删除，人工add/remove/set_role及合作署名仍由原解析器处理；没有独立近似署名规则或新增缓存。空candidate显式返回空集合，不能将空列表传入现有“空即全库”的provider。
+
+两个艺人627候选、四艺人889候选（包括rawalias773→canonical Olivia76），L2/L3×dynamic/fixed的2/4对象共8配置、每项3次旧/候选交错测量。全部SelectedEntity dataclass字段精确相等，含credited_track_ids、L1反向source IDs、request/entity/rank keys；两个与过滤无关的署名集另与全库11,771条effective oracle比全部字典字段，目标627/889条精确相等。两对象身份解析平均119.167ms/CPU117.594→25.968/CPU25.681ms，四对象115.865/CPU115.313→31.127/CPU31.013ms。19源及3源码hash守恒，实际exit0；证据`artist-credit-candidate-20261009/{report.json,probe.py,driver.log}`。候选实现与回归已启动，当前尚未完成新业务HTTP/浏览器/完整门禁或生产验收。
+
+### 18.1 最终实现与当前版本冻结
+
+只改`backend/services/versus_personal_context.py`和对应identity单元测试：四来源读取候选，rawalias每块500，candidate每块900调用原provider，按track顺序连接并保留目标canonical署名；不存在的可选表兼容，存在但缺必需列保持原OperationalError，tracks无artist_id仍支持track_artists路径。空candidate不调用“空即全库”接口；统计时间线、SQL、provider公共API、schema、缓存容量与排名合同未改。
+
+最终24个新增fixture覆盖canonical alias、manual add/remove/set_role、Spotify自动及标题产品抑制、主艺人fallback、无primary列、未知/无署名、L1反向多源、2/4排序、1,200别名、坏表缺列及大曲目集。后者新增1,005首目标曲目，在999参数代理内以900/110两block解析，1,009个目标署名的全部字段与全库provider oracle一致。最终相关5模块181 passed/1 warning/19.35s、actual exit0；Ruff、format、mypy（follow-imports=silent）与diff-check均exit0。之前239项较广测试属于最后schema/chunk refinement之前，不能当作最后源码已测结果；中间mypy缺列表注解已修复并复验。证据`artist-credit-candidate-20261009/final-checks.json`及`final-*.log`。
+
+冻结context SHA256 `aaa6588cf84fe3747197a6195006654d729f2818743561c65a5c0e0e14e70466`，unit SHA256 `0fd9e8c8be236272f71adaceb60089735a3248e12feb826f03d763a49f808545`。root独立确认13调用链仅context一份变化，其余12精确等9dd提交，保存`artist-credit-scope-before-binding.json`。旧OWNbackend4067正常Ctrl-C/exit0；新OWNbackend2740/PID1879使用相同runtime主库及六精确sidecar，warmup/search/L3startup均0、无reload，startup complete、health200、Vite5173实际200。首次个人HTTP前放行原45场景90样本矩阵（包含首Chrome360 cold6，不额外重复cold6）；API性能和完整全栈尚未启动，当前源码仍9dd+dirty R4而非新commit。
+
+### 18.2 当前版本本地浏览器与API结果
+
+原三驱动45场景90样本完成，包含首Chrome360 cold6；个人性能与DOM 90/90通过，原局部门槛track/album基础1.5秒、artist基础2秒及全部个人2秒未放宽。cold6基础/排名可见耗时（ms）：track2 428.28/369.64、track4 510.57/437.18、album2 580.95/406.51、album4 714.49/568.63、artist2 1,118.91/458.31、artist4 719.37/558.40；全部个人同基础。220窗口计入，3→4实际间隔48.1/48.5/64.7ms。全部180个人HTTP200、API/DOM误差0、计分和重排PASS；3对象额外请求、重排额外请求、legacy、溢出0。原矩阵功能44/45，driver exits=[0,0,1]：Firefox768artist有一条外链Spotify图片Image corrupt or truncated错误，原case的两个人样本、DOM、计分、性能及重排均通过；不将console错误忽略或写成原45功能全PASS。原始summary SHA256 `4570f7b56226f9c1fb5fbea9b2c1f83e51ad735e3b336373faa91b61b3081bbb`，目录`output/playwright/versus-personal/artist-credit-scope-local/`。
+
+针对该新失败，授权一次独立Firefox768artist窄复验，原probe/预算/console规则不变，actual exit0、console空、DOM/计分/重排/溢出通过。新2/4基础及全部308.98/418.29ms，是自然warm独立观察，不替代cold6或原矩阵、不拼接成原45全PASS，仅证明这一次外链错误未复现；不证明CDN长期稳定或原解码根因。raw SHA256 `a6fc39a9b23c05b4f33fcc0842e918d0e5fa33be9a5eab55f66829541bb56f97`。13调用链、unit、probe/entities前后一致，6个关键UI文件精确等9dd提交且未改，旧9dd首次失败/R3本地PASS全部locked hashes守恒。完成窄复验后所有contexts关闭并释放CPU，才启动API门禁。
+
+新96 API对账实际完成：48基础/48完整排名均与现有独立oracle相等，不重建全库oracle或维护排名；19源/owned源及预期文件不变，13调用链冻结，build/publish/enqueue均0。随后36独立进程（30fresh，各case5；6warm，各endpoint首次后21次）/324常规+120切换请求全部完成，130性能资源门槛全PASS、耗时114.482秒。fresh基础最大track288.12/album372.87/artist853.54ms，fresh rank最大20.04ms；same-process warm P95最大13.25ms，四对象新增采样峰值最大124.55MiB，20队列稳定新增最大6.64MiB；这些均为个人API probe，不能归为整页或发行周期资源。protected source/owned均守恒且相等、13版本前后相同、public builder/publish/enqueue0、保留全局play frame0。证据`artist-credit-scope-oracle/report.json`与`artist-credit-scope-api-run/report.json`。
+
+root顺序门禁wrapper35319仍实际live，96对账和130门槛通过后才进入默认完整全栈run `20261009T060805.832990Z-9a0e06e6253c`。本轮没有--only/--from或跳过必需阶段，当前尚未实际退出、完整Pass待证明；运行时HEAD为9dd+dirty R4，后续固定SHA必须再次核对本次13绑定。线上仍9dd、原首次两艺人2.098秒失败未关闭，私有HTTPS外层恢复/范围调整仍待授权。
+
+### 18.3 R4默认完整门禁收口
+
+同run `20261009T060805.832990Z-9a0e06e6253c` 已actual exit0；selection=full、dry_run=false、overall_status=PASS，八必需阶段同轮全部PASS，总耗时1,435,402ms（23分55.402秒）。阶段ms：preflight8,164、quality72,745、backend521,378、api164,209、browser-routes399,520、browser-interactions79,444、browser-inventory45,922、browser-compat143,894；optional NOT_RUN。摘要`artist-credit-scope-fullstack-summary.json`及同run原始目录保留，没有重启或重复执行。
+
+all-files Ruff/format/mypy/detect-secrets、前端787 passed/4 skipped（97文件通过/1跳过）与build通过；后端3,746 passed/5 warnings（289.57秒），真实集成187 passed/2 warnings（219.74秒）。API smoke157/157、boundary113/113、51目标slow_count0；51个warm组最大P95 223.14ms（Billboard data，门槛500ms），不将通用benchmark描述成独立cold进程证据。桌面/移动路由、交互、控件盘点、Chromium/Firefox/WebKit兼容均通过。AI后台线程disk I/O警告与R3同测试/同handler堆栈类型保留在原日志；AI/db源码未改，不扩展本次修复，也不据此宣称无警告。
+
+root再次独立确认13调用链及unit文件与验收前binding完全一致；本次测量仍为9dd+dirty R4工作树，将以新commit blobs逐一绑定。另线程SS-2026-10-09-001规划、docs地图及共享文档行/小节完整保留并排除暂存。R4 S4收口，S5新固定SHA/正式CI/发布及公开首次仍待执行，私有HTTPS仍待授权或明确范围调整。
+
+服务器入口追加只读刷新：06:30:10 UTC实际SSH退出0，Tailscale仍Stopped、原DNS仍spotify-stats.tail8916b1.ts.net、Serve空；3001 private-admin/full与3002 public-readonly/showcase均完整9dd SHA。证据`private-entry-investigation/current-route-state-refresh.json`；未修改Caddy、Tailscale或网关配置。

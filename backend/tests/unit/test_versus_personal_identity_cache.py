@@ -480,3 +480,239 @@ def test_artist_batch_reads_effective_credits_once_and_expands_same_l1_sources(
             assert row.track_ids == service._source_tracks(conn, service._l1_tracks(conn, ids))
     finally:
         conn.close()
+
+
+@pytest.fixture
+def artist_credit_source():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE artists(artist_id INTEGER PRIMARY KEY, artist_name TEXT);
+        CREATE TABLE tracks(track_id INTEGER PRIMARY KEY, track_name TEXT, artist_id INTEGER);
+        CREATE TABLE track_artists(track_id INTEGER, artist_id INTEGER, role TEXT);
+        CREATE TABLE spotify_auto_track_credits(track_id INTEGER, artist_id INTEGER,
+          spotify_track_id TEXT, spotify_artist_id TEXT, credited_name TEXT, credit_order INTEGER);
+        CREATE TABLE track_credit_overrides(override_id INTEGER PRIMARY KEY,track_id INTEGER,
+          artist_id INTEGER,action TEXT,role TEXT,evidence_type TEXT,evidence_source TEXT,
+          reason TEXT,actor TEXT,revision INTEGER,created_at TEXT,active INTEGER);
+        CREATE TABLE artist_identity_groups(identity_id INTEGER PRIMARY KEY,
+          canonical_artist_id INTEGER,display_artist_id INTEGER,display_name TEXT,status TEXT);
+        CREATE TABLE artist_identity_members(membership_id INTEGER PRIMARY KEY,
+          identity_id INTEGER,artist_id INTEGER,active INTEGER);
+        CREATE TABLE track_l1_source_links(l1_id INTEGER,track_id INTEGER);
+        INSERT INTO artists VALUES (1,'Main'),(2,'Joy Williams'),(3,'John Paul White'),
+          (4,'Joy Williams and John Paul White'),(9,'Joy Alias'),(10,'No tracks');
+        INSERT INTO artist_identity_groups VALUES (1,2,2,'Joy Williams','active');
+        INSERT INTO artist_identity_members VALUES (1,1,9,1);
+        INSERT INTO tracks VALUES (1,'Song (feat. Joy Williams and John Paul White)',1),
+          (2,'Manual addition',1),(3,'Manual removal',1),(4,'Manual role',1),
+          (5,'Primary fallback',2),(6,'Same L1 alternate source',1),(7,'Inactive decision',1);
+        INSERT INTO track_artists VALUES (1,1,'primary'),(1,4,'featured'),
+          (2,1,'primary'),(3,1,'primary'),(3,9,'featured'),
+          (4,1,'primary'),(4,9,'featured'),(6,1,'primary'),(7,1,'primary');
+        INSERT INTO spotify_auto_track_credits VALUES
+          (1,1,'t1','a1','Main',0),(1,2,'t1','a2','Joy Williams',1),
+          (1,3,'t1','a3','John Paul White',2);
+        INSERT INTO track_credit_overrides VALUES
+          (1,2,9,'add','featured','manual','test','add alias','test',1,'2024-01-01',1),
+          (2,3,2,'remove',NULL,'manual','test','remove canonical','test',2,'2024-01-01',1),
+          (3,4,2,'set_role','primary','manual','test','role canonical','test',3,'2024-01-01',1),
+          (4,7,2,'add','featured','manual','test','inactive','test',4,'2024-01-01',0);
+        INSERT INTO track_l1_source_links VALUES (101,1),(102,2),(103,3),(104,4),
+          (105,5),(105,6),(107,7);
+    """)
+    yield conn
+    conn.close()
+
+
+@pytest.mark.parametrize("target_ids", [{2, 3}, {1, 2, 3, 4}, {4}, {9}, {10}])
+def test_artist_candidate_resolves_all_credit_fields_against_full_oracle(
+    artist_credit_source, target_ids
+):
+    from backend.domains.metadata.track_credits import get_effective_track_credits
+
+    conn = artist_credit_source
+    full = get_effective_track_credits(conn)
+    expected = [row for row in full if row["artist_id"] in target_ids]
+    before = conn.total_changes
+    assert service._selected_artist_credits(conn, target_ids) == expected
+    assert conn.total_changes == before
+    joy = {row["track_id"]: row for row in full if row["artist_id"] == 2}
+    assert set(joy) == {1, 2, 4, 5}
+    assert joy[2]["raw_artist_ids"] == [9] and joy[2]["source"] == "manual"
+    assert joy[4]["role"] == "primary"
+    assert not any(row["artist_id"] == 4 for row in full)  # Title product suppressed.
+
+
+@pytest.mark.parametrize("count", [2, 4])
+@pytest.mark.parametrize("level", [2, 3])
+def test_artist_candidate_keeps_batch_order_and_l1_reverse_sources(
+    artist_credit_source, count, level
+):
+    from backend.domains.metadata.artist_identity import resolve_artist_names
+    from backend.domains.metadata.track_credits import get_effective_track_credits
+
+    conn = artist_credit_source
+    names = ["Joy Alias", "John Paul White", "Main", "Joy Williams and John Paul White"][:count]
+    full = get_effective_track_credits(conn)
+    expected = []
+    for name, artist in zip(names, resolve_artist_names(conn, names)):
+        credited = tuple(
+            sorted({r["track_id"] for r in full if r["artist_id"] == artist.canonical_artist_id})
+        )
+        # The fixture deliberately has two raw sources sharing one L1; the
+        # uncredited raw source 6 must remain in Joy's playback scope.
+        source_ids = (
+            (1, 2, 4, 5, 6)
+            if artist.canonical_artist_id == 2
+            else service._source_tracks(conn, service._l1_tracks(conn, credited))
+        )
+        expected.append(
+            service.SelectedEntity(
+                service.requested_key("artist", name),
+                f"artist:{artist.canonical_artist_id}",
+                artist.display_name,
+                source_ids,
+                artist_name=artist.display_name,
+                artist_id=artist.canonical_artist_id,
+                credited_track_ids=credited,
+            )
+        )
+    assert service._resolve_selection_uncached(conn, "artist", names, level) == expected
+    assert service._resolve_selection_uncached(conn, "artist", names[::-1], level) == expected[::-1]
+
+
+@pytest.mark.parametrize("targets", [set(), {10}, {999999}])
+def test_empty_artist_candidate_never_calls_all_tracks_provider(
+    artist_credit_source, monkeypatch, targets
+):
+    def forbidden(*args, **kwargs):
+        pytest.fail("Empty candidates must not reach the all-tracks credit API")
+
+    monkeypatch.setattr(service, "get_effective_track_credits", forbidden)
+    assert service._selected_artist_credits(artist_credit_source, targets) == []
+    rows = service._resolve_selection_uncached(
+        artist_credit_source, "artist", ["No tracks", "Unknown artist"]
+    )
+    assert rows[0].rank_key == "No tracks" and rows[0].track_ids == ()
+    assert rows[1].rank_key == "" and rows[1].entity_key.startswith("unavailable:")
+
+
+@pytest.mark.parametrize(
+    "compatibility", ["no_track_artists", "no_primary_column", "missing_optional"]
+)
+def test_artist_candidate_preserves_supported_source_schemas(artist_credit_source, compatibility):
+    from backend.domains.metadata.track_credits import get_effective_track_credits
+
+    conn = artist_credit_source
+    if compatibility == "no_track_artists":
+        conn.execute("DROP TABLE track_artists")
+    elif compatibility == "no_primary_column":
+        conn.executescript("""
+            ALTER TABLE tracks RENAME TO old_tracks;
+            CREATE TABLE tracks(track_id INTEGER PRIMARY KEY,track_name TEXT);
+            INSERT INTO tracks SELECT track_id,track_name FROM old_tracks;
+            DROP TABLE old_tracks;
+        """)
+    else:
+        conn.execute("DROP TABLE spotify_auto_track_credits")
+        conn.execute("DROP TABLE track_credit_overrides")
+    expected = [r for r in get_effective_track_credits(conn) if r["artist_id"] == 2]
+    assert service._selected_artist_credits(conn, {2}) == expected
+
+
+def test_artist_candidate_preserves_unsupported_primary_schema_error(artist_credit_source):
+    conn = artist_credit_source
+    conn.executescript("""
+        DROP TABLE track_artists;
+        ALTER TABLE tracks RENAME TO old_tracks;
+        CREATE TABLE tracks(track_id INTEGER PRIMARY KEY,track_name TEXT);
+        INSERT INTO tracks SELECT track_id,track_name FROM old_tracks;
+        DROP TABLE old_tracks;
+    """)
+    with pytest.raises(sqlite3.OperationalError, match="artist_id"):
+        service._selected_artist_credits(conn, {2})
+
+
+def test_artist_candidate_chunks_large_alias_groups(artist_credit_source, monkeypatch):
+    from backend.domains.metadata.track_credits import get_effective_track_credits
+
+    conn = artist_credit_source
+    conn.executemany(
+        "INSERT INTO artists VALUES (?,?)", [(i, f"Alias {i}") for i in range(1000, 2200)]
+    )
+    conn.executemany(
+        "INSERT INTO artist_identity_members VALUES (?,1,?,1)", [(i, i) for i in range(1000, 2200)]
+    )
+    conn.execute(
+        "INSERT INTO track_credit_overrides VALUES (5,7,2199,'add','featured',NULL,NULL,NULL,NULL,5,NULL,1)"
+    )
+    expected = [r for r in get_effective_track_credits(conn) if r["artist_id"] == 2]
+    original = service.get_effective_track_credits
+    calls = []
+
+    def effective(source, track_ids=None):
+        assert track_ids and set(track_ids) == {1, 2, 3, 4, 5, 7}
+        calls.append(1)
+        return original(source, track_ids)
+
+    monkeypatch.setattr(service, "get_effective_track_credits", effective)
+
+    class BoundConnection:
+        # Python 3.9 lacks Connection.setlimit. Enforce the same bound at the
+        # SQLite boundary on every platform, including the Linux CI runtime.
+        def execute(self, statement, parameters=()):
+            assert len(parameters) <= 500
+            return conn.execute(statement, parameters)
+
+    if hasattr(conn, "setlimit"):
+        conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
+    assert service._selected_artist_credits(BoundConnection(), {2}) == expected
+    assert calls == [1]
+
+
+@pytest.mark.parametrize(
+    "table", ["track_artists", "spotify_auto_track_credits", "track_credit_overrides"]
+)
+@pytest.mark.parametrize("missing", ["track_id", "artist_id"])
+def test_present_malformed_credit_source_is_not_silently_ignored(
+    artist_credit_source, table, missing
+):
+    conn = artist_credit_source
+    conn.execute(f"DROP TABLE {table}")
+    retained = "artist_id" if missing == "track_id" else "track_id"
+    conn.execute(f"CREATE TABLE {table} ({retained} INTEGER)")
+    with pytest.raises(sqlite3.OperationalError, match=missing):
+        service._selected_artist_credits(conn, {2})
+
+
+def test_large_artist_candidate_set_matches_full_oracle_under_sqlite_variable_limit(
+    artist_credit_source, monkeypatch
+):
+    from backend.domains.metadata.track_credits import get_effective_track_credits
+
+    conn = artist_credit_source
+    conn.executemany(
+        "INSERT INTO tracks VALUES (?,?,2)", [(i, f"Recording {i}") for i in range(3000, 4005)]
+    )
+    expected = [r for r in get_effective_track_credits(conn) if r["artist_id"] == 2]
+    original = service.get_effective_track_credits
+    calls = []
+
+    def effective(source, track_ids=None):
+        assert track_ids and len(track_ids) <= 900
+        calls.append(tuple(track_ids))
+        return original(source, track_ids)
+
+    class BoundConnection:
+        def execute(self, statement, parameters=()):
+            assert len(parameters) <= 999
+            return conn.execute(statement, parameters)
+
+    monkeypatch.setattr(service, "get_effective_track_credits", effective)
+    if hasattr(conn, "setlimit"):
+        conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
+    before = conn.total_changes
+    assert service._selected_artist_credits(BoundConnection(), {2}) == expected
+    assert [len(block) for block in calls] == [900, 110]
+    assert len(expected) == 1009 and conn.total_changes == before

@@ -12,7 +12,11 @@ from typing import Any
 from backend.core.access_surface import snapshot_unavailable
 from backend.core.cache import singleflight
 from backend.core.cache_manager import register_ttl
-from backend.domains.metadata.artist_identity import get_identity_revision, resolve_artist_names
+from backend.domains.metadata.artist_identity import (
+    get_artist_identity_map,
+    get_identity_revision,
+    resolve_artist_names,
+)
 from backend.domains.metadata.track_credits import (
     TRACK_CREDIT_POLICY_VERSION,
     get_effective_track_credits,
@@ -356,6 +360,76 @@ def resolve_selection(
     return [by_key[key] for key in requested]
 
 
+def _selected_artist_credits(conn: sqlite3.Connection, target_ids: set[int]) -> list[dict]:
+    """Resolve complete credits on a superset of the selected artists' tracks.
+
+    Raw primary/secondary credits, Spotify credits and active manual decisions
+    are the only sources that can add participation. Title-product suppression
+    only removes participation. Resolve each candidate's entire credit set so
+    suppression, canonical overrides and primary fallback keep their rules.
+    """
+    if not target_ids:
+        return []
+    identities = get_artist_identity_map(conn)
+    raw_ids = sorted(
+        target_ids
+        | {
+            raw_id
+            for raw_id, identity in identities.items()
+            if identity.canonical_artist_id in target_ids
+        }
+    )
+    sources = []
+    for table in (
+        "tracks",
+        "track_artists",
+        "spotify_auto_track_credits",
+        "track_credit_overrides",
+    ):
+        columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+        if not columns:
+            continue
+        if table == "tracks" and "artist_id" not in columns:
+            conn.execute("SELECT track_id FROM tracks LIMIT 0")
+            continue
+        # Missing optional tables are supported; a present but malformed
+        # credit source must retain the provider's missing-column error.
+        conn.execute(f"SELECT track_id, artist_id FROM {table} LIMIT 0")
+        sources.append(table)
+    if "tracks" not in sources and "track_artists" not in sources:
+        # Preserve the provider's error on unsupported source schemas rather
+        # than presenting a broken primary-credit source as an empty artist.
+        conn.execute("SELECT track_id, artist_id FROM tracks LIMIT 0")
+    candidates: set[int] = set()
+    for offset in range(0, len(raw_ids), 500):
+        chunk = raw_ids[offset : offset + 500]
+        markers = ",".join("?" for _ in chunk)
+        for table in sources:
+            active = " AND active=1" if table == "track_credit_overrides" else ""
+            candidates.update(
+                int(row[0])
+                for row in conn.execute(
+                    f"SELECT track_id FROM {table} WHERE artist_id IN ({markers}){active}",
+                    chunk,
+                )
+            )
+    # The provider intentionally interprets [] as all tracks; never send an
+    # empty candidate set through that public API.
+    if not candidates:
+        return []
+    ordered = sorted(candidates)
+    result: list[dict] = []
+    # Credits are resolved independently per track. Blocks preserve provider
+    # ordering while also supporting SQLite builds with a 999-variable limit.
+    for offset in range(0, len(ordered), 900):
+        result.extend(
+            row
+            for row in get_effective_track_credits(conn, ordered[offset : offset + 900])
+            if int(row["artist_id"]) in target_ids
+        )
+    return result
+
+
 def _resolve_selection_uncached(
     conn: sqlite3.Connection, kind: str, items: list, merge_level: int = 2
 ) -> list[SelectedEntity]:
@@ -366,7 +440,8 @@ def _resolve_selection_uncached(
     artists = []
     if kind == "artist":
         artists = resolve_artist_names(conn, [str(item) for item in items])
-        for credit in get_effective_track_credits(conn):
+        target_ids = {artist.canonical_artist_id for artist in artists if artist is not None}
+        for credit in _selected_artist_credits(conn, target_ids):
             credits_by_artist.setdefault(int(credit["artist_id"]), set()).add(
                 int(credit["track_id"])
             )
