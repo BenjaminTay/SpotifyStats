@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from functools import lru_cache
 from pathlib import Path
 
@@ -111,14 +112,93 @@ def _count_events(conn, params):
     return events
 
 
+def _try_aggregate_daily_projection(conn, params, source_revision):
+    """Reuse only a complete, current merge-enabled music aggregate proof.
+
+    Source rows retain event dates and open coverage weeks. Sum their count
+    weights directly: duration-only rows contribute zero, and dimension joins
+    would unnecessarily discard events with absent presentation metadata.
+    """
+    if not params["merge_enabled"] or not params["music_only"]:
+        return None
+    from backend.core import db
+    from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_identity import get_track_identity_revision
+
+    try:
+        source_token = conn.execute("PRAGMA data_version").fetchone()[0]
+        if (
+            persistent_cache.build_cache_context("weekly", params)["source_revision"]
+            != source_revision
+        ):
+            return None
+        config = db._aggregation_config(conn)
+        if config.get("builder_version") != db._BILLBOARD_AGGREGATION_BUILDER_VERSION:
+            return None
+        generation = db._active_playback_generation(conn)
+        dataset = db._active_playback_dataset_digest(conn)
+        if (
+            not generation
+            or not dataset
+            or config.get("data_generation_id") != generation
+            or config.get("source_dataset_digest") != dataset
+        ):
+            return None
+        param_hash, dependencies = db.build_aggregation_semantic_proof(
+            conn,
+            min_ms=params["min_ms"],
+            music_only=params["music_only"],
+            week_start_dow=params["bb_week_start_dow"],
+            week_start_hour=params["bb_week_start_hour"],
+            dynamic_threshold=params["dynamic_threshold"],
+            max_merge_gap_minutes=params["max_merge_gap_minutes"],
+            identity_revision=get_identity_revision(conn),
+            track_credit_revision=get_track_credit_revision(conn),
+            track_identity_revision=get_track_identity_revision(conn),
+        )
+        # Project membership is applied when reading source aggregates; it is
+        # not baked into their event counts (the same incremental reuse rule).
+        # This global date baseline never consumes project attribution.
+        if config.get("param_hash") != param_hash or any(
+            config.get(key) != value
+            for key, value in dependencies.items()
+            if key != "album_project_revision"
+        ):
+            return None
+        rows = tuple(
+            (int(row[0]), str(row[1]), int(row[2]))
+            for row in conn.execute(
+                "SELECT CAST(substr(billboard_week,1,4) AS INTEGER),play_date,SUM(play_count) "
+                "FROM agg_weekly_track_sources "
+                "GROUP BY substr(billboard_week,1,4),play_date "
+                "HAVING SUM(play_count)>0 ORDER BY 1,2"
+            )
+        )
+        if (
+            conn.execute("PRAGMA data_version").fetchone()[0] != source_token
+            or persistent_cache.build_cache_context("weekly", params)["source_revision"]
+            != source_revision
+        ):
+            return None
+        return rows
+    except (sqlite3.Error, KeyError, TypeError, ValueError):
+        # This optional acceleration never repairs a missing/unreadable or
+        # stale publication. The existing raw count path remains authoritative.
+        return None
+
+
 @singleflight
 @lru_cache(maxsize=4)
 def _daily_projection(params_json, source_revision):
     """Cache compact year/date/count tuples, with no global event frames."""
-    del source_revision
     conn = get_db(readonly=True)
     try:
-        events = _count_events(conn, json.loads(params_json))
+        params = json.loads(params_json)
+        projected = _try_aggregate_daily_projection(conn, params, source_revision)
+        if projected is not None:
+            return projected
+        events = _count_events(conn, params)
         counts = events.groupby(["billboard_year", "ts_date"]).size()
         return tuple((int(year), str(day), int(count)) for (year, day), count in counts.items())
     finally:

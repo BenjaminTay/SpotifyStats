@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 from threading import Event
 
@@ -14,6 +16,7 @@ import pytest
 from fastapi import HTTPException
 
 from backend.api.billboard import release_cycle as api
+from backend.core import db
 from backend.core.json_helpers import df_to_json
 from backend.dependencies import BillboardFilters
 from backend.domains.billboard import persistent_cache as cache
@@ -548,3 +551,304 @@ def test_one_artist_multiple_releases_uses_primary_scope_without_credit_fanout(
             versus_personal_context.resolve_selection(conn, "artist", [name])
         finally:
             conn.close()
+
+
+def _prepare_daily_aggregate(filters):
+    """Publish a real aggregate on the owned seed, with an explicit source ledger."""
+    with closing(db.get_db(readonly=False)) as conn, conn:
+        digest = hashlib.sha256(
+            json.dumps(
+                [tuple(row) for row in conn.execute("SELECT * FROM plays ORDER BY play_id")],
+                default=str,
+            ).encode()
+        ).hexdigest()
+        conn.execute(
+            "UPDATE playback_import_state SET active_generation_id=?,dataset_digest=? "
+            "WHERE state_id=1",
+            ("release-cycle-aggregate-fixture", digest),
+        )
+    db.build_aggregations(
+        min_ms=filters.min_ms,
+        music_only=filters.music_only,
+        week_start_dow=filters.bb_week_start_dow,
+        week_start_hour=filters.bb_week_start_hour,
+        dynamic_threshold=filters.dynamic_threshold,
+        max_merge_gap_minutes=filters.max_merge_gap_minutes,
+    )
+    _, resolved = service._resolve((), vars(filters))
+    params = {name: resolved[name] for name in service.COUNT_FILTERS}
+    return params, cache.build_cache_context("weekly", params)["source_revision"]
+
+
+def test_exact_daily_aggregate_preserves_cross_year_edge_and_zero_count_slices(
+    isolated, monkeypatch
+):
+    filters = _filters(bb_week_start_hour=12)
+    edge = current_open_billboard_week(
+        week_start_dow=filters.bb_week_start_dow,
+        week_start_hour=filters.bb_week_start_hour,
+    )
+    with closing(db.get_db(readonly=False)) as conn, conn:
+        template = dict(
+            conn.execute("SELECT * FROM plays WHERE track_id IS NOT NULL LIMIT 1").fetchone()
+        )
+        for value in ("2026-01-01T00:00:00Z", f"{edge.isoformat()}T20:00:00Z"):
+            row = dict(template)
+            row.pop("play_id")
+            row["source_fingerprint"] = None
+            utc = pd.Timestamp(value)
+            local = utc.tz_convert("Asia/Shanghai")
+            row.update(
+                ts=value,
+                ts_date=str(local.date()),
+                ts_year=local.year,
+                ts_month=local.month,
+                ts_week=local.isocalendar().week,
+                ts_dow=local.dayofweek,
+                ts_hour=local.hour,
+                ms_played=180000,
+                source_album_id=None,
+            )
+            conn.execute(
+                f"INSERT INTO plays({','.join(row)}) VALUES({','.join('?' for _ in row)})",
+                tuple(row.values()),
+            )
+    params, revision = _prepare_daily_aggregate(filters)
+    conn = db.get_db(readonly=True)
+    try:
+        events = service._count_events(conn, params)
+        expected = tuple(
+            (int(year), str(day), int(count))
+            for (year, day), count in events.groupby(["billboard_year", "ts_date"]).size().items()
+        )
+        zero_count = conn.execute(
+            "SELECT COUNT(*) FROM agg_weekly_track_sources WHERE play_count=0 AND total_ms>0"
+        ).fetchone()[0]
+        assert zero_count > 0
+        assert any(year == 2025 and day == "2026-01-01" for year, day, _ in expected)
+        assert any(day >= edge.isoformat() for _, day, _ in expected)
+        assert service._try_aggregate_daily_projection(conn, params, revision) == expected
+    finally:
+        conn.close()
+    monkeypatch.setattr(service, "_count_events", lambda *a: pytest.fail("exact aggregate missed"))
+    result = service._daily_projection(json.dumps(params, sort_keys=True), revision)
+    assert result == expected
+    assert all(isinstance(row, tuple) for row in result)
+    assert service._daily_projection.cache_info().maxsize == 4
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "merge_disabled",
+        "music_disabled",
+        "missing_table",
+        "missing_version",
+        "version",
+        "param_hash",
+        "data_generation_id",
+        "source_dataset_digest",
+        "duration_revision",
+        "credit_membership_revision",
+        "identity_revision",
+        "track_identity_revision",
+        "track_credit_revision",
+        "track_credit_policy",
+        "playback_policy_version",
+        "listening_duration_policy_version",
+        "source_revision",
+    ],
+)
+def test_daily_aggregate_incomplete_or_wrong_contract_uses_original_counts(
+    isolated, monkeypatch, change
+):
+    params, revision = _prepare_daily_aggregate(_filters())
+    if change in ("merge_disabled", "music_disabled"):
+        params["merge_enabled" if change == "merge_disabled" else "music_only"] = False
+        revision = cache.build_cache_context("weekly", params)["source_revision"]
+    elif change == "source_revision":
+        revision = "previous-source"
+    else:
+        with closing(db.get_db(readonly=False)) as conn, conn:
+            if change == "missing_table":
+                conn.execute("DROP TABLE agg_weekly_track_sources")
+            elif change == "missing_version":
+                conn.execute("DELETE FROM agg_config WHERE key='builder_version'")
+            else:
+                key = "builder_version" if change == "version" else change
+                conn.execute("UPDATE agg_config SET value='stale' WHERE key=?", (key,))
+    counts = []
+    original = service._count_events
+
+    def count(*args):
+        counts.append(1)
+        return original(*args)
+
+    monkeypatch.setattr(service, "_count_events", count)
+    service._daily_projection(json.dumps(params, sort_keys=True), revision)
+    assert counts == [1]
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("min_ms", 60000),
+        ("dynamic_threshold", False),
+        ("max_merge_gap_minutes", 6),
+        ("bb_week_start_dow", 0),
+        ("bb_week_start_hour", 23),
+    ],
+)
+def test_daily_aggregate_actual_count_parameter_mismatch_preserves_raw_oracle(
+    isolated, monkeypatch, key, value
+):
+    params, _ = _prepare_daily_aggregate(_filters())
+    params[key] = value
+    revision = cache.build_cache_context("weekly", params)["source_revision"]
+    with closing(db.get_db(readonly=True)) as conn:
+        events = service._count_events(conn, params)
+        expected = tuple(
+            (int(year), str(day), int(count))
+            for (year, day), count in events.groupby(["billboard_year", "ts_date"]).size().items()
+        )
+        assert service._try_aggregate_daily_projection(conn, params, revision) is None
+    original = service._count_events
+    calls = []
+
+    def count(*args):
+        calls.append(1)
+        return original(*args)
+
+    monkeypatch.setattr(service, "_count_events", count)
+    assert service._daily_projection(json.dumps(params, sort_keys=True), revision) == expected
+    assert calls == [1]
+
+
+def test_daily_aggregate_real_project_membership_change_keeps_complete_date_counts(isolated):
+    from backend.domains.yearly_review.context import _album_project_semantic_revision
+
+    params, _ = _prepare_daily_aggregate(_filters())
+    with closing(db.get_db(readonly=True)) as conn:
+        events = service._count_events(conn, params)
+        expected = tuple(
+            (int(year), str(day), int(count))
+            for (year, day), count in events.groupby(["billboard_year", "ts_date"]).size().items()
+        )
+        before = _album_project_semantic_revision(conn)
+    with closing(db.get_db(readonly=False)) as conn, conn:
+        membership = conn.execute(
+            "SELECT project_id,track_id,min_merge_level FROM album_project_tracks LIMIT 1"
+        ).fetchone()
+        assert membership is not None
+        deleted = conn.execute(
+            "DELETE FROM album_project_tracks WHERE project_id=? AND track_id=? AND min_merge_level=?",
+            tuple(membership),
+        )
+        assert deleted.rowcount > 0
+        assert _album_project_semantic_revision(conn) != before
+        assert db._aggregation_config(conn)["album_project_revision"] == before
+    revision = cache.build_cache_context("weekly", params)["source_revision"]
+    with closing(db.get_db(readonly=True)) as conn:
+        assert service._try_aggregate_daily_projection(conn, params, revision) == expected
+        current = service._count_events(conn, params)
+        assert (
+            tuple(
+                (int(year), str(day), int(count))
+                for (year, day), count in current.groupby(["billboard_year", "ts_date"])
+                .size()
+                .items()
+            )
+            == expected
+        )
+
+
+def test_daily_aggregate_nullable_representative_does_not_discard_count_facts(isolated):
+    from backend.domains.metadata.artist_identity import get_identity_revision
+    from backend.domains.metadata.track_credits import get_track_credit_revision
+    from backend.domains.metadata.track_identity import get_track_identity_revision
+
+    params, _ = _prepare_daily_aggregate(_filters())
+    with closing(db.get_db(readonly=False)) as conn, conn:
+        # Presentation can be unresolved without changing logical event owners.
+        conn.execute("UPDATE track_l1_identities SET representative_track_id=NULL")
+        db.refresh_aggregation_semantic_proof(
+            conn,
+            min_ms=params["min_ms"],
+            music_only=params["music_only"],
+            week_start_dow=params["bb_week_start_dow"],
+            week_start_hour=params["bb_week_start_hour"],
+            dynamic_threshold=params["dynamic_threshold"],
+            max_merge_gap_minutes=params["max_merge_gap_minutes"],
+            identity_revision=get_identity_revision(conn),
+            track_credit_revision=get_track_credit_revision(conn),
+            track_identity_revision=get_track_identity_revision(conn),
+        )
+    revision = cache.build_cache_context("weekly", params)["source_revision"]
+    with closing(db.get_db(readonly=True)) as conn:
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM track_l1_identities WHERE representative_track_id IS NULL"
+            ).fetchone()[0]
+            > 0
+        )
+        events = service._count_events(conn, params)
+        expected = tuple(
+            (int(year), str(day), int(count))
+            for (year, day), count in events.groupby(["billboard_year", "ts_date"]).size().items()
+        )
+        assert service._try_aggregate_daily_projection(conn, params, revision) == expected
+
+
+def test_daily_aggregate_actual_source_mutation_during_proof_rejects_projection(
+    isolated, monkeypatch
+):
+    params, revision = _prepare_daily_aggregate(_filters())
+    original = db.build_aggregation_semantic_proof
+
+    def mutate(*args, **kwargs):
+        proof = original(*args, **kwargs)
+        with sqlite3.connect(isolated[0]) as writer:
+            writer.execute(
+                "UPDATE plays SET ms_played=ms_played+1 WHERE play_id=(SELECT MIN(play_id) FROM plays)"
+            )
+        return proof
+
+    monkeypatch.setattr(db, "build_aggregation_semantic_proof", mutate)
+    with closing(db.get_db(readonly=True)) as conn:
+        assert service._try_aggregate_daily_projection(conn, params, revision) is None
+
+
+def test_daily_aggregate_unreadable_source_rows_uses_original_counts(isolated, monkeypatch):
+    params, revision = _prepare_daily_aggregate(_filters())
+    original_db = service.get_db
+
+    def denied(**kwargs):
+        conn = original_db(**kwargs)
+        conn.set_authorizer(
+            lambda operation, table, *_: (
+                sqlite3.SQLITE_DENY
+                if operation == sqlite3.SQLITE_READ and table == "agg_weekly_track_sources"
+                else sqlite3.SQLITE_OK
+            )
+        )
+        return conn
+
+    calls = []
+    original = service._count_events
+
+    def count(*args):
+        calls.append(1)
+        return original(*args)
+
+    monkeypatch.setattr(service, "get_db", denied)
+    monkeypatch.setattr(service, "_count_events", count)
+    assert service._daily_projection(json.dumps(params, sort_keys=True), revision)
+    assert calls == [1]
+
+
+def test_exact_aggregate_preserves_complete_release_cycle_results(isolated, monkeypatch):
+    _prepare_daily_aggregate(_filters())
+    monkeypatch.setattr(service, "_count_events", lambda *a: pytest.fail("aggregate fell back"))
+    test_comparison_preserves_full_timelines_metrics_and_complete_week_ranks(
+        isolated, monkeypatch, {}, 2, False
+    )
