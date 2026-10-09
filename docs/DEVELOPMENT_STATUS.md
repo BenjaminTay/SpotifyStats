@@ -1,7 +1,7 @@
 # SpotifyStats 开发状态总表
 
-> 最后核验：2026-10-09（9dd7fd9b正式CI、三模式及部署通过；首次公开28样本功能正确，27项性能达标、两艺人基础2.098秒失败；OOM独立待修复）
-> 当前进展：`SS-2026-10-08-002` R3线上首次两艺人2.098秒仍失败，S5保持Partial。R4与详情整合45/90、96及130专项通过；发布CLI事务冲突补修后54安装相关与真实48目标三步骤通过。ada三清单已私密上传，但默认完整在1,647项后新增夹具的残留WAL假定失败；只修测试闭库准备，CLI/业务不变。两轮失败保留，本地未发布补修阶段合入修正后重固定SHA，继续新默认完整和统一发布。私有HTTPS恢复/范围调整待答，不放宽门槛。
+> 最后核验：2026-10-09（6430d4de联合本地S4及正式CI/NoDeploy通过；Release旧rank回退清单导出失败，未上线。独立核验旧9dd三healthy及源/任务/发布守恒；OOM独立待修复）
+> 当前进展：`SS-2026-10-08-002` R4与详情联合最终6430d4de已完成本地S4并正常推送。正式CI37905772987、NoDeploy37905772855成功，Release37905772875质量/三模式/镜像成功、deploy失败：新版成品均校验通过，旧rank回退导出source fence拒绝，未promote主库或安装live sidecar。旧9dd三healthy，19源/完整任务/全部Analysis与排名相等。副本复现及rank-only恢复通过，最小部署修复与72相关回归通过；单次owned完整共同恢复16阶段与旧rank4/BB48/三旧HTTP及全部事实守恒通过，SSH收尾255分列；部署修正待阶段固定与统一发布。旧失败保留，私有HTTPS与额外重启待授权。
 > 当前生产：`9dd7fd9bc649172e16f9ba118075adfe2a4c3cf1` 正式CI、三模式、镜像与部署全部success；三OCI完整SHA/healthy、search4/rank4、实际helper精确hash及独立verify通过，startup settled。新首次公开两艺人一项基础失败；私有SSH仅功能证据，私有HTTPS仍Stopped/Serve空且未验收，恢复授权或范围调整待答；旧acdd/d5/d2失败保留。
 > 历史日期专项已发布业务代码：`76a4968`；CI attempt2质量/三模式/镜像/部署success，attempt1传输SSH reset保留。
 > 历史日期专项生产核验：76a4968、schema89、dual三healthy（12:54）；五年精确年度、两端30次API、两端双视口与最终61表事实守恒通过。连接已恢复，OOM及详情访问后内存增长未代码修复。
@@ -60,7 +60,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
 | SS-2026-10-08-001 | 生产OOM与详情访问内存增长 | 内核确认global OOM终止uvicorn；连接恢复，浏览器检查后RSS再至约2.3GiB。受控backend重启、逐年有界维护已缓解，最终healthy；未代码修复 | P1：在副本复现详情/趋势冷路径及缓存驻留，限制重型任务叠加；验证冷/热访问资源，首个摘要17.98秒不算性能Pass | [生产验收与资源证据](reports/2026-10-08-release-date-production-delivery.md)、[台账](issues/2026-08-27-issue-register.md) | 2026-10-08 |
-| SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | IN_PROGRESS；线上9dd首次两艺人2.098秒失败。整合专项45/90、96、130及CLI补修54/真实48三步骤通过；ada默认完整在1,647项后测试夹具残留WAL假定失败，已仅修fixture，失败保留 | P1：本地未发布补修阶段合入fixture后重固定SHA运行新默认完整，统一正常推送/正式发布和原生产首次，不预暖或放宽门槛。私有HTTPS恢复/范围调整待答，额外重启另行授权；整页RSS不归单API，OOM独立跟踪 | [完整规划](plans/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第19节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
+| SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | IN_PROGRESS；6430d4de本地45/90、96、130及默认完整八阶段通过，正式CI/NoDeploy成功；Release旧rank回退导出source fence拒绝，未上线。独立确认旧9dd三healthy、源/任务/发布守恒；S5未完成 | P1：最终helper实际owned共同恢复、rank-only及72回归均通过，固定部署修复阶段并运行新SHA必要完整门禁后统一发布，保持严格source fence；生产原公开首轮、资源及两面API验收，不预暖或放宽门槛。私有HTTPS与额外重启另行授权；OOM独立跟踪 | [完整规划](plans/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第20.1节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
 | SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | S0–S3已实现；471版本S4自然90/90、默认完整八阶段同轮PASS；实际ID冷/热与324资源通过，峰/末驻留降81.41%/77.75%。CI/三模式通过；S5首次安装在stage只读校验失败，旧9dd三healthy、BB exact可读，尚未完成新版本生产验收 | P1：复用已发布实体/周榜/年榜事实，建立独立overview，目标化project并治理重复请求及失败Skeleton；按冷访问和资源门槛验收，不据此关闭OOM | [修复规划](plans/2026-10-09-music-detail-chart-performance-plan.md)、[分层验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md) | 2026-10-09 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付；本轮单次24分22秒 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07（单次计时，不代表三次稳定收口） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |
@@ -71,7 +71,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 建议开发顺序：优先解决已取得生产证据的OOM与详情内存增长，再推进真实模型/终端验收和门禁效率。日期精度、详情空统计及其生产专项已收口；资源缓解不等于代码问题解决。身份歧义、FK清理继续独立维护。
 
-对决个人统计优化已形成专项规划，资源验收与SS-2026-10-08-001关联记录，不据此宣称整站OOM已解决。S0–S3已实现；R3线上9dd7fd9b首次两艺人仍超2秒。R4单独完整门禁及阶段提交已完成，详情整合版专项通过后仍须新版默认完整；由本任务统一两项发布，S5生产首次与私有HTTPS仍待完成。
+对决个人统计优化与详情优化由本任务统一整合发布。6430d4de的本项45/90、96、130与详情自然90及默认完整八阶段均通过，正常推送完成；实际CI/NoDeploy成功，Release回退清单导出失败，生产仍旧9dd、源/任务/发布守恒。最小部署修复、生产首轮与私有HTTPS尚未完成。资源验收与SS-2026-10-08-001关联，整页资源不据此宣称整站OOM解决。
 
 ## 可以探索的方向
 

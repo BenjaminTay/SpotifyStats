@@ -530,7 +530,6 @@ versus_rank_sidecar_changed="false"
 versus_rank_sidecar_existed="false"
 versus_rank_sidecar_backup=""
 versus_rank_release_manifest=""
-versus_rank_previous_manifest=""
 source "$DEPLOY_DIR/versus-rank-release.sh"
 source "$DEPLOY_DIR/music-detail-release.sh"
 cleanup_release_stage() {
@@ -648,8 +647,7 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
     exit 1
   fi
 
-  if ! prepare_versus_rank_release "$target_backend_image" "$staged_database" || \
-      ! backup_versus_rank_release "$target_backend_image"; then
+  if ! prepare_versus_rank_release "$target_backend_image" "$staged_database"; then
     if [[ "$backend_was_running" == "true" ]]; then
       activate_mode "$current_mode" "$rollback_image_source" || true
     fi
@@ -662,6 +660,13 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
       activate_mode "$current_mode" "$rollback_image_source" || true
     fi
     echo "无法保留原数据库 inode 或旧榜单精确成品；拒绝发布。" >&2
+    exit 1
+  fi
+  if ! backup_versus_rank_release "$target_backend_image"; then
+    if [[ "$backend_was_running" == "true" ]]; then
+      activate_mode "$current_mode" "$rollback_image_source" || true
+    fi
+    echo "完整排名侧库备份失败；没有替换生产数据库。" >&2
     exit 1
   fi
   if ! replace_live_database "$staged_database"; then

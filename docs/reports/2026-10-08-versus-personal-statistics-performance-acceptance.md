@@ -590,3 +590,43 @@ root创建独立worktree `versus-detail-integration`、分支`codex/versus-detai
 补修阶段首次固定为`ada5c65dff4c972fa90cd5e78ec3352da6c36d32`，hooks均通过，三manifest九步骤及600/SCP/摘要原子上传均退出0。默认完整run `20261009T074153.613449Z-0ed84e269c4d`实际退出1：preflight/quality PASS，backend在1,647项通过后新fixture的“关闭后必无WAL”断言失败，191.94秒/4 warnings；后续阶段未运行。失败发生在夹具初始准备，尚未调用适配器，不归为CLI/统计故障，也不以局部54通过覆盖该失败。
 
 修正仅测试夹具：直接Online Backup静态portable seed避免其它测试的共享状态，显式checkpoint新自有目标，闭库模式确认零字节WAL后才移除本fixture的辅助文件，此时没有reader/holder打开；普通模式允许WAL存在并保留真实writer。业务、CLI实现、13个人调用链及前端不变；相关54项复验通过。旧ada及其已上传私密清单和失败run保留；尚未push或发布的本地补修阶段提交合入该fixture修正后重固定SHA，不重写远端历史、不forcepush。新完整门禁使用独立summary/log，不能覆盖前两轮失败。
+
+## 20. 最终联合版本本地验收与正式发布启动
+
+最终补修阶段固定为`6430d4de17ad2c909e4e3ba506546e462c3c14d0`（parent b4c），8路径84插入5删除，hooks全部通过。仅fixture/docs相对ada改变，三个离线CLI实现及所有业务源码相同；13个人调用链及unit、6 UI、probe和实体与已测45/96/130绑定完全一致。所有旧SHA、失败run和清单保留；主检出其它任务dirty未改。
+
+该SHA默认完整run `20261009T075213.655349Z-147218655db1` actual exit0、full/non-dry/gitclean、八必需阶段同轮PASS，用时1,532,685ms（25分32.685秒）。阶段ms：preflight7,932、quality74,686、backend541,802、api237,154、browser-routes400,249、browser-interactions79,464、browser-inventory45,720、browser-compat145,548；optional NOT_RUN。后端常规3,829 passed/2 skipped/4 warnings，真实副本186 passed/1 skipped/2 warnings；三项skip均明确为Genius client not available。前端803 passed/4 skipped、99文件通过/1跳过及build。API smoke157/157、boundary113/113、51目标slow_count0、warm P95最大221.643ms（Billboard data、500ms门槛），不冒称独立cold样本。三浏览器兼容、路由/交互/盘点均通过。摘要和原日志`integration/fullstack-sealed-{summary.json,log}`；13+unit/CLI及19源表后核验守恒，证据`fullstack-sealed-binding-after.json`。
+
+详情线程补充实际Linux stage业务复用证据：471现存linux/amd64镜像只读overlay最终相同三个CLI，在新owned副本迁移89→90、详情validate/import/closed verify4、BB validate/import/closed verify48，七阶段均actual0；四只读阶段文件state/SHA不变、三静态原件全state/SHA守恒、owned输出UID1000/GID1001、host cleanup成功、coldbuild0。报告SHA256 `2e736c3600f1de328bec71039b93f8502d4294a2deff1cfb438712ad0a21be83`，root核对三CLI commit SHA均相同；证据`integration/linux-stage-{report-copy,binding}.json`。这是实际FS/脚本兼容证据，不能替代最终6430实际镜像或正式安装。
+
+为避免用旧471详情90冒充包含R4艺人优化后的最终版，在完整门禁结束后仅受控重启OWN8025：原session23405/PID12972精确SIGINT、actual shutdown0，新正常lifespan session58345/PID26687；5185保持，8000/5173/8013等不动。health200、schema90、done6,286/failed38、pending/running0，BB当前跳过构建，offline默认rank4/source bb7/v2验证0；没有个人或overview预暖。此处本地重启不代表生产重启授权。
+
+随后详情root独占自然首轮90于08:27:21–08:30:46 UTC actual exit0、90/90通过（Chromium42/Fx24/WK24），freshcontext/PWA/原1000/2000/1500门槛保持；click core/all最大962.9/1,047.3ms，direct core最大1,295.6ms、shell后all最大525.5ms，pageerror/nonGET0、12项offscreen rank检查。v2 strict前后57来源/原37、五队列、21主发布与六侧全部发布、schema/epochs/fence/inode均守恒，access-clock变化0；所有context关闭。该90是详情矩阵，不能与本项45场景90个人样本混为同一矩阵。root独立读取复制`integration/detail-natural-{summary,guard-judgment}.json`，各SHA256为`c9feb565225183c5402cacf2bde2b6c9895cdd65881b9a9da2865246b3b03e6d`、`0e81dbcf5ee53abcc7f90f558a1003c970a0d9d6dc086e2c5bb2674e9886b6c4`。两项本地S4收口，不据此关闭S5。
+
+最终SHA三manifest官方九步骤及独立600/SCP/远端摘要/atomicrename全部actual0，默认rank4、detail4、BB48，原19源和DB/WAL守恒，无build或源补写。rank whole-file SHA256 `7748598e8b5e872b5e2c380d1a1f6e115184464581fdf4c14bc363dffa18056a`，detail `ff918b224573c59f8e863f2ed3ac5cd702240fa8a9d5a5ac5c06f77d2468df05`，BB `c54ff721b3e0aebe46a557bc44c8cbd2c56c83508e9f3ed586a1a0d6469c147a`；回执`release-6430…/{readiness,upload-receipt,cli-binding}.json`。本地96含custom四套；生产96定义为公开48＋私有SSH48，均只覆盖默认四套，不混淆或额外安装custom。
+
+root fresh fetch确认origin/main仍471，sourcebinding/gitclean/双项本地矩阵和三清单都满足后，正常push actual0（471→6430），未force。08:34:19 UTC正式CI `37905772987`、ProductionRelease `37905772875`、NoDeployContract `37905772855`实际启动，均完整6430 SHA；08:40:05 UTC三个Backend unit step success，进入contract、run仍in_progress。三模式、镜像、部署、独立服务器和生产首次尚未完成，不称生产Pass。沿同实际run继续，不人工重触发。私有HTTPS恢复/范围调整及两项独立生产首次所需额外受控backend重启仍待授权；外层入口不擅自改变。
+
+### 20.1 正式安装失败，独立核验旧版保持
+
+最终CI `37905772987`、NoDeploy `37905772855` actual success；Release `37905772875`质量、三模式、linux/amd64镜像成功，deploy job `113742754780` actual failure。安装日志证明详情validate/import/ready4、Billboard validate/import/ready48、目标个人rank validate4均通过。08:53:05 UTC `backup_versus_rank_release`调用current_tag旧9dd镜像导出旧个人排名供回退使用时，`versus_personal_context.context`在两次重试后仍检测PRAGMA data_version变化，严格拒绝为`Personal statistics source changed during revision collection`；没有替换live主库、安装live sidecar或启动6430版本。日志原文保留`release-6430…/workflows/failed-job-113742754780.log`，不把新详情成品verify前的预期缺失误当终止原因。
+
+08:53:21 UTC旧backend恢复Healthy；独立只读SSH实际退出0，三容器OCI均为完整9dd、healthy，schema89、94,760播放。相对旧9dd beforeguards，19源表、完整background_jobs、全部Analysis和个人排名发布逐项相等，done6,283/failed38/pending/running0；证据`failure-production-receipt.json`和`failure-rollback-guard-comparison.json`。新版未上线，生产首轮、资源和API尚未开始；没有暖重试、手工重跑或额外服务重启。下一步只在新owned副本重现旧rank回退导出的文件/连接边界并修最小部署步骤，保留严格source fence和联合恢复门槛。
+
+### 20.2 旧rank回退读取副本复现与最小部署修正
+
+只在新owned目录复制本次两份已关闭pre-release备份，原备份stat/hash前后相等。真实旧9dd镜像/SQLite3.46.1：闭库noWAL独立布局和同host双alias布局，先因copy新inode不匹配旧key返回unavailable，随后只以官方installer将现成四份排名重绑到OWN sidecar；旧CLI导出均actual0，16次data_version均1，文件state/hash不变。该结果不能把copy lineage缺口归为本次部署ValueError，也未证明alias本身导致失败。
+
+随后将观察到的post-restore SHM只读复制到闭库OWN主文件旁并创建零字节OWN WAL，明确是构造布局，未捕获失败瞬间SHM/WAL。真实旧CLI普通mode=ro导出actual1，PRAGMA data_version依次5→69、70→134、135→199，复现同`Personal statistics source changed during revision collection`；main/WAL/SHM字节、inode、mtime及SHA均未变，没有并发writer。noWAL immutable布局则导出成功，原严格context/data_version检查未修改。副本复现支持checkpoint/闭库后再执行严格旧成品gate，不声称已确定生产失败瞬间的全部文件状态或外部源写入。
+
+rank-only演练以真实旧镜像运行原main硬链接保留→新inode候选提升→现成四份安装→原inode与完整Analysis Online Backup恢复，旧CLI前后四manifest逐项相等，所有20条Analysis发布完整行/元数据相等；提取本次dirty共同gate的三文件RO/immutable/stat-fence和实际rank4部分，before/after均actual0、无WAL、无builder。Billboard导入及ready调用在该rank-only探针中明确排除，不能据此宣称完整旧BB48恢复。两wrapper均terminal actual0；报告`release-6430…/rank-export-diagnosis/diagnosis-final-report.json`，root独立确认SHA256 `7855c2395a90e2fa8780bc30a4d1e183d3d3dd1a003b36eb8bbfdbbd6e439cf0`，原始returncode/trace/备份保护保留。
+
+最小修正只涉及部署：目标成品校验后先checkpoint/保留原main inode，共同closed gate验证旧Billboard与实际四默认rank；随后完整Analysis备份，缺原inode硬链接即拒绝。移除用于旧“新inode回退”的冗余旧rank export/install；回退恢复原inode和全部旁库后仍共同exact gate，再允许旧镜像activate。目标rank validate/install/verify、core revision/source fence、个人13调用链、unit、前端及三个CLI均未改变。修正初次相关62项actual0/9.20秒，shell语法、diff和155文档审计通过；新增真实rank gate回归与完整owned共同恢复仍在执行，尚未commit、推送或再次发布。
+
+新增实际SQLite/rank回归覆盖原inode＋全Analysis恢复、缺/损rank、同事实新inode和三库空/非空WAL六种拒绝；仅Billboard callback为明确fixture，rank/default/source合同真实执行。首次1 failed/9 passed（本机SQLite3.51 closed-header普通RO备份内部副本无法open）保留。真实6430 Linux镜像SQLite3.46.1对原生产备份Python主体的DELETE/noWAL、closedWAL-header/noWAL、真实4152B committedWAL三个微型样本均actual0、integrity ok、事实11/22/33&34全部齐全，原源stat/hash守恒；没有执行候选生产修补。报告`tiny-offline-backup-report.json`，root确认SHA256 `1f64730d83fdb06d200997fc13b709a151e82ff2bc125a8c4b77bba0f4866b6f`；首次仅owned生成器chmod失败原文另保留，不算备份主体失败。
+
+只在本地测试adapter的内部disposable reader-copy为SQLite>=3.51建立query_only holder，保持原普通RO和真实Online Backup主体，正式fixture源保持closed/noWAL且不改header；Linux3.46不使用该shim，生产备份代码未改。限定10项actual0/8.77秒、模块29项actual0/9.47秒、最终四相关模块72 passed/1 warning/17.55秒 actual0，日志`rollback-actual-ranks/`；Ruff/format/diff/shell和文档审计通过。该结果不代替完整旧BB48共同gate，正在仅新owned副本按冻结真实三hosthelper执行一次完整演练；业务矩阵按逐文件绑定复用，不重复96/130/两项浏览器预暖。
+
+单次完整owned恢复报告随后actual `status=passed`，16个阶段仅在subprocess退出0后记录；真实9dd/6430 linux/amd64镜像、最终三个hosthelper逐项hash匹配，schema89→90、aux4/BB48/rank4、新inode提升与原inode恢复、全部Analysis/BB backup字节及原完整语义行、旧rank4/BB48、37原来源及完整保护事实全部守恒。三个独立旧镜像公开只读overview均200/found=true，主库/旁库字节及行前后不变，旧exact前后true；rank coldbuild0、owned cleanup完成。host最低1,407.758MiB、每阶段OOM delta0。此演练只证明本次自动联合恢复候选协议，不证明成功后manual rollback，也不称下一SHA镜像已构建。
+
+root独立读取报告并逐项断言、复制`integration/owned-joint-automatic-restore-6430-report-copy.json`，SHA256 `848837e6e9a8c61524346c11cc5b4000b908d29ada26626893b5f602e8d59a79`；host三helper匹配与判定`owned-joint-restore-binding.json`。原server报告在`/opt/spotify-stats/backups/owned-joint-automatic-restore-6430-20261009/report.json`。报告生成/cleanup后原SSH未收到EOF，owner只读确认远端没有rehearsal子进程，随后仅终止自己精确匹配的本机SSH传输，session34826最终255；不得写为整SSH wrapper exit0，也不因传输收尾再次演练。数据判定依据为真实报告及已完成16阶段，不把SSH异常覆盖为success。部署补修验证收口，固定阶段提交后运行新SHA必要默认完整并准备同源成品统一正式发布；S5仍待生产首轮与私有范围决定。

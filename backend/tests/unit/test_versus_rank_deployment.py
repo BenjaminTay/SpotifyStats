@@ -32,7 +32,6 @@ versus_rank_enabled=false
 versus_rank_sidecar_changed=false
 versus_rank_sidecar_existed=false
 versus_rank_sidecar_backup=""
-versus_rank_previous_manifest=""
 target_backend_image=target-image
 source "$HELPER_FILE"
 versus_rank_image_supported() {{ return 0; }}
@@ -123,7 +122,7 @@ prepare_versus_rank_release target-image "$DEPLOY_DIR/staged.db"
     assert actions == []
 
 
-def test_sidecar_restore_preserves_existing_families_and_rebases_old_rank_keys(tmp_path):
+def test_sidecar_restore_preserves_complete_backup_without_republishing(tmp_path):
     (tmp_path / "data").mkdir()
     cache = tmp_path / "data/analysis_cache.db"
     cache.write_bytes(b"previous-sidecar")
@@ -131,6 +130,9 @@ def test_sidecar_restore_preserves_existing_families_and_rebases_old_rank_keys(t
         tmp_path,
         """
 versus_rank_enabled=true
+printf 'original-main' > "$DEPLOY_DIR/data/spotify_stats.db"
+rollback_live_inode_path="$DEPLOY_DIR/stage/original.db"
+ln "$DEPLOY_DIR/data/spotify_stats.db" "$rollback_live_inode_path"
 backup_versus_rank_release target-image
 printf 'new-sidecar' > "$DEPLOY_DIR/data/analysis_cache.db"
 versus_rank_sidecar_changed=true
@@ -138,8 +140,17 @@ restore_versus_rank_release
 """,
     )
     assert result.returncode == 0, result.stderr
-    assert actions == ["export", "install", "verify"]
+    assert actions == []
     assert cache.read_bytes() == b"previous-sidecar"
+
+
+def test_sidecar_backup_requires_preserved_original_inode(tmp_path):
+    result, actions = run_helper(
+        tmp_path, "versus_rank_enabled=true\nbackup_versus_rank_release target-image"
+    )
+    assert result.returncode != 0
+    assert "已保留原主库 inode" in result.stderr
+    assert actions == []
 
 
 def test_deploy_order_has_no_activation_before_rank_ready_and_joint_rollback():
@@ -147,9 +158,10 @@ def test_deploy_order_has_no_activation_before_rank_ready_and_joint_rollback():
     promote = deploy.index('if ! replace_live_database "$staged_database"')
     preserve = deploy.index("if ! preserve_live_database_inode")
     prepare = deploy.index("if ! prepare_versus_rank_release")
+    backup = deploy.index("if ! backup_versus_rank_release")
     install = deploy.index("if ! install_versus_rank_release")
     activate = deploy.index('if ! activate_mode "$target_mode"')
-    assert prepare < preserve < promote < install < activate
+    assert prepare < preserve < backup < promote < install < activate
     restore = deploy[
         deploy.index("restore_previous_release() {") : deploy.index('backend_was_running="false"')
     ]

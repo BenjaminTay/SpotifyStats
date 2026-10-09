@@ -352,7 +352,7 @@ python scripts/versus_rank_publication.py build \
 
 首版将 manifest 通过已有 SSH/SCP 访问上传为服务器 `/opt/spotify-stats/backups/versus-ranks-<完整目标SHA>.json`，权限 `600`。生产 workflow 使用现有部署 SSH 凭证检查这一私密服务器文件，不新增 GitHub Secret，也不从 Git 或公开 artifact 获取数据。`deploy.sh` 自动发现此精确 SHA 路径，亦可显式传 `--versus-rank-manifest <path>` 或 `VERSUS_RANK_MANIFEST`。没有 manifest 时，只允许从当前 live DB 的目标 builder exact-ready 发布导出并重绑到替换后的 lineage；源发生变化即失败。
 
-Backend 停服期间先核对已完成搜索预检的副本，再备份 Analysis sidecar、保存上一镜像可消费的排名 manifest，替换主库后安装并验证四默认 ready，最后才激活新镜像。安装或后续网关验收失败时联合恢复主库、sidecar、上一 SHA 和部署模式；若上一镜像支持排名安装器，再重绑其精确旧发布到恢复后的 lineage。功能出现前的旧镜像继续使用原健康门禁，不调用不存在的安装器。停止后的原源副本单独保留，不用已升级搜索预检副本作为旧代码恢复点。
+Backend 停服期间先核对已完成搜索预检的副本和目标排名，再 checkpoint 并硬链接保留原主库 inode，以旧镜像严格验证旧 Billboard 和四默认排名；随后备份完整 Analysis sidecar。未保留原 inode 时拒绝排名备份。替换主库后按目标 manifest 安装并验证四默认 ready，最后才激活新镜像。安装或后续网关验收失败时，联合恢复原主库 inode、完整 sidecar、上一 SHA 和部署模式；原 key 的 lineage 随 inode 恢复，不再导出、重绑或改写旧排名发布。旧镜像启动前的共同闭库门禁仍要求旧排名与 Billboard exact-ready，缺失或漂移即拒绝激活。功能出现前的旧镜像不调用不存在的排名模块。停止后的原源副本单独保留，不用已升级搜索预检副本作为旧代码恢复点。
 
 ## 音乐详情附属投影发布
 
@@ -366,4 +366,4 @@ L3 来源日期精度修复将 Billboard 持久成品独立升级到 `billboard_
 
 Billboard manifest 保留全部事实依赖、分析 COMMON/RECORDS revision vector、日期与署名 policy，允许重绑数据库路径和 inode；不得删除事实 revision 来接受漂移。先验证并导入 stage sidecar；主库提升产生新 inode 后，再以同 manifest 重绑到 live key，独立 verify 后才激活。失败时联合恢复原主库、Billboard/Analysis sidecar、旧 SHA 和模式。闭库重绑拒绝遗留 WAL，运行中检查使用普通只读连接。默认详情目标读取不依赖完整 Billboard sidecar，legacy full/list/release 继续原成品门禁。
 
-自动发布失败恢复在停服并 checkpoint 后保留原数据库的同文件系统硬链接，回退使用原 inode，避免旧 v3 精确 key 因复制到新 inode 失效。旧镜像启动前后均只读检查默认 Billboard exact-ready；不能仅凭 LKG/健康响应宣称恢复成功。发布成功清理该 owned 链接；失败且尚未恢复时保留路径供恢复。此保护只覆盖本次发布失败的自动联合恢复，成功后人工 `rollback.sh` 部署旧 v3 的成品恢复尚未验证。
+自动发布失败恢复在停服并 checkpoint 后保留原数据库的同文件系统硬链接，回退使用原 inode，避免旧 v3 与排名精确 key 因复制到新 inode 失效。共同闭库门禁以普通公开只读 guard、immutable 和前后文件状态读取已经 checkpoint 且无 WAL 的主库及旁库，严格验证旧 Billboard 和实际四默认排名；任意残留 WAL、缺成品或来源变化均拒绝。旧镜像启动后继续普通只读 exact-ready 检查，读取已提交 WAL；不能仅凭 LKG/健康响应宣称恢复成功。发布成功清理该 owned 链接；失败且尚未恢复时保留路径供恢复。此保护只覆盖本次发布失败的自动联合恢复，成功后人工 `rollback.sh` 部署旧 v3 的成品恢复尚未验证。

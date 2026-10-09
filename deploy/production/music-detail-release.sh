@@ -111,6 +111,17 @@ sqlite3.connect = connect
 set_public_readonly_db_guard(True)
 if not billboard_default_snapshots_ready():
     raise SystemExit("previous Billboard publications are not exact-ready")
+if Path("scripts/versus_rank_publication.py").is_file():
+    from backend.services import versus_rank_context_service as ranks
+    connection = sqlite3.connect("/app/data/spotify_stats.db")
+    connection.row_factory = sqlite3.Row
+    try:
+        variants = ranks.default_configurations(connection)
+        snapshots = [ranks.read(connection, params)[1] for params in variants]
+        if len(snapshots) != 4 or len({row["source_revision"] for row in snapshots}) != 1:
+            raise SystemExit("previous personal ranks are not exact-ready")
+    finally:
+        connection.close()
 if any(state(path) != value for path, value in captured.items()):
     raise SystemExit("Stopped exact gate source changed")
 '

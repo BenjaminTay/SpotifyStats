@@ -74,22 +74,20 @@ backup_versus_rank_release() {
   if [[ "$versus_rank_enabled" != "true" ]]; then
     return 0
   fi
+  if [[ -z "${rollback_live_inode_path:-}" || \
+        ! "$DEPLOY_DIR/data/spotify_stats.db" -ef "$rollback_live_inode_path" ]]; then
+    echo "完整排名备份要求已保留原主库 inode；拒绝跳过联合恢复边界。" >&2
+    return 1
+  fi
   versus_rank_sidecar_existed="false"
   if [[ -f "$DEPLOY_DIR/data/analysis_cache.db" ]]; then
     versus_rank_sidecar_existed="true"
     versus_rank_sidecar_backup="$DEPLOY_DIR/backups/analysis-pre-release-${NEW_TAG:0:12}-${release_stamp}.db"
     create_offline_backup "$image" "$versus_rank_sidecar_backup" analysis_cache.db || return 1
   fi
-  if [[ "$current_tag" =~ ^[0-9a-f]{7,64}$ ]]; then
-    if versus_rank_image_supported "$(backend_image_for_tag "$current_tag")"; then
-      versus_rank_previous_manifest="$release_stage_dir/versus-ranks-${current_tag}.json"
-      versus_rank_command "$(backend_image_for_tag "$current_tag")" export \
-        "$DEPLOY_DIR/data/spotify_stats.db" "$versus_rank_previous_manifest" "$current_tag" || return 1
-    else
-      local status="$?"
-      [[ "$status" -eq 1 ]] || return "$status"
-    fi
-  fi
+  # deploy.sh has already preserved and verified the original main inode.
+  # Restoring it with this complete sidecar restores every old publication key;
+  # exporting/reinstalling ranks is only needed when main lineage changes.
 }
 
 install_versus_rank_release() {
@@ -113,12 +111,8 @@ restore_versus_rank_release() {
     rm -f -- "$DEPLOY_DIR/data/analysis_cache.db"
   fi
   rm -f -- "$DEPLOY_DIR/data/analysis_cache.db-wal" "$DEPLOY_DIR/data/analysis_cache.db-shm"
-  if [[ -n "$versus_rank_previous_manifest" ]]; then
-    versus_rank_command "$(backend_image_for_tag "$current_tag")" install \
-      "$DEPLOY_DIR/data/spotify_stats.db" "$versus_rank_previous_manifest" "$current_tag" || return 1
-    versus_rank_command "$(backend_image_for_tag "$current_tag")" verify \
-      "$DEPLOY_DIR/data/spotify_stats.db" "" "$current_tag" || return 1
-  fi
+  # The joint stopped gate verifies old ranks and Billboard after both sidecars
+  # are restored, before the previous image may serve requests again.
 }
 
 verify_running_versus_ranks() {

@@ -7,9 +7,15 @@ import shlex
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
 
 import pytest
+
+from backend.tests.unit import test_versus_rank_context
+
+base_isolated = test_versus_rank_context.base_isolated
+rank_isolated = test_versus_rank_context.isolated
 
 pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[3]
@@ -384,7 +390,7 @@ sys.modules['backend.core.access_surface'].set_public_readonly_db_guard = guard
 sys.modules['backend.services.billboard_snapshot_service'].billboard_default_snapshots_ready = ready
 """
     result = subprocess.run(
-        [sys.executable, "-c", fixture_code + code], capture_output=True, text=True
+        [sys.executable, "-c", fixture_code + code], cwd=tmp_path, capture_output=True, text=True
     )
     assert result.returncode == (0 if remaining_wal is None else 1), result.stderr
     if remaining_wal:
@@ -420,3 +426,261 @@ sys.modules["backend.services.billboard_snapshot_service"].billboard_default_sna
     assert result.returncode == (0 if ready else 1)
     if not ready:
         assert "not exact-ready" in result.stderr
+
+
+def _closed_checkpoint(path):
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("PRAGMA journal_mode=WAL")
+        assert connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0] == 0
+    # These are owned fixture files; every connection above has closed. Retain
+    # the real WAL-mode header, but never let the stopped gate ignore a WAL.
+    for suffix in ("-wal", "-shm"):
+        Path(str(path) + suffix).unlink(missing_ok=True)
+    assert path.read_bytes()[18:20] == b"\x02\x02"
+
+
+def _closed_publications(path):
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro&immutable=1", uri=True)) as conn:
+        return conn.execute("SELECT * FROM analysis_snapshots ORDER BY publication_id").fetchall()
+
+
+def _closed_file_states(data):
+    result = {}
+    for path in data.iterdir():
+        stat = path.stat()
+        result[path.name] = (
+            stat.st_dev,
+            stat.st_ino,
+            stat.st_size,
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
+    return result
+
+
+@pytest.fixture
+def actual_stopped_ranks(rank_isolated, monkeypatch):
+    from backend.core import config, db
+    from backend.services import analysis_snapshot_store as store
+    from backend.services import versus_rank_context_service as ranks
+
+    original, owned = rank_isolated
+    data = owned / "data"
+    data.mkdir()
+    main = data / "spotify_stats.db"
+    _closed_checkpoint(original)
+    original.rename(main)
+    analysis = data / "analysis_cache.db"
+    billboard = data / "billboard_cache.db"
+    monkeypatch.setattr(db, "DB_PATH", str(main))
+    monkeypatch.setattr(config, "SPOTIFY_STATS_ANALYSIS_CACHE_PATH", str(analysis))
+    with closing(db.get_db(readonly=True)) as conn:
+        variants = ranks.default_configurations(conn)
+        for filters in variants:
+            ranks.ensure(conn, filters)
+        expected = [ranks.read(conn, filters)[1] for filters in variants]
+    assert len(expected) == 4 and len({row["request_key"] for row in expected}) == 4
+    # Use the real generic store, retaining unrelated publication payloads and
+    # every metadata column rather than recreating only the rank family.
+    for family in ("fixture_archive", "fixture_sidebar"):
+        store.publish(family, family + "-key", "side-source", "side-v1", {"fact": family})
+    with closing(sqlite3.connect(billboard)) as conn:
+        conn.execute("CREATE TABLE fixture_billboard(value INTEGER)")
+        conn.execute("INSERT INTO fixture_billboard VALUES (7)")
+        conn.commit()
+    for path in (main, analysis, billboard):
+        _closed_checkpoint(path)
+    code = (
+        HELPER.read_text()
+        .split("verify_stopped_billboard_exact() {", 1)[1]
+        .split("python -c '", 1)[1]
+        .split("'\n}", 1)[0]
+        .replace("/app/data", str(data))
+    )
+    gate = owned / "actual-stopped-gate.py"
+    # Only the Billboard ready callback is a fixture. The shipped stopped
+    # SQLite/stat fence and real default configurations/context/rank reads run
+    # intact, in a fresh process with the actual CLI capability present.
+    gate.write_text(
+        f"""
+import sys
+sys.path.insert(0, {str(ROOT)!r})
+from backend.core.access_surface import public_readonly_db_guard_active
+from backend.services import billboard_snapshot_service as billboard
+
+def fixture_billboard_ready():
+    import sqlite3
+    from pathlib import Path
+    assert public_readonly_db_guard_active()
+    connection = sqlite3.connect(Path({str(billboard)!r}).as_uri() + '?mode=ro', uri=True)
+    try:
+        assert connection.execute('PRAGMA query_only').fetchone()[0] == 1
+        assert connection.execute('SELECT value FROM fixture_billboard').fetchone()[0] == 7
+    finally:
+        connection.close()
+    return True
+billboard.billboard_default_snapshots_ready = fixture_billboard_ready
+"""
+        + code
+        + "\nprint('actual-default-ranks-ready:' + str(len(snapshots)))\n"
+    )
+    env = {
+        **os.environ,
+        "SPOTIFY_STATS_DB_PATH": str(main),
+        "SPOTIFY_STATS_ANALYSIS_CACHE_PATH": str(analysis),
+        "SPOTIFY_STATS_BILLBOARD_CACHE_PATH": str(billboard),
+    }
+    yield dict(
+        owned=owned,
+        data=data,
+        main=main,
+        analysis=analysis,
+        billboard=billboard,
+        gate=gate,
+        env=env,
+        expected=expected,
+        all_publications=_closed_publications(analysis),
+    )
+
+
+def _actual_stopped_gate(source):
+    return subprocess.run(
+        [sys.executable, str(source["gate"])],
+        cwd=ROOT,
+        env=source["env"],
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_original_inode_and_complete_analysis_restore_all_actual_default_ranks(
+    actual_stopped_ranks,
+):
+    source = actual_stopped_ranks
+    owned, main, analysis = source["owned"], source["main"], source["analysis"]
+    original_inode = main.stat().st_ino
+    original_main_hash = hashlib.sha256(main.read_bytes()).hexdigest()
+    adapter = owned / "actual-online-backup.py"
+    deploy = (ROOT / "deploy/production/deploy.sh").read_text()
+    backup_code = (
+        deploy.split("create_offline_backup() {", 1)[1]
+        .split("python -c '", 1)[1]
+        .split('\' "$database_name"', 1)[0]
+        .replace("/tmp/offline-source", str(owned / "owned-backup-reader"))
+        .replace("/tmp/spotify_stats.backup.db", str(owned / "owned-backup-output.db"))
+        .replace("/source", str(source["data"]))
+    )
+    # The shipped Linux image (SQLite 3.46) can back up a closed WAL-header
+    # copy without auxiliary files. Local SQLite 3.51 needs a WAL/SHM reader
+    # condition: establish it only on this adapter's disposable internal copy,
+    # retaining the original ordinary-RO connection and real Online Backup.
+    # The mounted fixture source stays closed and has no auxiliary files.
+    backup_code = backup_code.replace(
+        "source = sqlite3.connect(\n",
+        """fixture_reader_holder = None
+if sqlite3.sqlite_version_info >= (3, 51, 0):
+    fixture_reader_holder = sqlite3.connect(source_dir / database_name)
+    fixture_reader_holder.execute("PRAGMA query_only=ON")
+    fixture_reader_holder.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+source = sqlite3.connect(
+""",
+        1,
+    ).replace(
+        "source.close()\n",
+        "source.close()\nif fixture_reader_holder is not None:\n    fixture_reader_holder.close()\n",
+        1,
+    )
+    adapter.write_text(backup_code)
+    replace = (
+        "replace_live_database() {"
+        + deploy.split("replace_live_database() {", 1)[1].split("wait_until_healthy() {", 1)[0]
+    )
+    staged = owned / "candidate.db"
+    staged.write_bytes(main.read_bytes())
+    with closing(sqlite3.connect(staged)) as conn:
+        conn.execute(
+            "UPDATE plays SET ms_played=ms_played+1 WHERE play_id=(SELECT MIN(play_id) FROM plays)"
+        )
+        conn.commit()
+    _closed_checkpoint(staged)
+    script = owned / "restore-all.sh"
+    script.write_text(
+        f"""set -Eeuo pipefail
+DEPLOY_DIR={shlex.quote(str(owned))}
+NEW_TAG=fixture
+release_stamp=actual
+mkdir -p "$DEPLOY_DIR/backups" "$DEPLOY_DIR/kept"
+source {shlex.quote(str(HELPER))}
+source {shlex.quote(str(ROOT / "deploy/production/versus-rank-release.sh"))}
+rollback_live_inode_dir="$DEPLOY_DIR/kept"
+rollback_live_inode_path="$rollback_live_inode_dir/spotify_stats.db"
+ln "$DEPLOY_DIR/data/spotify_stats.db" "$rollback_live_inode_path"
+versus_rank_enabled=true
+create_offline_backup() {{ {shlex.quote(sys.executable)} {shlex.quote(str(adapter))} "$3" > "$2"; }}
+backup_versus_rank_release fixture-image
+{replace}
+replace_live_database "$DEPLOY_DIR/candidate.db"
+[[ ! "$DEPLOY_DIR/data/spotify_stats.db" -ef "$rollback_live_inode_path" ]]
+printf 'candidate analysis replaced every family' > "$DEPLOY_DIR/data/analysis_cache.db"
+versus_rank_sidecar_changed=true
+restore_live_database_inode
+restore_versus_rank_release
+"""
+    )
+    restored = subprocess.run(["bash", str(script)], capture_output=True, text=True)
+    assert restored.returncode == 0, restored.stderr
+    assert main.stat().st_ino == original_inode
+    assert hashlib.sha256(main.read_bytes()).hexdigest() == original_main_hash
+    assert _closed_publications(analysis) == source["all_publications"]
+    assert {row[1] for row in source["all_publications"]} == {
+        "entity_rank_context",
+        "fixture_archive",
+        "fixture_sidebar",
+    }
+    before = _closed_file_states(source["data"])
+    verified = _actual_stopped_gate(source)
+    assert verified.returncode == 0, verified.stderr
+    assert verified.stdout.strip() == "actual-default-ranks-ready:4"
+    assert _closed_file_states(source["data"]) == before
+
+
+@pytest.mark.parametrize("fault", ["missing_rank", "corrupt_rank", "wrong_main_inode"])
+def test_stopped_gate_rejects_actual_rank_or_main_identity_failure(actual_stopped_ranks, fault):
+    source = actual_stopped_ranks
+    main, analysis = source["main"], source["analysis"]
+    if fault == "wrong_main_inode":
+        old_inode = main.stat().st_ino
+        replacement = source["owned"] / "same-facts-new-inode.db"
+        replacement.write_bytes(main.read_bytes())
+        replacement.replace(main)
+        assert main.stat().st_ino != old_inode
+    else:
+        with closing(sqlite3.connect(analysis)) as conn:
+            predicate = "WHERE publication_id=(SELECT MIN(publication_id) FROM analysis_snapshots WHERE family='entity_rank_context')"
+            if fault == "missing_rank":
+                conn.execute("DELETE FROM analysis_snapshots " + predicate)
+            else:
+                conn.execute("UPDATE analysis_snapshots SET payload=x'00' " + predicate)
+            conn.commit()
+        _closed_checkpoint(analysis)
+    before = _closed_file_states(source["data"])
+    result = _actual_stopped_gate(source)
+    assert result.returncode != 0
+    assert "503" in result.stderr or "not exact-ready" in result.stderr
+    assert _closed_file_states(source["data"]) == before
+    assert not list(source["data"].glob("*-shm"))
+
+
+@pytest.mark.parametrize("name", ["spotify_stats.db", "analysis_cache.db", "billboard_cache.db"])
+@pytest.mark.parametrize("contents", [b"", b"remaining WAL must never be ignored"])
+def test_stopped_actual_rank_gate_rejects_any_wal_without_creating_auxiliary_files(
+    actual_stopped_ranks, name, contents
+):
+    source = actual_stopped_ranks
+    (source["data"] / (name + "-wal")).write_bytes(contents)
+    before = _closed_file_states(source["data"])
+    result = _actual_stopped_gate(source)
+    assert result.returncode != 0 and "requires no WAL" in result.stderr
+    assert _closed_file_states(source["data"]) == before
+    assert not list(source["data"].glob("*-shm"))

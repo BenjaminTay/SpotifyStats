@@ -320,3 +320,9 @@ R3隔离证据：身份自身CPU约20ms，在同期global logical merge时墙钟
 2026-10-09 发布实测补修：固定b4c69d16后rank4/detail4准备通过，BB官方verify因适配器强制BEGIN与core committed-source合同冲突失败。保留失败并精确终止该OWN默认完整run（preflight/quality PASS，其余NOT_RUN，overall FAIL，前端803/4skip），服务/生产未动。只取消CLI强制BEGIN，原RO/immutable/source封锁与core规则保留；54相关回归及真实48目标verify/export/validate通过，无build/upload。接下来固定补修SHA后运行新默认完整和三manifest发布；13个人业务调用链不变，45/96/130绑定精确复用。见报告19.2。
 
 ada补修阶段三清单九步骤及私密上传通过，默认完整在1,647项后因新夹具“关闭后必无WAL”假定失败。只修夹具为静态seed Online Backup、显式checkpoint及closed自有零WAL封闭，业务与CLI不变；失败原始记录保留。未发布的本地补修阶段合入该修正后重固定SHA，再跑独立完整门禁，不以54局部或旧版本Pass替代。见报告19.2。
+
+最终6430d4de阶段固定、hooks通过，新默认完整八阶段同轮PASS/actual0/25分32.685秒，3,829/2skip常规＋186/1skip真实副本、803/4skip前端、157+113 API/51目标slow0及三浏览器通过，13调用链及19源守恒。真实Linux471镜像overlay相同CLI的owned schema90/4详情/48BB七阶段通过，不能冒充最终镜像。仅本地OWN8025重启后，详情root最终自然90/90及v2全守恒实际通过，和本项45/90分别记录；两项S4收口。最终三清单九步骤及私密原子上传通过，root正常push471→6430实际0，08:34:19正式CI37905772987/Release37905772875/NoDeploy37905772855启动。继续实际三模式/镜像/安装/独立核验和两项生产原首次，S5不关闭；私有范围和额外生产重启仍待授权。详见报告第20节。
+
+6430实际正式CI/NoDeploy success，Release质量/三模式/镜像成功、旧rank回退导出因PRAGMA data_version变化被严格拒绝，安装失败且尚未promote live主库/sidecar。旧9dd三healthy，独立19源/完整jobs/所有Analysis与排名守恒；新版生产首轮未开始。仅在新owned副本重现部署边界并修最小步骤，保留原始失败与source fence，不暖重试或手工重跑。见报告20.1。
+
+最小部署阶段验证完成：保持原main inode及完整Analysis、移除冗余旧rank export/install并增加共同closed rank4严格gate。真实副本同类PRAGMA拒绝复现、72相关回归、Linux原备份三条件与一次完整owned自动共同恢复16阶段通过；旧rank4/BB48/三旧HTTP、主库inode/完整旁库及来源守恒。SSH收尾255单列，未虚称wrapper0。业务13调用链/UI/CLI未变，原S4按精确binding复用；随后固定阶段SHA，新默认完整必要一轮及同源成品发布，不重复业务矩阵。见报告20.2。
