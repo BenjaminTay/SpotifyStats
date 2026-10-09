@@ -138,3 +138,16 @@ SSH首次握手失败发生在任何source capture/业务请求之前，最小�
 本轮证据不能把全部超时归因于等待排名。首个歌曲深链HTML responseEnd302ms，但DOMready3021ms；entry JS为658,419B（约643KiB）下载2688ms，后续673,158B（约657KiB）图表chunk下载2890ms；capabilities于3117ms才发出、settings于5996ms才发出，overview/summary并行而服务耗时979/1058ms。首个专辑点击overview服务2256ms；另一些深链overview服务约82–125ms却仍端到端超5秒。需要分别处理静态加载/初始化、少数较慢服务及混合流程高驻留，不能统一当作纯网络或纯计算。
 
 c587的三套Nginx源码已配置gzip；ResourceTiming的transfer/encoded/decoded字节与真实响应编码尚未形成完整压缩归因证据，不提出重复“开启gzip”或擅改外层代理。已用实际本地production build确认另一具体前置依赖：LazyEChart模块顶层导入ECharts，引擎进入三类详情route静态闭包。最小本地候选将整个引擎/注册/React适配器移入动态图表renderer；候选验证单独记录，未发布，不继承本轮或历史S4/生产Pass。后续维护原门槛、只读和统计合同；001保持OPEN/Partial，规划不归档，额外发布及独立首轮重启需具体授权。对决已完成状态及整体OOM独立事项保持。
+
+
+## ECharts 动态 renderer 最小候选（本地验证，未发布）
+
+候选基于0790689f，仅移动共享图表的加载边界：LazyEChart延迟导入EChartRenderer，后者保留原四种图表、八种组件和Canvas注册及React适配器。原Suspense占位高度、style、option、事件与其他props透传保持；未增加依赖或修改API、统计事实及布局。
+
+实际production build前后均exit0。三类详情route静态JavaScript闭包各减少671,514B（约656KiB），完整renderer为679,538B的独立dynamic entry，已退出route静态前置。Track/Album/Artist静态闭包分别由1,466,111/1,479,675/1,472,682B降至794,597/808,161/801,168B；共享主入口仍为658,419B，因此不宣称全部冷加载瓶颈已解决。实际manifest与依赖图分别保留在本轮私有证据的frontend-build-baseline及frontend-build-lazy-renderer文件。
+
+六个既有针对性测试文件共128项通过（移动详情布局、年榜、Query生命周期、排名可见性、导航历史及架构），两文件ESLint及TypeScript/build通过。真实Chromium本地360/1280视口、歌曲/专辑/艺人、点击/深链共12场景均正常绘制canvas且功能通过。使用本项8013长期运行后端和5183当前开发前端，backend_startup_mode为unspecified；这是局部功能/绘制证据，不是新冷进程、完整八阶段或生产性能验收。原注册清单及props保持的diff与上述实际证据足供最小候选审阅，不额外扩大全站或搭建覆盖数测试。
+
+原记录离线关联还显示：首轮L2 dynamic/fixed歌曲深链窗口较大的RSS增长之前，前一点击场景的include_rank_context=true请求已在浏览器取消，未得到响应。服务端计算可能跨场景继续，但现有采样仅能证明时间重叠，不能将增量直接归因于排名、摘要或overview。该关联单列为后续副本定位线索，不作为本次renderer修复因果或整体OOM关闭证据。
+
+候选需要联合负责人审阅后统一申请新发布及保持原门槛的生产首次90项/资源/只读验收；新部署正常启动可提供新进程窗口，不默认再申请额外独立重启。旧c587的51项失败保留，详情事项继续OPEN/Partial。
