@@ -1,7 +1,7 @@
 # SpotifyStats 开发状态总表
 
 > 最后核验：2026-10-09（9dd7fd9b正式CI、三模式及部署通过；首次公开28样本功能正确，27项性能达标、两艺人基础2.098秒失败；OOM独立待修复）
-> 当前进展：`SS-2026-10-08-002` R3已部署，首次公开两艺人基础2.098秒仍超2秒，S5保持Partial。R4阶段9377ab8e及单独默认完整八阶段通过；正常push被远端详情整合拒绝后，在独立工作区合并详情安装补修abc78d91。集成版312相关/52安装专项、45场景90个人样本全部功能性能、96接口对账及130性能资源门槛通过；首次12自定义排名成品缺失及原图片失败分别保留。准备固定集成SHA并执行新版默认完整门禁、统一发布和生产首次。私有HTTPS恢复/范围调整待答，不放宽原门槛。
+> 当前进展：`SS-2026-10-08-002` R3线上首次两艺人2.098秒仍失败，S5保持Partial。R4与详情整合45/90、96及130专项通过；发布CLI事务冲突补修后54安装相关与真实48目标三步骤通过。ada三清单已私密上传，但默认完整在1,647项后新增夹具的残留WAL假定失败；只修测试闭库准备，CLI/业务不变。两轮失败保留，本地未发布补修阶段合入修正后重固定SHA，继续新默认完整和统一发布。私有HTTPS恢复/范围调整待答，不放宽门槛。
 > 当前生产：`9dd7fd9bc649172e16f9ba118075adfe2a4c3cf1` 正式CI、三模式、镜像与部署全部success；三OCI完整SHA/healthy、search4/rank4、实际helper精确hash及独立verify通过，startup settled。新首次公开两艺人一项基础失败；私有SSH仅功能证据，私有HTTPS仍Stopped/Serve空且未验收，恢复授权或范围调整待答；旧acdd/d5/d2失败保留。
 > 历史日期专项已发布业务代码：`76a4968`；CI attempt2质量/三模式/镜像/部署success，attempt1传输SSH reset保留。
 > 历史日期专项生产核验：76a4968、schema89、dual三healthy（12:54）；五年精确年度、两端30次API、两端双视口与最终61表事实守恒通过。连接已恢复，OOM及详情访问后内存增长未代码修复。
@@ -60,7 +60,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
 | SS-2026-10-08-001 | 生产OOM与详情访问内存增长 | 内核确认global OOM终止uvicorn；连接恢复，浏览器检查后RSS再至约2.3GiB。受控backend重启、逐年有界维护已缓解，最终healthy；未代码修复 | P1：在副本复现详情/趋势冷路径及缓存驻留，限制重型任务叠加；验证冷/热访问资源，首个摘要17.98秒不算性能Pass | [生产验收与资源证据](reports/2026-10-08-release-date-production-delivery.md)、[台账](issues/2026-08-27-issue-register.md) | 2026-10-08 |
-| SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | IN_PROGRESS；线上9dd7fd9b正式CI/三模式/部署通过，首次28样本功能正确、27项性能达标，两艺人2.098秒失败。R4阶段9377ab8e本地默认完整通过；集成详情abc78d91后312相关/52安装专项、45场景90样本、96接口及130性能资源门槛通过 | P1：固定集成SHA执行新版默认完整门禁，统一正常推送/正式发布和原生产首次，不预暖或放宽门槛。自定义排名准备缺口已精确补入后重验，原失败保留；私有HTTPS恢复/范围调整待答，生产两项独立首次所需额外重启须另行授权；整页RSS不归单API，OOM独立跟踪 | [完整规划](plans/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第19节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
+| SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | IN_PROGRESS；线上9dd首次两艺人2.098秒失败。整合专项45/90、96、130及CLI补修54/真实48三步骤通过；ada默认完整在1,647项后测试夹具残留WAL假定失败，已仅修fixture，失败保留 | P1：本地未发布补修阶段合入fixture后重固定SHA运行新默认完整，统一正常推送/正式发布和原生产首次，不预暖或放宽门槛。私有HTTPS恢复/范围调整待答，额外重启另行授权；整页RSS不归单API，OOM独立跟踪 | [完整规划](plans/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第19节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
 | SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | S0–S3已实现；471版本S4自然90/90、默认完整八阶段同轮PASS；实际ID冷/热与324资源通过，峰/末驻留降81.41%/77.75%。CI/三模式通过；S5首次安装在stage只读校验失败，旧9dd三healthy、BB exact可读，尚未完成新版本生产验收 | P1：复用已发布实体/周榜/年榜事实，建立独立overview，目标化project并治理重复请求及失败Skeleton；按冷访问和资源门槛验收，不据此关闭OOM | [修复规划](plans/2026-10-09-music-detail-chart-performance-plan.md)、[分层验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md) | 2026-10-09 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付；本轮单次24分22秒 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07（单次计时，不代表三次稳定收口） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |

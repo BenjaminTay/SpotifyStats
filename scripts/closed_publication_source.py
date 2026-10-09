@@ -42,7 +42,8 @@ def publication_reads(source, *, closed=False, sidecars=()):
             )
             conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("PRAGMA query_only=ON")
-            conn.execute("BEGIN")
+            # Revision collectors reject active transactions and fence ordinary
+            # committed reads themselves. Closed files are sealed by states.
             return conn
         return original(database, *args, **kwargs)
 

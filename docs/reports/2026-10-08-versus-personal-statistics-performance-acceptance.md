@@ -576,3 +576,17 @@ root创建独立worktree `versus-detail-integration`、分支`codex/versus-detai
 随后36独立进程（每case fresh5与warm21）、324常规和120切换请求完成，130/130性能与资源门槛通过，实际退出0，总108.315秒。fresh基础最大track111.36/album307.48/artist825.77ms；source/owned19表守恒且相等、13调用链前后完全一致，公开builder/publish/enqueue0、保留全局play frame0。证据`integration-api-run/report.json`与`integration-api-run.log`；资源为个人API probe，不能替代整页生产采样或OOM结论。
 
 上述专项收口后才固定整合提交并启动新版本默认完整八阶段门禁；原9377默认完整Pass不能替代本次70余路径整合与安装补修后的完整结果。当前正式线上仍9dd，新的CI、三模式、部署及原首次公开验收尚未完成。私有HTTPS恢复授权/范围调整仍待用户答复；为两个任务提供独立生产首次测量所需的受控backend重启也须在具体发布版本健康后另行获得授权，协调授权不等于重启授权。
+
+### 19.2 真实Billboard发布校验发现事务冲突与补修
+
+整合提交`b4c69d16b0a693134494b44c3db351a4fce2c828`实际退出0，parents9377/abc，74路径；13个人调用链及unit commit blobs逐项与已测值一致，工作区干净。merge hooks仅检查冲突文件，未声称Python全量hook通过；随后默认完整run `20261009T072637.595852Z-3036b3d9dfcc`的preflight与quality通过（前端803 passed/4 skipped，99文件通过/1跳过及build）。发布准备并行发现官方Billboard verify退出1：新CLI适配器普通RO强制BEGIN，与`analysis_snapshot_revision.source_revision`既有“只读取已提交事实”的事务拒绝合同冲突；rank4/detail4三步骤已通过，但BB还未导出，未上传或push。原失败保留`release-b4c…/readiness.json`。
+
+仅对精确匹配该run、8025的OWN test_storage_guard PID16,411发送SIGTERM，由其终止自有子进程组并清理测试临时目录，wrapper80081实际退出1。八阶段摘要overall FAIL，preflight/quality PASS、其它NOT_RUN，不能当作完整Pass或后端测试失败；终止原因和原日志保留`integration/fullstack-interruption.json`、`fullstack-summary.json`、`fullstack.log`。8025后端及5185前端没有停止，正式生产没有变化。
+
+最小补修仅取消CLI适配器强制BEGIN，保留mode=ro/query_only、closed无WAL+immutable及前后dev/inode/size/mtime/ctime封锁，不放宽core revision拒绝/双data_version检查。新增普通活动WAL和闭库WAL header两模式的真实source_revision与真实Billboard context回归，同时证明写入拒绝和主文件摘要守恒；原52相关加新增2项，54 passed/1 warning/0.98秒，actual exit0。最初测试fixture错误移除仍有revision holder的辅助文件导致1项unable-to-open失败，已改为普通模式真实writer、closed模式始终sealed；失败日志另存，不归为新业务故障。
+
+同现成完整副本以补修CLI实际执行48目标verify/export/validate，三个步骤均退出0，无closed-source/build/upload；payload digest仍`f738a65517dbd0d7382cb05005d8d280d197e84aa011460c1eca8ddb0c4c21fe`，89,769,316字节清单whole-file SHA256 `c54ff721b3e0aebe46a557bc44c8cbd2c56c83508e9f3ed586a1a0d6469c147a`、mode600。源main/BBsidecar及WAL字节/inode/mtime和CLI前后hash守恒，证据`trial-committed-read/report.json`。本次仍为b4+dirty补修，固定新SHA后才正式准备三manifest并运行新默认完整；本项13个人调用链及前端未改，既有45/96/130专项证据精确绑定复用，不重复预暖或修改阈值。
+
+补修阶段首次固定为`ada5c65dff4c972fa90cd5e78ec3352da6c36d32`，hooks均通过，三manifest九步骤及600/SCP/摘要原子上传均退出0。默认完整run `20261009T074153.613449Z-0ed84e269c4d`实际退出1：preflight/quality PASS，backend在1,647项通过后新fixture的“关闭后必无WAL”断言失败，191.94秒/4 warnings；后续阶段未运行。失败发生在夹具初始准备，尚未调用适配器，不归为CLI/统计故障，也不以局部54通过覆盖该失败。
+
+修正仅测试夹具：直接Online Backup静态portable seed避免其它测试的共享状态，显式checkpoint新自有目标，闭库模式确认零字节WAL后才移除本fixture的辅助文件，此时没有reader/holder打开；普通模式允许WAL存在并保留真实writer。业务、CLI实现、13个人调用链及前端不变；相关54项复验通过。旧ada及其已上传私密清单和失败run保留；尚未push或发布的本地补修阶段提交合入该fixture修正后重固定SHA，不重写远端历史、不forcepush。新完整门禁使用独立summary/log，不能覆盖前两轮失败。

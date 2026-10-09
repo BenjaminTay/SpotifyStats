@@ -316,3 +316,7 @@ R3隔离证据：身份自身CPU约20ms，在同期global logical merge时墙钟
 2026-10-09 R4整合补记：阶段9377ab8e提交和hooks通过，正常push被non-fast-forward拒绝；远端47147879已包含详情schema90/v4改动，实际发布安装失败后旧9dd仍healthy。转入独立versus-detail-integration工作区整合，业务无冲突，312专项回归通过；须准备新版OWN exact-ready副本，重新完成整合版业务/资源/默认完整和固定发布。9377旧验收与上传清单不冒充整合版或生产Pass，详情安装补修仍由原线程负责，私有授权待答。见报告第19节。
 
 2026-10-09 联合整合专项收口：用户授权协调，两项任务约定由本任务统一整合、主线正常推送和正式发布；已合并详情安装补修abc78d91，13个人调用链及unit不变，312相关回归与52安装专项分别通过。新七库OWN副本官方迁移schema90、严格导入详情4与Billboard v4的48目标，默认四排名ready；原45场景90个人样本全功能/性能通过。96对账首次12自定义排名因成品缺失返回503，失败保留，导入既有四自定义成品后完整96精确通过；36进程130性能/资源门槛全部通过，源19表与旧expected守恒、公开构建/发布/队列0。接下来固定整合SHA、执行该版默认完整八阶段和正式发布；生产两项首次测量必须分开，额外受控backend重启在具体版本健康后另行授权。原私有HTTPS范围待答，不擅自启停入口。详见报告19.1。
+
+2026-10-09 发布实测补修：固定b4c69d16后rank4/detail4准备通过，BB官方verify因适配器强制BEGIN与core committed-source合同冲突失败。保留失败并精确终止该OWN默认完整run（preflight/quality PASS，其余NOT_RUN，overall FAIL，前端803/4skip），服务/生产未动。只取消CLI强制BEGIN，原RO/immutable/source封锁与core规则保留；54相关回归及真实48目标verify/export/validate通过，无build/upload。接下来固定补修SHA后运行新默认完整和三manifest发布；13个人业务调用链不变，45/96/130绑定精确复用。见报告19.2。
+
+ada补修阶段三清单九步骤及私密上传通过，默认完整在1,647项后因新夹具“关闭后必无WAL”假定失败。只修夹具为静态seed Online Backup、显式checkpoint及closed自有零WAL封闭，业务与CLI不变；失败原始记录保留。未发布的本地补修阶段合入该修正后重固定SHA，再跑独立完整门禁，不以54局部或旧版本Pass替代。见报告19.2。

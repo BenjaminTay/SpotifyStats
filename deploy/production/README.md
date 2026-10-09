@@ -360,7 +360,7 @@ Backend 停服期间先核对已完成搜索预检的副本，再备份 Analysis
 
 正常发布优先复用已迁移预检副本的投影；缺失时只验证、安装预先准备的manifest，来源lineage、治理digest、四过滤指纹及内容校验必须全部一致。`music-detail-release.sh`只在原子替换前修改stage副本，绝不在公开GET或正常发布冷建；runtime以 `--verify` 只读检查。回退恢复发布前完整数据库与旧SHA，因此详情附属表与榜单发布一起回退。`--owned-copy`用于明确owned副本目录与默认路径重合的特殊环境，不能作为正式库冷建许可。
 
-stage校验显式使用 `--closed-source`：先拒绝任何遗留WAL，再以 `mode=ro&immutable=1`、`query_only`和读事务读取已闭库副本，操作前后核验文件身份，避免WAL模式主文件在只读挂载中尝试创建辅助文件。该参数不能用于运行中数据库或详情写操作；runtime继续普通只读连接，读取已提交WAL。详情stage导入容器使用宿主UID/GID，避免临时导入控制目录成为root私有而无法清理；正式Backend用户及已有排名侧库维护权限保持。
+stage校验显式使用 `--closed-source`：先拒绝任何遗留WAL，再以 `mode=ro&immutable=1`、`query_only`读取已闭库副本，操作前后核验文件身份，避免WAL模式主文件在只读挂载中尝试创建辅助文件。适配器保持已提交读取，不强制开启事务，以兼容 Analysis/Billboard revision 的原事务拒绝及 data_version 检查；闭库一致性由 immutable 和前后完整文件状态封锁保证。该参数不能用于运行中数据库或详情写操作；runtime继续普通只读连接，读取已提交WAL。详情stage导入容器使用宿主UID/GID，避免临时导入控制目录成为root私有而无法清理；正式Backend用户及已有排名侧库维护权限保持。
 
 L3 来源日期精度修复将 Billboard 持久成品独立升级到 `billboard_persistent_snapshot_v4_l3_release_precision`（搜索 v12 不变）。首次在另一个 owned Online Backup 路径用 `scripts/prepare_billboard_publications.py --db-path <副本> --cache-path <独立旁库> --build-on-copy` 准备四组合、六个常规 family 及各组合实际可用年榜，再 `--export <manifest>`；私密成品上传 `backups/billboard-<完整目标SHA>.json`，权限600。以后只从停服 live 的 exact-ready 成品导出复用，缺失即拒绝发布。
 

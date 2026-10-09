@@ -78,6 +78,64 @@ def test_live_reader_observes_committed_wal_and_never_uses_immutable(tmp_path, m
         writer.close()
 
 
+@pytest.mark.parametrize("closed", [False, True])
+def test_publication_reader_preserves_real_billboard_revision_context(
+    tmp_path, monkeypatch, closed
+):
+    from backend.domains.billboard import persistent_cache
+    from backend.services.analysis_snapshot_revision import source_revision
+    from backend.services.billboard_snapshot_service import configured_billboard_filters
+
+    path = tmp_path / "source.db"
+    seed = Path(__file__).resolve().parents[1] / "fixtures" / "seed.db"
+    source = sqlite3.connect(seed.as_uri() + "?mode=ro&immutable=1", uri=True)
+    target = sqlite3.connect(path)
+    try:
+        source.backup(target)
+        target.execute("PRAGMA journal_mode=WAL").close()
+        cursor = target.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        assert cursor.fetchone() == (0, 0, 0)
+        cursor.close()
+    finally:
+        source.close()
+        target.close()
+    # A prior connection policy may retain empty sidefiles after close. This
+    # newly owned copy has no readers yet; only sealed mode requires removal.
+    if closed:
+        wal = Path(str(path) + "-wal")
+        if wal.exists():
+            assert wal.stat().st_size == 0
+            wal.unlink()
+        Path(str(path) + "-shm").unlink(missing_ok=True)
+    monkeypatch.setattr(db, "DB_PATH", str(path))
+    writer = None
+    if not closed:
+        writer = sqlite3.connect(path)
+        writer.execute("SELECT 1 FROM plays LIMIT 1").fetchone()
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    try:
+        with publication_reads(path, closed=closed):
+            conn = db.get_db(readonly=True)
+            try:
+                revision = source_revision(conn, "analysis_records")
+                assert len(revision) == 64
+                assert source_revision(conn, "analysis_records") == revision
+                params = configured_billboard_filters(conn)
+                with pytest.raises(sqlite3.OperationalError, match="readonly"):
+                    conn.execute("CREATE TABLE forbidden_write(value INTEGER)")
+            finally:
+                conn.close()
+            context = persistent_cache.build_cache_context("weekly", params)
+            assert context["family"] == "weekly"
+            assert persistent_cache.build_cache_context("weekly", params) == context
+    finally:
+        if writer is not None:
+            writer.close()
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+    if closed:
+        assert set(tmp_path.iterdir()) == {path}
+
+
 def test_closed_source_rejects_replacement_and_restores_connection_factory(tmp_path):
     path = tmp_path / "source.db"
     wal_file(path, closed=True)
