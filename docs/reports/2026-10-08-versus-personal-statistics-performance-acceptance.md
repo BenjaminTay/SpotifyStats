@@ -630,3 +630,63 @@ rank-only演练以真实旧镜像运行原main硬链接保留→新inode候选�
 单次完整owned恢复报告随后actual `status=passed`，16个阶段仅在subprocess退出0后记录；真实9dd/6430 linux/amd64镜像、最终三个hosthelper逐项hash匹配，schema89→90、aux4/BB48/rank4、新inode提升与原inode恢复、全部Analysis/BB backup字节及原完整语义行、旧rank4/BB48、37原来源及完整保护事实全部守恒。三个独立旧镜像公开只读overview均200/found=true，主库/旁库字节及行前后不变，旧exact前后true；rank coldbuild0、owned cleanup完成。host最低1,407.758MiB、每阶段OOM delta0。此演练只证明本次自动联合恢复候选协议，不证明成功后manual rollback，也不称下一SHA镜像已构建。
 
 root独立读取报告并逐项断言、复制`integration/owned-joint-automatic-restore-6430-report-copy.json`，SHA256 `848837e6e9a8c61524346c11cc5b4000b908d29ada26626893b5f602e8d59a79`；host三helper匹配与判定`owned-joint-restore-binding.json`。原server报告在`/opt/spotify-stats/backups/owned-joint-automatic-restore-6430-20261009/report.json`。报告生成/cleanup后原SSH未收到EOF，owner只读确认远端没有rehearsal子进程，随后仅终止自己精确匹配的本机SSH传输，session34826最终255；不得写为整SSH wrapper exit0，也不因传输收尾再次演练。数据判定依据为真实报告及已完成16阶段，不把SSH异常覆盖为success。部署补修验证收口，固定阶段提交后运行新SHA必要默认完整并准备同源成品统一正式发布；S5仍待生产首轮与私有范围决定。
+
+## 21. 部署修复固定版本与第二次正式发布
+
+部署修复阶段固定为cb8d05b14813fcc5333e46402fcbcde0089c36be，parent6430，11路径366插入31删除。首轮hook格式化一处测试长行退出1，精确暂存后提交退出0，hooks全部通过。业务与三个CLI不变，原45/90、96、130及详情自然90按commit blobs与实体绑定复用。
+
+唯一必要的新默认完整run `20261009T094929.575812Z-954fd3885f46` 实际退出0，full/non-dry/gitclean、八必需阶段同轮PASS，耗时1,488,756ms。阶段ms：preflight7,609、quality70,514、backend561,654、api172,657、browser-routes400,243、browser-interactions79,675、browser-inventory47,380、browser-compat148,865；optional NOT_RUN。后端3,840 passed/2 skipped/4 warnings，真实副本186 passed/1 skipped/2 warnings；API51目标slow_count0、500ms标准不变，三浏览器通过。摘要SHA256 `7e46849cdaae887c7b32a4d9edeb8130586f634da20c8c5b61c2a31a31e2831a`；证据 `integration/fullstack-rollback-fix*`、`rollback-fix-full-receipt.json`。前后HEAD、21文件、19源表、schema90和jobs计数完全相同，done6,286/failed38、无pending/running；binding前后文件分列。
+
+三现成成品官方九准备步骤全部0，cold build和源写入0，源19表及main/sidecar/WAL字节和身份不变。rank四套真正导出绑定cb8，文件SHA256 `9ecf0e097a7b16378ef3ca7d9d58a611facbb5ab0f210233fb91378186314539`；详情4/BB48字节和payload摘要与6430相同，payload没有release SHA，文件名绑定cb8。私密上传五步骤全部0、600/远程checksum/atomic rename通过，旧成品保留；证据 `release-cb8d05b14813fcc5333e46402fcbcde0089c36be/{readiness,upload-receipt}.json`。
+
+详情线程在push前唯一采集旧9dd/schema89 v2，57保护表/37原表、reader已关闭。服务器起10:16:53.362498UTC、elapsed36.408769秒，结束时间由单调耗时推导。采集subprocess0，receipt对整数执行len导致wrapper1，原错误保留，仅修receipt未重复SQL。capture SHA256 `0654263f7735b02f5a3c7fdb053e6578893ae46b45df848b215d1e8f3ef8fe36`；原pre/post身份相等断言成功与独立post重验分列，不虚写遗失的原metadata，不声称辅助文件stat守恒。
+
+根正常push6430→cb8实际0，新CI37916999633、Release37916999607、NoDeploy37916999587于10:20:34UTC触发。当前检查运行；实际上线、独立核验、生产原首次公开14/28、整页资源与两面API均待完成。私有HTTPS及详情独立首次测量所需额外受控重启待授权，S5不关闭。
+
+### 21.1 正式发布容量预检失败
+
+新CI37916999633、NoDeploy37916999587实际success，Release37916999607的质量、三模式和镜像job均success；deploy113781382823在10:40:33UTC实际failure。Online Backup完成后，音乐搜索副本容量预检拒绝：disk_available1,198MiB小于disk_required1,695MiB，日志明确线上服务与数据库保持原状，尚未停服或安装；不能称旧rank步骤已经生产验证成功。MemAvailable被GitHub遮罩，不推定具体数值。失败原日志/逐job回执完整保留，监控session20207实际1，无盲重跑。
+
+随后根只读独立核验实际三个OCI均旧9dd/healthy、schema89、播放94,760、19源相等、done6,283/failed38、无pending/running。完整jobs、所有Analysis与排名元数据和上次失败后旧9dd guard完全相等，证据 `failure-production-receipt.json`、`failure-original-guard-comparison.json`，采集实际0，个人HTTP0。
+
+只读空间盘点找到本任务诊断目录的source和dual-data两份444,588,032字节副本，独立inode703091/703105、各单链接、没有fuser报告holder。两文件SHA均e14ca5facafb196dbbc4da17dd9ebbf2c341c9b6b53a203ceb17feee9bcbc851，与保留的正式pre-release-6430备份inode702898字节相同。精确删除这两份可释放848MiB，正式备份和所有日志/报告保留；范围 `disk-cleanup-plan.json`，删除和同SHA失败部署重试的具体授权已询问，尚未执行。S5继续开放。
+
+### 21.2 精确清理完成与授权重试仍受容量拦截
+
+用户在协调聊天明确“确认清理，你帮我指引它们一下”，授权仅原指定两份诊断副本及清理后一次同SHA失败部署重试。根删除前复核普通独立文件、单链接、inode、whole SHA、canonical完整及fuser无holder；精确两文件删除actual0，释放889,176,064B（848MiB），可用空间1,699,594,240→2,588,778,496B，canonical backup完整record不变。其它文件未删，receipt `disk-cleanup-receipt.json`保存。
+
+随后仅一次 `gh run rerun37916999607 --failed` actual0（10:52:26UTC），第二尝试deploy113786212282在10:54:32UTC actualfailure：Online Backup后disk_available1,167MiB<required1,695MiB，仍未停服或安装。原attempt1和attempt2日志/回执各自保存，session52654实际1，无第三次部署。第一次空间估算漏算部署中的额外分配，不能把host当前可用量当作预检点余量。
+
+只读脚本顺序确认预检前至少新Online Backup和cp stage各444,588,032B；实际incoming transport tar另有475,238,400B独立副本，不能依赖下一轮复用。第二具体清理方案仅四文件：471失败备份062616、cb8失败备份104024/105422，与保留6430正式备份whole SHA完全同；cb8 incoming docker-save.tar与保留records tar whole SHA完全同。六文件独立inode、目标单链接、fuser无holder。拟释放1,809,002,496B，按再次新backup+stage+完整tar重建1,364,414,464B扣除后，预检点估计2,014.461MiB，比原1,695门槛多319.461MiB；执行前还须新鲜复核所有文件及至少256MiB预算余量。新范围超出原授权，已请求具体授权，未额外删除或第三次重试。证据 `disk-second-readonly-inventory.json`、`disk-cleanup-second-plan.json`。
+
+### 21.3 第二道门禁与替换阶段预算补充
+
+2,014.461MiB是预检入口余量估计，不能当作全流程剩余空间。复用现有真实6430成功预检JSON确认before444,588,032B、after445,292,544B、exact resume reuse且storage delta0；第二道门槛为4×resume（1,698.656MiB），当前resume实际文件445,292,544B/noWAL。source与CLI冻结，原两道门槛不改；不是新预检Pass。
+
+预算另计resume临时文件与整库WAL重叠、replacement、两份quiescent主库、详情stage增长、完整Analysis备份、BB备份/stage/再次替换，以及新main与保留旧inode同时存在。stage/promotion按同源OWN集成full8最大main659,550,208B规划（详情prepared643,862,528B），BB stage和replacement各64MiB，高于现有35MiB与prepared9MiB，Analysis原1,744,896B。晚期main/BB复制峰值预计约169.301MiB剩余；这是观察值形成的规划余量，不是严格数学最大值或未来通过证明。详细 `disk-full-release-budget.json`。准备脚本删除前新鲜空间重算，入口余量至少原门槛+256MiB、晚期规划余量至少128MiB，否则不删/不重试；四文件范围不变，仍待明确授权。
+
+### 21.4 第二次精确清理实际完成与第三次部署请求
+
+本聊天用户直接“授权清理”，授权第二次指定四文件及清理后一次同SHA失败部署重试。删除前新鲜复核六文件路径、普通文件/非symlink、设备/inode/单链接、完整字节SHA、目标fuser无holder；三个目标失败备份与保留6430正式备份完整SHA相同，目标incoming tar与保留records tar完整SHA相同。入口原门槛外256MiB及晚期规划128MiB余量检查通过，生产门槛未改。
+
+唯一SSH清理session35469实际exit0，2026-10-09T11:34:16.776705Z完成；仅指定四文件删除，释放1,809,002,496B（约1,725MiB），可用1,661,431,808→3,470,450,688B（约3,310MiB）。两份保留文件完整record前后一致，其它备份、报告、镜像及CAS未删除。fresh预计入口2,106,036,224B（约2,008MiB），晚期规划约163MiB；预算通过不是未来部署Pass。证据`disk-cleanup-second-receipt.json`、`disk-cleanup-second-command.json`及更新后的`disk-cleanup-second-plan.json`。
+
+先核对Release37916999607实际attempt2 completed/failure及唯一失败job113786212282，再且仅一次`gh run rerun 37916999607 --failed`。session10657实际exit0，请求11:35:10.265839→11:35:12.296265Z，目标完整cb8 SHA、下一attempt3；证据`deploy-rerun-third-receipt.json`。此时第三次部署结果待核验，未以请求成功声明上线；原两次失败独立保留。独立runtime、生产原首次14/28及资源/两面API仍待实际部署后执行；私有HTTPS及额外受控重启授权仍独立开放。
+
+### 21.5 第三次部署容量通过、旧闭库联合门禁拒绝
+
+Release attempt3 deploy113800562035实际failure，11:40:58UTC完成；monitor实际exit1。原before/after容量与search4预检通过，随后停旧backend。详情4变体和BB48在stage完成validate/import/strictready，rank4 targetvalidate通过。11:40:42UTC preserve旧main inode前联合gate `state()`抛出`Stopped exact gate requires no WAL file`；未promote，未安装新镜像。流程启动原backend，11:40:58UTC日志Healthy，并明确拒绝发布。完整日志和receipt独立保留`workflows/attempt-3/`，不覆写前两轮失败。
+
+根仅一次只读现场采集（无个人HTTP/维护）：11:43:37UTC确认三OCI仍完整9dd、全部healthy、schema89、19源逐表与原基线同，jobs6,283done/38failed/无active。恢复后metadata显示main零字节WAL、BB/Analysis无WAL，但这是恢复后的状态，不能反推失败瞬间具体库或WAL内容；原日志未记录路径。证据`failure-readonly-receipt.json`、`failure-live-file-metadata.json`与完整source guard。
+
+冻结代码存在准备合同缺口：`preserve_live_database_inode`仅checkpoint/处理main副文件，联合严格gate却对main/BB/Analysis三者检查任何WAL（包括空文件）。本地成功fixture与先前owned恢复预先关闭三库，未覆盖此准备状态。此时正在隔离tiny副本及Linux旧镜像复现，尚不认定具体侧库就是生产根因；Online Backup实现只copy来源到内部/tmp再读取，不能称其主动创建正式来源WAL。门禁不放宽，未知非零WAL不删除。本次授权重试已实际用完，不再发布；S5继续开放。
+
+### 21.6 隔离复现与三库闭库准备补修
+
+旧9dd真实Linux镜像/SQLite3.46.1、OWN tiny三库测试实际wrapper0：原RO copy-backup没有改变来源文件，也未生成来源WAL；在真实imports之前instrument SQLite connect，导入至gate捕获前调用数0。不能将生产WAL归因于备份或模块导入。Analysis/BB分别空WAL及真实4,152B已提交WAL共四例，原main-only准备保留侧库WAL，原gate均准确拒绝且文件不变；这是确定的准备缺口，仍未证明生产当时具体库。原报告wholeSHA`a1a7fd3f1a5a2a0b506289a7acba24bb12d7cce4ef7a4573d67676758117e257`。
+
+最小补修仅生产helper：同一TRUNCATE SQL扩展至三个已存在库、mode=rw拒绝新建；全部checkpoint成功且确认无非空WAL后，才处理对应空WAL/SHM、保留旧main inode并进入原严格gate。忙锁或未合并帧拒绝，任何WAL仍阻止immutable读取；报错增具体路径。完整Analysis备份/联合恢复、源fence和原成品门槛保持。相关四模块83 passed/1warn/28.08s；初次误填测试路径exit4、fixture子进程环境4failed/79passed均单列，修正仅隔离env。formatter后五项新增真实回归5passed/29deselected/7.82s。覆盖两侧库×空/崩溃writer真实已提交WAL、完整Analysis与实际rank4、稳定文件状态/原main inode，以及pinned reader busy拒绝和非零WAL保全。
+
+新helper固定SHA`71e03de656a3a006a028e9dbab5ac8c84841f70ceb95e911dcfef36c82abdbab`的LinuxOWN tiny真实checkpoint/preserve四正例actual0、提交行保留、三库inode不换、hardlink同inode、最终无WAL。Analysis真实pinned reader负例actual1且路径明确，main/非零WAL的inode/size/mtime/hash保持、未gate/link，SHM的SQLite bookkeeping变化单列；reader释放actual0，wrapper41363最终actual0。新reportSHA`15837e101a1215754269a1bac88e98f5b418cee7f4d2b5b5c17254ba2d2bbc5f`，同目录原字节/退出记录齐备。这仅新准备/封闭读取前置验证，不冒称完整BB/rank ready或新镜像验收。业务13链、4CLI及6UI与cb8完整门禁绑定相同；新patch没有新的默认full8，旧cb8full8只复用其原业务边界。未再次推送/部署。
+
+第三次失败新增main备份444,588,032B、incoming tar475,238,400B及BB备份35,139,584B，已只读确认分别与保留6430正式main/BB备份、cb8 records tar完整SHA一致、普通单链接无holder。拟三文件范围约910.727MiB；仅两文件的晚期估计126.602MiB不满足128MiB，方案已标superseded而未执行。三文件fresh估计入口约2,004.53MiB、晚期约159.371MiB，仍须执行前重算，原生产门禁不变，不称未来Pass。精确三文件及新修补版一次发布仍需新授权，不额外删除或重试。

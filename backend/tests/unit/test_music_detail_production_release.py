@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[3]
 HELPER = ROOT / "deploy/production/music-detail-release.sh"
 
 
-def run_helper(tmp_path, body):
+def run_helper(tmp_path, body, *, env=None):
     script = tmp_path / "probe.sh"
     script.write_text(f"""set -Eeuo pipefail
 DEPLOY_DIR={tmp_path}
@@ -31,7 +31,7 @@ mkdir -p "$DEPLOY_DIR/backups"
 source {HELPER}
 {body}
 """)
-    return subprocess.run(["bash", str(script)], capture_output=True, text=True)
+    return subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env)
 
 
 def test_billboard_sidecar_is_prepared_on_stage_and_restored_jointly(tmp_path):
@@ -684,3 +684,123 @@ def test_stopped_actual_rank_gate_rejects_any_wal_without_creating_auxiliary_fil
     assert result.returncode != 0 and "requires no WAL" in result.stderr
     assert _closed_file_states(source["data"]) == before
     assert not list(source["data"].glob("*-shm"))
+
+
+def _release_checkpoint_adapter(owned):
+    code = (
+        HELPER.read_text()
+        .split("checkpoint_live_database() {", 1)[1]
+        .split("python -c '", 1)[1]
+        .split("' /app/data/spotify_stats.db", 1)[0]
+    )
+    path = owned / "release-checkpoint.py"
+    path.write_text(code)
+    return path
+
+
+@pytest.mark.parametrize("name", ["billboard_cache.db", "analysis_cache.db"])
+@pytest.mark.parametrize("pending", [False, True])
+def test_preservation_checkpoints_sidecar_wal_before_real_exact_rank_gate(
+    actual_stopped_ranks, name, pending
+):
+    source = actual_stopped_ranks
+    data, owned, main = source["data"], source["owned"], source["main"]
+    sidecar = data / name
+    inode = main.stat().st_ino
+    if pending:
+        # A committed transaction from a crashed OWN writer really lives in
+        # WAL. No connection remains active when the release helper runs.
+        crash = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                """
+import os, sqlite3, sys
+connection = sqlite3.connect(sys.argv[1])
+connection.execute("PRAGMA journal_mode=WAL")
+connection.execute("CREATE TABLE committed_release_fact(value INTEGER)")
+connection.execute("INSERT INTO committed_release_fact VALUES (29)")
+connection.commit()
+os._exit(0)
+""",
+                str(sidecar),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert crash.returncode == 0, crash.stderr
+        assert Path(str(sidecar) + "-wal").stat().st_size > 0
+    else:
+        Path(str(sidecar) + "-wal").touch()
+    rejected = _actual_stopped_gate(source)
+    assert rejected.returncode != 0 and "requires no WAL" in rejected.stderr
+    checkpoint = _release_checkpoint_adapter(owned)
+    result = run_helper(
+        owned,
+        f"""
+rollback_live_inode_dir=""
+rollback_live_inode_path=""
+release_completed=false
+checkpoint_live_database() {{ {shlex.quote(sys.executable)} {shlex.quote(str(checkpoint))} "$DEPLOY_DIR/data/spotify_stats.db"; }}
+verify_stopped_billboard_exact() {{ {shlex.quote(sys.executable)} {shlex.quote(str(source["gate"]))}; }}
+preserve_live_database_inode fixture-image
+[[ "$rollback_live_inode_path" -ef "$DEPLOY_DIR/data/spotify_stats.db" ]]
+cleanup_live_database_inode
+""",
+        env=source["env"],
+    )
+    assert result.returncode == 0, result.stderr
+    assert main.stat().st_ino == inode
+    assert _closed_publications(source["analysis"]) == source["all_publications"]
+    assert not list(data.glob("*-wal")) and not list(data.glob("*-shm"))
+    if pending:
+        with closing(sqlite3.connect(sidecar.as_uri() + "?mode=ro&immutable=1", uri=True)) as conn:
+            assert conn.execute("SELECT value FROM committed_release_fact").fetchone() == (29,)
+    before = _closed_file_states(data)
+    verified = _actual_stopped_gate(source)
+    assert verified.returncode == 0, verified.stderr
+    assert _closed_file_states(data) == before
+
+
+def test_busy_sidecar_checkpoint_keeps_wal_and_never_preserves_or_promotes(
+    actual_stopped_ranks,
+):
+    source = actual_stopped_ranks
+    data, owned = source["data"], source["owned"]
+    analysis = source["analysis"]
+    writer = sqlite3.connect(analysis)
+    reader = sqlite3.connect(analysis)
+    try:
+        writer.execute("PRAGMA journal_mode=WAL")
+        reader.execute("BEGIN")
+        reader.execute("SELECT COUNT(*) FROM analysis_snapshots").fetchone()
+        writer.execute("CREATE TABLE busy_release_fact(value INTEGER)")
+        writer.execute("INSERT INTO busy_release_fact VALUES (31)")
+        writer.commit()
+        wal = Path(str(analysis) + "-wal")
+        before = wal.read_bytes()
+        checkpoint = _release_checkpoint_adapter(owned)
+        # Only shorten SQLite lock wait on the isolated fixture; the actual
+        # checkpoint SQL, busy proof and shell failure sequence are intact.
+        checkpoint.write_text(checkpoint.read_text().replace("timeout=30", "timeout=0"))
+        result = run_helper(
+            owned,
+            f"""
+rollback_live_inode_dir=""
+rollback_live_inode_path=""
+release_completed=false
+checkpoint_live_database() {{ {shlex.quote(sys.executable)} {shlex.quote(str(checkpoint))} "$DEPLOY_DIR/data/spotify_stats.db"; }}
+verify_stopped_billboard_exact() {{ exit 99; }}
+if preserve_live_database_inode fixture-image; then exit 98; fi
+[[ -z "$rollback_live_inode_path" ]]
+""",
+        )
+        assert result.returncode == 0, result.stderr
+        assert "checkpoint did not complete" in result.stderr
+        assert "analysis_cache.db" in result.stderr
+        assert wal.read_bytes() == before
+        assert not list(data.glob(".rollback-inode.*"))
+        assert not (data / "spotify_stats.db.install").exists()
+    finally:
+        reader.close()
+        writer.close()

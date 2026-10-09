@@ -352,7 +352,7 @@ python scripts/versus_rank_publication.py build \
 
 首版将 manifest 通过已有 SSH/SCP 访问上传为服务器 `/opt/spotify-stats/backups/versus-ranks-<完整目标SHA>.json`，权限 `600`。生产 workflow 使用现有部署 SSH 凭证检查这一私密服务器文件，不新增 GitHub Secret，也不从 Git 或公开 artifact 获取数据。`deploy.sh` 自动发现此精确 SHA 路径，亦可显式传 `--versus-rank-manifest <path>` 或 `VERSUS_RANK_MANIFEST`。没有 manifest 时，只允许从当前 live DB 的目标 builder exact-ready 发布导出并重绑到替换后的 lineage；源发生变化即失败。
 
-Backend 停服期间先核对已完成搜索预检的副本和目标排名，再 checkpoint 并硬链接保留原主库 inode，以旧镜像严格验证旧 Billboard 和四默认排名；随后备份完整 Analysis sidecar。未保留原 inode 时拒绝排名备份。替换主库后按目标 manifest 安装并验证四默认 ready，最后才激活新镜像。安装或后续网关验收失败时，联合恢复原主库 inode、完整 sidecar、上一 SHA 和部署模式；原 key 的 lineage 随 inode 恢复，不再导出、重绑或改写旧排名发布。旧镜像启动前的共同闭库门禁仍要求旧排名与 Billboard exact-ready，缺失或漂移即拒绝激活。功能出现前的旧镜像不调用不存在的排名模块。停止后的原源副本单独保留，不用已升级搜索预检副本作为旧代码恢复点。
+Backend 停服期间先核对已完成搜索预检的副本和目标排名，再对主库及已存在的 Billboard/Analysis sidecar 逐库执行 `wal_checkpoint(TRUNCATE)`；任一忙锁或未合并帧即拒绝继续。全部连接关闭、确认三库 WAL 为空后才清理对应 WAL/SHM 并硬链接保留原主库 inode，以旧镜像严格验证旧 Billboard 和四默认排名；随后备份完整 Analysis sidecar。未保留原 inode 时拒绝排名备份。替换主库后按目标 manifest 安装并验证四默认 ready，最后才激活新镜像。安装或后续网关验收失败时，联合恢复原主库 inode、完整 sidecar、上一 SHA 和部署模式；原 key 的 lineage 随 inode 恢复，不再导出、重绑或改写旧排名发布。旧镜像启动前的共同闭库门禁仍要求旧排名与 Billboard exact-ready，缺失或漂移即拒绝激活。功能出现前的旧镜像不调用不存在的排名模块。停止后的原源副本单独保留，不用已升级搜索预检副本作为旧代码恢复点。
 
 ## 音乐详情附属投影发布
 

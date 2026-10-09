@@ -326,3 +326,17 @@ ada补修阶段三清单九步骤及私密上传通过，默认完整在1,647项
 6430实际正式CI/NoDeploy success，Release质量/三模式/镜像成功、旧rank回退导出因PRAGMA data_version变化被严格拒绝，安装失败且尚未promote live主库/sidecar。旧9dd三healthy，独立19源/完整jobs/所有Analysis与排名守恒；新版生产首轮未开始。仅在新owned副本重现部署边界并修最小步骤，保留原始失败与source fence，不暖重试或手工重跑。见报告20.1。
 
 最小部署阶段验证完成：保持原main inode及完整Analysis、移除冗余旧rank export/install并增加共同closed rank4严格gate。真实副本同类PRAGMA拒绝复现、72相关回归、Linux原备份三条件与一次完整owned自动共同恢复16阶段通过；旧rank4/BB48/三旧HTTP、主库inode/完整旁库及来源守恒。SSH收尾255单列，未虚称wrapper0。业务13调用链/UI/CLI未变，原S4按精确binding复用；随后固定阶段SHA，新默认完整必要一轮及同源成品发布，不重复业务矩阵。见报告20.2。
+
+2026-10-09 部署修复固定cb8d05b1，hooks与唯一新默认完整八阶段同轮PASS/actual0/24分48.756秒，21文件/19源/schema90/jobs守恒；旧业务S4精确绑定复用。同源成品九准备和五上传全0，600/checksum/atomic通过。唯一旧before89-v2采集成功，receipt类型错误单独修正且未重复SQL，reader关闭。正常push6430→cb8实际0，新CI37916999633/Release37916999607/NoDeploy37916999587运行；生产首次及原私有HTTPS待验，S5开放。见报告第21节。
+
+cb8正式CI/NoDeploy/三模式/镜像全部成功，deploy113781382823在Online Backup后容量预检失败：1198MiB<1695MiB，未停服安装。独立确认旧9dd三healthy及19源/完整jobs/所有Analysis/rank守恒。准备精确两份重复诊断副本848MiB的清理范围，正式备份与所有报告保留；删除及同版失败部署重试已请求具体授权，尚未执行。S5与私有/额外重启范围仍开放。见报告21.1。
+
+人类确认原两副本清理和一次重试：精确清理848MiB实际0、canonical完整，retry请求0，但attempt2 deploy113786212282实际容量失败1167<1695，未停服安装。修正预算必须预扣backup+stage+完整transport tar；新四重复文件约1725MiB范围已具体请求授权，额外删除和第三尝试尚未执行。见报告21.2，S5及私有/重启范围保持开放。
+
+第二清理预算补充两道原门禁及后半段峰值：同源真实resume445,292,544B/前后delta0，after门槛1,698.656MiB；入口预估2,014.461MiB不能当作全流程剩余。另计temporary/WAL、replacement、两份quiescent、main/BB/完整Analysis共同存在，晚期预计169.301MiB剩余；执行前fresh重算且观察估计不称未来Pass。四文件删除范围不变，新授权仍待答，见报告21.3。
+
+用户直接“授权清理”后，第二范围四文件删除实际0，释放1,809,002,496B；保留正式备份/记录哈希及inode前后一致，可用3,470,450,688B，fresh入口及晚期规划预算检查通过。同SHA失败部署仅再重试一次，gh请求实际0，Release37916999607 attempt3结果待核验。前两次失败不改写，S5仍开放，见报告21.4。
+
+第三次部署原容量/search4及stage详情4/BB48通过，旧闭库联合gate拒绝任何残留WAL，未promote；旧9dd自动恢复、独立三healthy及19源守恒。日志未标具体库，恢复后的metadata不能当失败瞬间状态。隔离tiny/Linux复现准备缺口，不放宽gate或再未经授权发布，见报告21.5。
+
+三库闭库准备最小补修完成，83相关回归及Linux旧镜像四WAL正例/busy拒绝通过，原任何WAL/源fence/完整联合恢复保持；业务链与cb8全绑定同，新patch不冒称新full8。准备固定提交及清单，第三次新增三重复文件约910.7MiB范围与新修补版一次发布需新授权，见报告21.6。

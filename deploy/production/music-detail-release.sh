@@ -67,13 +67,20 @@ checkpoint_live_database() {
     --mount "type=bind,src=$DEPLOY_DIR/data,dst=/app/data" "$1" python -c '
 import sqlite3
 import sys
-connection = sqlite3.connect(sys.argv[1], timeout=30)
-try:
-    checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
-finally:
-    connection.close()
-if checkpoint[0] != 0 or checkpoint[1] != checkpoint[2]:
-    raise SystemExit("live database checkpoint did not complete")
+from pathlib import Path
+main = Path(sys.argv[1])
+# The stopped exact gate reads all three files. Close every existing source
+# before using immutable readers; sidecar WAL contains real facts too.
+for path in (main, main.with_name("billboard_cache.db"), main.with_name("analysis_cache.db")):
+    if path != main and not path.is_file():
+        continue
+    connection = sqlite3.connect(path.as_uri() + "?mode=rw", uri=True, timeout=30)
+    try:
+        checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    finally:
+        connection.close()
+    if checkpoint[0] != 0 or checkpoint[1] != checkpoint[2]:
+        raise SystemExit(f"live database checkpoint did not complete: {path}")
 ' /app/data/spotify_stats.db
 }
 
@@ -91,7 +98,7 @@ from backend.services.billboard_snapshot_service import billboard_default_snapsh
 paths = {Path("/app/data") / name for name in ("spotify_stats.db", "billboard_cache.db", "analysis_cache.db")}
 def state(path):
     if Path(str(path) + "-wal").exists():
-        raise RuntimeError("Stopped exact gate requires no WAL file")
+        raise RuntimeError(f"Stopped exact gate requires no WAL file: {path}")
     stat = path.stat()
     return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
 captured = {path: state(path) for path in paths if path.is_file()}
@@ -131,8 +138,12 @@ preserve_live_database_inode() {
   local image="$1" live="$DEPLOY_DIR/data/spotify_stats.db"
   [[ -f "$live" && -z "$rollback_live_inode_path" ]] || return 1
   checkpoint_live_database "$image" || return 1
-  [[ ! -s "$live-wal" ]] || return 1
-  rm -f -- "$live-wal" "$live-shm" || return 1
+  local closed
+  for closed in "$live" "$DEPLOY_DIR/data/billboard_cache.db" "$DEPLOY_DIR/data/analysis_cache.db"; do
+    [[ -f "$closed" ]] || continue
+    [[ ! -s "$closed-wal" ]] || return 1
+    rm -f -- "$closed-wal" "$closed-shm" || return 1
+  done
   rollback_live_inode_dir="$(mktemp -d "$DEPLOY_DIR/data/.rollback-inode.XXXXXX")" || return 1
   rollback_live_inode_path="$rollback_live_inode_dir/spotify_stats.db"
   # Same-filesystem hard link keeps the exact old schema, facts and identity.
