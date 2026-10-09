@@ -23,7 +23,10 @@ from pydantic import BaseModel, Field
 from backend.core.db import get_db
 from backend.dependencies import BillboardFilters, MergeConfig, get_conn
 from backend.domains.music_search.timing import MusicSearchTiming
-from backend.domains.playback.album_project_identity import resolve_album_project_identity
+from backend.domains.playback.album_project_identity import (
+    AlbumProjectIdentity,
+    resolve_album_project_identity,
+)
 from backend.models.snapshot import SnapshotUnavailableResponse
 from backend.services.billboard_service import (
     get_album_detail_view,
@@ -331,32 +334,19 @@ def artist_chart_detail(
     return result
 
 
-@router.get(
-    "/album/{album_name:path}",
-    response_model=AlbumChartDetailResponse,
-    responses={
-        503: {"model": SnapshotUnavailableResponse},
-        404: {"description": "Album has no resolvable chart or effective-play facts"},
-    },
-)
-def album_chart_detail(
+def _album_chart_detail_response(
     album_name: str,
+    artist_name: str,
     response: Response,
-    artist_name: str = Query(default="", description="Artist name for disambiguation"),
-    filters: BillboardFilters = Depends(),
-    merge: MergeConfig = Depends(),
-    include_compilations: bool = Query(False),
-    view: AlbumDetailView = Query("full"),
-    conn: Connection = Depends(get_conn),
+    filters: BillboardFilters,
+    merge: MergeConfig,
+    include_compilations: bool,
+    view: AlbumDetailView,
+    *,
+    identity: AlbumProjectIdentity | None,
+    requested_album_name: str | None,
 ):
-    """Get detailed album chart data: weekly history, track performances, trend overlay."""
-    identity = resolve_album_project_identity(
-        conn,
-        album_name=album_name,
-        artist_name=artist_name or None,
-        merge_level=merge.merge_level,
-    )
-    requested_album_name = album_name
+    """Read the detail view using the route's already resolved project identity."""
     if identity is not None:
         album_name = identity.canonical_name
         artist_name = identity.artist_name or artist_name
@@ -395,6 +385,44 @@ def album_chart_detail(
             }
         )
     return result
+
+
+@router.get(
+    "/album/{album_name:path}",
+    response_model=AlbumChartDetailResponse,
+    responses={
+        503: {"model": SnapshotUnavailableResponse},
+        404: {"description": "Album has no resolvable chart or effective-play facts"},
+    },
+)
+def album_chart_detail(
+    album_name: str,
+    response: Response,
+    artist_name: str = Query(default="", description="Artist name for disambiguation"),
+    filters: BillboardFilters = Depends(),
+    merge: MergeConfig = Depends(),
+    include_compilations: bool = Query(False),
+    view: AlbumDetailView = Query("full"),
+    conn: Connection = Depends(get_conn),
+):
+    """Get detailed album chart data: weekly history, track performances, trend overlay."""
+    identity = resolve_album_project_identity(
+        conn,
+        album_name=album_name,
+        artist_name=artist_name or None,
+        merge_level=merge.merge_level,
+    )
+    return _album_chart_detail_response(
+        album_name,
+        artist_name,
+        response,
+        filters,
+        merge,
+        include_compilations,
+        view,
+        identity=identity,
+        requested_album_name=album_name,
+    )
 
 
 @router.get(
@@ -439,25 +467,17 @@ def album_project_chart_detail(
                 status_code=404,
                 detail="Album project is not available at this merge level",
             )
-    result = album_chart_detail(
+    return _album_chart_detail_response(
         identity.canonical_name,
-        response,
         identity.artist_name or "",
+        response,
         filters,
         merge,
         include_compilations,
         view,
-        conn,
+        identity=identity,
+        requested_album_name=None,
     )
-    result.update(
-        {
-            "album_project_id": identity.project_id,
-            "album_project_name": identity.canonical_name,
-            "requested_album_name": None,
-            "album_project_identity": identity.payload(),
-        }
-    )
-    return result
 
 
 @router.get("/entity-lists", response_model=EntityListsResponse)

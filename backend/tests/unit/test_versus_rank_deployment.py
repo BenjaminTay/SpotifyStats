@@ -145,16 +145,19 @@ restore_versus_rank_release
 def test_deploy_order_has_no_activation_before_rank_ready_and_joint_rollback():
     deploy = (ROOT / "deploy/production/deploy.sh").read_text()
     promote = deploy.index('if ! replace_live_database "$staged_database"')
+    preserve = deploy.index("if ! preserve_live_database_inode")
     prepare = deploy.index("if ! prepare_versus_rank_release")
     install = deploy.index("if ! install_versus_rank_release")
     activate = deploy.index('if ! activate_mode "$target_mode"')
-    assert prepare < promote < install < activate
+    assert prepare < preserve < promote < install < activate
     restore = deploy[
         deploy.index("restore_previous_release() {") : deploy.index('backend_was_running="false"')
     ]
     assert (
-        restore.index("replace_live_database")
+        restore.index("restore_live_database_inode")
         < restore.index("restore_versus_rank_release")
+        < restore.index("restore_billboard_release")
+        < restore.index("verify_stopped_billboard_exact")
         < restore.index("activate_mode")
     )
     assert "quiescent-rollback.db" in deploy
