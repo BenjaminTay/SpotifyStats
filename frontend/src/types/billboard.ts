@@ -1186,6 +1186,8 @@ export interface AlbumProjectSourceTrack {
 }
 
 export interface AlbumDetailResponse extends DetailYearEndFields {
+  /** Effective canonical song count from the same detail publication. */
+  unique_canonical_songs?: number
   [key: string]: any
   found: boolean
   chart_status?: 'charted' | 'not_charted'

@@ -54,8 +54,8 @@ interface RecentPlaysSectionProps {
   mergeLevel?: number
   filters: AnalysisFilters
   apiParams: { period: AnalysisPeriod; start_date?: string; end_date?: string }
-  fetchPage: (page: number, limit: number, search?: string, date?: string) => Promise<EntityPlaysResponse>
-  fetchPlayDates: () => Promise<PlayDateEntry[]>
+  fetchPage: (page: number, limit: number, search?: string, date?: string, signal?: AbortSignal) => Promise<EntityPlaysResponse>
+  fetchPlayDates: (signal?: AbortSignal) => Promise<PlayDateEntry[]>
   mobile?: boolean
 }
 
@@ -89,12 +89,12 @@ function RecentPlaysContent({
   const { ref: regionRef, ready: regionReady } = useDeferredInView(JSON.stringify(context))
   const pageQuery = useQuery({
     queryKey: queryKeys.recentPlays.page(context, page, PAGE_SIZE, debouncedSearch, selectedDate),
-    queryFn: () => fetchPage(page, PAGE_SIZE, debouncedSearch || undefined, selectedDate || undefined),
+    queryFn: ({ signal }) => fetchPage(page, PAGE_SIZE, debouncedSearch || undefined, selectedDate || undefined, signal),
     enabled: regionReady,
   })
   const datesQuery = useQuery({
     queryKey: queryKeys.recentPlays.dates(context),
-    queryFn: fetchPlayDates,
+    queryFn: ({ signal }) => fetchPlayDates(signal),
     enabled: calendarRequested,
   })
   const playDates = datesQuery.data ?? EMPTY_PLAY_DATES

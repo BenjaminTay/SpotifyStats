@@ -307,6 +307,11 @@ def test_legacy_comparison_range_does_not_change_cutoff_or_ordering():
         "2024-07-19",
         "2024-08-01",
     ]
+    # A projection from before precision was stored still carries a legacy
+    # date cutoff. Missing columns must not manufacture NaN evidence.
+    assert _filter_to_project_release_date(frame.drop(columns="release_date_precision"))[
+        "ts_date"
+    ].tolist() == ["2024-07-19", "2024-08-01"]
     assert sorted(["2024-07-19", "2024-02-29"], key=release_sort_key) == [
         "2024-02-29",
         "2024-07-19",

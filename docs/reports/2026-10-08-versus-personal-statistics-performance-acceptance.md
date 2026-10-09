@@ -552,3 +552,27 @@ all-files Ruff/format/mypy/detect-secrets、前端787 passed/4 skipped（97文�
 root再次独立确认13调用链及unit文件与验收前binding完全一致；本次测量仍为9dd+dirty R4工作树，将以新commit blobs逐一绑定。另线程SS-2026-10-09-001规划、docs地图及共享文档行/小节完整保留并排除暂存。R4 S4收口，S5新固定SHA/正式CI/发布及公开首次仍待执行，私有HTTPS仍待授权或明确范围调整。
 
 服务器入口追加只读刷新：06:30:10 UTC实际SSH退出0，Tailscale仍Stopped、原DNS仍spotify-stats.tail8916b1.ts.net、Serve空；3001 private-admin/full与3002 public-readonly/showcase均完整9dd SHA。证据`private-entry-investigation/current-route-state-refresh.json`；未修改Caddy、Tailscale或网关配置。
+
+## 19. R4阶段提交与远端详情优化整合
+
+阶段提交`9377ab8ea22f0113d22c1f3ae1bdc936025f20a2`实际退出0，7路径398插入11删除，hooks全部通过。root确认13调用链及unit commit blobs逐一匹配前述测试绑定，另一线程的主检出dirty内容完整保留。ready4现成清单verify/export/validate及SCP上传、远端摘要核验/原子改名均实际退出0；765,982字节、mode600，whole-file SHA256 `8fa71d972e08dafbe80fe315bbc67b177b32308079b591a09ac21289d9334acc`，源revision仍bb7cb368…、builder entity_rank_context_v2；没有build或补配置。
+
+正常push9377实际退出1，non-fast-forward；未force或重写历史。fetch发现主线已整合详情优化，远端为`47147879287ca8e79cae257bc254b57402380865`。9377的正式CI/发布并未启动，上传清单不能当作已发布。实际471的CI37892112247通过，但ProductionRelease37892112260的deploy失败：详情manifest validated4/imported4后只读校验SQLite unable to open database file，随后恢复旧backend healthy、未替换live DB，清理import_control权限错误也保留；具体补修属于详情线程的安装链路，不冒称本对决已经上线。
+
+root创建独立worktree `versus-detail-integration`、分支`codex/versus-detail-integration`，以9377合并471（--no-commit）。业务代码无冲突，两份共享文档保留本项最新记录和详情项远端记录，主检出dirty未改。R4 context和R3周期helper仍各自冻结hash；远端署名provider、identity、个人计次/时间线和rank合同未改，旧96独立expected可以复用，但须重新实际请求对账。
+
+整合带来schema90（新增详情派生表）和Billboard builder v4；旧schema89/v3的runtime不能充当新版图表exact-ready，发布还需详情投影和全套Billboard成品。正在仅在新OWN副本尝试官方严格迁移/导入既有成品，禁止手工改key、公开冷建或维护其它线程源。整合版15模块相关回归312 passed/1 warning（24.77秒），实际退出0，涵盖本项5模块、详情稳定身份/L3精度、只读边界、发布和联合回退。该局部结果仍为Partial；原9377默认完整通过属于单独R4版本，整合版浏览器、96对账、资源、默认完整及固定发布仍待完成。
+
+### 19.1 整合副本与完整个人专项收口
+
+用户已授权协调两项任务。详情线程交付安装补修阶段提交`abc78d9101f5d097146aaf9c0f73e09cfda41e4f`；本任务统一最终整合、正常主线推送和正式发布，详情线程保留自己的生产90场景与HTTP/资源/联合回退验收。补修仅涉及部署、离线CLI、测试和文档，相对471没有backend业务或frontend差异；本任务在原未提交merge中保全自有文档后重新合并abc，两份共享文档冲突已保留两项最新记录。13个人调用链及unit逐项hash与此前整合版完全一致，证据`integration/deployment-fix-binding.json`；安装专项52 passed/1 warning、actual exit0，与此前312项回归分开记录。
+
+七库Online Backup只生成本任务独立runtime；原OWN源DB/WAL字节、inode、mtime守恒，SHM读取标记变化明确分列。官方schema90迁移/验证、详情4投影与Billboard v4的48目标导入/验证均退出0；search4 strict-ready、四默认排名ready、94,760原始播放及19源表守恒。没有公开冷构建、修改来源、手工改key或维护其它任务源；原静态WAL-free副本guard打开失败保留，immutable只用于已关闭的静态guard，官方导入正常读取。证据`integration/runtime-readiness.json`与`runtime-ready-metadata.json`。
+
+原cold6、Chrome其余场景及Firefox/WebKit驱动顺序完成，actual exits均0，所有context已关闭。整合版45/45场景功能与90/90个人性能通过、180个人HTTP全200；API/DOM事实、计分、重排映射一致，3对象额外批次、同集合重排请求、legacy、异常批次、溢出及阻塞console均0。首次2/4对象基础耗时（ms）：track333.57/495.06、album423.19/553.48、artist743.72/615.08；整轮三类基础最大565.85/667.66/864.23ms，原门槛不变。summary SHA256 `79251537c2b5b772a93be8517d030fcd24f09ac65445bf79b0ac2ebb112dc9ae`，证据`output/playwright/versus-personal/integration-local/`。该矩阵为新runtime真实独立矩阵，不覆盖旧44/45图片失败；teardown pending-task stderr原文保留，也不用于证明后端取消完成。
+
+首次96 API对账中的48基础全部相等，36排名相等，但12项“包含精选集”排名因副本只准备默认四套而返回503。失败报告`integration-oracle/report.json`保留；随后从既有维护成品严格export/validate/install四自定义排名，未build，默认四套与其它发布、19源表、原维护源DB/WAL均守恒。完整重跑原96项、16过滤/实体组全部相等，旧独立expected文件不变，full oracle没有重新计算；公开builder/publish/enqueue均0、版本和源/owned事实守恒。正确报告`integration-oracle/report-after-custom.json`，实际退出0，不能把首次副本准备缺口抹去。
+
+随后36独立进程（每case fresh5与warm21）、324常规和120切换请求完成，130/130性能与资源门槛通过，实际退出0，总108.315秒。fresh基础最大track111.36/album307.48/artist825.77ms；source/owned19表守恒且相等、13调用链前后完全一致，公开builder/publish/enqueue0、保留全局play frame0。证据`integration-api-run/report.json`与`integration-api-run.log`；资源为个人API probe，不能替代整页生产采样或OOM结论。
+
+上述专项收口后才固定整合提交并启动新版本默认完整八阶段门禁；原9377默认完整Pass不能替代本次70余路径整合与安装补修后的完整结果。当前正式线上仍9dd，新的CI、三模式、部署及原首次公开验收尚未完成。私有HTTPS恢复授权/范围调整仍待用户答复；为两个任务提供独立生产首次测量所需的受控backend重启也须在具体发布版本健康后另行获得授权，协调授权不等于重启授权。

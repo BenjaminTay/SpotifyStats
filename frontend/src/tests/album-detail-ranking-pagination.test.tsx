@@ -135,8 +135,7 @@ describe('专辑详情播放排行分页', () => {
 
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
       '/music/albums/Merged%20Project/stats',
-      expect.any(Object),
-    ))
+      expect.any(Object), undefined, expect.any(AbortSignal)))
     expect(mocks.get.mock.calls.some(([path]) => String(path).endsWith('/rankings'))).toBe(false)
 
     await act(async () => resolveStats(stats))
@@ -178,8 +177,7 @@ describe('专辑详情播放排行分页', () => {
     expect(await screen.findByText('项目歌曲 21')).toBeInTheDocument()
     expect(mocks.get).toHaveBeenCalledWith(
       '/music/albums/Merged%20Project/rankings',
-      expect.objectContaining({ artist: 'Primary Artist', merge_level: 2, limit: 20, offset: 20 }),
-    )
+      expect.objectContaining({ artist: 'Primary Artist', merge_level: 2, limit: 20, offset: 20 }), undefined, expect.any(AbortSignal))
 
     mocks.filters = { ...mocks.filters, min_ms: 45000 }
     view.rerender(
@@ -191,14 +189,13 @@ describe('专辑详情播放排行分页', () => {
     )
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
       '/music/albums/Merged%20Project/rankings',
-      expect.objectContaining({ min_ms: 45000, offset: 0 }),
-    ))
+      expect.objectContaining({ min_ms: 45000, offset: 0 }), undefined, expect.any(AbortSignal)))
   })
 })
 
 
 describe('asynchronous rank context and deferred rankings', () => {
-  it.each(['track', 'album', 'artist'] as const)('loads %s rank context after base stats while keeping rankings deferred', async (kind) => {
+  it.each(['track', 'album', 'artist'] as const)('loads %s rank context when its region is visible while keeping rankings deferred', async (kind) => {
     const observer = installDeferredObserver()
     mocks.get.mockReset()
     mocks.get.mockImplementation((path: string, params: { include_rank_context?: boolean }) => Promise.resolve(path.endsWith('/rankings')
@@ -208,6 +205,8 @@ describe('asynchronous rank context and deferred rankings', () => {
     render(<QueryClientProvider client={client}><MemoryRouter><EntityStatsPanel kind={kind} trackId={1} albumName="Project" albumProjectId={9} artistName="Artist" mergeLevel={3} /></MemoryRouter></QueryClientProvider>)
     await screen.findByText('总播放次数')
     expect(mocks.get.mock.calls[0][1].include_rank_context).toBe(false)
+    expect(mocks.get.mock.calls.filter(([, p]) => p.include_rank_context)).toHaveLength(0)
+    observer.enter('[data-deferred="rank-context"]')
     await screen.findByText('#7')
     expect(
       screen.getByText('全时段排名').compareDocumentPosition(
@@ -233,11 +232,13 @@ describe('asynchronous rank context and deferred rankings', () => {
 
 
 it('project summary resolving an artist does not fork the identical stats key', async () => {
-  installDeferredObserver()
+  const observer = installDeferredObserver()
   mocks.get.mockReset(); mocks.get.mockResolvedValue(stats)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 300000 } } })
   const view = (artistName?: string) => <QueryClientProvider client={client}><MemoryRouter><EntityStatsPrefetch kind="album" albumProjectId={9} artistName={artistName} /><EntityStatsPanel kind="album" albumProjectId={9} albumName="Project" artistName={artistName} /></MemoryRouter></QueryClientProvider>
-  const result=render(view()); await screen.findByText('总播放次数'); result.rerender(view('Artist'))
+  const result=render(view()); await screen.findByText('总播放次数')
+  observer.enter('[data-deferred="rank-context"]')
+  result.rerender(view('Artist'))
   await waitFor(() => expect(mocks.get.mock.calls.filter(([path])=>path==='/music/album-projects/9/stats')).toHaveLength(2))
   const statsCalls = mocks.get.mock.calls.filter(([path])=>path==='/music/album-projects/9/stats')
   expect(statsCalls.filter(([, params]) => params.include_rank_context === false)).toHaveLength(1)

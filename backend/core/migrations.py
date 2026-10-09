@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 89
+LATEST_SCHEMA_VERSION = 90
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4319,6 +4319,13 @@ def migrate_089(conn: sqlite3.Connection):
     from backend.domains.account_archive.snapshot_revision import install_revision_tracking
 
     install_revision_tracking(conn)
+
+
+@migration(90, "music_detail_published_source_facts")
+def migrate_090(conn: sqlite3.Connection):
+    from backend.domains.music_search.detail_projection import SCHEMA as DETAIL_SCHEMA
+
+    conn.executescript(DETAIL_SCHEMA)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

@@ -1,8 +1,7 @@
 """Revision-keyed caches and lossless read views for music detail responses.
 
-The legacy ``full`` payload remains the source of truth.  Lightweight views
-only select fields (or stable list slices) from that payload, so changing the
-delivery shape cannot change any Billboard calculation.
+Default summary/overview/project views read exact published target facts.
+Legacy full/Agent/list consumers retain their existing calculation paths.
 """
 
 from __future__ import annotations
@@ -14,9 +13,8 @@ from backend.core.cache import singleflight
 from backend.core.cache_manager import register_lru
 from backend.core.db import get_db
 from backend.domains.billboard.chart_load_rank import billboard_revision_state
+from backend.domains.billboard.detail_overview import build_published_detail
 from backend.domains.billboard.detail_summary import (
-    build_album_detail_summary,
-    build_artist_detail_summary,
     build_track_detail_summary,
     load_detail_year_end_fields,
     unavailable_year_end_fields,
@@ -149,6 +147,11 @@ def select_track_detail_view(payload: dict, view: DetailView) -> dict:
         payload,
         (
             "found",
+            "snapshot",
+            "year_end_status",
+            "year_end_summary",
+            "year_end_history",
+            "album_attribution",
             "chart_status",
             "effective_play_count",
             "track_id",
@@ -181,6 +184,11 @@ def select_album_detail_view(payload: dict, view: DetailView) -> dict:
         payload,
         (
             "found",
+            "snapshot",
+            "year_end_status",
+            "year_end_summary",
+            "year_end_history",
+            "album_attribution",
             "chart_status",
             "track_chart_status",
             "effective_play_count",
@@ -234,6 +242,11 @@ def select_artist_detail_view(
         payload,
         (
             "found",
+            "snapshot",
+            "year_end_status",
+            "year_end_summary",
+            "year_end_history",
+            "album_attribution",
             "chart_status",
             "track_chart_status",
             "album_chart_status",
@@ -286,7 +299,10 @@ def select_artist_detail_view(
 
 
 def get_track_detail_view(*args, view: DetailView = "full") -> dict:
-    if view in {"summary", "agent"}:
+    if view in {"summary", "overview"}:
+        result = build_published_detail(tuple(args), entity="track", view=view)
+        return select_track_detail_view(result, "summary") if view == "summary" else result
+    if view == "agent":
         summary = build_track_detail_summary(tuple(args))
         if summary is not None:
             return summary if view == "agent" else select_track_detail_view(summary, "summary")
@@ -301,12 +317,8 @@ def get_track_detail_view(*args, view: DetailView = "full") -> dict:
 
 
 def get_album_detail_view(*args, view: DetailView = "full") -> dict:
-    if view == "project":
-        return _album_project_detail_cached(tuple(args), detail_revision_state())
-    if view == "summary":
-        summary = build_album_detail_summary(tuple(args))
-        if summary is not None:
-            return summary
+    if view in {"summary", "overview", "project"}:
+        return build_published_detail(tuple(args), entity="album", view=view)
     payload = _album_detail_cached(tuple(args), detail_revision_state())
     result = select_album_detail_view(payload, view)
     result.update(
@@ -323,10 +335,8 @@ def get_artist_detail_view(
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
-    if view == "summary":
-        summary = build_artist_detail_summary(tuple(args))
-        if summary is not None:
-            return summary
+    if view in {"summary", "overview"}:
+        return build_published_detail(tuple(args), entity="artist", view=view)
     payload = _artist_detail_cached(tuple(args), detail_revision_state())
     result = select_artist_detail_view(payload, view, limit=limit, offset=offset)
     result.update(

@@ -23,7 +23,7 @@ describe('Recent plays deferred queries', () => {
  it('loads only at visibility, paginates, and loads dates only on first calendar open', async () => {
   const h=setup(); render(h.view()); expect(h.fetchPage).not.toHaveBeenCalled(); expect(observer.observers[0].options?.rootMargin).toBe('0px')
   observer.enter('[data-deferred="plays"]'); await screen.findByRole('link', { name: 'current' }); expect(h.fetchPage).toHaveBeenCalledTimes(1); expect(h.fetchPlayDates).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button',{ name: '下一页' })); await waitFor(() => expect(h.fetchPage).toHaveBeenLastCalledWith(2,50,undefined,undefined))
+  fireEvent.click(screen.getByRole('button',{ name: '下一页' })); await waitFor(() => expect(h.fetchPage).toHaveBeenLastCalledWith(2,50,undefined,undefined,expect.any(AbortSignal)))
   fireEvent.click(screen.getByRole('button',{ name: '日历' })); await waitFor(() => expect(h.fetchPlayDates).toHaveBeenCalledTimes(1)); fireEvent.keyDown(document,{key:'Escape'}); fireEvent.click(screen.getByRole('button',{name:'日历'})); expect(h.fetchPlayDates).toHaveBeenCalledTimes(1)
  })
  it('shows errors rather than empty results, and retries explicitly', async () => {
@@ -35,9 +35,9 @@ describe('Recent plays deferred queries', () => {
   expect(h.client.getQueryCache().getAll().filter(q=>q.queryKey[0]==='recent-plays')).toHaveLength(2)
  })
  it('uses search and selected date in the page key and resets pagination', async () => {
-  const h=setup(); render(h.view()); observer.enter('[data-deferred="plays"]'); await screen.findByText('current'); fireEvent.change(screen.getByPlaceholderText(/搜索/),{target:{value:'new'}}); await waitFor(()=>expect(h.fetchPage).toHaveBeenLastCalledWith(1,50,'new',undefined))
+  const h=setup(); render(h.view()); observer.enter('[data-deferred="plays"]'); await screen.findByText('current'); fireEvent.change(screen.getByPlaceholderText(/搜索/),{target:{value:'new'}}); await waitFor(()=>expect(h.fetchPage).toHaveBeenLastCalledWith(1,50,'new',undefined,expect.any(AbortSignal)))
   fireEvent.click(screen.getByRole('button',{name:'日历'})); await waitFor(()=>expect(h.fetchPlayDates).toHaveBeenCalledTimes(1));
   // The calendar date buttons carry the real localized date accessible name.
-  const today = new Date(); const date = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-19`; const cell=document.querySelector(`[data-day="${date}"]`); expect(cell).not.toBeNull(); fireEvent.click(cell!.querySelector('button') ?? cell!); await waitFor(()=>expect(h.fetchPage).toHaveBeenLastCalledWith(1,50,'new',date))
+  const today = new Date(); const date = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-19`; const cell=document.querySelector(`[data-day="${date}"]`); expect(cell).not.toBeNull(); fireEvent.click(cell!.querySelector('button') ?? cell!); await waitFor(()=>expect(h.fetchPage).toHaveBeenLastCalledWith(1,50,'new',date,expect.any(AbortSignal)))
  })
 })

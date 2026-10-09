@@ -57,6 +57,9 @@ DERIVED_TABLES = (
     "music_search_year_end_meta",
     "music_search_entity_year_end",
     "music_search_year_end_projection_state",
+    "music_search_detail_projection_state",
+    "music_search_detail_source_facts",
+    "music_search_detail_entity_projection",
     "agg_weekly_tracks",
     "agg_weekly_albums",
     "agg_weekly_track_sources",
@@ -72,6 +75,9 @@ SCOPED_SNAPSHOT_TABLES = frozenset(
         "music_search_year_end_meta",
         "music_search_entity_year_end",
         "music_search_year_end_projection_state",
+        "music_search_detail_projection_state",
+        "music_search_detail_source_facts",
+        "music_search_detail_entity_projection",
     }
 )
 SOURCE_TABLES = tuple(

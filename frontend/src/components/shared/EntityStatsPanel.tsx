@@ -60,24 +60,24 @@ function entityStatsRequest(
     entityId,
     resolvedMergeLevel,
     queryKey: queryKeys.music.entityStats(kind, entityId, statsParams),
-    queryFn: () => {
+    queryFn: ({ signal }: { signal: AbortSignal }) => {
       if (kind === 'track' && trackId != null) {
-        return api.get<EntityStatsResponse>(`/music/tracks/l1/${trackId}/stats`, { ...filters, ...periodParams, merge_level: resolvedMergeLevel, include_rank_context: includeRankContext })
+        return api.get<EntityStatsResponse>(`/music/tracks/l1/${trackId}/stats`, { ...filters, ...periodParams, merge_level: resolvedMergeLevel, include_rank_context: includeRankContext }, undefined, signal)
       }
       if (kind === 'album' && albumProjectId != null) {
         return api.get<EntityStatsResponse>(
           `/music/album-projects/${albumProjectId}/stats`,
-          { ...filters, ...periodParams, merge_level: resolvedMergeLevel, include_rank_context: includeRankContext },
+          { ...filters, ...periodParams, merge_level: resolvedMergeLevel, include_rank_context: includeRankContext }, undefined, signal,
         )
       }
       if (kind === 'album' && albumName) {
         return api.get<EntityStatsResponse>(
           `/music/albums/${encodeURIComponent(albumName)}/stats`,
-          { ...filters, ...periodParams, ...(artistName ? { artist: artistName } : {}), merge_level: resolvedMergeLevel, include_rank_context: includeRankContext },
+          { ...filters, ...periodParams, ...(artistName ? { artist: artistName } : {}), merge_level: resolvedMergeLevel, include_rank_context: includeRankContext }, undefined, signal,
         )
       }
       if (kind === 'artist' && artistName) {
-        return api.get<EntityStatsResponse>(`/music/artists/${encodeURIComponent(artistName)}/stats`, { ...filters, ...periodParams, include_rank_context: includeRankContext })
+        return api.get<EntityStatsResponse>(`/music/artists/${encodeURIComponent(artistName)}/stats`, { ...filters, ...periodParams, include_rank_context: includeRankContext }, undefined, signal)
       }
       return Promise.resolve({ found: false } satisfies EntityStatsResponse)
     },
@@ -163,10 +163,11 @@ export function EntityStatsPanel({
     true,
   )
   const { ref: rankingsRef, ready: rankingsReady } = useDeferredInView(JSON.stringify(request.queryKey))
+  const { ref: rankContextRef, ready: rankContextReady } = useDeferredInView(JSON.stringify(rankRequest.queryKey))
   const { data: rankData, isPending: rankPending, error: rankError } = useQuery({
     queryKey: rankRequest.queryKey,
     queryFn: rankRequest.queryFn,
-    enabled: !filtersLoading && entityId !== '' && data?.found === true,
+    enabled: rankContextReady && !filtersLoading && entityId !== '' && data?.found === true,
   })
   const queryError = error instanceof Error ? error.message : error ? String(error) : invalidStats ? '统计响应不完整' : null
 
@@ -193,8 +194,8 @@ export function EntityStatsPanel({
   }
   const { data: artistRanking, isPending: artistRankingPending, error: artistRankingError } = useQuery({
     queryKey: queryKeys.music.artistRankings(artistName ?? '', artistRankingParams),
-    queryFn: () => api.get<ArtistPersonalRankingResponse>(
-      `/music/artists/${encodeURIComponent(artistName!)}/rankings`, artistRankingParams,
+    queryFn: ({ signal }) => api.get<ArtistPersonalRankingResponse>(
+      `/music/artists/${encodeURIComponent(artistName!)}/rankings`, artistRankingParams, undefined, signal,
     ),
     enabled: rankingsReady && kind === 'artist' && !!artistName && !filtersLoading && data?.found === true,
   })
@@ -218,10 +219,10 @@ export function EntityStatsPanel({
   }
   const { data: albumRanking, isPending: albumRankingPending, error: albumRankingError } = useQuery({
     queryKey: queryKeys.music.albumRankings(albumProjectId != null ? `project:${albumProjectId}` : albumName ?? '', artistName ?? '', albumRankingParams),
-    queryFn: () => api.get<AlbumPersonalRankingResponse>(
+    queryFn: ({ signal }) => api.get<AlbumPersonalRankingResponse>(
       albumProjectId != null
         ? `/music/album-projects/${albumProjectId}/rankings`
-        : `/music/albums/${encodeURIComponent(albumName!)}/rankings`, albumRankingParams,
+        : `/music/albums/${encodeURIComponent(albumName!)}/rankings`, albumRankingParams, undefined, signal,
     ),
     enabled: rankingsReady && kind === 'album' && (albumProjectId != null || !!albumName) && !filtersLoading && data?.found === true,
   })
@@ -345,8 +346,8 @@ export function EntityStatsPanel({
         <KpiCard label="最近播放" value={dateShort(data.last_played)} />
       </div>
 
-      <div className="space-y-5">
-        {/* KPIs Row 2: 个人排名；基础统计就绪后独立异步加载，不阻塞首屏。 */}
+      <div ref={rankContextRef} data-deferred="rank-context" className="space-y-5">
+        {/* KPIs Row 2: 个人排名；实际进入视口后独立加载，不阻塞首屏。 */}
         {rankError && <p role="alert">排名统计加载失败</p>}
         {rankPending && (
           <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4" aria-label="排名统计加载中">
@@ -595,22 +596,22 @@ export function EntityStatsPanel({
           filters={filters}
           apiParams={apiParams}
           mobile={isPhone}
-          fetchPage={async (page, limit, search, date) => {
+          fetchPage={async (page, limit, search, date, signal) => {
             if (kind === 'track' && trackId != null)
-              return analysisApi.entityPlays('track', String(trackId), filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel })
+              return analysisApi.entityPlays('track', String(trackId), filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel }, undefined, undefined, signal)
             if (kind === 'album' && albumName)
-              return analysisApi.entityPlays('album', albumName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel }, artistName, albumProjectId)
+              return analysisApi.entityPlays('album', albumName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date, merge_level: resolvedMergeLevel }, artistName, albumProjectId, signal)
             if (kind === 'artist' && artistName)
-              return analysisApi.entityPlays('artist', artistName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date })
+              return analysisApi.entityPlays('artist', artistName, filters, { ...apiParams, limit, offset: (page - 1) * limit, search, date }, undefined, undefined, signal)
             return { total: 0, limit, offset: 0, rows: [] }
           }}
-          fetchPlayDates={async () => {
+          fetchPlayDates={async (signal) => {
             if (kind === 'track' && trackId != null)
-              return analysisApi.entityPlayDates('track', String(trackId), filters, { ...apiParams, merge_level: resolvedMergeLevel })
+              return analysisApi.entityPlayDates('track', String(trackId), filters, { ...apiParams, merge_level: resolvedMergeLevel }, undefined, undefined, signal)
             if (kind === 'album' && albumName)
-              return analysisApi.entityPlayDates('album', albumName, filters, { ...apiParams, merge_level: resolvedMergeLevel }, artistName, albumProjectId)
+              return analysisApi.entityPlayDates('album', albumName, filters, { ...apiParams, merge_level: resolvedMergeLevel }, artistName, albumProjectId, signal)
             if (kind === 'artist' && artistName)
-              return analysisApi.entityPlayDates('artist', artistName, filters, apiParams)
+              return analysisApi.entityPlayDates('artist', artistName, filters, apiParams, undefined, undefined, signal)
             return []
           }}
         />

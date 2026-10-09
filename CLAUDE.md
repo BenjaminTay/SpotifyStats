@@ -62,7 +62,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - 环境变量统一从 `backend/core/config.py` 读取，业务代码不得直接 `os.getenv()`。
 - 昂贵计算使用规范化 wrapper、缓存和 `singleflight()`，不得在热路径恢复逐行 `apply(axis=1)`、`iterrows()` 或整表重复扫描。
 - 首页组合响应使用 revision/filter 精确持久快照与语义 LKG；`warming` 只能表示旧事实正在后台更新，打开首页不得同步冷建年度报告或完整 Billboard。
-- 音乐详情 `summary` 必须保持独立轻量路径，不得先构建完整详情再裁剪；实体统计首屏只加载目标范围，完整全局排名通过 `include_rank_context` 延后请求。
+- 音乐详情默认 `summary/overview/project` 只读取同一 exact-ready 发布上下文中的目标事实，缺失、损坏或范围不支持时返回 `snapshot_unavailable`，不得回退完整详情、全库时间线或个人统计；附属投影只在维护期原子发布。实体统计首屏只加载目标范围，完整全局排名通过 `include_rank_context` 延后请求。
 - 串流导入同步更新音乐查找候选索引，六套精确统计快照通过后台队列继续构建；warming 期间不得回退到搜索 GET 冷建或虚假 0。
 - 开发后端使用 `uvicorn backend.main:app --reload --reload-dir backend`，避免扫描 `.venv`、`node_modules` 和 `data`。
 
