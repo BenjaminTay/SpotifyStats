@@ -1,6 +1,6 @@
 # 音乐详情榜单成绩性能验收
 
-日期：2026-10-09。事项：`SS-2026-10-09-001`。当前结论：**Partial；S1–S3 已实现，47147879 的 S4 自然90项及默认完整八阶段通过；S5 首次安装失败，生产仍为旧9dd7fd9b，尚未完成生产性能与恢复演练**。
+日期：2026-10-09。事项：`SS-2026-10-09-001`。当前结论：**Partial；业务本地 S4 已通过，c58775f0 已正式部署。独立生产自然首轮完整 90 项只有 39 项通过、51 项性能失败；116 项功能对账及完整读取守恒通过。冷页面性能和高驻留仍需修复，本项未收口**。
 
 本项基线为 `d5ba3094`，在独立工作树和 94,760 条播放的 Online Backup 副本执行。原始播放、身份、署名、人工覆盖和治理关系不作为本项写入目标；生产 OOM 和对决个人统计分别验收。
 
@@ -21,7 +21,7 @@
 
 私人逐周、逐成员和源守恒证据在 ignored `output/music-detail-chart-acceptance/`，不提交真实数据。
 
-## 最终后端功能与读取边界
+## 108a5f41 阶段后端功能与读取边界
 
 固定集成 SHA 为 `108a5f41`（专项业务 `708a67f` 与上游 `acdd` 合并）。基线继续使用干净 `d5ba3094` 源码及独立事实副本；旧严格差异和失败诊断均保留。
 
@@ -34,7 +34,7 @@
 
 上述私人证据分别保存在 `functional-summary-108a5f41.json`、三份 `*-differences-108a5f41.json`、`projection-fact-audit.json`、`projection-global-no1-audit.json`、`version-group-independent-weight-audit-final.json`、`faults-final/summary.json`、`extended-source-conservation.json` 和 `contract-boundary-ready-final.log`。
 
-## 最终后端资源门槛
+## 108a5f41 阶段后端资源门槛
 
 同一冻结样本、固定 SHA 与独占 CPU 窗口，顺序运行 service、完整应用内 HTTP 路由及流式 cohort。HTTP 使用无 lifespan 的 TestClient，包含 public middleware、router gate、响应校验与序列化；不包含真实浏览器、网络/TLS 或启动预热。每次冷样本为独立进程，热调用为同一进程第二次请求，RSS 以 2ms 采样，响应立即落盘，不累积 payload 污染驻留。
 
@@ -54,7 +54,7 @@
 
 候选三轮末驻留为 178.20 / 179.31 / 179.66MiB，形成平台，未观察到随请求数线性增长。正式证据为 `resource-summary-108a5f41.json`、`candidate-service-cold-108a5f41/`、`candidate-http-cold-sequential-108a5f41/`、`candidate-http-cohort-sequential-108a5f41.json`、`baseline-http-cohort-108a5f41.json`。
 
-## 诊断与其余阶段证据
+## 108a5f41 历史诊断与阶段证据
 
 - 初版 service 冷 18–91ms、热 16–33ms、增量 9.1–13.8MiB，以及初版流式峰值 810.5→116.7MiB、末驻留 630.9→108.0MiB，仅保留为实现过程诊断，不替代 `108a5f41` 最终 HTTP 证据。最初 collector 留存 payload 的无效资源诊断，以及最终首套 HTTP run 与 cohort 发起相近的诊断目录均保留；正式结论使用明确顺序的 `sequential` 目录。
 - 三浏览器控制场景 36/36 通过：暂扣排名、请求取消、失败/重试、旧帧连续、来源返回、归属可见触发、Phone 互斥 DOM/44px/无溢出。控制场景阻止 Service Worker，不能用作自然性能证据；旧探针兼容失败、Firefox 被 SW 绕过注入的诊断均保留。
@@ -95,6 +95,46 @@
 
 首次发布前后旧schema89的57个实际保护表、37原源、schema/epochs/fence及文件身份全部相同；旧capture未包含队列/全部发布表，不能声称全窗口守恒。扩展v2探针已用11项真实tiny SQLite验证并取得新生产before89：五队列表、搜索六表/FTS、全部aux及六侧库全部发布表按read transaction捕获；下一次schema90正式窗口需before/after v2严格比较。采样工具旧9dd纯proc传输诊断验证PID识别、0600输出及只停止collector，不发详情GET，也不作为新版本性能证据。
 
-## 后续与发布
+## 6430 / cb8 后续本地证据与真实联合恢复
 
-冻结门槛、样本和判定保持规划第5节，不以热重跑替换首轮失败。471的S4已通过，整体验收仍为Partial；S5需修复安装阻塞，完成新版本生产健康、自然首次90项、API对账、资源与联合恢复证据。正式Online Backup副本为schema89/94,760条播放，迁移副本至schema90后source_marker、lineage/治理及六类原搜索表逐表SHA守恒；两份既有manifest精确复用，搜索/aux/Billboard冷建均为0，aux四变体及v4的48 targets ready。manifest权限600，仅保存在私有目录。本地通过、CI/三模式通过和旧版健康不能替代新版本生产验收。
+业务集成6430d4de默认完整八阶段实际通过，run `20261009T075213.655349Z-147218655db1`，耗时1,532,685ms；其全新正常lifespan自然90/90通过，点击核心最大962.9ms、全部1047.3ms，深链核心1295.6ms、shell后全部525.5ms，严格v2读窗口守恒。部署补修cb8d05b1另跑默认完整八阶段，run `20261009T094929.575812Z-954fd3885f46`，1,488,756ms，八必需阶段全部PASS，后端3840 passed/2 skipped、真实集成186/1 skipped。两轮真实summary SHA分别 `34a619e4204c3696feb64f2eeb5b07e30eab69f5d1173f57fb56653e10c6621b`、`7e46849cdaae887c7b32a4d9edeb8130586f634da20c8c5b61c2a31a31e2831a`。这些是原版本实际本地证据，不改标c587曾运行新的本地full8。
+
+唯一必要完整owned自动联合恢复采用实际9dd/6430镜像与后来固定到cb8的同哈希host helpers，16个实际阶段均exit0：恢复原主库inode/schema/完整字节、完整Analysis及Billboard备份字节与原semantic rows，旧rank4/BB48 exact与三个旧镜像HTTP保持，只读源守恒。报告 `owned-joint-automatic-restore-6430-report.json` SHA `848837e6e9a8c61524346c11cc5b4000b908d29ada26626893b5f602e8d59a79`，owned工作数据成功释放。原SSH传输收尾255单列，不称整个SSH wrapper0；不称c587镜像的完整恢复或真实生产回滚，也不代替发布成功后人工rollback旧v3验证。
+
+6430及cb8各次实际发布失败、两轮及后续精确清理、三库WAL准备最小补修和新清单九步证据，见[联合发布报告](2026-10-08-versus-personal-statistics-performance-acceptance.md)第21节。历史失败和文件权限诊断保留；正常发布没有冷建搜索、详情或Billboard。
+
+## c58775f0 生产独立首轮（性能失败完整保留）
+
+固定生产SHA `c58775f0df53ec05d2524a06b84f3b9945b6d024`。CI37929372415、Release37929372279（实际Deploy113822444726）及NoDeploy37929372233均success；联合负责人独立核验三个容器同完整SHA/healthy，schema90、搜索4/排名4/详情4/Billboard48 ready。当前detail/BB清单wholeSHA分别为 `ff918b224573c59f8e863f2ed3ac5cd702240fa8a9d5a5ac5c06f77d2468df05`、`c54ff721b3e0aebe46a557bc44c8cbd2c56c83508e9f3ed586a1a0d6469c147a`，与历史文件相同但路径、准备/上传时间及SHA绑定分别保留；rank当前wholeSHA `198bd602956b1246f7841509ed446e19a03f424dce30874687bcf86b7294d0a2`。
+
+人类明确本轮仅验收公开HTTPS，私有入口保持现状；另一项对决公开验收全部结束后，另明确授权一次 `docker restart --timeout 30 spotify-stats-production-backend-1`，实际只执行一次exit0、正常维护自然结束。三服务配置/镜像/容器保持，uvicorn新进程startticks137481646；此前两个SSH preflight失败没有执行restart。根未先请求summary/overview/stats预暖，也未清缓存、再次重启或改外层入口。
+
+| 实际生产证据 | 结果 | 判定边界 |
+| --- | --- | --- |
+| 三引擎自然90，原2s点击/3s深链/2.5s全部可见 | 39/90通过；51项性能失败 | **性能FAIL**，完整首轮保留；Chromium15/42、Firefox12/24、WebKit12/24 |
+| 点击45项 | 39通过、6超2s，其中2项全部可见超2.5s；最大核心2762.8ms、全部2844.9ms | 多数点击变快，不能据此称全部达标 |
+| 深链45项 | 全部核心超3s，最大7820.5ms；shell后全部可见最大1991ms | 导航端到端失败，不能改用shell后时间替代 |
+| 实际功能/布局 | 无页面错误/非GET/launch error；12屏外排名检查保持按可见性请求 | 性能失败之外未发现这些功能失败 |
+| 116原顺序HTTPS全字段对账 | 实际exit0、116/116；108个200及8个未知实体404 | 功能Pass，不能覆盖性能FAIL；原入场要求完整自然90/同SHA/生产origin，并未要求性能Pass |
+| 浏览器、API及总窗口strict v2 | 三个比较均exit0、完整read-window unchanged | 57保护表/37原源、五队列表、21主库发布表及六侧库全部表、schema/epochs/fence/inode全部同；access clock变化0 |
+
+浏览器UTC `13:20:22.302760–13:31:36.522309`，PWA正常/fresh contexts，完整90项结束、全部context/browser关闭，实际进程exit1仅因性能门槛失败。没有修改门槛、单项热重跑或补一轮“首次”。API入场使用本轮完整自然报告及schema90/四exact/aux/fence对照，全字段只允许已定义的四个专辑请求身份归一。
+
+唯一资源采样0.05秒、14,098连续样本，UTC `13:20:05.226048804–13:31:50.088600123`，覆盖整个UI窗口；同uvicorn PID7/startticks137481646，最大采样间隙52.595ms，采样进程实际exit0并以signal正常停止。RSS baseline462.469MiB、peak2095.602MiB、末驻留1724.961MiB；PSS baseline460.088MiB、peak2093.213MiB、末驻留1722.570MiB，CPU增量183.7秒、cgroup OOM事件增量全0。这是自然summary/stats/rank/overview混合窗口，**不能冒称单请求64MiB门槛或与纯overview本地324矩阵相同**。观察到高驻留，未据此认定整体OOM根因或关闭OOM事项。
+
+原before89-v2仍保留实际旧采集时间与SHA `0654263f7735b02f5a3c7fdb053e6578893ae46b45df848b215d1e8f3ef8fe36`。跨迁移37原源事实完全同，schema89→90，artist_identity_state/governance_source_revisions、background_jobs及搜索FTS/aux/各侧发布表变化显式记录，publication fence同、主库inode改变；这不是同runtime GET守恒，也不称整库字节相同。生产同runtime的before、after-browser、after-API读连接均关闭，采集在资源窗口外：before `13:18:45.236295–13:19:10.926925`，after-browser `13:33:30.024073–13:34:08.636121`，after-API `13:36:33.377887–13:36:59.631037`（UTC）。
+
+私有证据在 `output/music-detail-chart-acceptance/production-first-c58775f0/`，不提交真实数据：
+
+- `browser-natural/results.json` SHA `517e9d7a8f9377dc14f2731402b7a5f132a38e5711fcedc9310e61de49a8a64f`；summary SHA `ca0fea89fe66c7828449b543f021461d7e98f8f6ff2b72b248d798cb297e2bb2`。
+- `resources.json` SHA `388ab5806a4f9c4303aa50697c52de633c892c67300cb22e8cb8d486dff06675`；`browser-resource-completion-receipt.json`确认完整实际覆盖。
+- `https-api-116-first/summary.json` SHA `0347080cb2fc2c733b8233ed6f0cd54d2f4c5ee9d26cfe310cd31ac24cb6b23f`；116原response逐个保留。
+- `runtime-read-comparison.json`及两个分窗口比较SHA均 `0e81dbcf5ee53abcc7f90f558a1003c970a0d9d6dc086e2c5bb2674e9886b6c4`；三个v2 capture及独立receipt分别保留。
+
+SSH首次握手失败发生在任何source capture/业务请求之前，最小代理验证后复用任务独占ControlMaster；现有sampler只增加传输参数，REMOTE原文/采样/矩阵合同不变。末端最终dockerinspect实际0、容器/镜像/PID/StartedAt/healthy与before同；owned master已自行结束，`ssh -O exit`因此255、最终logger wrapper1，原回执保留，随后仅本机ps确认原PID不存在、owned空目录清理成功。该清理收尾不改API/守恒/采样实际结果，未向backend发送信号。
+
+## 剩余定位与下一步
+
+本轮证据不能把全部超时归因于等待排名。首个歌曲深链HTML responseEnd302ms，但DOMready3021ms；entry JS为658,419B（约643KiB）下载2688ms，后续673,158B（约657KiB）图表chunk下载2890ms；capabilities于3117ms才发出、settings于5996ms才发出，overview/summary并行而服务耗时979/1058ms。首个专辑点击overview服务2256ms；另一些深链overview服务约82–125ms却仍端到端超5秒。需要分别处理静态加载/初始化、少数较慢服务及混合流程高驻留，不能统一当作纯网络或纯计算。
+
+c587的三套Nginx源码已配置gzip；ResourceTiming的transfer/encoded/decoded字节与真实响应编码尚未形成完整压缩归因证据，不提出重复“开启gzip”或擅改外层代理。已用实际本地production build确认另一具体前置依赖：LazyEChart模块顶层导入ECharts，引擎进入三类详情route静态闭包。最小本地候选将整个引擎/注册/React适配器移入动态图表renderer；候选验证单独记录，未发布，不继承本轮或历史S4/生产Pass。后续维护原门槛、只读和统计合同；001保持OPEN/Partial，规划不归档，额外发布及独立首轮重启需具体授权。对决已完成状态及整体OOM独立事项保持。
