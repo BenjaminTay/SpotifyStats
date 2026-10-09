@@ -409,7 +409,7 @@ SQL 单一候选仅在隔离副本实验：去掉早于目标timestamp的嵌套�
 
 整合后的六个unit/contract模块共198项通过（9.96秒，1项既有LibreSSL警告）；四文件Ruff及格式检查通过，timeline与service的mypy检查通过。真实API复核96个请求对旧独立oracle逐字段一致，builder/publish/enqueue均0，源与副本19表守恒、旧预期文件及测量调用链hash保持。证据：`output/versus-personal-acceptance/count-projection-oracle.json`；没有重新准备数据库或构建排名。
 
-独立冷启动、重复读取及资源测量已通过：36个进程（每类2/4对象各5个独立首次进程和1个重复读取进程）、130项门槛全部通过；基础首次最大歌曲175.02ms、专辑309.71ms、艺人929.25ms，排名首次最大20.91ms。各接口21个重复观测P95最大19.23ms；四对象读取新增峰值最大128.48MiB，20组切换稳态新增最大6.25MiB。builder/publish/enqueue均0、无全库frame驻留，源/副本19表与测量调用链保持。报告为`output/versus-personal-acceptance/count-projection-api-run/report.json`，旧版本报告保留。当前业务工作树尚未提交；上述专项与下述默认完整全栈共同构成S4证据，生产浏览器尚未复验，不能视为S5完成。
+独立冷启动、重复读取及资源测量已通过：36个进程（每类2/4对象各5个独立首次进程和1个重复读取进程）、130项门槛全部通过；基础首次最大歌曲175.02ms、专辑309.71ms、艺人929.25ms，排名首次最大20.91ms。各接口21个重复观测P95最大19.23ms；四对象读取新增峰值最大128.48MiB，20组切换稳态新增最大6.25MiB。builder/publish/enqueue均0、无全库frame驻留，源/副本19表与测量调用链保持。报告为`output/versus-personal-acceptance/count-projection-api-run/report.json`，旧版本报告保留。本节专项测量时业务工作树尚未提交，后续固定版本见第14节；上述专项与下述默认完整全栈共同构成S4证据，生产浏览器尚未复验，不能视为S5完成。
 
 当前工作树本地三浏览器、五视口45场景90个人样本已实际完成，90个样本的数值、排名、DOM及最终计分、性能门槛全部通过；180个个人HTTP全200，重排新增请求、三对象中间批次、旧完整stats和溢出均0。原顺序Chromium360无个人预暖、220ms计入：四歌曲基础501.98ms、四专辑584.25ms、两艺人1,018.73ms、四艺人908.47ms。全矩阵歌曲/专辑/艺人基础及全部个人最大697.48/708.95/1,018.73ms，12调用链、probe、实体清单和HEAD前后相等。
 
@@ -426,3 +426,65 @@ SQL 单一候选仅在隔离副本实验：去掉早于目标timestamp的嵌套�
 当前服务器只读核验：原节点DNSName仍相同，tailscaled systemd active/running/enabled；prefs WantRunning=false、LoggedOut=false，BackendState=Stopped，Serve配置为空。近期重启日志继承关闭意愿，无法确定最初停止时间或操作者。完全版网关3001实际GET capabilities为200/private-admin/full、完整SHA d5ba3094，三容器健康；应用本身可用不等于私有HTTPS可访问。公开域名由宿主Caddy `/etc/caddy/Caddyfile` reverse_proxy到127.0.0.1:3002，不是宿主Nginx；未发现该站点auth directive，仍由公共运行面限制能力。
 
 配置入口是现有`deploy/production/configure-tailscale.sh`：读取APP_GATEWAY_PORT（默认3001）、检查loopback健康，再执行Tailscale Serve后台HTTPS转发。恢复需要另行确认启用原tailnet节点、重新设置Serve→3001并从同tailnet授权客户端验证；仅启用节点不能补回空Serve。调查不执行这些变更，也不更改Caddy、Funnel、端口或防火墙。sanitized证据保存在ignored `output/versus-personal-acceptance/private-entry-investigation/`，目录700/文件600，无密钥、环境文件原文或节点状态原文。
+
+2026-10-09 04:22:50 UTC再通过SSH只读核实，原节点DNS仍为`spotify-stats.tail8916b1.ts.net`，BackendState=Stopped、Serve配置为空；3001/3002的实际capability分别为private-admin/full与public-readonly/showcase，完整SHA均为acdd0d0ddb10170acacffdaedeba03b17ae70519。证据`private-entry-investigation/current-route-state.json`；本次不启用节点、设置Serve或改公开路由。
+
+## 14. acdd0d0d 实际发布及首次生产：一项基础性能仍失败
+
+计次投影阶段已提交 `acdd0d0ddb10170acacffdaedeba03b17ae70519` 并正常推送main；提交hooks的Ruff、format、mypy、detect-secrets通过。12调用链commit blob的SHA256逐项与第12节实测一致，绑定回执`count-projection-commit-binding.json`。另一个任务的音乐详情规划、地图以及SS-2026-10-09-001共享文档新增hunks均留在工作树，没有混入九文件提交。
+
+四份既有ready只verify→export→validate，三个实际退出均0，没有build/install。manifest绑定完整SHA、builder v2、source revision bb7cb368…，765,982 bytes、digest `a6eeaf5f56da2a1912de3fc74ac862286416c264821c2bb4e3e51fcae7b4186c`；600暂存文件经远端digest校验后原子改名，`.upload`已不存在。新上传前生产guard与最初19表及本阶段before一致，完整jobs6,299（done6,261/failed38、pending/running0）、22发布及4rank元数据守恒。私密上传回执`acdd0d0ddb10170acacffdaedeba03b17ae70519-manifest-upload-receipt.json`保留。
+
+正式CI run `37879579278` / job `113655927858` 已实际success；Production Release run `37879579463` 的quality job `113655928638` 后端unit已success、contract仍运行。截至2026-10-09 03:40:43 UTC，尚无三模式、镜像或部署通过结论，生产仍d5ba3094。后续继续真实部署、独立verify、原顺序首次公开浏览器、API矩阵及源/任务/发布保护，私有HTTPS仍单独待外部条件；不把新CI success描述成已上线。
+
+正式release现已actual success：quality `113655928638`，full `113659614808`、showcase `113659614820`、dual `113659615063`，images `113659652776`、deploy `113660011476`。独立SSH verify.sh退出0，search schema89四变体/semantic/orphans0及rank4 ready通过。2026-10-09 03:55:34 UTC runtime记录三运行容器OCI完整SHA均acdd0d0d且healthy；3001 private-admin/full、3002 public-readonly/showcase同完整SHA，backend无宿主映射、两Web仅loopback。Tailscale仍Stopped，未改外层入口。启动维护当时尚有pending2/running1，不在这一时点启动首次cohort；source19上线后guard及浏览器/API验收仍待完成。证据 `release-acdd0d0ddb10170acacffdaedeba03b17ae70519/production-verify.{json,log}` 和 `production-runtime.json`。
+
+启动维护自然结束后，beforeguard（03:57:18 UTC）为jobs6,310（done6,272/failed38、pending/running0）、20项Analysis发布、4份rank/source bb7cb368…。相对发布前新增11个正常维护任务、22→20项派生发布变化分别保留；19源表与初始及发布前逐表相同。实际公网capability确认为public-readonly/showcase/完整acdd SHA。无个人预暖、额外idle、人工role或API重定向，随后纯/proc采样启动并放行首次公开浏览器。
+
+公开14场景/28样本功能全PASS，56 personal HTTP200，DOM值、exact ranks、最终计分及重排映射一致；三对象中间批次、重排新增请求、旧完整stats、overflow及blocking console均0，五driver退出0且全部contexts关闭。原2s/3s门槛为27/28达标，唯一首次Chromium360四专辑基础/全部个人2,385.25ms、排名2,109.34ms，超过基础2秒；28/28全部个人≤3秒，原失败未热补。首六组基础/排名依次为：歌曲2个744.99/253.82ms、4个732.41/617.55ms；专辑2个798.73/462.04ms、4个2,385.25/2,109.34ms；艺人2个1,925.64/784.83ms、4个1,535.69/1,201.22ms。后11场景全部达标，不能替代原四专辑失败。
+
+首次四专辑stats HTTP2,035.36ms/server1,641.346ms（identity1,192.630/source_context218.117/SQL98.084/timeline94.643/attribution24.277ms），rank HTTP1,815.19ms/server1,418.161ms可包含共享selection等待，不能解释为重建排名。两艺人stats HTTP1,792.50/server1,748.252ms（identity540.387/SQL736.500/timeline319.321ms），相比旧d5首次已达原基础门槛。旧d5五raw及summary的hash、当前12调用链/HEAD/probe/entities均保持。`production-public-acdd…/production-summary.json` digest `09a8883e5ac1403baa3028c0f2cefde324103f359a459f893afc3379e822de29`，offline judgment digest `0c77c65ff46cc9513fade545203fb4376eac5950a674faac4b1ee341242d2c22`、exit1；原失败保留。
+
+浏览器前后7组guard全部PASS；后续公开HTTPS48及私有SSH loopback HTTP48个功能请求均complete/functional_pass，四过滤群各一个rank key、四key不同，真实surface和完整SHA一致。三个实际公开admin/jobs GET均按既有隐藏路由合同返回404。96请求及拒绝检查后7组guard再次PASS，19源、完整jobs、20Analysis发布和4rank元数据守恒。既有SSH forward17379仍live且capability正确，未因观测超时重启forward。私有SSH是功能HTTP证据，仍不等于私有HTTPS验收。guard脚本遗留note写12请求，本节的实际输入边界是前述14场景及另行96功能请求，以raw驱动/两个前后快照为准；不据旧note缩小或扩大证据范围。首个本地guard comparison在capture句柄69809尚未完成时误读空输出而JSONDecodeError；等待同一次capture实际exit0后重做离线比较，没有重复网络capture，最终七项一致。
+
+资源采样固定实际uvicorn PID932715/start134114984，524样本/0.5s、UTC03:58:06.421–04:02:27.921，所有样本身份相同。整个页面cohort及afterguard RSS基线910.05MiB、最大/末值1,117.41MiB、增量207.36MiB；CPU增量43.35秒，最小MemAvailable1,869.09MiB。HWM1,295.30MiB属进程启动以来、包含启动维护，不能作本cohort峰值。浏览器关闭后root Ctrl-C结束自有纯只读SSH采样（255、无end marker），未给backend信号或重启；每0.5s采样不能捕捉更短峰值，整页含榜单/周期，不能归单个个人API或证明OOM已解决。报告`release-acdd…/resources/public-cohort-summary.json`及原JSONL保留，未用本地128.48MiB替代线上观察。
+
+当前S5仍Partial；下一步按规划R3只针对同期发行周期的全库计次基线进行精确事实复用，先隔离证明竞争与日级事实等价，不扩大身份缓存或放宽门槛。私有HTTPS配置仍未改变。
+
+## 15. 剩余四专辑延迟：隔离竞争与R3候选证据
+
+固定acdd源码和隔离schema89副本：album2→4身份准备单独三次19.346/19.377/20.067ms，自身thread CPU19.343–20.062ms；与global raw读取同起点仅30.229–31.150ms，不能据此解释生产1.19秒。精确协调到原global logical merge入口后，同一SelectedEntity事实不变，身份墙钟变246.219/203.086/213.810ms，但自身CPU仅41.639/25.491/25.662ms；global merge CPU269.140–309.765ms、完整global计次659.939–789.925ms。这证明同期Python计次可显著拉长身份墙钟；生产raw缺服务端绝对起止和取消完成，仍不声称已解释线上全部1.19秒。
+
+现有`agg_weekly_track_sources`完整versioned有效性检查104.804ms、按Billboard week year/play_date汇总计次15.822ms；1,527个元组、67,881次逻辑播放与原global计次逐项相等、missing/extra0。不得用artist fanout、周榜rank或裁掉覆盖边缘。候选仅在merge/music均开启且完整参数、当前generation/source/dataset/policy/duration/identity/credits/必要表证明匹配时使用；无builder的旧fixture兼容分支不得准入，不匹配保持原计算，不prepare/build/写正式DB，不改变现有4条compact tuple缓存。尚须实现与回归，不能将单一真实参数相等描述成所有边界已完成。
+
+19表事实、context、8调用链hash及main/WAL的inode/size/mtime/sha均保持；SHM内容保持、mtime被只读连接触碰，all_physical=False明确保留。原完整daily oracle已保存，后续无需重算排名。证据`output/versus-personal-acceptance/album-identity-cycle-isolation-20261009/{report.json,phase-report.json}`及profile/log；本节测量时业务文件未修改。R3最小实现已准入，root负责整合与新版本接口/浏览器/完整门禁及生产首次闭环。
+
+### 15.1 R3实现与隔离回归：已冻结，HTTP与完整门禁待验
+
+仅修改`release_cycle_comparison_service.py`与原unit模块。现有4条singleflight/LRU compact tuple miss优先尝试只读日计次聚合；merge/music、参数hash、当前generation/dataset及全部计次必要versioned proof匹配才复用，源revision和connection data_version前后双重检查；缺失、不可读、失配或漂移回退原计次。不得进入无builder的旧兼容分支，不维护/重建/写聚合、不扩大缓存。
+
+精确依赖边界与已有增量维护一致：Album Project membership在source聚合读时应用，没有烘焙进source-track计次，因此只排除`album_project_revision`，其它proof键全部比较。最初严格全键检查真实副本因此拒绝，原失败日志`r3-after-proof-mismatch.log`保留；未补写配置或重建以制造通过。新增真实删除project membership后两条日计次路径完整相等的测试，参数/身份/署名/时长/政策/source不匹配仍回退。
+
+114项相关unit/contract通过（comparison44、其它70，9.66秒），Ruff/format、service mypy与diff检查通过。边界包含真实参数失配、proof期间外部ms修改、不可读聚合、nullable representative、跨年Billboard归属、覆盖边缘、仅时长零计次以及完整周期结果。真实helper三次174.050/181.424/195.481ms，实际_daily_projection冷miss三次202.265/204.033/206.551ms；1,527个年/日/计次元组、67,881次播放完整exact，forbid原_count_events证明没有回退或用热命中替代。新cold baseline同期album4 identity40.645/43.556/41.126ms、自身CPU24.503–27.234ms；旧精确merge竞争203.086–246.219ms，不能据此宣称线上已达门槛。
+
+19事实表、source、源码和main/WAL stat/hash守恒；SHM内容守恒而mtime变化，all_physical=False。最终`r3-after-report.json`与`r3-final-*`保留。源码hash service `0cac248cc9638a862e67b4b5f36088c50226fef2bdc624978a680af81150bcf2`、test `abee57ecc63d97e195d2eefbacbb2b54135047bc0943170ac708ed47b9103864`。root扩展13条整体调用链冻结：原12个人调用链仍与acdd commit blobs一致，新增周期service必须纳入本轮前后绑定；旧个人API报告仅描述未变的12文件，不冒充新整体验收。
+
+本地仅重启root拥有的backend会话53873（正常exit0），新会话4067/PID79826，仍用原runtime/main及analysis/billboard/community/archive/yearly/governance六精确sidecar，warmup/search/L3 startup均0，无reload。startup完成、health200后首次个人请求交浏览器原cold6，再执行三浏览器五视口；尚未跑API预暖。当前S4再次待新版本HTTP、浏览器及默认八阶段，S5仍保留acdd原四专辑失败和私有HTTPS外部条件。
+
+### 15.2 当前R3本地浏览器与接口对账
+
+原首次Chromium360六样本全部功能/性能PASS，基础/排名ms依次为track2 430.39/308.58、track4 561.39/427.07、album2 576.06/392.48、album4 781.17/594.13、artist2 929.41/470.34、artist4 770.04/631.43，220ms等待已计入，真实3→4 gap47.7–48.6ms。随后自然暖42场景，三浏览器五宽唯一45/45功能、90/90个人性能全部PASS，180 personal HTTP200，API/DOM误差0；各kind基础及all最大632.85/870.23/929.41ms，最终score可见最大633.87/871.83/930.59ms。三driver actual exit0、全部contexts关闭，无应用console错误、overflow、legacy、重排新增或中间三对象批次；无窄复验或额外预暖，未覆写旧本地/生产FAIL。
+
+13条调用链前后与root before-binding完全相等，probe e33de4c7…和entities429a87fc…未改。关闭期Page._on_route pending stderr与deferredcycle取消保留driverlogs，不能推断服务端已停止或量化其CPU。summary `output/playwright/versus-personal/release-cycle-aggregate-local/summary.json` sha256 `6f983543e8d288c26589d79d33805f1c0c3a758c2456e13293b33cfa6fd19440`。
+
+浏览器释放CPU后，当前版本按现成独立完整oracle执行48基础+48排名API，对账96/96通过、19源/派生事实守恒，builder/publish/enqueue均0、四精确排名复用；完整oracle未重算、独立期望文件未变，13源码前后冻结。`release-cycle-aggregate-oracle/report.json`实际exit0/12.882秒。个人fresh5/warm21/资源36 worker已actual exit0，122.867秒、324常规+120切换HTTP共444，130门槛全部PASS。三kind fresh基础最大266.76/488.73/972.75ms，rank fresh最大52.25ms，warm21 P95最大34.01ms；四对象新增峰值最大128.72MiB，20不同队列稳定增量最大5.59MiB。19源及派生事实与独立source匹配并守恒、13 hash冻结、global frame0、builder/publish/enqueue0；不重新prepare/维护。新默认完整全栈已实际完成并退出0，八必需阶段同轮PASS，见下节；固定提交和新版本生产仍待完成。
+
+该run中间核验：quality PASS（92,584ms），常规3,722 passed/5 warnings（297.85秒），真实集成187 passed/2 warnings（226.61秒），随后完成API和浏览器阶段。常规新增一个AI后台线程警告：`test_yearly_review_v2_contract.py::test_available_years_has_response_model_and_request_id`期间`ai_task_service._run_handler_safely`打开数据库时PRAGMA journal_mode=WAL报disk I/O error；trace与原始日志保留。AI service与db源码未修改，不将此警告描述成旧acdd同样存在，该警告不计作测试失败，但需随本轮原始证据保留。
+
+### 15.3 R3默认完整门禁收口
+
+默认完整run `20261009T043213.567518Z-22473bd44432` actual exit0，selection=full、dry_run=false、overall_status=PASS；八个必需阶段同轮PASS，总耗时1,480,781ms（24分40.781秒）。阶段ms依次为preflight9,654、quality92,584、backend537,518、api169,229、browser-routes400,051、browser-interactions80,221、browser-inventory46,494、browser-compat144,892；optional NOT_RUN，不冒称可选阶段已验。
+
+all-files Ruff/format/mypy/detect-secrets、前端787 passed/4 skipped（97 files passed/1 skipped）与build通过；后端3,722 passed/5 warnings、真实集成187 passed/2 warnings。API smoke157/157、boundary113/113，51性能目标slow_count0，51个warm组最大P95 225.94ms（Billboard data，门槛500ms）。桌面/移动路由、真实交互、控件清单以及Chromium/Firefox/WebKit兼容全部通过。摘要`release-cycle-aggregate-fullstack-summary.json`，原API/XML/locks位于同run目录，日志`fullstack-release-cycle-aggregate.log`。
+
+运行记录为acdd0d0d+dirty R3工作树；验收前后13调用链与unit文件hash完全相同，不能把新helper验收写成旧acdd clean HEAD。另一个线程的SS-2026-10-09-001规划及docs地图不属于本次提交范围，源代码冻结仍有效。S4 R3收口，S5固定SHA、实际CI/发布/首次生产与私有HTTPS验收尚未完成；已向用户请求明确授权恢复原私有入口或调整仅公开验收，未擅自启用Tailscale。
