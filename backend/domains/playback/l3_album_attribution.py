@@ -1601,8 +1601,11 @@ def load_l3_song_album_attributions(
     """Return the published one-row-per-song L3 owner projection."""
     if not validate_l3_song_album_attributions(conn, require_ready=require_ready):
         return pd.DataFrame()
+    from backend.domains.metadata.release_dates import precision_expression
+
+    release_precision = precision_expression(conn, "album_projects", "target")
     return pd.read_sql_query(
-        """SELECT attribution.canonical_song_key,
+        f"""SELECT attribution.canonical_song_key,
                   attribution.representative_track_id,
                   representative.track_name AS canonical_song_name,
                   attribution.canonical_artist_key,
@@ -1612,6 +1615,7 @@ def load_l3_song_album_attributions(
                   artist.artist_name,
                   target.primary_album_id,
                   target.release_date,
+                  {release_precision} AS release_date_precision,
                   target.scope,
                   target.project_type,
                   target.include_in_charts,

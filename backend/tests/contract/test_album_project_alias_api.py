@@ -63,7 +63,7 @@ def test_member_alias_uses_same_project_for_all_four_detail_surfaces(
 
 
 def test_stable_project_routes_support_slash_member_and_billboard_detail(
-    use_seed_db: str, client
+    use_seed_db: str, client, prepare_music_detail_publications
 ) -> None:
     run_migrations()
     conn = sqlite3.connect(use_seed_db)
@@ -83,6 +83,7 @@ def test_stable_project_routes_support_slash_member_and_billboard_detail(
     assert stats["found"] is True
     assert stats["album_project_id"] == 3
     assert stats["album_project_name"] == "Fixture Future LP"
+    prepare_music_detail_publications()
     billboard = client.get(
         "/api/billboard/album-project/3",
         params={"artist_name": "Fixture Artist Alpha", "merge_level": 2, "view": "summary"},

@@ -78,13 +78,12 @@ describe('未入榜实体详情', () => {
       wrapper: detailWrapper('/music/albums/Public%20Album?artist=Artist', PUBLIC_CAPABILITIES),
     })
     await waitFor(() => expect(get).toHaveBeenCalledWith(
-      '/billboard/album-project/3', expect.objectContaining({ view: 'summary' }),
-    ))
+      '/billboard/album/Public Album', expect.objectContaining({ view: 'summary' }), undefined, expect.any(AbortSignal)))
     expect(await screen.findByText('播放统计内容')).toBeInTheDocument()
     expect(screen.queryByText(/加载失败/)).not.toBeInTheDocument()
     expect(get.mock.calls.filter(([path, params]) => (
       path === '/billboard/album-project/3' && params?.view === 'summary'
-    ))).toHaveLength(1)
+    ))).toHaveLength(0)
   })
 
   it('稳定专辑项目入口不依赖含斜杠的专辑名', async () => {
@@ -120,8 +119,7 @@ describe('未入榜实体详情', () => {
     expect(await screen.findByText('A/B')).toBeInTheDocument()
     expect(get).toHaveBeenCalledWith(
       '/billboard/album-project/3',
-      expect.objectContaining({ view: 'summary' }),
-    )
+      expect.objectContaining({ view: 'summary' }), undefined, expect.any(AbortSignal))
   })
 
   it('单曲标题区提供精准管理深链并保留返回路径', async () => {
@@ -364,13 +362,11 @@ describe('未入榜实体详情', () => {
     expect(await screen.findByText('分页歌曲 1')).toBeInTheDocument()
     expect(get).toHaveBeenCalledWith(
       '/billboard/artist/Paged Artist',
-      expect.objectContaining({ view: 'tracks', limit: 50, offset: 0 }),
-    )
+      expect.objectContaining({ view: 'tracks', limit: 50, offset: 0 }), undefined, expect.any(AbortSignal))
     fireEvent.click(screen.getByRole('button', { name: '下一页' }))
     await waitFor(() => expect(get).toHaveBeenCalledWith(
       '/billboard/artist/Paged Artist',
-      expect.objectContaining({ view: 'tracks', limit: 50, offset: 50 }),
-    ))
+      expect.objectContaining({ view: 'tracks', limit: 50, offset: 50 }), undefined, expect.any(AbortSignal)))
     expect(await screen.findByText('分页歌曲 51')).toBeInTheDocument()
   })
 

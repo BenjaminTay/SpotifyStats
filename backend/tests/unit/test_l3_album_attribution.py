@@ -210,6 +210,43 @@ def test_live_version_returns_to_studio_and_cover_remains_live_residual() -> Non
         conn.close()
 
 
+@pytest.mark.parametrize(
+    "precision,first_eligible",
+    [("day", "2024-07-19"), ("month", "2024-07-31"), ("year", "2024-12-31"), (None, "2024-07-19")],
+)
+def test_l3_owner_preserves_project_release_precision_for_chart_eligibility(
+    precision, first_eligible
+) -> None:
+    conn = _connection()
+    try:
+        raw = {"month": "2024-07", "year": "2024"}.get(precision, "2024-07-19")
+        _project(
+            conn,
+            project_id=10,
+            album_id=100,
+            name="Album",
+            source_bucket="original_album",
+            release_date=raw,
+        )
+        conn.execute("UPDATE album_projects SET release_date_precision=?", (precision,))
+        _track(conn, track_id=1, album_id=100, project_id=10, name="Song")
+        apply_l3_album_attribution_plan(conn)
+        membership = load_album_project_membership(conn, merge_level=3)
+        assert membership.iloc[0].release_date_precision == precision
+        cutoff = pd.Timestamp(first_eligible)
+        events = pd.DataFrame(
+            {
+                "track_id": [1, 1],
+                "ts_date": [cutoff - pd.Timedelta(days=1), cutoff],
+                "ms_played": [180_000, 180_000],
+            }
+        )
+        totals = compute_album_project_plays(events, conn, merge_level=3, billboard_mode=True)
+        assert int(totals.iloc[0].play_count) == 1
+    finally:
+        conn.close()
+
+
 def test_vault_track_uses_rerecord_origin_and_album_composition_parent() -> None:
     conn = _connection()
     try:

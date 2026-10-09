@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from backend.core import db as db_mod
-from backend.core.migrations import run_migrations
+from backend.core.migrations import LATEST_SCHEMA_VERSION, run_migrations
 from backend.tests.unit.test_rebase_music_search_preflight_script import (
     ROOT,
     _populate_staged,
@@ -29,7 +29,13 @@ def _schema_88(path: Path) -> None:
     for table in ("spotify_album_meta", "album_projects"):
         conn.execute(f'ALTER TABLE "{table}" DROP COLUMN release_date_precision')
     conn.execute("DROP TABLE spotify_album_date_observations")
-    conn.execute("DELETE FROM schema_migrations WHERE version=89")
+    conn.execute("DELETE FROM schema_migrations WHERE version>=89")
+    for table in (
+        "music_search_detail_entity_projection",
+        "music_search_detail_source_facts",
+        "music_search_detail_projection_state",
+    ):
+        conn.execute(f'DROP TABLE IF EXISTS "{table}"')
     conn.commit()
     conn.close()
 
@@ -54,7 +60,10 @@ def test_rebase_upgrades_schema_88_and_preserves_rollback_and_non_search_write(
     assert completed.returncode == 0, completed.stderr
     assert hashlib.sha256(baseline.read_bytes()).hexdigest() == rollback_hash
     with sqlite3.connect(quiescent) as conn:
-        assert conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 89
+        assert (
+            conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+            == LATEST_SCHEMA_VERSION
+        )
         assert (
             conn.execute("SELECT value FROM unrelated_release_write").fetchone()[0] == "preserved"
         )

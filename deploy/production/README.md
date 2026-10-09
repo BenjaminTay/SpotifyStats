@@ -353,3 +353,13 @@ python scripts/versus_rank_publication.py build \
 首版将 manifest 通过已有 SSH/SCP 访问上传为服务器 `/opt/spotify-stats/backups/versus-ranks-<完整目标SHA>.json`，权限 `600`。生产 workflow 使用现有部署 SSH 凭证检查这一私密服务器文件，不新增 GitHub Secret，也不从 Git 或公开 artifact 获取数据。`deploy.sh` 自动发现此精确 SHA 路径，亦可显式传 `--versus-rank-manifest <path>` 或 `VERSUS_RANK_MANIFEST`。没有 manifest 时，只允许从当前 live DB 的目标 builder exact-ready 发布导出并重绑到替换后的 lineage；源发生变化即失败。
 
 Backend 停服期间先核对已完成搜索预检的副本，再备份 Analysis sidecar、保存上一镜像可消费的排名 manifest，替换主库后安装并验证四默认 ready，最后才激活新镜像。安装或后续网关验收失败时联合恢复主库、sidecar、上一 SHA 和部署模式；若上一镜像支持排名安装器，再重绑其精确旧发布到恢复后的 lineage。功能出现前的旧镜像继续使用原健康门禁，不调用不存在的安装器。停止后的原源副本单独保留，不用已升级搜索预检副本作为旧代码恢复点。
+
+## 音乐详情附属投影发布
+
+支持 schema90 的镜像要求默认 L2/L3 × dynamic/fixed 四变体的详情附属投影 exact-ready。首次发布只在明确 Online Backup 副本运行 `scripts/prepare_music_detail_projection.py --db-path <副本> --build-on-copy`，随后以 `--export <manifest>` 导出；该私密数据文件放置于服务器 `backups/music-detail-<完整目标SHA>.json`，权限600，不得提交Git或进入镜像/公开artifact。
+
+正常发布优先复用已迁移预检副本的投影；缺失时只验证、安装预先准备的manifest，来源lineage、治理digest、四过滤指纹及内容校验必须全部一致。`music-detail-release.sh`只在原子替换前修改stage副本，绝不在公开GET或正常发布冷建；runtime以 `--verify` 只读检查。回退恢复发布前完整数据库与旧SHA，因此详情附属表与榜单发布一起回退。`--owned-copy`用于明确owned副本目录与默认路径重合的特殊环境，不能作为正式库冷建许可。
+
+L3 来源日期精度修复将 Billboard 持久成品独立升级到 `billboard_persistent_snapshot_v4_l3_release_precision`（搜索 v12 不变）。首次在另一个 owned Online Backup 路径用 `scripts/prepare_billboard_publications.py --db-path <副本> --cache-path <独立旁库> --build-on-copy` 准备四组合、六个常规 family 及各组合实际可用年榜，再 `--export <manifest>`；私密成品上传 `backups/billboard-<完整目标SHA>.json`，权限600。以后只从停服 live 的 exact-ready 成品导出复用，缺失即拒绝发布。
+
+Billboard manifest 保留全部事实依赖、分析 COMMON/RECORDS revision vector、日期与署名 policy，允许重绑数据库路径和 inode；不得删除事实 revision 来接受漂移。先验证并导入 stage sidecar；主库提升产生新 inode 后，再以同 manifest 重绑到 live key，独立 verify 后才激活。失败时联合恢复原主库、Billboard/Analysis sidecar、旧 SHA 和模式。闭库重绑拒绝遗留 WAL，运行中检查使用普通只读连接。默认详情目标读取不依赖完整 Billboard sidecar，legacy full/list/release 继续原成品门禁。

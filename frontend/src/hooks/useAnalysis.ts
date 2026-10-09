@@ -411,6 +411,7 @@ export const analysisApi = {
     params: { period: AnalysisPeriod; start_date?: string; end_date?: string; limit?: number; offset?: number; search?: string; date?: string; merge_level?: number },
     artistName?: string,
     albumProjectId?: number,
+    signal?: AbortSignal,
   ) => {
     const path =
       kind === 'track'
@@ -433,6 +434,7 @@ export const analysisApi = {
         : {}),
       ...(kind === 'album' && artistName ? { artist: artistName } : {}),
     })
+    if (signal) return api.get<EntityPlaysResponse>(path, q, undefined, signal)
     return fetchQuery(
       queryKeys.music.entityPlays(kind, albumProjectId != null ? `album-project:${albumProjectId}` : id, q, Math.floor(Number(q.offset ?? 0) / Number(q.limit ?? 50)) + 1),
       () => api.get<EntityPlaysResponse>(path, q),
@@ -464,6 +466,7 @@ export const analysisApi = {
     params: { period: AnalysisPeriod; start_date?: string; end_date?: string; merge_level?: number },
     artistName?: string,
     albumProjectId?: number,
+    signal?: AbortSignal,
   ) => {
     const path =
       kind === 'track'
@@ -477,6 +480,7 @@ export const analysisApi = {
       ...params,
       ...(kind === 'album' && artistName ? { artist: artistName } : {}),
     })
+    if (signal) return api.get<{ date: string; count: number }[]>(path, queryParams, undefined, signal)
     return fetchQuery(
       queryKeys.music.entityPlays(kind, `${albumProjectId != null ? `album-project:${albumProjectId}` : id}:dates`, queryParams, 0),
       () => api.get<{ date: string; count: number }[]>(path, queryParams),

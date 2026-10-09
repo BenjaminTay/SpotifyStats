@@ -5,6 +5,7 @@ import { CHART_MOVEMENT_LABEL_CLASS } from '@/components/shared/ChangeCell'
 import { cn } from '@/lib/utils'
 import type { DetailYearEndFields, DetailYearEndHistoryEntry } from '@/types/billboard'
 import { formatNumber } from './MusicDetailPrimitives'
+import { useViewportMode } from '@/hooks/useViewportMode'
 
 const PARTIAL_COVERAGE_LABELS: Partial<Record<DetailYearEndHistoryEntry['coverage_status'], string>> = {
   incomplete: '数据缺口',
@@ -159,6 +160,7 @@ export function YearEndHistorySection({
   kind: DetailEntityKind
   bestYear?: number | null
 }) {
+  const isPhone = useViewportMode() === 'phone'
   if (status === 'unavailable') return null
   if (status === 'warming') {
     return (
@@ -179,7 +181,7 @@ export function YearEndHistorySection({
     <section className="mb-8" data-year-end-history="ready">
       <h3 className="mb-4 font-serif text-xl font-semibold">年榜历史</h3>
 
-      <div className="space-y-3 md:hidden">
+      {isPhone ? <div className="space-y-3" data-year-end-presentation="phone">
         {chronologicalHistory.map((row) => (
           <GlassCard
             key={row.year}
@@ -245,9 +247,7 @@ export function YearEndHistorySection({
             </dl>
           </GlassCard>
         ))}
-      </div>
-
-      <GlassCard className="hidden overflow-hidden p-0 md:block">
+      </div> : <GlassCard className="overflow-hidden p-0" data-year-end-presentation="desktop">
         <div className="overflow-x-auto">
           <table
             aria-label="年榜历史"
@@ -313,7 +313,7 @@ export function YearEndHistorySection({
             </tbody>
           </table>
         </div>
-      </GlassCard>
+      </GlassCard>}
     </section>
   )
 }

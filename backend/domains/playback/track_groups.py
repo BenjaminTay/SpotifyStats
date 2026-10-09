@@ -24,6 +24,41 @@ class TrackAggregationScope:
     canonical_name: str | None = None
 
 
+def resolve_track_group_metadata(
+    conn: sqlite3.Connection, l1_id: int, merge_level: int
+) -> sqlite3.Row | None:
+    """Resolve one L1 identity with the same scope priority as chart keys.
+
+    This bounded metadata read does not load all group keys or playback rows.
+    Recording parents participate only at L3.
+    """
+    if (
+        merge_level <= 1
+        or not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='track_group_l1_members'"
+        ).fetchone()
+    ):
+        return None
+    scopes = "('composition','recording')" if merge_level >= 3 else "('recording')"
+    return conn.execute(
+        f"""SELECT COALESCE(parent.group_id, groups.group_id) AS group_id,
+                   COALESCE(parent.primary_l1_id, groups.primary_l1_id) AS primary_l1_id,
+                   COALESCE(parent.canonical_name, groups.canonical_name) AS canonical_name,
+                   CASE WHEN parent.group_id IS NOT NULL THEN 'composition'
+                        ELSE groups.scope END AS scope
+              FROM track_group_l1_members members
+              JOIN track_groups groups ON groups.group_id=members.group_id
+              LEFT JOIN track_groups parent ON groups.parent_group_id=parent.group_id
+                   AND parent.scope='composition' AND parent.group_status='active'
+                   AND {1 if merge_level >= 3 else 0}=1
+             WHERE members.l1_id=? AND groups.group_status='active' AND groups.scope IN {scopes}
+             ORDER BY CASE WHEN COALESCE(parent.scope, groups.scope)='composition' THEN 0 ELSE 1 END,
+                      COALESCE(parent.primary_l1_id, groups.primary_l1_id), groups.group_id
+             LIMIT 1""",
+        (int(l1_id),),
+    ).fetchone()
+
+
 def load_track_group_keys(conn: sqlite3.Connection, merge_level: int) -> pd.DataFrame:
     """Return a DataFrame mapping track_id → canonical aggregation key.
 

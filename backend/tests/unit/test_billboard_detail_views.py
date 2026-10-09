@@ -1,4 +1,3 @@
-import pandas as pd
 import pytest
 
 from backend.domains.billboard import detail_views
@@ -20,6 +19,7 @@ def test_track_summary_view_prefers_published_summary_without_full_build(monkeyp
         "chart_data": {},
     }
     monkeypatch.setattr(detail_views, "build_track_detail_summary", lambda _args: published)
+    monkeypatch.setattr(detail_views, "build_published_detail", lambda _args, **_kwargs: published)
     monkeypatch.setattr(
         detail_views,
         "get_track_history",
@@ -50,41 +50,25 @@ def test_track_summary_view_prefers_published_summary_without_full_build(monkeyp
     assert result["chart_data"] == {}
 
 
-def test_track_summary_view_keeps_full_builder_fallback(monkeypatch):
-    full = {
-        "found": True,
-        "track_name": "Song",
-        "summary": {"peak_position": 2, "weeks_on_chart": 3},
-        "history": [{"week": "2026-01-01"}],
-        "chart_data": {"x": ["2026-01-01"]},
-    }
-    monkeypatch.setattr(detail_views, "build_track_detail_summary", lambda _args: None)
-    monkeypatch.setattr(detail_views, "get_track_history", lambda *_args: full)
-    monkeypatch.setattr(detail_views, "detail_revision_state", lambda: ("fallback",))
-    detail_views._track_detail_cached.cache_clear()
+def test_summary_missing_publication_never_falls_back(monkeypatch):
+    from fastapi import HTTPException
 
-    result = get_track_detail_view(
-        7,
-        30_000,
-        True,
-        30,
-        20,
-        20,
-        4,
-        0,
-        2026,
-        2026,
-        True,
-        5,
-        True,
-        2,
-        False,
-        view="summary",
+    from backend.core.access_surface import snapshot_unavailable
+
+    monkeypatch.setattr(
+        detail_views,
+        "build_published_detail",
+        lambda *_a, **_kw: (_ for _ in ()).throw(snapshot_unavailable("music_detail")),
     )
-
-    assert result["summary"] == full["summary"]
-    assert result["history"] == []
-    assert result["chart_data"] == {}
+    monkeypatch.setattr(
+        detail_views,
+        "get_track_history",
+        lambda *_a, **_kw: pytest.fail("full fallback is forbidden"),
+    )
+    with pytest.raises(HTTPException) as error:
+        get_track_detail_view(7, view="summary")
+    assert error.value.status_code == 503
+    assert error.value.detail["error"] == "snapshot_unavailable"
 
 
 def test_track_agent_view_keeps_published_weekly_facts(monkeypatch):
@@ -96,6 +80,7 @@ def test_track_agent_view_keeps_published_weekly_facts(monkeypatch):
         "chart_data": {"x": ["2026-01-01"], "y": [1]},
     }
     monkeypatch.setattr(detail_views, "build_track_detail_summary", lambda _args: published)
+    monkeypatch.setattr(detail_views, "build_published_detail", lambda _args, **_kwargs: published)
     monkeypatch.setattr(
         detail_views,
         "get_track_history",
@@ -124,54 +109,23 @@ def test_track_agent_view_keeps_published_weekly_facts(monkeypatch):
     assert result is published
 
 
-def test_album_project_view_does_not_build_the_full_billboard_detail(monkeypatch):
+def test_album_project_view_reads_target_publication(monkeypatch):
     project = {
         "album_project_id": 7,
-        "album_project_name": "Live Album",
         "play_count": 3,
-        "residual_tracks": [{"canonical_song_name": "Cover"}],
         "transferred_tracks": [{"canonical_song_name": "Song"}],
     }
-    monkeypatch.setattr(
-        detail_views,
+    published = {"found": True, "effective_play_count": 3, "album_project": project}
+    monkeypatch.setattr(detail_views, "build_published_detail", lambda *_a, **_kw: published)
+    for function in (
         "_load_album_project_detail_events",
-        lambda *_args, **_kwargs: pd.DataFrame([{"track_id": 1}]),
-    )
-    monkeypatch.setattr(
-        detail_views,
         "_get_album_project_payload",
-        lambda *_args, **_kwargs: project,
-    )
-    monkeypatch.setattr(
-        detail_views,
         "get_album_chart_detail",
-        lambda *_args, **_kwargs: pytest.fail("full Billboard detail should not run"),
-    )
-    monkeypatch.setattr(detail_views, "detail_revision_state", lambda: ("project-fast",))
-
-    result = get_album_detail_view(
-        "Live Album",
-        "Artist",
-        30_000,
-        True,
-        100,
-        100,
-        100,
-        4,
-        0,
-        None,
-        None,
-        True,
-        5,
-        True,
-        3,
-        False,
-        view="project",
-    )
-
-    assert result["found"] is True
-    assert result["album_project"] == project
-    assert result["effective_play_count"] == 3
+    ):
+        monkeypatch.setattr(
+            detail_views, function, lambda *_a, **_kw: pytest.fail("legacy computation forbidden")
+        )
+    assert get_album_detail_view("Album", "Artist", view="project") == published
 
 
 def test_track_summary_view_keeps_every_scalar_fact_unchanged():

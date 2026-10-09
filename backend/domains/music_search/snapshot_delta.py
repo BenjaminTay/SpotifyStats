@@ -602,6 +602,33 @@ def build_incremental_music_search_snapshot_set(
             )
             return None
 
+    from backend.domains.music_search.detail_projection import (
+        _table_exists as detail_table_exists,
+    )
+    from backend.domains.music_search.detail_projection import (
+        build_bounded_source_replacements,
+        build_entity_projections,
+        projection_available,
+        replace_detail_projection_weeks,
+    )
+
+    detail_replacements = None
+    detail_entities = {}
+    if detail_table_exists(conn):
+        if any(not projection_available(conn, key, allow_stale=True) for key in base_keys.values()):
+            return None
+        try:
+            detail_replacements = build_bounded_source_replacements(
+                conn,
+                contexts,
+                set(validated_plan["billboard_weeks"]),
+            )
+            detail_entities = {
+                c.filter_fingerprint: build_entity_projections(conn, c) for c in contexts
+            }
+        except (RuntimeError, ValueError):
+            return None
+
     from backend.domains.music_search.snapshot import (
         _activate_snapshot_variant,
         _assert_shared_full_publish_fence,
@@ -713,6 +740,15 @@ def build_incremental_music_search_snapshot_set(
                     snapshot_key,
                 ),
             )
+            if detail_replacements is not None:
+                replace_detail_projection_weeks(
+                    conn,
+                    context,
+                    base_key,
+                    set(validated_plan["billboard_weeks"]),
+                    detail_replacements[context.dynamic_threshold],
+                    detail_entities[snapshot_key],
+                )
             _activate_snapshot_variant(conn, context, snapshot_key)
             reports.append(
                 {

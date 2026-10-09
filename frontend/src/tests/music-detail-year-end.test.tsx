@@ -1,11 +1,12 @@
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MusicChartOverviewSection } from '@/features/music/details/MusicChartOverviewSection'
 import { YearEndHistorySection } from '@/features/music/details/YearEndHistorySection'
 import { YearEndSummaryKpis } from '@/features/music/details/YearEndSummaryKpis'
 import { TrackOverviewSection } from '@/features/music/details/track/TrackOverviewSection'
+import * as viewport from '@/hooks/useViewportMode'
 import type { DetailYearEndHistoryEntry, TrackDetailResponse } from '@/types/billboard'
 
 vi.mock('@/components/charts/RankTrendChart', () => ({
@@ -47,8 +48,10 @@ const history: DetailYearEndHistoryEntry[] = [
   },
 ]
 
+afterEach(() => vi.restoreAllMocks())
+
 describe('music detail Year-End surfaces', () => {
-  it('renders the annual archive as desktop table and phone cards without a trend chart', () => {
+  it('renders the desktop annual table without mounting phone cards or a trend chart', () => {
     render(
       <MemoryRouter>
         <YearEndHistorySection status="ready" history={history} kind="artist" bestYear={2025} />
@@ -73,12 +76,10 @@ describe('music detail Year-End surfaces', () => {
     expect(within(tableRows[0]).getAllByRole('cell')[6]).toHaveTextContent('20')
     expect(within(tableRows[1]).getAllByRole('cell')[6]).toHaveTextContent('7')
     tableRows.forEach((row) => expect(row).not.toHaveTextContent(/[年分周]/))
-    expect(
-      [...document.querySelectorAll('[data-year-end-card-year]')].map((card) => card.getAttribute('data-year-end-card-year')),
-    ).toEqual(['2025', '2026'])
-    expect(screen.getAllByText('年度上榜播放')).toHaveLength(history.length + 1)
-    expect(screen.getAllByText('冠军周数')).toHaveLength(history.length + 1)
-    expect(screen.getAllByText('前五周数')).toHaveLength(history.length + 1)
+    expect(document.querySelectorAll('[data-year-end-card-year]')).toHaveLength(0)
+    expect(screen.getAllByText('年度上榜播放')).toHaveLength(1)
+    expect(screen.getAllByText('冠军周数')).toHaveLength(1)
+    expect(screen.getAllByText('前五周数')).toHaveLength(1)
     expect(table.querySelectorAll('[data-year-end-play-bar]')).toHaveLength(history.length)
     expect(table.querySelector('[data-year-end-rank]')).toHaveClass('font-serif')
     expect(within(tableRows[0]).getByText('PEAK')).toBeInTheDocument()
@@ -90,24 +91,12 @@ describe('music detail Year-End surfaces', () => {
       '-translate-y-1/2',
       'items-center',
     )
-    expect(document.querySelectorAll('[data-year-end-peak-label]')).toHaveLength(2)
-    expect(document.querySelectorAll('[data-year-end-peak-slot]')).toHaveLength(history.length)
-    expect(document.querySelector('[data-year-end-peak-slot]')).toHaveClass('items-center', 'self-stretch')
-    expect(document.querySelectorAll('[data-year-end-year]')).toHaveLength(history.length * 2)
+    expect(document.querySelectorAll('[data-year-end-peak-label]')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-year-end-peak-slot]')).toHaveLength(0)
+    expect(document.querySelectorAll('[data-year-end-year]')).toHaveLength(history.length)
     expect(table.querySelector('[data-year-end-year]')).toHaveClass('font-sans', 'font-semibold', 'text-[15px]', 'tabular-nums')
     expect(table.querySelector('[data-year-end-year]')).not.toHaveClass('font-serif', 'font-normal')
-    expect(document.querySelector('[data-year-end-card-year] [data-year-end-year]')).toHaveClass(
-      'min-h-11',
-      'min-w-11',
-      'font-serif',
-      'font-semibold',
-      'text-[22px]',
-      'tabular-nums',
-    )
-    expect(document.querySelectorAll('[data-year-end-mobile-score-value]')).toHaveLength(history.length * 4)
-    document.querySelectorAll('[data-year-end-mobile-score-value]').forEach((value) => {
-      expect(value).toHaveClass('flex', 'h-6', 'items-center', 'justify-center')
-    })
+    expect(document.querySelectorAll('[data-year-end-mobile-score-value]')).toHaveLength(0)
     expect(table.querySelector('[data-year-end-peak-label]')).toHaveClass(
       'font-sans',
       'text-[10px]',
@@ -120,6 +109,43 @@ describe('music detail Year-End surfaces', () => {
     expect(table.querySelector('[data-year-end-peak-label]')).not.toHaveClass('rounded-full', 'border')
     expect(document.querySelector('[data-year-end-best-rank]')).not.toBeInTheDocument()
     expect(screen.queryByText('年榜排名趋势')).not.toBeInTheDocument()
+  })
+
+  it('switches actual annual DOM between Phone cards and the desktop table without losing facts', () => {
+    const mode = vi.spyOn(viewport, 'useViewportMode').mockReturnValue('desktop')
+    const content = <MemoryRouter><YearEndHistorySection status="ready" history={history} kind="artist" bestYear={2025} /></MemoryRouter>
+    const view = render(content)
+    expect(screen.getByRole('table', { name: '年榜历史' })).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-year-end-card-year]')).toHaveLength(0)
+
+    mode.mockReturnValue('phone')
+    view.rerender(<MemoryRouter><YearEndHistorySection status="ready" history={history} kind="artist" bestYear={2025} /></MemoryRouter>)
+    expect(screen.queryByRole('table', { name: '年榜历史', hidden: true })).not.toBeInTheDocument()
+    expect(document.querySelectorAll('table')).toHaveLength(0)
+    expect([...document.querySelectorAll('[data-year-end-card-year]')].map(card => card.getAttribute('data-year-end-card-year'))).toEqual(['2025', '2026'])
+    expect(screen.getAllByText('年度上榜播放')).toHaveLength(history.length)
+    expect(screen.getAllByText('冠军周数')).toHaveLength(history.length)
+    expect(screen.getAllByText('前五周数')).toHaveLength(history.length)
+    expect(screen.getByText('4,200')).toBeInTheDocument()
+    expect(screen.getByText('1,820')).toBeInTheDocument()
+    expect(screen.getByText('1,200')).toBeInTheDocument()
+    expect(screen.getByText('456')).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-year-end-peak-label]')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-year-end-peak-slot]')).toHaveLength(history.length)
+    expect(document.querySelector('[data-year-end-peak-slot]')).toHaveClass('items-center', 'self-stretch')
+    expect(document.querySelectorAll('[data-year-end-year]')).toHaveLength(history.length)
+    expect(document.querySelector('[data-year-end-card-year] [data-year-end-year]')).toHaveClass('min-h-11', 'min-w-11', 'font-serif', 'font-semibold', 'text-[22px]', 'tabular-nums')
+    expect(document.querySelectorAll('[data-year-end-mobile-score-value]')).toHaveLength(history.length * 4)
+    document.querySelectorAll('[data-year-end-mobile-score-value]').forEach(value => {
+      expect(value).toHaveClass('flex', 'h-6', 'items-center', 'justify-center')
+    })
+    expect(screen.getByRole('link', { name: '查看 2025 年艺人榜' })).toHaveAttribute('href', '/billboard/year-end?year=2025&tab=artists')
+
+    mode.mockReturnValue('compact')
+    view.rerender(<MemoryRouter><YearEndHistorySection status="ready" history={history} kind="artist" bestYear={2025} /></MemoryRouter>)
+    expect(screen.getByRole('table', { name: '年榜历史' })).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-year-end-card-year]')).toHaveLength(0)
+    expect(document.querySelectorAll('[data-year-end-mobile-score-value]')).toHaveLength(0)
   })
 
   it('keeps warming explicit and unavailable silent', () => {
@@ -162,7 +188,7 @@ describe('music detail Year-End surfaces', () => {
     )
 
     const links = screen.getAllByRole('link', { name: `查看 2025 年${label}` })
-    expect(links).toHaveLength(2)
+    expect(links).toHaveLength(1)
     links.forEach((link) => {
       expect(link).toHaveAttribute('href', `/billboard/year-end?year=2025&tab=${tab}`)
     })

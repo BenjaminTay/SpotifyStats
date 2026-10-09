@@ -610,6 +610,9 @@ def _publish(
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 [(snapshot_key, *row) for row in ledgers_by_fingerprint[snapshot_key]],
             )
+            from backend.domains.music_search.detail_projection import clone_detail_projection
+
+            clone_detail_projection(conn, context, base_keys[snapshot_key], rebuild_entities=True)
             _activate_snapshot_variant(conn, context, snapshot_key)
 
         conn.execute(

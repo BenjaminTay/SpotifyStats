@@ -87,6 +87,36 @@ def test_new_revision_returns_the_previous_request_key_as_lkg(tmp_path):
     )
 
 
+@pytest.mark.parametrize("same_exact_key", [False, True])
+def test_l3_precision_builder_rejects_old_exact_and_lkg_without_public_build(
+    tmp_path, monkeypatch, same_exact_key
+):
+    path = tmp_path / "billboard.db"
+    monkeypatch.setattr(persistent_cache, "BILLBOARD_CACHE_PATH", str(path))
+    old = _context("old-exact")
+    old["builder_version"] = "billboard_persistent_snapshot_release_precision_v3_legacy_year"
+    persistent_cache.store_persisted_snapshot(old, {"albums": [{"weeks": 87}]})
+    target = _context("old-exact" if same_exact_key else "new-exact")
+    # Even retaining identical request/exact keys cannot cross a builder fence.
+    assert persistent_cache.load_persisted_snapshot(target) is None
+    monkeypatch.setattr(persistent_cache, "build_cache_context", lambda *_: target)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("public builder invalidation entered a writer or cold build")
+
+    monkeypatch.setattr(persistent_cache, "store_persisted_snapshot", forbidden)
+    monkeypatch.setattr(persistent_cache, "_lock_for", forbidden)
+    before = _published_cache_bytes(tmp_path)
+    token = set_public_readonly_db_guard(True)
+    try:
+        with pytest.raises(HTTPException) as error:
+            persistent_cache.get_or_build_billboard_snapshot("full_data", {}, forbidden)
+        assert error.value.status_code == 503
+    finally:
+        reset_public_readonly_db_guard(token)
+    assert _published_cache_bytes(tmp_path) == before
+
+
 def test_corrupt_snapshot_is_ignored_and_removed(tmp_path):
     cache_path = tmp_path / "billboard_cache.db"
     persistent_cache.clear_persisted_snapshots(cache_path)

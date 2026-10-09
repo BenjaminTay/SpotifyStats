@@ -124,7 +124,7 @@ describe('音乐详情页历史记录', () => {
     expect(router.state.location.search).toBe('?merge_level=3&tab=overview')
     expect(router.state.location.hash).toBe('#history')
     expect(router.state.historyAction).toBe('REPLACE')
-    await waitFor(() => expect(get).toHaveBeenCalledWith('/billboard/track/canonical/1493', expect.objectContaining({ merge_level: 3, view: 'summary' })))
+    await waitFor(() => expect(get).toHaveBeenCalledWith('/billboard/track/canonical/1493', expect.objectContaining({ merge_level: 3, view: 'summary' }), undefined, expect.any(AbortSignal)))
     expect(get.mock.calls.every(([path]) => path === '/billboard/track/canonical/1493')).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: /单曲详情/ }))
     expect(await screen.findByText('进入详情前的页面')).toBeInTheDocument()

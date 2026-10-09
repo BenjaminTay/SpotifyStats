@@ -96,8 +96,12 @@ def _active_document(
     clauses = ["d.generation_id=s.active_generation_id", "d.kind=?"]
     params: list[Any] = [kind]
     if kind == "track":
+        from backend.domains.playback.track_groups import resolve_track_group_metadata
+
+        group = resolve_track_group_metadata(conn, int(track_id), merge_level)
+        canonical_id = int(group["primary_l1_id"]) if group is not None else track_id
         clauses.extend(("d.merge_level=?", "d.track_id=?"))
-        params.extend((merge_level, track_id))
+        params.extend((merge_level, canonical_id))
     elif kind in {"album", "album_project"}:
         clauses.append("lower(d.label)=lower(?)")
         params.append(name)
@@ -303,15 +307,16 @@ def _track_history(
     entity_key: str,
     top_n: int,
     peak_position: int | None,
+    family: str = "track",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Rehydrate one entity's lossless weekly facts from the published ledger."""
 
     rows = conn.execute(
         """SELECT week, rank, play_count
              FROM music_search_weekly_chart_context
-            WHERE snapshot_key=? AND family='track' AND entity_key=?
+            WHERE snapshot_key=? AND family=? AND entity_key=?
             ORDER BY week""",
-        (snapshot_key, entity_key),
+        (snapshot_key, family, entity_key),
     ).fetchall()
     history: list[dict[str, Any]] = []
     x_values: list[str | None] = []
@@ -488,12 +493,15 @@ def load_detail_year_end_fields(
         conn.close()
 
 
-def build_track_detail_summary(args: tuple) -> dict | None:
+def build_track_detail_summary(
+    args: tuple, *, conn: sqlite3.Connection | None = None
+) -> dict | None:
     values = _filter_values(args)
     if values["year_start"] is not None or values["year_end"] is not None:
         return None
     track_id = int(args[0])
-    conn = get_db(readonly=True)
+    owns_connection = conn is None
+    conn = conn or get_db(readonly=True)
     try:
         snapshot_key = _snapshot_key(conn, values)
         document = _active_document(
@@ -556,7 +564,7 @@ def build_track_detail_summary(args: tuple) -> dict | None:
             "track_id": track_id,
             "l1_id": track_id,
             "representative_track_id": representative_track_id,
-            "track_name": str(raw["track_name"]),
+            "track_name": str(document["label"]),
             "artist_name": ", ".join(artist_names),
             "artist_names": artist_names,
             "primary_artist_name": primary,
@@ -569,16 +577,20 @@ def build_track_detail_summary(args: tuple) -> dict | None:
             **unavailable_year_end_fields(),
         }
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()
 
 
-def build_album_detail_summary(args: tuple) -> dict | None:
+def build_album_detail_summary(
+    args: tuple, *, conn: sqlite3.Connection | None = None
+) -> dict | None:
     values = _filter_values(args, album_name=str(args[0]))
     if values["year_start"] is not None or values["year_end"] is not None:
         return None
     album_name, artist_name = str(args[0]), str(args[1])
     kind = "album" if int(values["merge_level"]) <= 1 else "album_project"
-    conn = get_db(readonly=True)
+    owns_connection = conn is None
+    conn = conn or get_db(readonly=True)
     try:
         snapshot_key = _snapshot_key(conn, values)
         document = _active_document(
@@ -622,15 +634,19 @@ def build_album_detail_summary(args: tuple) -> dict | None:
             **unavailable_year_end_fields(),
         }
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()
 
 
-def build_artist_detail_summary(args: tuple) -> dict | None:
+def build_artist_detail_summary(
+    args: tuple, *, conn: sqlite3.Connection | None = None
+) -> dict | None:
     values = _filter_values(args)
     if values["year_start"] is not None or values["year_end"] is not None:
         return None
     requested = str(args[0])
-    conn = get_db(readonly=True)
+    owns_connection = conn is None
+    conn = conn or get_db(readonly=True)
     try:
         snapshot_key = _snapshot_key(conn, values)
         identity = resolve_artist_name(conn, requested)
@@ -666,4 +682,5 @@ def build_artist_detail_summary(args: tuple) -> dict | None:
             **unavailable_year_end_fields(),
         }
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()

@@ -296,14 +296,14 @@ export function AlbumDetailHero({
               {renderedArtistName}
             </Link>
           </p>
-          {data.meta && (
+          {(data.meta || projectTrackCount != null) && (
             <p className="mt-1 break-words font-sans text-[14px] text-muted-foreground">
               {[
-                data.meta.album_type && formatAlbumKind(data.meta.album_type),
-                data.meta.release_date_display && formatAlbumReleaseDate(data.meta.release_date_display),
-                data.meta.total_tracks && `发行 ${data.meta.total_tracks} 首`,
+                data.meta?.album_type && formatAlbumKind(data.meta?.album_type),
+                data.meta?.release_date_display && formatAlbumReleaseDate(data.meta?.release_date_display),
+                data.meta?.total_tracks && `发行 ${data.meta?.total_tracks} 首`,
                 projectTrackCount != null && `已听 ${projectTrackCount} 首`,
-                data.meta.label,
+                data.meta?.label,
               ]
                 .filter(Boolean)
                 .join(' · ')}

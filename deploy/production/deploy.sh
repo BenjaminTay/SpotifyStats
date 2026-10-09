@@ -466,6 +466,8 @@ PY
       < "$DEPLOY_DIR/verify-music-search-runtime.py" || return 1
   fi
   verify_running_versus_ranks || return 1
+  verify_running_music_detail || return 1
+  verify_running_billboard_release || return 1
 
   case "$mode" in
     full)
@@ -497,6 +499,7 @@ restore_previous_release() {
     replace_live_database "${rollback_database_path:-$release_backup_path}" || return 1
   fi
   restore_versus_rank_release || return 1
+  restore_billboard_release || return 1
   if [[ ! "$current_tag" =~ ^[0-9a-f]{7,64}$ ]]; then
     echo "没有合法的上一镜像 SHA，无法自动回滚。" >&2
     return 1
@@ -525,6 +528,7 @@ versus_rank_sidecar_backup=""
 versus_rank_release_manifest=""
 versus_rank_previous_manifest=""
 source "$DEPLOY_DIR/versus-rank-release.sh"
+source "$DEPLOY_DIR/music-detail-release.sh"
 cleanup_release_stage() {
   if [[ -n "$release_stage_dir" && -d "$release_stage_dir" ]]; then
     rm -rf -- "$release_stage_dir"
@@ -630,6 +634,15 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
     fi
   fi
 
+  if ! prepare_music_detail_release "$target_backend_image" "$staged_database" || \
+      ! prepare_billboard_release "$target_backend_image" "$staged_database"; then
+    if [[ "$backend_was_running" == "true" ]]; then
+      activate_mode "$current_mode" "$rollback_image_source" || true
+    fi
+    echo "详情精确发布准备失败；没有替换生产数据库或冷建详情。" >&2
+    exit 1
+  fi
+
   if ! prepare_versus_rank_release "$target_backend_image" "$staged_database" || \
       ! backup_versus_rank_release "$target_backend_image"; then
     if [[ "$backend_was_running" == "true" ]]; then
@@ -647,6 +660,11 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
     exit 1
   fi
   database_promoted="true"
+  if ! install_billboard_release; then
+    echo "Billboard 成品安装失败，正在联合恢复。" >&2
+    restore_previous_release || echo "自动恢复未通过，需要人工检查。" >&2
+    exit 1
+  fi
   if ! install_versus_rank_release; then
     echo "个人排名安装或四默认 ready 验收失败，正在联合恢复。" >&2
     restore_previous_release || echo "自动恢复未通过，需要人工检查。" >&2

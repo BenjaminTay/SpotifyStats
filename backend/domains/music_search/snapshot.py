@@ -1331,6 +1331,9 @@ def promote_role_only_music_search_snapshots(
                    FROM music_search_weekly_chart_context WHERE snapshot_key=?""",
                 (target_key, source_key),
             )
+        from backend.domains.music_search.detail_projection import clone_detail_projection
+
+        clone_detail_projection(conn, context, source_key, rebuild_entities=True)
         _activate_snapshot_variant(conn, context, target_key)
     return True
 
@@ -1384,6 +1387,20 @@ def build_music_search_snapshot(
     conn.commit()
     try:
         rows = _context_rows(conn, context)
+        from backend.domains.music_search.detail_projection import (
+            _table_exists as detail_table_exists,
+        )
+        from backend.domains.music_search.detail_projection import (
+            build_entity_projections,
+            build_source_rows,
+            publish_detail_projection,
+        )
+
+        detail_payload = (
+            (build_source_rows(conn, context), build_entity_projections(conn, context))
+            if detail_table_exists(conn)
+            else None
+        )
         _validate_context_rows(rows)
         conn.execute("BEGIN IMMEDIATE")
         try:
@@ -1449,6 +1466,8 @@ def build_music_search_snapshot(
                         snapshot_key,
                     ),
                 )
+            if detail_payload is not None:
+                publish_detail_projection(conn, context, *detail_payload)
             _activate_snapshot_variant(conn, context, snapshot_key)
             conn.commit()
         except Exception:
@@ -1763,6 +1782,7 @@ def _publish_shared_full_snapshot_set(
     dependency_digest: str | None,
     publish_year_end: bool = False,
     invocation_fallback: bool = False,
+    detail_projections: dict[str, tuple[list, list]] | None = None,
 ) -> None:
     """Fence and activate the exact four variants in one write transaction."""
     conn.execute("BEGIN IMMEDIATE")
@@ -1845,6 +1865,12 @@ def _publish_shared_full_snapshot_set(
                WHERE snapshot_key IN ({})""".format(",".join("?" for _ in contexts)),
             tuple(context.filter_fingerprint for context in contexts),
         )
+        if detail_projections is not None:
+            from backend.domains.music_search.detail_projection import publish_detail_projection
+
+            for context in contexts:
+                source_rows, entity_rows = detail_projections[context.filter_fingerprint]
+                publish_detail_projection(conn, context, source_rows, entity_rows)
         if publish_year_end:
             conn.execute("SAVEPOINT search_year_end")
             try:
@@ -1923,6 +1949,7 @@ def build_shared_full_music_search_snapshot_set(
     rows_by_fingerprint: dict[str, list[tuple[Any, ...]]] = {}
     weekly_rows_by_fingerprint: dict[str, list[WeeklyLedgerRow]] = {}
     duration_by_fingerprint: dict[str, float] = {}
+    detail_projections: dict[str, tuple[list, list]] = {}
     reports: list[dict[str, Any]] = []
     lineage_generation_id, source_dataset_digest = active_playback_lineage(conn)
     lineage_ready = str(lineage_generation_id or "") == str(source_generation_id or "") and bool(
@@ -2008,6 +2035,23 @@ def build_shared_full_music_search_snapshot_set(
                 ("track", "album"),
             )
             try:
+                from backend.domains.music_search.detail_projection import (
+                    _table_exists as detail_table_exists,
+                )
+                from backend.domains.music_search.detail_projection import (
+                    build_entity_projections,
+                    build_source_rows,
+                )
+
+                if detail_table_exists(conn):
+                    source_rows = build_source_rows(
+                        conn, threshold_contexts[0], primary_frames[dynamic_threshold][0]
+                    )
+                    for detail_context in threshold_contexts:
+                        detail_projections[detail_context.filter_fingerprint] = (
+                            source_rows,
+                            build_entity_projections(conn, detail_context),
+                        )
                 primary_metrics = _shared_metric_maps(
                     conn,
                     threshold_contexts,
@@ -2077,6 +2121,7 @@ def build_shared_full_music_search_snapshot_set(
             source_dataset_digest=source_dataset_digest if lineage_ready else None,
             dependency_digest=dependency_digest,
             publish_year_end=publish_year_end,
+            detail_projections=detail_projections or None,
             **({"invocation_fallback": True} if invocation_fallback else {}),
         )
         for context in contexts:

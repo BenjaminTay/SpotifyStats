@@ -1,7 +1,9 @@
-import { useEffect } from 'react'
-import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo } from 'react'
+import { Link, useParams, useSearchParams, useNavigate, useLocation } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useDetailViewQuery } from './useDetailViewQuery'
+import { DetailViewState } from './DetailViewState'
 import { queryKeys } from '@/api/query-keys'
 import type { AlbumDetailResponse } from '@/types/billboard'
 import { EntityStatsPanel, EntityStatsPrefetch } from '@/components/shared/EntityStatsPanel'
@@ -17,6 +19,7 @@ import { MusicChartEmptyState } from './MusicChartEmptyState'
 import { MusicTracksSection } from './MusicTracksSection'
 import { VersionGroupSection } from './VersionGroupSection'
 import { AlbumAttributionSection } from './AlbumAttributionSection'
+import { useDeferredInView } from '@/hooks/useDeferredInView'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { useViewportMode } from '@/hooks/useViewportMode'
@@ -37,9 +40,11 @@ export function AlbumDetailExperience() {
   const [searchParams, setSearchParams] = useSearchParams()
   const artistName = searchParams.get('artist') || ''
   const navigate = useNavigate()
+  const location = useLocation()
+  const queryClient = useQueryClient()
   const mergeLevel = normalizeMergeLevel(searchParams.get('merge_level') ?? getDefaultMergeLevel())
   const { filters, loading: filtersLoading } = useAnalysisFilters()
-  const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
+  const billboardParams = useMemo(() => buildBillboardContextParams({ ...filters, merge_level: mergeLevel }), [filters, mergeLevel])
   const hasAlbumIdentity = !!albumName || stableProjectId != null
   const albumDetailPath = stableProjectId != null
     ? `/billboard/album-project/${stableProjectId}`
@@ -56,27 +61,34 @@ export function AlbumDetailExperience() {
     setSearchParams(next, { replace: true })
   }
 
-  const summaryParams = { ...billboardParams, artist_name: artistName, view: 'summary' }
-  const { data, isPending, error, refetch } = useQuery({
+  const summaryParams = useMemo(() => ({ ...billboardParams, artist_name: artistName, view: 'summary' }), [artistName, billboardParams])
+  const { data: summaryData, isPending, error, refetch } = useQuery({
     queryKey: queryKeys.music.albumDetail(detailIdentityKey, artistName, mergeLevel, summaryParams),
-    queryFn: () => api.get<AlbumDetailResponse>(albumDetailPath, summaryParams),
+    queryFn: ({ signal }) => api.get<AlbumDetailResponse>(albumDetailPath, summaryParams, undefined, signal),
     enabled: hasAlbumIdentity && !filtersLoading,
+    staleTime: 5 * 60 * 1000,
   })
-  const { data: overviewData, isPending: overviewPending } = useQuery({
-    queryKey: queryKeys.music.albumDetail(detailIdentityKey, artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'overview' }),
-    queryFn: () => api.get<AlbumDetailResponse>(albumDetailPath, { ...billboardParams, artist_name: artistName, view: 'overview' }),
-    enabled: activeTab === 'overview' && hasAlbumIdentity && !filtersLoading,
-  })
-  const { data: tracksData, isPending: tracksPending } = useQuery({
-    queryKey: queryKeys.music.albumDetail(detailIdentityKey, artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'tracks' }),
-    queryFn: () => api.get<AlbumDetailResponse>(albumDetailPath, { ...billboardParams, artist_name: artistName, view: 'tracks' }),
-    enabled: activeTab === 'tracks' && hasAlbumIdentity && !filtersLoading,
-  })
-  const { data: projectData } = useQuery({
-    queryKey: queryKeys.music.albumDetail(detailIdentityKey, artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'project' }),
-    queryFn: () => api.get<AlbumDetailResponse>(albumDetailPath, { ...billboardParams, artist_name: artistName, view: 'project' }),
-    enabled: activeTab === 'stats' && data?.found === true && hasAlbumIdentity && !filtersLoading,
-  })
+  const resolvedProjectId = stableProjectId ?? summaryData?.album_project_id ?? undefined
+  const viewPath = resolvedProjectId != null ? `/billboard/album-project/${resolvedProjectId}` : albumDetailPath
+  const viewIdentityKey = resolvedProjectId != null ? `project:${resolvedProjectId}` : detailIdentityKey
+  const identityReady = stableProjectId != null || summaryData?.found === true
+  const { ref: projectRef, ready: projectVisible } = useDeferredInView(JSON.stringify([viewIdentityKey, billboardParams]))
+  const { data: overviewData, error: overviewError, isFetching: overviewFetching, refetch: retryOverview } = useDetailViewQuery<AlbumDetailResponse>(
+    queryKeys.music.albumDetail(viewIdentityKey, artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'overview' }),
+    viewPath, { ...billboardParams, artist_name: artistName, view: 'overview' },
+    activeTab === 'overview' && identityReady && !filtersLoading,
+  )
+  const { data: tracksData, isPending: tracksPending } = useDetailViewQuery<AlbumDetailResponse>(
+    queryKeys.music.albumDetail(viewIdentityKey, artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'tracks' }),
+    viewPath, { ...billboardParams, artist_name: artistName, view: 'tracks' },
+    activeTab === 'tracks' && identityReady && !filtersLoading,
+  )
+  const { data: projectData, error: projectError, isFetching: projectFetching, refetch: retryProject } = useDetailViewQuery<AlbumDetailResponse>(
+    queryKeys.music.albumDetail(viewIdentityKey, artistName, mergeLevel, { ...billboardParams, artist_name: artistName, view: 'project' }),
+    viewPath, { ...billboardParams, artist_name: artistName, view: 'project' },
+    activeTab === 'stats' && projectVisible && identityReady && !filtersLoading,
+  )
+  const data = overviewData ?? summaryData
   const isCharted = data?.chart_status === 'charted' || !!data?.chart_summary
   const summaryTrackChartStatus = data?.track_chart_status
 
@@ -89,20 +101,26 @@ export function AlbumDetailExperience() {
 
   useEffect(() => {
     if (stableProjectId != null || data?.album_project_id == null) return
+    const targetKey = queryKeys.music.albumDetail(`project:${data.album_project_id}`, artistName, mergeLevel, summaryParams)
+    const source = queryClient.getQueryState(queryKeys.music.albumDetail(detailIdentityKey, artistName, mergeLevel, summaryParams))
+    const target = queryClient.getQueryState(targetKey)
+    if (source && (!target?.data || target.dataUpdatedAt <= source.dataUpdatedAt)) {
+      queryClient.setQueryData(targetKey, summaryData, { updatedAt: source.dataUpdatedAt })
+    }
     navigate(
-      { pathname: `/music/album-projects/${data.album_project_id}`, search: searchParams.toString() },
+      { pathname: `/music/album-projects/${data.album_project_id}`, search: searchParams.toString(), hash: location.hash },
       { replace: true },
     )
-  }, [data?.album_project_id, navigate, searchParams, stableProjectId])
+  }, [artistName, data?.album_project_id, detailIdentityKey, location.hash, mergeLevel, navigate, queryClient, searchParams, stableProjectId, summaryData, summaryParams])
 
   return (
     <>
-      {activeTab === 'stats' && hasAlbumIdentity && (
+      {activeTab === 'stats' && identityReady && (
         <EntityStatsPrefetch kind="album" albumName={data?.album_name ?? albumName} albumProjectId={data?.album_project_id ?? stableProjectId} artistName={data?.artist_name ?? artistName} mergeLevel={mergeLevel} />
       )}
-      {isPending && <AlbumDetailSkeleton />}
+      {isPending && !data && <AlbumDetailSkeleton />}
 
-      {error && (
+      {error && !data && (
         <div className="flex flex-col items-center gap-4 py-20 text-center">
           <AlertCircle className="h-8 w-8 text-accent-foreground" />
           <p className="text-muted-foreground">加载失败：{error.message}</p>
@@ -115,7 +133,7 @@ export function AlbumDetailExperience() {
         </div>
       )}
 
-      {data && !isPending && (
+      {data && (
         <>
           {!data.found ? (
             <div className="flex flex-col items-center gap-4 py-20 text-center">
@@ -137,11 +155,11 @@ export function AlbumDetailExperience() {
                     title={displayName(data.album_name)}
                     coverUrl={data.cover_url}
                     subtitle={<Link to={`/music/artists/${encodeURIComponent(data.artist_name)}`}>{displayName(data.artist_name)}</Link>}
-                    meta={data.meta ? [
-                      data.meta.release_date_display,
-                      data.meta.total_tracks ? `发行 ${data.meta.total_tracks} 首` : null,
-                      projectData?.album_project?.unique_canonical_songs != null
-                        ? `已听 ${projectData.album_project.unique_canonical_songs} 首` : null,
+                    meta={data.meta || data.unique_canonical_songs != null ? [
+                      data.meta?.release_date_display,
+                      data.meta?.total_tracks ? `发行 ${data.meta?.total_tracks} 首` : null,
+                      data.unique_canonical_songs != null
+                        ? `已听 ${data.unique_canonical_songs} 首` : null,
                     ].filter(Boolean).join(' · ') : undefined}
                     facts={[
                       { label: '有效播放', value: `${(data.effective_play_count ?? 0).toLocaleString('zh-CN')} 次` },
@@ -162,7 +180,7 @@ export function AlbumDetailExperience() {
                 <AlbumDetailHero
                   data={data}
                   onBack={() => navigate(-1)}
-                  projectTrackCount={projectData?.album_project?.unique_canonical_songs}
+                  projectTrackCount={data.unique_canonical_songs}
                 />
               )}
 
@@ -179,36 +197,37 @@ export function AlbumDetailExperience() {
               ) : <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />}
 
               {activeTab === 'overview' && (
-                overviewPending || !overviewData
-                  ? <Skeleton className="h-[420px] w-full rounded-[16px]" />
-                  : <MusicChartOverviewSection
-                      kind="album"
-                      chartSummary={overviewData.chart_summary}
-                      weeklyHistory={overviewData.album_weekly_history}
-                      bestSinglesOverlay={overviewData.best_singles_overlay}
-                      effectivePlayCount={overviewData.effective_play_count}
-                      yearEndStatus={overviewData.year_end_status}
-                      yearEndSummary={overviewData.year_end_summary}
-                      yearEndHistory={overviewData.year_end_history ?? []}
-                    />
+                <DetailViewState hasData={!!overviewData} error={overviewError} fetching={overviewFetching} retry={retryOverview}>
+                  {overviewData && <MusicChartOverviewSection
+                    kind="album"
+                    chartSummary={overviewData.chart_summary}
+                    weeklyHistory={overviewData.album_weekly_history}
+                    bestSinglesOverlay={overviewData.best_singles_overlay}
+                    effectivePlayCount={overviewData.effective_play_count}
+                    yearEndStatus={overviewData.year_end_status}
+                    yearEndSummary={overviewData.year_end_summary}
+                    yearEndHistory={overviewData.year_end_history ?? []}
+                  />}
+                </DetailViewState>
               )}
 
               {activeTab === 'stats' && (
                 <>
                   <EntityStatsPanel kind="album" albumName={data.album_name} albumProjectId={data.album_project_id ?? stableProjectId} artistName={data.artist_name} mergeLevel={mergeLevel} releaseDate={data.meta?.release_date_status === "confirmed" && data.meta?.release_date_precision === "day" ? data.meta?.release_date : undefined} />
-                  {projectData?.meta?.release_group && projectData.meta.release_group.versions && projectData.meta.release_group.versions.length >= 2 && (
-                    <div className="mt-8">
-                      <VersionGroupSection
-                        kind="album"
-                        data={projectData.meta.release_group}
-                        sourceBreakdown={projectData.album_project?.source_breakdown ?? null}
-                        collapsible={isPhone}
-                      />
-                    </div>
-                  )}
-                  {projectData?.album_project && (
-                    <AlbumAttributionSection project={projectData.album_project} />
-                  )}
+                  <section ref={projectRef} aria-label="专辑版本与来源归属" className="mt-8 min-h-11">
+                    {!projectVisible && !projectData && <p className="text-sm text-muted-foreground">专辑版本与来源归属</p>}
+                    {projectVisible && <DetailViewState hasData={!!projectData} error={projectError} fetching={projectFetching} retry={retryProject} label="专辑来源归属">
+                      {projectData?.meta?.release_group && projectData.meta.release_group.versions && projectData.meta.release_group.versions.length >= 2 && (
+                        <VersionGroupSection
+                          kind="album"
+                          data={projectData.meta.release_group}
+                          sourceBreakdown={projectData.album_project?.source_breakdown ?? null}
+                          collapsible={isPhone}
+                        />
+                      )}
+                      {projectData?.album_project && <AlbumAttributionSection project={projectData.album_project} />}
+                    </DetailViewState>}
+                  </section>
                 </>
               )}
 

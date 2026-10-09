@@ -107,6 +107,43 @@ def seed_conn(use_seed_db):
     conn.close()
 
 
+@pytest.fixture
+def prepare_music_detail_publications(use_seed_db):
+    """Explicit private preparation; never let a detail GET build its fixture."""
+
+    def prepare():
+        from backend.core.db import build_aggregations, get_db
+        from backend.core.migrations import run_migrations
+        from backend.services.music_search_maintenance_service import (
+            rebuild_current_music_search_derived_data,
+        )
+
+        run_migrations()
+        # The portable seed predates the exact aggregation dependency proof.
+        # Establish it privately before publishing the complete weekly ledger.
+        build_aggregations(dynamic_threshold=True)
+        conn = get_db(readonly=False)
+        try:
+            assert os.path.samefile(conn.execute("PRAGMA database_list").fetchone()[2], use_seed_db)
+            report = rebuild_current_music_search_derived_data(
+                conn, rebuild_documents=True, atomic_snapshot_set=True
+            )
+            assert report["status"] == "ready"
+            assert report["snapshot_set"]["ready_count"] == 4
+            assert (
+                conn.execute(
+                    "SELECT COUNT(*) FROM music_search_detail_projection_state p "
+                    "JOIN music_search_snapshot_meta s USING(snapshot_key) WHERE s.status='ready'"
+                ).fetchone()[0]
+                == 4
+            )
+            return report
+        finally:
+            conn.close()
+
+    return prepare
+
+
 @pytest.fixture(scope="function")
 def client(use_seed_db, monkeypatch):  # noqa: ARG001 — must activate before client
     """Lightweight TestClient — warmup disabled, no cache pollution."""

@@ -37,6 +37,20 @@ def require_public_detail_publication(
     if request.method not in {"GET", "HEAD"} or not public_readonly_db_guard_active():
         return
 
+    # Default detail views validate their own exact target publication in one
+    # read transaction. Decoding full_data here would reintroduce a whole-chart
+    # dependency before the lightweight service can run.
+    route = request.scope.get("route")
+    target_views = {
+        "track_history": {"summary", "overview"},
+        "legacy_track_history": {"summary", "overview"},
+        "artist_chart_detail": {"summary", "overview"},
+        "album_chart_detail": {"summary", "overview", "project"},
+        "album_project_chart_detail": {"summary", "overview", "project"},
+    }
+    if request.query_params.get("view") in target_views.get(getattr(route, "name", ""), set()):
+        return
+
     def no_build():
         raise AssertionError("public Billboard publication check cannot build")
 

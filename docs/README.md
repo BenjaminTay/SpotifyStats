@@ -1,6 +1,8 @@
 # SpotifyStats 文档地图
+- [`reports/2026-10-09-music-detail-chart-performance-acceptance.md`](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：本项实现、独立规则核验与分层验收，当前Partial，未发布
 
 - [榜单对决个人播放统计优化规划](plans/2026-10-08-versus-personal-statistics-performance-plan.md)：目标范围批量统计、共享排名、加载与胜负状态已实现；真实副本性能与对账通过，完整全栈与生产验收进行中
+- [`plans/2026-10-09-music-detail-chart-performance-plan.md`](plans/2026-10-09-music-detail-chart-performance-plan.md)：`SS-2026-10-09-001` 已完成只读诊断并形成修复规划；独立overview、已发布事实复用、project目标化、请求与错误状态、冷访问和资源验收，S0已冻结；S1–S3已实现，S4/S5验收中
 
 - [榜单对决个人播放性能与正确性验收](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)：fresh5 / warm21、四配置维护资源、实际完整发布与基础事实对账；浏览器真实竞争瓶颈正在收口
 

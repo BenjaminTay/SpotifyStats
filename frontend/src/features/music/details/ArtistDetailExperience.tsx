@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useDetailViewQuery } from './useDetailViewQuery'
+import { DetailViewState } from './DetailViewState'
 import { queryKeys } from '@/api/query-keys'
 import type { ArtistDetailResponse } from '@/types/billboard'
 import { EntityStatsPanel, EntityStatsPrefetch } from '@/components/shared/EntityStatsPanel'
@@ -52,26 +54,27 @@ export function ArtistDetailExperience() {
   const setTrackPage = (page: number) => setTrackPageState({ context: trackPageContext, page })
 
   const summaryParams = { ...billboardParams, view: 'summary' }
-  const { data, isPending, error, refetch } = useQuery({
+  const { data: summaryData, isPending, error, refetch } = useQuery({
     queryKey: queryKeys.music.artistDetail(artistName ?? '', summaryParams),
-    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, summaryParams),
+    queryFn: ({ signal }) => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, summaryParams, undefined, signal),
     enabled: !!artistName && !filtersLoading,
   })
-  const { data: overviewData, isPending: overviewPending } = useQuery({
-    queryKey: queryKeys.music.artistDetail(artistName ?? '', { ...billboardParams, view: 'overview' }),
-    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, { ...billboardParams, view: 'overview' }),
-    enabled: activeTab === 'overview' && !!artistName && !filtersLoading,
-  })
-  const { data: tracksData, isPending: tracksPending } = useQuery({
-    queryKey: queryKeys.music.artistDetail(artistName ?? '', { ...billboardParams, view: 'tracks', limit: trackPageSize, offset: (trackPage - 1) * trackPageSize }),
-    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, { ...billboardParams, view: 'tracks', limit: trackPageSize, offset: (trackPage - 1) * trackPageSize }),
-    enabled: activeTab === 'tracks' && !!artistName && !filtersLoading,
-  })
-  const { data: albumsData, isPending: albumsPending } = useQuery({
-    queryKey: queryKeys.music.artistDetail(artistName ?? '', { ...billboardParams, view: 'albums' }),
-    queryFn: () => api.get<ArtistDetailResponse>('/billboard/artist/' + artistName!, { ...billboardParams, view: 'albums' }),
-    enabled: activeTab === 'albums' && !!artistName && !filtersLoading,
-  })
+  const { data: overviewData, error: overviewError, isFetching: overviewFetching, refetch: retryOverview } = useDetailViewQuery<ArtistDetailResponse>(
+    queryKeys.music.artistDetail(artistName ?? '', { ...billboardParams, view: 'overview' }),
+    '/billboard/artist/' + artistName!, { ...billboardParams, view: 'overview' },
+    activeTab === 'overview' && !!artistName && !filtersLoading,
+  )
+  const { data: tracksData, isPending: tracksPending } = useDetailViewQuery<ArtistDetailResponse>(
+    queryKeys.music.artistDetail(artistName ?? '', { ...billboardParams, view: 'tracks', limit: trackPageSize, offset: (trackPage - 1) * trackPageSize }),
+    '/billboard/artist/' + artistName!, { ...billboardParams, view: 'tracks', limit: trackPageSize, offset: (trackPage - 1) * trackPageSize },
+    activeTab === 'tracks' && !!artistName && !filtersLoading,
+  )
+  const { data: albumsData, isPending: albumsPending } = useDetailViewQuery<ArtistDetailResponse>(
+    queryKeys.music.artistDetail(artistName ?? '', { ...billboardParams, view: 'albums' }),
+    '/billboard/artist/' + artistName!, { ...billboardParams, view: 'albums' },
+    activeTab === 'albums' && !!artistName && !filtersLoading,
+  )
+  const data = overviewData ?? summaryData
   const isCharted = data?.chart_status === 'charted' || !!data?.chart_summary
   const summaryTrackChartStatus = data?.track_chart_status
   const summaryAlbumChartStatus = data?.album_chart_status
@@ -97,9 +100,9 @@ export function ArtistDetailExperience() {
       {activeTab === 'stats' && artistName && (
         <EntityStatsPrefetch kind="artist" artistName={artistName} />
       )}
-      {isPending && <ArtistDetailSkeleton />}
+      {isPending && !data && <ArtistDetailSkeleton />}
 
-      {error && (
+      {error && !data && (
         <div className="flex flex-col items-center gap-4 py-20 text-center">
           <AlertCircle className="h-8 w-8 text-accent-foreground" />
           <p className="text-muted-foreground">加载失败：{error.message}</p>
@@ -112,7 +115,7 @@ export function ArtistDetailExperience() {
         </div>
       )}
 
-      {data && !isPending && (
+      {data && (
         <>
           {!data.found ? (
             <div className="flex flex-col items-center gap-4 py-20 text-center">
@@ -175,9 +178,8 @@ export function ArtistDetailExperience() {
               ) : <DetailTabs tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />}
 
               {activeTab === 'overview' && (
-                overviewPending || !overviewData
-                  ? <Skeleton className="h-[420px] w-full rounded-[16px]" />
-                  : <MusicChartOverviewSection
+                <DetailViewState hasData={!!overviewData} error={overviewError} fetching={overviewFetching} retry={retryOverview}>
+                    {overviewData && <MusicChartOverviewSection
                       kind="artist"
                       chartSummary={overviewData.chart_summary}
                       weeklyHistory={overviewData.artist_weekly_history}
@@ -187,7 +189,8 @@ export function ArtistDetailExperience() {
                       yearEndStatus={overviewData.year_end_status}
                       yearEndSummary={overviewData.year_end_summary}
                       yearEndHistory={overviewData.year_end_history ?? []}
-                    />
+                    />}
+                  </DetailViewState>
               )}
 
               {/* ═══ Tab 2: 单曲成绩 ═══ */}

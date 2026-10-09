@@ -1,0 +1,153 @@
+# 音乐详情榜单成绩加载修复规划
+
+> 日期：2026-10-09
+> 事项：`SS-2026-10-09-001`
+> 状态：S0 合同冻结完成；已获用户授权执行 S0–S5，S1–S3 已实现，S4/S5 验收中。
+> 基线：线上公开入口及干净后端源码均为 `d5ba3094f2c843fe903078b7306d930deba5e27d`。
+> 关联：`SS-2026-10-08-001` 生产 OOM、`SS-2026-10-08-002` 对决个人统计性能。三项分别验收；本项不自动关闭其余两项。
+
+## 1. 问题与已取得证据
+
+用户反馈详情页“榜单成绩”慢，感觉要等“播放统计”的排名完成。只读排查覆盖歌曲、专辑、艺人三类。
+
+已确认没有前端排名依赖：overview query 只检查页签、实体及设置就绪。公开 Midnights 页面中点击后约 50ms 发出 overview，当时个人排名请求仍未结束；独立浏览器对照将 vampire 排名响应人为暂扣，榜单仍在点击后约 330ms 可见。该人为对照只证明依赖关系，不作为自然线上性能数据。
+
+同线上版本源码、94,760 条播放记录的真实副本、独立新进程只读调用结果：
+
+| 实体 | 摘要 | 首次 overview | 第二次 overview | 首次主要成本 |
+| --- | ---: | ---: | ---: | --- |
+| vampire / 1493 | 89.76ms | 3,144.57ms | 10.09ms | 全库 weighted frame 2,827.04ms；Billboard 读取 121.67ms |
+| Midnights | 57.32ms | 5,272.37ms | 10.35ms | weighted frame 2,888.55ms；专辑事件 874.08ms；归属解释 1,233.26ms |
+| Taylor Swift | 38.52ms | 1,296.94ms | 12.82ms | 完整个人基础统计 916.61ms；Billboard 读取 122.13ms |
+
+这里的“首次”是进程内缓存为空，持久 Billboard 成品已存在，不是生产重启验收。各项包含子函数，嵌套耗时不重复相加。专辑 wall 5.27s / CPU 4.78s，歌曲 wall 3.14s / CPU 2.86s，主要成本来自计算。歌曲/专辑时间线扫描筛出 91,928 条原始行，生成 67,881 个逻辑事件和 160,136 行 weighted frame；专辑事件聚合另读取 69,153 行。
+
+独立进程 max RSS 峰值约歌曲 462MiB、专辑 567MiB、艺人 334MiB。这是峰值，不是请求结束后的驻留或每请求增量，不能据此认定生产 OOM 根因。线上后续 9 次 HTTP 专项均 200，overview 的 Server-Timing 已热样本约 27–37ms，Taylor Swift 首个观测约 811ms；这些热样本不能覆盖冷路径问题。
+
+还确认了三个放大因素：
+
+- 专辑播放统计页额外请求 `view=project`，生成已听曲目数和归属说明；名称路由迁移到稳定 project ID 时，浏览器出现两套摘要、基础统计及 project 请求。
+- 当前详情 queryFn 没有消费 TanStack Query 的 AbortSignal，页签切换后已发请求可能继续计算。未量化其对原始慢访问的竞争占比。
+- overview 未消费自己的 error；失败且无数据仍进入 Skeleton。默认 30 秒超时、最多两次重试会拉长等待，最终失败仍可能显示加载。此次未复现线上超时。
+
+原始诊断保存在本地 ignored `output/playwright/detail-diagnosis-20261009/`：`diagnosis.md`、`backend-profile-head-{track,album,artist}.json`、`production-http.json`、`album-browser-timeline.txt`、`rank-dependency-control.txt`。本节保留可长期阅读的诊断结论，不依赖将私人原始产物提交 Git。
+
+## 2. 目标与范围
+
+目标是让 summary、个人基础统计、个人排名、榜单 overview 按各自事实与视图独立加载；overview 首次访问只读取已发布事实并做目标范围组装。榜单成绩的数值、身份、走势、周历史、年榜及现有可见版本说明保持正确。
+
+本项覆盖三类详情的 `summary/overview` 请求路径，以及直接影响它们的专辑 project、稳定身份迁移和失败呈现。专辑/艺人的单曲与专辑成绩列表只做必要兼容验证；其完整性能改造另行立项。旧 `view=full`、Agent、对决和年榜消费者先保持合同，不能顺带替换。
+
+不通过扩大 LRU、拉长 timeout、打开页面全局预暖、改变统计口径或提前加载全部页签来达标。不启动新的外部元数据补取，不写原始事实或恢复退役消费入口。
+
+## 3. 推荐技术方案
+
+### 3.1 保留路由，给 overview 建立独立读取路径
+
+保留现有 `/api/billboard/track/canonical/{id}`、`/album/{name}`、`/album-project/{id}`、`/artist/{name}` 和 `view=overview`。在 `detail_views.py` 为 overview 接入独立 builder，不先调用完整详情再裁剪。先以现有字段兼容交付，不要求前端同时切换一套新接口。
+
+优先复用已存在的发布数据：
+
+| 消费事实 | 首选来源 | 必须核验的缺口 |
+| --- | --- | --- |
+| 身份、封面、基础元数据、有效播放总数 | 当前候选文档与 `music_search_entity_context`，复用 summary 的规范身份逻辑 | L2/L3 代表身份、专辑 project、有效署名及未入榜/真实零播放 |
+| 最高排名、周数、走势点数与排名 | 同一 snapshot 的实体 context | Top N、过滤指纹与统计合同不能跨变体复用 |
+| 目标实体周历史、变化与累计指标 | `music_search_weekly_chart_context` 按 snapshot/family/entity 查询 | 专辑/艺人额外计数字段、NEW/RE、达峰周及稳定排序 |
+| 最佳单曲/专辑叠线、周冠军关联 | 同一发布上下文的关联实体周事实，或其有界派生投影 | 合作曲有效署名、L3 membership、同名对象、并列选取必须与基线一致 |
+| 年榜摘要与历史 | 既有 `year_end_projection` 只读接口 | 必须与 overview 的发布上下文一致；年榜不可用不阻塞周榜 |
+| 歌曲版本说明、专辑来源归属 | 静态治理关系 + 目标范围成品/读取 | 版本播放总数不得直接改成原始行计数；缺少成品时不能调用全库时间线补算 |
+
+歌曲 summary 的现有 `_track_history()` 已有目标实体周历史读取，可提取复用；不能直接认定三类所有字段都已齐备。S0 逐字段对账后，能用现有字段无损重建的直接读取；缺少的消费字段在已有快照发布阶段补最小投影。不要在 GET 中从完整榜单 JSON 解码全表再筛实体，也不要在每个请求重算全库走势排名。
+
+overlay 必须读取同 snapshot 的成员/有效署名关系，或确认当前关系 revision 与该 snapshot 严格一致。不能把最新治理映射拼接到旧榜单事实。只读查询要验证访问范围和查询计划；需要新索引或 schema 时随最小迁移交付，不预先新增整套存储系统。
+
+### 3.2 发布一致性、缺失状态与兼容
+
+overview 首版使用 exact-ready；返回必要的 `snapshot_key/source_revision/filter_fingerprint` 发布信息，概览、历史、overlay 必须属于同一发布上下文。summary 现有 LKG 行为单独保留；前端不能把旧 summary 的统计值与新 overview 当作同一批当前事实，overview 就绪后使用其同批事实更新对应展示或明确旧事实状态。
+
+有摘要而周历史缺失、不完整或校验不一致，应返回结构化 `snapshot_unavailable`，不能返回空历史并声称未入榜。身份不存在、真实零播放、已存在但未入榜、快照不可用是不同状态。年榜独立保持 ready/warming/unavailable，不因年榜缺失调用年度 builder。
+
+summary/overview 的缺失路径也要检查：默认 UI 请求不能悄悄回退完整详情或同步冷构建。公开 GET 不写库、不计算完整派生、不排队；补建通过既有私有维护/导入/治理完成链调度。需要新增投影时复用现有原子发布、source fence、任务去重及 CPU gate。
+
+`year_start/year_end` 等兼容请求不能简单过滤 lifetime 周历史后沿用 lifetime 走势排名。S0 确认实际消费者，按已有范围成品或预发布范围投影保持原合同；不支持的 publication 以明确状态返回。旧 full/Agent 的兼容路径与默认 UI 快路径分开测试，避免修改无关消费者。
+
+若引入派生 schema/builder 版本变化，同步版本、seed、升级/幂等和重基消费者；发布前在明确副本准备所需变体与依赖。现有搜索六变体合同保持，默认 UI 验收覆盖 L2/L3 × dynamic/fixed 四组合；不能在正常发布或公开请求首次冷建搜索成品。
+
+### 3.3 把附属计算限制在需要的位置
+
+榜单 overview 不再调用 `_load_detail_weighted_frame`、完整 `get_*_stats` 或全项目 `_get_album_project_payload`。有效播放数直接来自同口径实体发布；仍需归并/版本解释的字段使用目标范围成品。任何目标范围时间线计算需沿用前后邻事件、逻辑事件去重与次数/时长双轨，不能只过滤原始行后简单求和。
+
+专辑 project 拆为两种需求处理：header 的已听曲目数从轻量目标事实读取；详细来源/归属说明在实际内容可见时请求。其后端读取目标 project 的成员与来源事实，不能仅把全局计算延后。保留现有专辑归属展示和正确性，不删除功能来缩短时间。
+
+歌曲 overview 当前可见版本说明亦须保持，可独立加载目标版本附属数据，周榜内容先显示；版本附属数据的就绪时间另列，不能因此把“整个页面已完成”计时提前。
+
+### 3.4 前端身份、取消和错误
+
+名称到 project ID 的过渡使用规范身份并迁移已验证的 Query 数据，保持筛选、页签与返回路径；有明确 ID 的入口直接使用 ID。旧名称兼容入口可先读一次身份摘要，随后只用稳定 ID 发起统计/project 请求，避免两套重型请求。不能把不同 merge_level 或过滤配置的数据写入同一 Query key。
+
+所有本项相关 queryFn 消费 AbortSignal；移除用户已离开的视图观察者后正确取消失效请求。客户端取消不等于 Python 同步任务已停止，后端减少计算才是主要收益，不据浏览器 aborted 就声称服务器资源已释放。
+
+overview 独立展示 loading、ready、not_charted、snapshot_unavailable、error 与重试。503 publication 缺失不自动无限重试；普通网络错误保持有界重试。刷新有旧结果时保持上一帧并标识更新，不再次遮住整页。直接 overview 深链与播放统计进入后切页两种路径均不得等待个人排名。
+
+## 4. 实施顺序与阶段退出条件
+
+| 阶段 | 工作与主要文件 | 退出条件 |
+| --- | --- | --- |
+| S0 合同冻结 | 三类 UI 消费字段清单；核对 `detail_summary.py`、ledger、year_end、full baseline；补自然请求时序和缓存/资源测量 | 明确每字段事实来源/缺口、范围兼容和发布策略，冻结第 5 节门槛；这一步不做正式库维护 |
+| S1 歌曲快路径 | 提取 summary/周历史读逻辑；接入 track overview；保留版本解释；消除默认请求 full fallback | L2/L3、归并、NEW/RE及年榜对账；新进程请求不进全库时间线/完整 builder |
+| S2 专辑/艺人快路径 | 目标周历史、关联 overlay、计数字段；必要的最小发布投影；移除完整个人统计/项目计算 | 三类全部消费字段等价；缺失/损坏/漂移拒绝混用；维护升级与原子发布通过 |
+| S3 附属请求与前端 | 专辑 project 目标化/按需；规范身份与 Query 复用；AbortSignal；错误与旧结果连续性 | 名称/ID不重复发重型请求；排名暂扣仍可显示榜单；最终失败退出Skeleton；统计/归属功能无损 |
+| S4 本地验收 | 同版本干净基线对账、真实副本冷/热/并发及三浏览器视口；相关测试、构建、默认完整全栈 | 功能、性能、资源与完整门禁分别达到合同，原始事实及人工关系守恒 |
+| S5 发布验收 | 固定SHA、CI/三模式、Online Backup、仅复用/有界准备、健康与生产真实首次访问、联合回滚证据 | 授权发布后按原门槛通过；不靠热重跑替换首轮失败；OOM和对决事项仍各自判定 |
+
+先完成 S1–S3 的必要实现再执行 S4，避免每做一小步重复全栈门禁。S1 可独立形成可审核补丁；它不代表三类任务已完成。用户后续已授权完整执行本规划，包括阶段集中提交及发布验收。
+
+## 5. 验收合同
+
+以下是修复目标，不是已达标结果。S0 在改代码前锁定样本、数据副本、版本、视口、资源与计时定义；不能失败后放宽门槛。
+
+### 5.1 功能和路径
+
+- 三类代表样本 vampire、Midnights、Taylor Swift，加非榜单对象 Afterlife、真实零播放、L2/L3归并、合作曲、同名专辑/艺人别名、RE及覆盖边缘周样本。覆盖两种阈值与合法设置变体。
+- 对账全部 UI 消费值：播放数、峰值/达峰周、周数、冠军/累计指标、走势点数/名次、overlay、年榜、版本与项目解释。基线不是唯一业务真相，冲突以规则与确定性事实检查定位，不能为“等价”保留已确认错误。
+- default summary/overview 新进程、缓存淘汰后、revision变化、持久成品缺失/损坏/旧版本时，禁止完整 Billboard/年度 builder、全库 raw timeline、全项目聚合和完整个人统计 fallback。既有成品存在时只读；缺失时正确不可用。
+- snapshot fence/身份/过滤变更并发：旧响应不覆盖新上下文，不混用两个发布版本；公开请求前后源事实、发布记录和队列不产生写入变化。
+
+### 5.2 性能和资源
+
+| 指标 | 初始验收门槛 | 计时/测量要求 |
+| --- | --- | --- |
+| 本地真实副本首次 overview 服务调用 | 每类 ≤500ms | 新进程、内存缓存为空、持久成品ready；与本轮基线一致定义 |
+| 本地热 overview | 每类 ≤100ms | 单独报告，不覆盖首次失败 |
+| 已显示详情 shell 后点击榜单到核心KPI/周历史可见 | 本地 ≤1,000ms，生产 HTTPS ≤2,000ms | 包含实际点击/网络/渲染；快速切页和排名未完成均覆盖 |
+| 默认可见榜单内容全部就绪 | 本地 ≤1,500ms，生产 HTTPS ≤2,500ms | 包含可见图表和版本附属内容；不能只测核心KPI后宣布整页完成 |
+| 直接 overview 深链首轮 | 核心内容本地 ≤2,000ms，生产 HTTPS ≤3,000ms | 从导航起点，含capabilities/settings/summary等待；静态资产与网络另列，不与点击计时混用 |
+| default overview 首次资源增量 | 进程采样峰值增量 ≤64MiB | 取同一进程请求前基准；报告RSS/PSS可用项、CPU、wall和结束后驻留，不能用max RSS历史峰值相减 |
+| 连续三类多实体访问 | 同规模基线峰值/驻留下降至少50%，不随每轮线性增长 | 固定实体与轮次，覆盖LRU淘汰；不增加缓存容量达标；无法证明平台期则资源验收保持Partial |
+
+每种冷进程样本执行三次独立运行，保留首轮及所有失败，不在同进程清缓存伪装服务重启。生产首轮不得先请求个人/overview预暖；L2/L3、阈值切换按冻结次序执行。冷进程重启只在隔离本地环境；正式生产受控重启若必要，在发布阶段单独授权，不为计时擅自重启服务。
+
+测试自然并发的 stats/rank/project/overview 与快速切页，确认 overview 不等待排名；浏览器暂扣排名仅作为依赖对照，单列于自然性能之外。重型维护竞争按现有 gate 测有界场景，不能在生产并发压测或据本项关闭整体 OOM。
+
+### 5.3 浏览器和交付
+
+覆盖 Chromium/Firefox/WebKit，Phone 390/360、Compact及Desktop；确认互斥presentation、URL返回、Query复用、触控目标、错误重试与无横向溢出。改动相关单元/合同回归先跑，S4再跑后端unit/contract、前端test/build、文档审计与默认八阶段全栈。
+
+局部结果仍是Partial。只有同一固定实现的默认完整必需阶段全部通过才记本地全栈Pass；生产CI、三模式、安装、线上API、浏览器首次性能与资源分别报告。
+
+## 6. 发布、回退与协作边界
+
+与对决统计任务仅共享现有事实读取/发布primitive；不修改其未提交计次投影，不将其测试数字继承到本项。`logical_timeline.py`/`db.py`等共享文件需要改动时先明确必要性和并行工作边界；本项优先通过详情消费路径消除计算。
+
+优先无迁移交付；只有S0证明现有发布不足才加最小派生字段/索引。若升级发布格式，部署前验证源fence和ready manifest，禁止公开GET或正常部署临时全量冷建。原始 `plays/tracks/track_artists`、人工覆盖/身份/组关系、membership与L3治理事实必须保持。
+
+回退以旧镜像/代码与兼容派生成品为联合单位，失败发布保留上一可用服务；不删除新旧事实、不重写正式库、不启停外层入口。快路径不可用返回明确状态，不能在public-readonly开启重型计算兜底。完成实现/验证/提交/发布后分别更新台账、总表、文档地图及实际交付记录。
+
+## 7. S0 合同冻结记录（2026-10-09）
+
+- 样本、四组合、三次冷进程及第5节门槛沿用冻结合同。基线是d5ba，候选使用独立Online Backup副本，其他任务的工作树与服务不作为本项实现。
+- Track消费summary、history、chart_data、effective_play_count、version_group与year_end；Album/Artist消费chart_summary、目标history、最佳单曲/专辑overlay、effective_play_count与year_end。周history的tracks_count/albums_count和冠军关联当前UI未消费；legacy full合同保留。
+- 既有周ledger可复原7个历史字段，entity context可提供有效总数与走势排名；candidate治理revision在同一SQLite读事务中冻结。Summary实际默认也是exact-ready，没有开启LKG；本项不引入新LKG。
+- Album overlay沿用旧provider发行映射和primaryartist配对；Artist overlay沿用有效署名和榜单代表身份。不能直接以project membership替代其既有合同。
+- 版本和项目来源需要未归并L1/source album的次数和时长；现有agg仅单一参数组合，不足以回答四组合。因此增加schema90附属发布投影，独立projection版本，不改变现行四组合搜索合同（旧六变体兼容另列）；维护期同事务发布，旧成品需在副本显式补齐。
+- 默认summary/overview/project无full fallback；未发布的year范围明确503，旧full/Agent/list继续原兼容路径。字段缺失、损坏、revision不匹配是snapshot_unavailable，不伪造零或not_charted。

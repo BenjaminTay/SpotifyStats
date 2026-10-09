@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams, useLocation, Navigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useDetailViewQuery } from './useDetailViewQuery'
+import { DetailViewState } from './DetailViewState'
 import { queryKeys } from '@/api/query-keys'
 import type { TrackDetailResponse } from '@/types/billboard'
 import { EntityStatsPanel, EntityStatsPrefetch } from '@/components/shared/EntityStatsPanel'
@@ -92,16 +94,17 @@ function TrackDetailContent() {
   const billboardParams = buildBillboardContextParams({ ...filters, merge_level: mergeLevel })
 
   const summaryParams = { ...billboardParams, view: 'summary' }
-  const { data, isPending, error, refetch } = useQuery({
+  const { data: summaryData, isPending, error, refetch } = useQuery({
     queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel, summaryParams),
-    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/canonical/' + trackId!, summaryParams),
+    queryFn: ({ signal }) => api.get<TrackDetailResponse>('/billboard/track/canonical/' + trackId!, summaryParams, undefined, signal),
     enabled: !!trackId && !filtersLoading,
   })
-  const { data: overviewData, isPending: overviewPending } = useQuery({
-    queryKey: queryKeys.music.trackDetail(trackId ?? '', mergeLevel, { ...billboardParams, view: 'overview' }),
-    queryFn: () => api.get<TrackDetailResponse>('/billboard/track/canonical/' + trackId!, { ...billboardParams, view: 'overview' }),
-    enabled: activeTab === 'overview' && !!trackId && !filtersLoading,
-  })
+  const { data: overviewData, error: overviewError, isFetching: overviewFetching, refetch: retryOverview } = useDetailViewQuery<TrackDetailResponse>(
+    queryKeys.music.trackDetail(trackId ?? '', mergeLevel, { ...billboardParams, view: 'overview' }),
+    '/billboard/track/canonical/' + trackId!, { ...billboardParams, view: 'overview' },
+    activeTab === 'overview' && !!trackId && !filtersLoading,
+  )
+  const data = overviewData ?? summaryData
   useEffect(() => {
     if (!requestedTab || TABS.some((tab) => tab.key === requestedTab)) return
     const next = new URLSearchParams(searchParams)
@@ -112,9 +115,9 @@ function TrackDetailContent() {
   return (
     <>
       {activeTab === 'stats' && trackId && <EntityStatsPrefetch kind="track" trackId={trackId} mergeLevel={mergeLevel} />}
-      {isPending && <TrackDetailSkeleton />}
+      {isPending && !data && <TrackDetailSkeleton />}
 
-      {error && (
+      {error && !data && (
         <div className="flex flex-col items-center gap-4 py-20 text-center">
           <AlertCircle className="h-8 w-8 text-accent-foreground" />
           <p className="text-muted-foreground">加载失败：{error.message}</p>
@@ -127,7 +130,7 @@ function TrackDetailContent() {
         </div>
       )}
 
-      {data && !isPending && (
+      {data && (
         <>
           {!data.found ? (
             <div className="flex flex-col items-center gap-4 py-20 text-center">
@@ -221,14 +224,14 @@ function TrackDetailContent() {
               </div>}
 
               {activeTab === 'overview' && (
-                overviewPending || !overviewData
-                  ? <Skeleton className="h-[420px] w-full rounded-[16px]" />
-                  : <>
+                <DetailViewState hasData={!!overviewData} error={overviewError} fetching={overviewFetching} retry={retryOverview}>
+                    {overviewData && <>
                       {overviewData.meta?.version_group && (
                         <VersionGroupSection kind="track" data={overviewData.meta.version_group} />
                       )}
                       <TrackOverviewSection data={overviewData} />
-                    </>
+                    </>}
+                  </DetailViewState>
               )}
               {activeTab === 'stats' && <EntityStatsPanel kind="track" trackId={trackId} mergeLevel={mergeLevel} />}
             </>

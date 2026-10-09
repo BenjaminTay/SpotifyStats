@@ -135,8 +135,7 @@ describe('专辑详情播放排行分页', () => {
 
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
       '/music/albums/Merged%20Project/stats',
-      expect.any(Object),
-    ))
+      expect.any(Object), undefined, expect.any(AbortSignal)))
     expect(mocks.get.mock.calls.some(([path]) => String(path).endsWith('/rankings'))).toBe(false)
 
     await act(async () => resolveStats(stats))
@@ -178,8 +177,7 @@ describe('专辑详情播放排行分页', () => {
     expect(await screen.findByText('项目歌曲 21')).toBeInTheDocument()
     expect(mocks.get).toHaveBeenCalledWith(
       '/music/albums/Merged%20Project/rankings',
-      expect.objectContaining({ artist: 'Primary Artist', merge_level: 2, limit: 20, offset: 20 }),
-    )
+      expect.objectContaining({ artist: 'Primary Artist', merge_level: 2, limit: 20, offset: 20 }), undefined, expect.any(AbortSignal))
 
     mocks.filters = { ...mocks.filters, min_ms: 45000 }
     view.rerender(
@@ -191,8 +189,7 @@ describe('专辑详情播放排行分页', () => {
     )
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
       '/music/albums/Merged%20Project/rankings',
-      expect.objectContaining({ min_ms: 45000, offset: 0 }),
-    ))
+      expect.objectContaining({ min_ms: 45000, offset: 0 }), undefined, expect.any(AbortSignal)))
   })
 })
 

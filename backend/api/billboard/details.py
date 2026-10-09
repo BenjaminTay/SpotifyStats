@@ -24,6 +24,7 @@ from backend.core.db import get_db
 from backend.dependencies import BillboardFilters, MergeConfig, get_conn
 from backend.domains.music_search.timing import MusicSearchTiming
 from backend.domains.playback.album_project_identity import resolve_album_project_identity
+from backend.models.snapshot import SnapshotUnavailableResponse
 from backend.services.billboard_service import (
     get_album_detail_view,
     get_artist_detail_view,
@@ -38,6 +39,14 @@ from backend.services.billboard_service import (
 )
 
 router = APIRouter()
+
+
+def _published_detail_headers(response: Response, result: dict) -> None:
+    snapshot = result.get("snapshot")
+    if snapshot:
+        response.headers["X-Snapshot-Freshness"] = snapshot["freshness"]
+        response.headers["X-Snapshot-Target-Revision"] = snapshot["source_revision"]
+
 
 TrackDetailView = Literal["full", "summary", "overview"]
 AlbumDetailView = Literal["full", "summary", "overview", "tracks", "project"]
@@ -179,13 +188,19 @@ class ArtistMultiRequest(BaseModel):
 @router.get(
     "/track/l1/{track_id}",
     response_model=TrackHistoryResponse,
-    responses={404: {"description": "Track has no resolvable chart or effective-play facts"}},
+    responses={
+        503: {"model": SnapshotUnavailableResponse},
+        404: {"description": "Track has no resolvable chart or effective-play facts"},
+    },
     include_in_schema=False,
 )
 @router.get(
     "/track/canonical/{track_id}",
     response_model=TrackHistoryResponse,
-    responses={404: {"description": "Track has no resolvable chart or effective-play facts"}},
+    responses={
+        503: {"model": SnapshotUnavailableResponse},
+        404: {"description": "Track has no resolvable chart or effective-play facts"},
+    },
 )
 def track_history(
     track_id: int,
@@ -217,6 +232,7 @@ def track_history(
             view=view,
         )
     response.headers["Server-Timing"] = timing.server_timing_header()
+    _published_detail_headers(response, result)
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Track not found")
     return result
@@ -226,6 +242,7 @@ def track_history(
     "/track/{track_id}",
     response_model=TrackHistoryResponse,
     responses={
+        503: {"model": SnapshotUnavailableResponse},
         404: {"description": "Track has no resolvable chart or effective-play facts"},
         409: {"description": "Legacy track id resolves to multiple L1 identities"},
     },
@@ -269,7 +286,10 @@ def legacy_track_history(
 @router.get(
     "/artist/{artist_name:path}",
     response_model=ArtistChartDetailResponse,
-    responses={404: {"description": "Artist has no resolvable chart or effective-play facts"}},
+    responses={
+        503: {"model": SnapshotUnavailableResponse},
+        404: {"description": "Artist has no resolvable chart or effective-play facts"},
+    },
 )
 def artist_chart_detail(
     artist_name: str,
@@ -305,6 +325,7 @@ def artist_chart_detail(
             offset=offset,
         )
     response.headers["Server-Timing"] = timing.server_timing_header()
+    _published_detail_headers(response, result)
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Artist not found")
     return result
@@ -313,7 +334,10 @@ def artist_chart_detail(
 @router.get(
     "/album/{album_name:path}",
     response_model=AlbumChartDetailResponse,
-    responses={404: {"description": "Album has no resolvable chart or effective-play facts"}},
+    responses={
+        503: {"model": SnapshotUnavailableResponse},
+        404: {"description": "Album has no resolvable chart or effective-play facts"},
+    },
 )
 def album_chart_detail(
     album_name: str,
@@ -358,6 +382,7 @@ def album_chart_detail(
             view=view,
         )
     response.headers["Server-Timing"] = timing.server_timing_header()
+    _published_detail_headers(response, result)
     if not result.get("found"):
         raise HTTPException(status_code=404, detail="Album not found")
     if identity is not None:
@@ -375,7 +400,10 @@ def album_chart_detail(
 @router.get(
     "/album-project/{project_id}",
     response_model=AlbumChartDetailResponse,
-    responses={404: {"description": "Album project not found"}},
+    responses={
+        503: {"model": SnapshotUnavailableResponse},
+        404: {"description": "Album project not found"},
+    },
 )
 def album_project_chart_detail(
     project_id: int,

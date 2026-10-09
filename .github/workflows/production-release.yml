@@ -322,7 +322,7 @@ jobs:
         run: |
           tar -C deploy/production -czf "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
             compose.yml nginx.conf private-nginx.conf.template \
-            public-nginx.conf.template .env.example deploy.sh versus-rank-release.sh backup.sh rollback.sh \
+            public-nginx.conf.template .env.example deploy.sh versus-rank-release.sh backup.sh music-detail-release.sh rollback.sh \
             restore.sh configure-tailscale.sh configure-public-funnel.sh \
             showcase-auth.sh showcase-access-entrypoint.sh temporary-showcase.sh \
             install-backup-timer.sh verify.sh set-deployment-mode.sh \

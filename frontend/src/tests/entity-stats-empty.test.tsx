@@ -96,7 +96,7 @@ describe('详情统计无数据与状态切换', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('metric=hours')
     expect(screen.getAllByTestId('trend')[0]).toHaveTextContent('"value":1'); expect(mocks.get).toHaveBeenCalledTimes(2)
     fireEvent.click(screen.getByRole('button', { name: '最近4周' }))
-    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ period: 'last_4_weeks' })))
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ period: 'last_4_weeks' }), undefined, expect.any(AbortSignal)))
     expect(screen.getByTestId('location')).toHaveTextContent('period=last_4_weeks')
   })
 })

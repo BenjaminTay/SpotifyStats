@@ -64,6 +64,7 @@ def _sentinels(monkeypatch):
         chart_staged_api,
         chart_year_end_cache,
         detail_views,
+        details,
     )
 
     for name in (
@@ -80,11 +81,16 @@ def _sentinels(monkeypatch):
         "_artist_detail_cached",
         "_album_detail_cached",
         "_album_project_detail_cached",
-        "build_track_detail_summary",
-        "build_album_detail_summary",
-        "build_artist_detail_summary",
     ):
         monkeypatch.setattr(detail_views, name, _forbid)
+    for name in (
+        "_load_detail_weighted_frame",
+        "_load_album_project_detail_events",
+        "_get_album_project_payload",
+        "_load_detail_access_stats",
+        "compute_billboard_data",
+    ):
+        monkeypatch.setattr(details, name, _forbid)
     monkeypatch.setattr(release_cycle, "load_billboard_raw", _forbid)
     monkeypatch.setattr(release_cycle, "load_billboard_raw_for_artists", _forbid)
     monkeypatch.setattr(home, "build_home_overview", _forbid)
@@ -186,9 +192,12 @@ def test_home_publication_contract_and_read_only_transition(isolated, monkeypatc
     assert _state(db_path, files) == before
 
 
-def test_album_name_and_project_public_private_contract(isolated):
-    client, _db_path, _files = isolated
+def test_album_name_and_project_public_private_contract(
+    isolated, prepare_music_detail_publications
+):
+    client, db_path, files = isolated
     maintenance.rebuild_default_billboard_snapshots()
+    prepare_music_detail_publications()
     params = {"artist_name": "Alpha", "view": "summary"}
     named = client.get("/api/billboard/album/Alpha%20Debut", params=params)
     assert named.status_code == 200, named.text
@@ -202,6 +211,47 @@ def test_album_name_and_project_public_private_contract(isolated):
         (f"/api/music/album-projects/{project_id}/play-dates", {}),
     ]:
         private = client.get(path, params=params)
+        before = _state(db_path, files)
         public = client.get(path, params=params, headers=PUBLIC)
         assert private.status_code == public.status_code == 200, (path, private.text, public.text)
         assert private.json() == public.json()
+        assert _state(db_path, files) == before
+
+
+def test_detail_http_uses_target_publication_without_full_billboard_sidecache(
+    isolated, monkeypatch, prepare_music_detail_publications
+):
+    from backend.api import billboard as router_module
+
+    client, db_path, files = isolated
+    prepare_music_detail_publications()
+    assert not Path(cache.BILLBOARD_CACHE_PATH).exists()
+    original_gate = router_module.get_or_build_billboard_snapshot
+    _sentinels(monkeypatch)
+    monkeypatch.setattr(router_module, "get_or_build_billboard_snapshot", _forbid)
+    before = _state(db_path, files)
+    for path, views in (
+        ("/api/billboard/track/canonical/1", ("summary", "overview")),
+        ("/api/billboard/artist/Alpha", ("summary", "overview")),
+        ("/api/billboard/album/Alpha%20Debut", ("summary", "overview", "project")),
+        ("/api/billboard/album-project/1", ("summary", "overview", "project")),
+    ):
+        for view in views:
+            response = client.get(path, params={"view": view}, headers=PUBLIC)
+            assert response.status_code == 200, (path, view, response.text)
+            assert response.json()["found"] is True
+            assert response.headers["X-Snapshot-Freshness"] == "current"
+            assert response.headers["X-Snapshot-Target-Revision"]
+    assert _state(db_path, files) == before
+
+    # Legacy consumers still require their complete Billboard publication.
+    monkeypatch.setattr(router_module, "get_or_build_billboard_snapshot", original_gate)
+    for path, params in (
+        ("/api/billboard/track/canonical/1", {"view": "full"}),
+        ("/api/billboard/entity-lists", {}),
+        ("/api/billboard/release-cycle/artist/Alpha", {}),
+    ):
+        response = client.get(path, params=params, headers=PUBLIC)
+        assert response.status_code == 503, (path, response.text)
+        assert response.json()["detail"]["error"] == "snapshot_unavailable"
+    assert _state(db_path, files) == before

@@ -2178,7 +2178,9 @@ def _filter_to_project_release_date(df: pd.DataFrame) -> pd.DataFrame:
     out["_event_date"] = pd.to_datetime(event_source, errors="coerce")
     from backend.domains.metadata.release_dates import parse_release_date
 
-    precision = out.get("release_date_precision", pd.Series(None, index=out.index))
+    precision = out.get(
+        "release_date_precision", pd.Series([None] * len(out), index=out.index, dtype=object)
+    )
     out["_release_date"] = pd.to_datetime(
         [parse_release_date(raw, prec).end for raw, prec in zip(out["release_date"], precision)],
         errors="coerce",

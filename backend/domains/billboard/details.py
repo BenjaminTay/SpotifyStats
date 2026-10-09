@@ -1110,6 +1110,8 @@ def _build_l3_source_project_explanation(
     conn: sqlite3.Connection,
     df: pd.DataFrame,
     project_id: int,
+    *,
+    target_only: bool = False,
 ) -> dict:
     """Explain residual and transferred songs for one physical source release."""
     table_exists = conn.execute(
@@ -1142,7 +1144,14 @@ def _build_l3_source_project_explanation(
                ON target.project_id=attribution.target_project_id
              JOIN album_projects origin
                ON origin.project_id=attribution.origin_release_project_id
-            ORDER BY tracks.track_name, attribution.canonical_song_key"""
+            """
+        + (
+            " WHERE EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(attribution.evidence_json) THEN attribution.evidence_json ELSE '{}' END, '$.source_project_ids') sources WHERE CAST(sources.value AS INTEGER)=?)"
+            if target_only
+            else ""
+        )
+        + " ORDER BY tracks.track_name, attribution.canonical_song_key",
+        (project_id,) if target_only else (),
     ).fetchall()
     source_attributions: dict[str, dict] = {}
     for raw in attribution_rows:
