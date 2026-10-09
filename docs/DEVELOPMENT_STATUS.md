@@ -1,8 +1,8 @@
 # SpotifyStats 开发状态总表
 
-> 最后核验：2026-10-09（d2c4afce 正式CI、三模式及部署通过；生产冷个人统计三项未达门槛，继续优化；OOM独立待修复）
-> 当前进展：`SS-2026-10-08-002` 历史版本S4默认八阶段PASS。d2c4afce首次公开28样本数值及计分一致，25项性能达标；四专辑3.072秒、两艺人2.847秒、四艺人3.596秒失败。源19表、完整jobs与全部发布前后守恒；新CPU版本S4已收口：3,669+187后端、787/4skip前端、51性能目标和八阶段完整PASS，96 API对账及90浏览器样本通过；新固定SHA/CI/生产首轮待完成。
-> 当前生产：`d2c4afce8e04cf9c805de201995e6fb5dee54f08` 三容器完整SHA、四排名ready及verify通过。私有SSH loopback capability已确认，私有HTTPS尚未验收；历史CI失败和本地PASS各按版本保留。
+> 最后核验：2026-10-09（d5ba3094正式CI、三模式及部署通过；首次公开28样本功能正确，26项达全部性能门槛、两项基础超2秒；OOM独立待修复）
+> 当前进展：`SS-2026-10-08-002` 新CPU版本本地八阶段完整PASS（3,669+187后端、787/4skip前端）。d5ba3094首次四专辑2.191秒、两艺人2.283秒仍失败，全部个人≤3秒；公开HTTPS/私有SSH各48 API对账及源19表/完整jobs/全部发布守恒通过。计次投影工作树198项专项、96个API对账及36进程/130项性能资源门槛通过；当前版本90个浏览器个人样本通过（1个外部图片console失败保留、窄复验通过），当前默认完整八阶段PASS（3,694+187后端、787/4skip前端），固定SHA、正式CI及生产首次待执行，不以本地Pass或热重跑关闭问题。
+> 当前生产：`d5ba3094f2c843fe903078b7306d930deba5e27d` 三容器完整SHA、四rank ready及独立verify通过。私有SSH仅功能证据，私有HTTPS尚未验收；历史版本失败和PASS各自保留。
 > 历史日期专项已发布业务代码：`76a4968`；CI attempt2质量/三模式/镜像/部署success，attempt1传输SSH reset保留。
 > 历史日期专项生产核验：76a4968、schema89、dual三healthy（12:54）；五年精确年度、两端30次API、两端双视口与最终61表事实守恒通过。连接已恢复，OOM及详情访问后内存增长未代码修复。
 > 本文件是开发状态与下一步工作的统一入口；详细规则、方案和原始验收证据继续在各自文档维护。
@@ -60,7 +60,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
 | SS-2026-10-08-001 | 生产OOM与详情访问内存增长 | 内核确认global OOM终止uvicorn；连接恢复，浏览器检查后RSS再至约2.3GiB。受控backend重启、逐年有界维护已缓解，最终healthy；未代码修复 | P1：在副本复现详情/趋势冷路径及缓存驻留，限制重型任务叠加；验证冷/热访问资源，首个摘要17.98秒不算性能Pass | [生产验收与资源证据](reports/2026-10-08-release-date-production-delivery.md)、[台账](issues/2026-08-27-issue-register.md) | 2026-10-08 |
-| SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | IN_PROGRESS；d2c4afce本地完整、正式CI/三模式/部署通过；公开首次28样本25达性能门槛，三项冷基础失败（3.072/2.847/3.596秒），数值与计分一致；源19表/完整jobs/全部发布守恒。新CPU版本本地八阶段完整PASS，fresh5/warm21/资源、96 API对账及90浏览器样本通过；新生产待验 | P1：按完整CPU阶段固定SHA，执行正式CI与新生产首轮；私有HTTPS依赖外部入口，其他OOM独立跟踪 | [完整规划](plans/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
+| SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | IN_PROGRESS；d5ba3094本地完整、正式CI/三模式/部署通过；首次公开28样本数值及计分正确，26项达门槛，四专辑2.191秒/两艺人2.283秒基础超2秒，全部个人≤3秒。公开HTTPS/私有SSH各48 API对账与源19表/完整jobs/全部发布守恒 | P1：计次投影S4已通过当前默认完整门禁，固定SHA并执行正式CI、发布与原顺序生产首次；私有HTTPS依赖外部入口；整轮页面RSS+291.74MiB不能归为单个人统计，其他OOM独立跟踪 | [完整规划](plans/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第11节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付；本轮单次24分22秒 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07（单次计时，不代表三次稳定收口） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |
 | ACCEPT-01 | 当前版本业务验收 | 专辑、封面与合作曲生产专项已闭环；真实AI、OAuth和物理手机仍待验收 | P1：生产真实AI与目标终端分开登记，不以模拟视口推定 | [专辑生产报告](reports/2026-10-03-album-metadata-production-delivery.md)、[验证规则](reference/fullstack-verification.md) | 2026-10-03 |
