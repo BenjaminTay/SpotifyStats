@@ -29,6 +29,7 @@ from backend.domains.music_search.snapshot_lineage import (  # noqa: E402
 )
 from backend.domains.music_search.variants import build_music_search_variant_contexts  # noqa: E402
 from backend.services.music_search_maintenance_service import _current_filter_values  # noqa: E402
+from scripts.closed_publication_source import publication_reads  # noqa: E402
 
 
 def digest(value):
@@ -260,11 +261,19 @@ def main():
     operations.add_argument("--verify", action="store_true")
     operations.add_argument("--validate-manifest", type=Path)
     parser.add_argument(
+        "--closed-source",
+        action="store_true",
+        help="Read a closed copy with no WAL using immutable mode; never use for a live database",
+    )
+    parser.add_argument(
         "--owned-copy",
         action="store_true",
         help="Explicitly identify an isolated maintenance copy even when DB_PATH points at it",
     )
     args = parser.parse_args()
+    readonly = bool(args.export or args.verify or args.validate_manifest)
+    if args.closed_source and not readonly:
+        parser.error("--closed-source is only valid for read-only operations")
     _assert_writer_allowed()
     if not args.db_path.is_file():
         raise RuntimeError("detail database copy does not exist")
@@ -277,7 +286,16 @@ def main():
     db.DB_PATH = str(requested_path)
     if args.build_on_copy:
         run_migrations()
-    conn = db.get_db(readonly=bool(args.export or args.verify or args.validate_manifest))
+    if readonly:
+        with publication_reads(requested_path, closed=args.closed_source):
+            result = _run(args, readonly=True)
+    else:
+        result = _run(args, readonly=False)
+    print(json.dumps(result, ensure_ascii=True))
+
+
+def _run(args, *, readonly):
+    conn = db.get_db(readonly=readonly)
     try:
         contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
         if args.build_on_copy:
@@ -295,7 +313,7 @@ def main():
             result = export_projection(conn, contexts, args.export)
         else:
             result = import_projection(conn, contexts, args.import_manifest)
-        print(json.dumps(result, ensure_ascii=True))
+        return result
     finally:
         conn.close()
 

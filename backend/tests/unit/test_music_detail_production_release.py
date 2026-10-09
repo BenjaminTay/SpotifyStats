@@ -1,6 +1,8 @@
 """Prepared detail facts are installed on stage before database promotion."""
 
 import hashlib
+import json
+import os
 import shlex
 import sqlite3
 import subprocess
@@ -142,6 +144,39 @@ prepare_music_detail_release image "$DEPLOY_DIR/staged.db"
     )
     assert result.returncode == 0
     assert result.stdout.strip() == "verify"
+
+
+def test_maintenance_containers_use_host_owner_and_only_closed_stage_reads(tmp_path):
+    result = run_helper(
+        tmp_path,
+        f"""
+docker() {{ {shlex.quote(sys.executable)} -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "$@"; }}
+music_detail_command image validate "$DEPLOY_DIR/spotify_stats.db" "$DEPLOY_DIR/manifest.json"
+music_detail_command image import "$DEPLOY_DIR/spotify_stats.db" "$DEPLOY_DIR/manifest.json"
+music_detail_command image verify "$DEPLOY_DIR/spotify_stats.db"
+billboard_release_command image import "$DEPLOY_DIR/spotify_stats.db" "$DEPLOY_DIR/cache.db" "$DEPLOY_DIR/manifest.json"
+billboard_release_command image verify "$DEPLOY_DIR/spotify_stats.db" "$DEPLOY_DIR/cache.db"
+checkpoint_live_database image
+source {ROOT / "deploy/production/versus-rank-release.sh"}
+versus_rank_command image install "$DEPLOY_DIR/spotify_stats.db" "$DEPLOY_DIR/manifest.json" abcdef
+""",
+    )
+    assert result.returncode == 0, result.stderr
+    calls = [json.loads(line) for line in result.stdout.splitlines()]
+    for args in calls[:5]:
+        assert args[args.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"
+    assert "--user" not in calls[5] and "--user" not in calls[6]
+    assert "--closed-source" in calls[0] and "--closed-source" in calls[2]
+    assert "--closed-source" not in calls[1]
+    for args in calls[3:5]:
+        assert "--closed-source" in args
+        assert any("dst=/app/data/spotify_stats.db,readonly" in item for item in args)
+    live_verify = (
+        HELPER.read_text()
+        .split("verify_running_music_detail() {", 1)[1]
+        .split("billboard_release_enabled=", 1)[0]
+    )
+    assert "--closed-source" not in live_verify
 
 
 def test_live_database_rollback_restores_original_inode_schema_and_fact_bytes(tmp_path):
@@ -299,6 +334,63 @@ def test_old_image_exact_billboard_gate_is_readonly_and_never_builds():
         < restore.index("verify_stopped_billboard_exact")
         < restore.index("activate_mode")
     )
+
+
+@pytest.mark.parametrize("remaining_wal", [None, "spotify_stats.db", "billboard_cache.db"])
+def test_stopped_gate_reads_actual_closed_wal_headers_and_rejects_any_remaining_wal(
+    tmp_path, remaining_wal
+):
+    # The ready callback is a fixture; the shipped SQLite boundary runs intact.
+    # Production old-code exact publications are checked by the owned rehearsal.
+    files = []
+    for name in ("spotify_stats.db", "billboard_cache.db", "analysis_cache.db"):
+        path = tmp_path / name
+        conn = sqlite3.connect(path)
+        conn.execute("PRAGMA journal_mode=WAL").close()
+        conn.execute("CREATE TABLE facts(value INTEGER)").close()
+        conn.execute("INSERT INTO facts VALUES (7)").close()
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").close()
+        conn.close()
+        Path(str(path) + "-wal").unlink(missing_ok=True)
+        Path(str(path) + "-shm").unlink(missing_ok=True)
+        files.append(path)
+    before = [hashlib.sha256(path.read_bytes()).hexdigest() for path in files]
+    if remaining_wal:
+        (tmp_path / (remaining_wal + "-wal")).touch()
+    code = (
+        HELPER.read_text()
+        .split("verify_stopped_billboard_exact() {", 1)[1]
+        .split("python -c '", 1)[1]
+        .split("'\n}", 1)[0]
+        .replace("/app/data", str(tmp_path))
+    )
+    fixture_code = f"""
+import sys, types, sqlite3
+from pathlib import Path
+fixture_guard_state = {{'guard': False}}
+for name in ('backend','backend.core','backend.services','backend.core.access_surface','backend.services.billboard_snapshot_service'):
+    sys.modules[name] = types.ModuleType(name)
+def guard(value): fixture_guard_state['guard'] = value
+def ready():
+    assert fixture_guard_state['guard']
+    for path in {str([str(path) for path in files])}:
+        conn = sqlite3.connect(Path(path).as_uri() + '?mode=ro', uri=True)
+        assert conn.execute('SELECT value FROM facts').fetchone()[0] == 7
+        assert conn.execute('PRAGMA query_only').fetchone()[0] == 1
+        conn.close()
+    return True
+sys.modules['backend.core.access_surface'].set_public_readonly_db_guard = guard
+sys.modules['backend.services.billboard_snapshot_service'].billboard_default_snapshots_ready = ready
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", fixture_code + code], capture_output=True, text=True
+    )
+    assert result.returncode == (0 if remaining_wal is None else 1), result.stderr
+    if remaining_wal:
+        assert "requires no WAL" in result.stderr
+    assert [hashlib.sha256(path.read_bytes()).hexdigest() for path in files] == before
+    assert not list(tmp_path.glob("*-shm"))
 
 
 @pytest.mark.parametrize("ready", [False, True])

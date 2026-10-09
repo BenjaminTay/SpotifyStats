@@ -13,15 +13,15 @@ music_detail_command() {
   local image="$1" action="$2" database="$3" manifest="${4:-}"
   local access=",readonly"
   [[ "$action" != import ]] || access=""
-  local args=(docker run --rm --init --network none
+  local args=(docker run --rm --init --network none --user "$(id -u):$(id -g)"
     -e SPOTIFY_STATS_DB_PATH=/detail-data/"$(basename -- "$database")"
     --mount "type=bind,src=$(dirname -- "$database"),dst=/detail-data$access")
   [[ -z "$manifest" ]] || args+=(--mount "type=bind,src=$manifest,dst=/detail-manifest.json,readonly")
   args+=("$image" python scripts/prepare_music_detail_projection.py --db-path /detail-data/"$(basename -- "$database")")
   case "$action" in
     import) args+=(--import-manifest /detail-manifest.json) ;;
-    validate) args+=(--validate-manifest /detail-manifest.json) ;;
-    verify) args+=(--verify) ;;
+    validate) args+=(--validate-manifest /detail-manifest.json --closed-source) ;;
+    verify) args+=(--verify --closed-source) ;;
     *) return 2 ;;
   esac
   "${args[@]}"
@@ -81,11 +81,38 @@ verify_stopped_billboard_exact() {
   docker run --rm --init --network none \
     -e SPOTIFY_STATS_DB_PATH=/app/data/spotify_stats.db \
     --mount "type=bind,src=$DEPLOY_DIR/data,dst=/app/data,readonly" "$1" python -c '
+import sqlite3
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
 from backend.core.access_surface import set_public_readonly_db_guard
 from backend.services.billboard_snapshot_service import billboard_default_snapshots_ready
+# This gate also runs in old images lacking the maintenance CLI. Only stopped,
+# closed files may ignore the WAL header; a remaining WAL always rejects.
+paths = {Path("/app/data") / name for name in ("spotify_stats.db", "billboard_cache.db", "analysis_cache.db")}
+def state(path):
+    if Path(str(path) + "-wal").exists():
+        raise RuntimeError("Stopped exact gate requires no WAL file")
+    stat = path.stat()
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+captured = {path: state(path) for path in paths if path.is_file()}
+original = sqlite3.connect
+def connect(database, *args, **kwargs):
+    value = str(database)
+    path = Path(unquote(urlsplit(value).path) if value.startswith("file:") else value).resolve()
+    if path in paths:
+        if path not in captured or state(path) != captured[path]:
+            raise RuntimeError("Stopped exact gate source changed")
+        kwargs["uri"] = True
+        conn = original(path.as_uri() + "?mode=ro&immutable=1", *args, **kwargs)
+        conn.execute("PRAGMA query_only=ON")
+        return conn
+    return original(database, *args, **kwargs)
+sqlite3.connect = connect
 set_public_readonly_db_guard(True)
 if not billboard_default_snapshots_ready():
     raise SystemExit("previous Billboard publications are not exact-ready")
+if any(state(path) != value for path, value in captured.items()):
+    raise SystemExit("Stopped exact gate source changed")
 '
 }
 
@@ -133,7 +160,7 @@ billboard_release_command() {
   [[ ! -e "$database-wal" ]] || { echo 'Billboard 重绑要求已闭库并完成 WAL checkpoint。' >&2; return 1; }
   local access=",readonly"
   [[ "$action" != import ]] || access=""
-  local args=(docker run --rm --init --network none
+  local args=(docker run --rm --init --network none --user "$(id -u):$(id -g)"
     -e SPOTIFY_STATS_DB_PATH=/app/data/spotify_stats.db
     --mount "type=bind,src=$database,dst=/app/data/spotify_stats.db,readonly"
     --mount "type=bind,src=$(dirname -- "$sidecar"),dst=/billboard-output$access")
@@ -144,7 +171,7 @@ billboard_release_command() {
     args+=(--mount "type=bind,src=$manifest,dst=/billboard-manifest.json,readonly")
   fi
   args+=("$image" python scripts/prepare_billboard_publications.py
-    --db-path /app/data/spotify_stats.db --cache-path /billboard-output/"$(basename -- "$sidecar")")
+    --db-path /app/data/spotify_stats.db --cache-path /billboard-output/"$(basename -- "$sidecar")" --closed-source)
   case "$action" in
     import) args+=(--import-manifest /billboard-manifest.json) ;;
     export) args+=(--export /billboard-manifest.json) ;;

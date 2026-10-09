@@ -27,6 +27,7 @@ from backend.services.billboard_snapshot_service import (  # noqa: E402
     _year_end_snapshot_params,
     configured_billboard_filters,
 )
+from scripts.closed_publication_source import publication_reads  # noqa: E402
 
 FAMILIES = ("weekly", "all_time", "full_data", "records", "power_scores", "summaries")
 
@@ -313,6 +314,11 @@ def main():
     parser.add_argument("--db-path", type=Path, required=True)
     parser.add_argument("--cache-path", type=Path, required=True)
     parser.add_argument("--owned-copy", action="store_true")
+    parser.add_argument(
+        "--closed-source",
+        action="store_true",
+        help="Read a closed source with no WAL; never use for a live database",
+    )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--build-on-copy", action="store_true")
     mode.add_argument("--export", type=Path)
@@ -320,6 +326,8 @@ def main():
     mode.add_argument("--validate-manifest", type=Path)
     mode.add_argument("--verify", action="store_true")
     args = parser.parse_args()
+    if args.closed_source and args.build_on_copy:
+        parser.error("--closed-source cannot build publications")
     _assert_private()
     requested = args.db_path.resolve()
     sidecar = args.cache_path.resolve()
@@ -334,6 +342,15 @@ def main():
         raise RuntimeError("Billboard build requires owned copies outside formal data paths")
     db.DB_PATH = str(requested)
     cache.BILLBOARD_CACHE_PATH = str(sidecar)
+    if args.build_on_copy:
+        result = _run(args)
+    else:
+        with publication_reads(requested, closed=args.closed_source, sidecars=(sidecar,)):
+            result = _run(args)
+    print(json.dumps(result, ensure_ascii=True))
+
+
+def _run(args):
     conn = db.get_db(readonly=True)
     try:
         if args.build_on_copy:
@@ -351,7 +368,7 @@ def main():
             }
         else:
             result = verify_publications(conn)
-        print(json.dumps(result, ensure_ascii=True))
+        return result
     finally:
         conn.close()
 
