@@ -1,8 +1,8 @@
 # SpotifyStats 开发状态总表
 
-> 最后核验：2026-10-09（c587正式CI/NoDeploy/Release、11实际jobs与独立runtime通过；公开FIRST14/28、420秒资源/守恒、96 API及三denial通过）
-> 当前进展：`SS-2026-10-08-002` S0–S5完成；人类明确本轮仅公开HTTPS，私有入口保持现状。四文件精确清理释放1,334.719MiB、保留完整；三库checkpoint补修已发布且原门槛不变。详情独立FIRST已授权一次backend重启，唯一命令实际成功并完成版本/健康/维护核验，已交接详情任务；本项不关闭整体OOM。
-> 当前生产：`c58775f0df53ec05d2524a06b84f3b9945b6d024`；三OCI完整SHA/healthy，schema90、search4/rank4/detail4/BB48 ready，host helper及运行调用链hash精确。公开HTTPS原首次全部个人指标最大1.669秒；私有SSH HTTP仅功能补充，私有HTTPS未启用且不在本轮范围。历史9dd/acdd/d5/d2失败证据保留。
+> 最后核验：2026-10-09（d838正式CI37946309124/Release37946309024及7实际jobs成功、独立8runtime通过；详情原FIRST90为30通过/60性能失败，116功能与完整strict通过）
+> 当前进展：对决`SS-2026-10-08-002`保持S0–S5完成；详情`SS-2026-10-09-001`保持OPEN/Partial。动态图表补丁已上线，逐原90key出现11退化/2改善，下一步限定本地复现WebKit图表等待及主入口/初始化。使用部署正常新进程验收，无额外重启；整体OOM未关闭。
+> 当前生产：`d838814d5790ad9884fa9c30020801fdcb1044bc`；三OCI完整SHA/healthy，schema90、search4/rank4/detail4/BB48 ready，调用链/host helper精确，启动维护结束。详情116 API和三个完整只读窗口通过，性能30/90达标，混合RSS峰2299.176/末1928.613MiB、OOM增量0。c587对决公开FIRST14/28最大1.669秒及详情39/51历史证据保持；私有入口保持现状。
 > 历史日期专项已发布业务代码：`76a4968`；CI attempt2质量/三模式/镜像/部署success，attempt1传输SSH reset保留。
 > 历史日期专项生产核验：76a4968、schema89、dual三healthy（12:54）；五年精确年度、两端30次API、两端双视口与最终61表事实守恒通过。连接已恢复，OOM及详情访问后内存增长未代码修复。
 > 本文件是开发状态与下一步工作的统一入口；详细规则、方案和原始验收证据继续在各自文档维护。
@@ -61,7 +61,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 | --- | --- | --- | --- | --- | --- |
 | SS-2026-10-08-001 | 生产OOM与详情访问内存增长 | 内核确认global OOM终止uvicorn；连接恢复，浏览器检查后RSS再至约2.3GiB。受控backend重启、逐年有界维护已缓解，最终healthy；未代码修复 | P1：在副本复现详情/趋势冷路径及缓存驻留，限制重型任务叠加；验证冷/热访问资源，首个摘要17.98秒不算性能Pass | [生产验收与资源证据](reports/2026-10-08-release-date-production-delivery.md)、[台账](issues/2026-08-27-issue-register.md) | 2026-10-08 |
 | SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | COMPLETED / RELEASED；c587正式CI/NoDeploy/三模式/镜像/部署及独立runtime通过；原公开FIRST14/28全Pass（最大1.669秒）、420秒完整资源/守恒、96 API与三denial通过。人类明确仅公开HTTPS，S0–S5完成，历史失败保留 | P1：三库准备补修已验证，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push已完成，原公开入口已通过；私有SSH HTTP48仅为功能证据。本项完成；私有入口保持现状。详情独立首次已完成：39/90性能通过、116功能及完整读取守恒通过，详情与OOM仍开放 | [完整规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
-| SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | S0–S4已完成、c587正式部署；S5独立生产原90仅39通过/51性能失败，116 API和三个完整strict读窗口通过。自然混合流程RSS峰2095.602MiB/末1724.961MiB，OOM增量0；当前Partial | P1：真实构建确认ECharts引擎为详情route前置，最小动态renderer候选本地build/128相关测试/12详情canvas通过，静态闭包各减少约656KiB；联合审阅后申请新发布及原首次验收。主入口/较慢服务/高驻留继续定位，不默认额外独立重启，OOM不关闭 | [修复规划](plans/2026-10-09-music-detail-chart-performance-plan.md)、[分层验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md) | 2026-10-09 |
+| SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | S0–S4历史证据保持；d838正式部署，原FIRST90仅30通过/60失败（c58739/51），逐key11退化/2改善。116 API及三个完整strict读窗口通过；RSS991.109→2299.176→1928.613MiB、OOM增量0，OPEN/Partial | P1：引擎静态前置已消除，但10项WebKit点击退化；限定本地production preview复现renderer依赖/PWA/可能重复main资源和主入口初始化。高驻留另在副本拆分，暂不新代码/发布/生产探针，原门槛失败保留，OOM不关闭 | [修复规划](plans/2026-10-09-music-detail-chart-performance-plan.md)、[分层验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md) | 2026-10-09 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付；本轮单次24分22秒 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07（单次计时，不代表三次稳定收口） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |
 | ACCEPT-01 | 当前版本业务验收 | 专辑、封面与合作曲生产专项已闭环；真实AI、OAuth和物理手机仍待验收 | P1：生产真实AI与目标终端分开登记，不以模拟视口推定 | [专辑生产报告](reports/2026-10-03-album-metadata-production-delivery.md)、[验证规则](reference/fullstack-verification.md) | 2026-10-03 |

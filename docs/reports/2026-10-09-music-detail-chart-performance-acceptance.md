@@ -1,6 +1,6 @@
 # 音乐详情榜单成绩性能验收
 
-日期：2026-10-09。事项：`SS-2026-10-09-001`。当前结论：**Partial；业务本地 S4 已通过，c58775f0 已正式部署。独立生产自然首轮完整 90 项只有 39 项通过、51 项性能失败；116 项功能对账及完整读取守恒通过。冷页面性能和高驻留仍需修复，本项未收口**。
+日期：2026-10-09。事项：`SS-2026-10-09-001`。当前结论：**Partial；业务本地 S4 历史证据保持，当前 d838814d 已正式部署。独立生产自然首轮完整 90 项只有 30 项通过、60 项性能失败；旧 c587 的 39 项通过、51 项失败保留。116 项功能对账及完整读取守恒通过。冷页面性能和高驻留仍需修复，本项未收口**。
 
 本项基线为 `d5ba3094`，在独立工作树和 94,760 条播放的 Online Backup 副本执行。原始播放、身份、署名、人工覆盖和治理关系不作为本项写入目标；生产 OOM 和对决个人统计分别验收。
 
@@ -151,3 +151,62 @@ c587的三套Nginx源码已配置gzip；ResourceTiming的transfer/encoded/decode
 原记录离线关联还显示：首轮L2 dynamic/fixed歌曲深链窗口较大的RSS增长之前，前一点击场景的include_rank_context=true请求已在浏览器取消，未得到响应。服务端计算可能跨场景继续，但现有采样仅能证明时间重叠，不能将增量直接归因于排名、摘要或overview。该关联单列为后续副本定位线索，不作为本次renderer修复因果或整体OOM关闭证据。
 
 候选需要联合负责人审阅后统一申请新发布及保持原门槛的生产首次90项/资源/只读验收；新部署正常启动可提供新进程窗口，不默认再申请额外独立重启。旧c587的51项失败保留，详情事项继续OPEN/Partial。
+
+
+## d838814d 正式发布后的完整首次验收（性能仍失败）
+
+实际生产为`d838814d5790ad9884fa9c30020801fdcb1044bc`。人类在协调聊天直接授权正常推送、正式发布及公开详情验收；原四历史传输文件清理方案因外部空间变化作废，发布负责人未执行新增服务器删除。CI37946309124与Release37946309024均原attempt1 success，共7实际jobs，Deploy113879894252成功；NoDeploy本次frontend/docs路径不触发，Release本身质量与三模式门禁完整执行。负责人独立8检查全部exit0：三OCI/healthy、schema90/search4/rank4/detail4/BB48、17运行调用链与3host helper hash精确，启动维护6303done/38failed、无pending/running。不是本候选新运行了本地默认完整八阶段；已有128项/12真实canvas/build/ESLint按相同前端代码复用。
+
+部署正常启动提供本轮唯一新进程，没有额外重启或详情预暖。Backend container为`f5a543bf4dc89d7e324341c0a26d9dac169070aefd0677807bcb93aca98b4533`，image为`sha256:913c9e413b2e4a463586533694f0462ea345fb332d9e7497365142029e48ac3c`，StartedAt为`2026-10-09T15:09:06.623465968Z`，initPID1639652，uvicorn PID7/startticks138172479。维护后15:13:03UTC VmRSS已1014896kB/VmHWM1256992kB；此高基线不归因于后续UI。
+
+| 层次 | 实际结果 | 范围 |
+| --- | --- | --- |
+| 原自然FIRST90 | **30通过/60失败，exit1** | Chromium16/42、Firefox12/24、WebKit2/24；45深链全部核心超3秒，15点击失败；只有性能失败，无页面错误、非GET或启动错误，12屏外排名检查符合原合同 |
+| 原116接口 | **116/116通过，exit0** | 108个200、8个未知404，统计字段/顺序/归属完全对账，仅原四专辑请求身份字段归一；公开权限正确 |
+| 唯一50ms资源 | **13,391样本，exit0，stop0** | 连续覆盖整个UI、同PID/ticks、最大间隙51.390ms；不冒称单请求资源门槛 |
+| 三个完整strict窗口 | **全部exit0/unchanged** | 浏览器、API及总窗口：57保护/37原源、5队列、21主发布及6侧库全部发布表、schema/epoch/fence/inode同，clock变化0 |
+| 最终运行状态 | **exit0，三服务healthy同d838** | 15:31:06.955956UTC，Backend容器/image/initPID/StartedAt及uvicorn ticks保持；全部浏览器/reader/collector结束 |
+
+FIRST90 UTC`15:15:06.745746–15:25:49.999592`，PWA正常、fresh contexts、原顺序及2000/3000/2500ms门槛保持。资源窗口UTC`15:14:52.089386–15:26:01.600537`，RSS991.109→2299.176→1928.613MiB，峰增量1308.066MiB；CPU178.44秒，OOM事件增量全0。相对c587的资源窗口基线462.469MiB，本轮启动维护后基线更高，不能据峰值/增量差直接断言内存改善或renderer导致后端增长；整体OOM保持开放。
+
+本轮before capture为UTC15:14:08.881342–15:14:35.342223，after-browser为15:27:06.933957–15:27:50.115727，after-API为15:29:40.307846–15:30:07.111055；所有采集在UI资源计时之外、7读连接正常关闭。API原入场门禁要求完整原90结束及精确source/aux/fence匹配，不要求自然性能Pass，本次没有改门禁后置116。没有追加线上诊断或热重跑。
+
+### 与c587原90逐场景对照
+
+同browser/viewport/entity/navigation/merge/threshold key完整90项对照：原39通过变为30通过，28持续通过、49持续失败，**11通过→失败、2失败→通过**。10项WebKit点击和1项Chromium fixed专辑点击退化；2项Chromium L3艺人点击改善。结果不能称整体改善；两个时点的启动基线与网络状态不同，这不是随机因果实验。
+
+| 原场景key | 变化 | 核心ms：旧→新 | all门槛ms：旧→新 |
+| --- | --- | --- | --- |
+| chromium / 1280 / album / click / L2 / fixed | 通过→失败 | 818.1 → 3184.0 | 911.7 → 3267.1 |
+| webkit / 360 / track / click / L2 / dynamic | 通过→失败 | 1450 → 2269 | 1504 → 2775 |
+| webkit / 360 / album / click / L2 / dynamic | 通过→失败 | 423 → 2585 | 494 → 3869 |
+| webkit / 360 / artist / click / L2 / dynamic | 通过→失败 | 657 → 2224 | 760 → 3464 |
+| webkit / 390 / track / click / L2 / dynamic | 通过→失败 | 222 → 2320 | 293.0 → 2379 |
+| webkit / 390 / album / click / L2 / dynamic | 通过→失败 | 434.0 → 2305.0 | 511.0 → 3758 |
+| webkit / 390 / artist / click / L2 / dynamic | 通过→失败 | 749 → 2969 | 832 → 3465.0 |
+| webkit / 900 / album / click / L2 / dynamic | 通过→失败 | 377 → 2199 | 461.0 → 2272 |
+| webkit / 900 / artist / click / L2 / dynamic | 通过→失败 | 619 → 1800 | 685.0 → 3437 |
+| webkit / 1280 / album / click / L2 / dynamic | 通过→失败 | 440 → 2083.0 | 491 → 3379.0 |
+| webkit / 1280 / artist / click / L2 / dynamic | 通过→失败 | 583.0 → 2544 | 641 → 3438 |
+| chromium / 1280 / artist / click / L3 / dynamic | 失败→通过 | 2246.8 → 1512.2 | 2373.3 → 1602.2 |
+| chromium / 1280 / artist / click / L3 / fixed | 失败→通过 | 2244.6 → 1644.0 | 2325.3 → 1736.9 |
+
+最大点击core2762.8→3184.0ms、all2844.9→3869ms；最大深链core7820.5→6226.3ms、shell后all1991→3991ms，深链导航起点all8177.7→8334ms。只改善某个最大值不能代替全部场景Pass。
+
+### 现有时序支持的最小下一步
+
+实际首个Chromium歌曲深链的theme仅1644B，完整renderer679538B按需加载，配合真实build graph支持引擎已退出route静态前置。settings首次启动约5996→3545ms；但main仍658419B、下载2673ms，DOMready2993ms，summary/overview服务1616/1643ms，核心5779ms仍失败。消除旧前置成立，端到端完成不成立。
+
+WebKit专辑/艺人多个点击场景服务仅约70–80ms，renderer资源约3.7–3.8秒；部分还记录两次main资源，图表等待与退化时间重叠。现有记录不含完整asset请求起点、动态module initiator及Content-Encoding，不能断言renderer触发重复主入口、压缩失效或慢服务是唯一因果；Nginx源码已有gzip，不重复建议“开启gzip”。
+
+下一步优先在本地production preview复现WebKit新增退化，检查dynamic renderer的实际依赖、PWA/模块加载是否延迟或重复，比较真实content绘制与网络链；同时限定主入口/初始化前置依赖。必要修复先形成可审阅候选，不立即追加生产重启、发布或整轮热测。高驻留另在副本拆分已取消rank计算及缓存生命周期，保留启动维护基线，不能借此关闭OOM。详情仍OPEN/Partial，计划不归档，对决已完成状态保持。
+
+证据均在私有`output/music-detail-chart-acceptance/production-first-d838814d/`。原browser_probe把`--output`解释为文件，本轮误给无扩展路径，首个summarizer因此exit1/NotADirectoryError；完整90原始文件保留为browser-natural-original.json，仅byte-identical复制到browser-natural/results.json后汇总exit0，path receipt保留，不重跑/改字段。原截图路径保持，全部私有文件600。五工具原hash不变；唯一samplersignal停止0，不用SSH ControlMaster，无旧收尾255问题。
+
+- `browser-natural/results.json` SHA `a4fb8b45dc95c691df639ecf3184b4232cdb1c8c64b3a53388cf52b61c06b3e6`。
+- `browser-natural/summary.json` SHA `5019abe1b5f42bcd4b7d60fb7c8b10573321abad6b74653aa64de87d087e01ae`。
+- `resources.json` SHA `d65d88ff36d841b502eaa4801e27a93ddc8b8968ebbcb172388e98a9e609605b`。
+- `https-api-116-first/summary.json` SHA `204359042f21fdfd81fadd76dce4ade0fa745daae4eea8cf09e52c57071dcdc9`。
+- `runtime-read-comparison.json` SHA `0e81dbcf5ee53abcc7f90f558a1003c970a0d9d6dc086e2c5bb2674e9886b6c4`。
+- `offline-c587-d838-case-comparison.json` SHA `eef43f5012dac2836d90aca33b997b1e8d7e0083180d534421763de0dee874bd`。
+- `offline-static-api-timing-comparison.json` SHA `684cdf7792383b603578100f0f85e61997d5daf0977d1c46a04d68acc2702f2f`。
