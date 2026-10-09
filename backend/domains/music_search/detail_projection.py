@@ -389,17 +389,45 @@ def load_detail_project_membership(conn, snapshot_key, project_id):
 def _target_ledger(conn, key, family, entity_keys):
     if not entity_keys:
         return []
-    rows = conn.execute(
-        f"""SELECT week,rank,entity_key,play_count,total_ms,stable_sort_key FROM music_search_weekly_chart_context
-        WHERE snapshot_key=? AND family=? AND entity_key IN ({",".join("?" for _ in entity_keys)}) ORDER BY week,rank""",
-        (key, family, *entity_keys),
-    ).fetchall()
+    if not projection_available(conn, key):
+        return None
+    entity_ids = sorted({int(entity_key.split(":")[1]) for entity_key in entity_keys})
+    # Return one JSON value per bounded read. Stepping through hundreds of
+    # SQLite rows and separately checking every member repeatedly yields the
+    # GIL to concurrent personal-statistics work, even for an indexed query.
+    encoded_checks = conn.execute(
+        """SELECT json_group_array(json_array(entity_id,payload_json,payload_digest))
+           FROM music_search_detail_entity_projection
+           WHERE snapshot_key=? AND kind=?
+             AND entity_id IN (SELECT value FROM json_each(?))""",
+        (key, f"ledger_check_{family}", json.dumps(entity_ids)),
+    ).fetchone()[0]
+    checks = {}
+    for entity_id, payload_json, digest in json.loads(encoded_checks):
+        if payload_digest(payload_json) != digest:
+            return None
+        try:
+            checks[entity_id] = json.loads(payload_json)
+        except (TypeError, json.JSONDecodeError):
+            return None
+    if len(checks) != len(entity_ids):
+        return None
+    encoded_rows = conn.execute(
+        """SELECT json_group_array(json_array(week,rank,entity_key,play_count,total_ms,stable_sort_key))
+           FROM (SELECT week,rank,entity_key,play_count,total_ms,stable_sort_key
+                 FROM music_search_weekly_chart_context
+                 WHERE snapshot_key=? AND family=?
+                   AND entity_key IN (SELECT value FROM json_each(?))
+                 ORDER BY week,rank)""",
+        (key, family, json.dumps(entity_keys)),
+    ).fetchone()[0]
+    rows = json.loads(encoded_rows)
     grouped = defaultdict(list)
     for row in rows:
         grouped[str(row[2])].append(list(row))
     for entity_key in entity_keys:
         entity_id = int(entity_key.split(":")[1])
-        expected = _entity_payload(conn, key, f"ledger_check_{family}", entity_id)
+        expected = checks[entity_id]
         if expected is None or expected != ledger_check(grouped[entity_key]):
             return None
     return rows

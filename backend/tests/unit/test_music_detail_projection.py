@@ -11,9 +11,12 @@ from backend.core.access_surface import reset_public_readonly_db_guard, set_publ
 from backend.core.migrations import migrate_090
 from backend.domains.music_search.detail_projection import (
     SCHEMA,
+    _target_ledger,
+    ledger_check,
     load_detail_overlays,
     load_detail_project_membership,
     load_detail_source_facts,
+    payload_digest,
     publish_detail_projection,
     source_rows_from_frame,
 )
@@ -156,6 +159,57 @@ def test_public_guard_blocks_projection_publication():
             publish_detail_projection(conn, context, rows, entities)
     finally:
         reset_public_readonly_db_guard(token)
+
+
+def test_large_target_ledger_reads_checks_in_one_batch_and_preserves_rows():
+    conn, _, _, _ = fixture()
+    empty = json.dumps(ledger_check([]), separators=(",", ":"))
+    ids = list(range(1000, 2200))
+    conn.executemany(
+        "INSERT INTO music_search_detail_entity_projection VALUES (?,?,?,?,?)",
+        [
+            ("exact", "ledger_check_track", identity, empty, payload_digest(empty))
+            for identity in ids
+        ],
+    )
+    # Unrelated corrupt facts must not invalidate this target's publication.
+    conn.execute(
+        "INSERT INTO music_search_detail_entity_projection VALUES ('exact','ledger_check_track',999,'{}','bad')"
+    )
+    expected = [
+        list(row)
+        for row in conn.execute(
+            "SELECT week,rank,entity_key,play_count,total_ms,stable_sort_key FROM music_search_weekly_chart_context WHERE entity_key='track:11'"
+        )
+    ]
+    statements = []
+    conn.set_trace_callback(statements.append)
+    actual = _target_ledger(conn, "exact", "track", ["track:11", *(f"track:{i}" for i in ids)])
+    conn.set_trace_callback(None)
+    assert actual == expected
+    assert len(statements) == 3
+
+
+@pytest.mark.parametrize(
+    "fault", ["missing_check", "corrupt_check", "changed_ledger", "missing_state"]
+)
+def test_batched_target_ledger_rejects_incomplete_or_changed_facts(fault):
+    conn, _, _, _ = fixture()
+    if fault == "missing_check":
+        conn.execute(
+            "DELETE FROM music_search_detail_entity_projection WHERE kind='ledger_check_track' AND entity_id=11"
+        )
+    elif fault == "corrupt_check":
+        conn.execute(
+            "UPDATE music_search_detail_entity_projection SET payload_json='{}' WHERE kind='ledger_check_track' AND entity_id=11"
+        )
+    elif fault == "changed_ledger":
+        conn.execute(
+            "UPDATE music_search_weekly_chart_context SET play_count=99 WHERE entity_key='track:11'"
+        )
+    else:
+        conn.execute("DELETE FROM music_search_detail_projection_state")
+    assert _target_ledger(conn, "exact", "track", ["track:11", "track:12"]) is None
 
 
 def test_schema90_is_additive_and_idempotent():

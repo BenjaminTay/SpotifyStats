@@ -242,7 +242,7 @@ Online Backup，但不得停服或替换数据库。
    候选，统计 fingerprint 没有变化时四个变体必须精确复用；当前四个 Year-End 投影也必须已准备，
    缺失时直接拒绝，不能在候选预算内补建周榜明细或年度统计。准备副本同源移植当前四个 fingerprint
    的搜索 context、周榜明细和年度投影，保留目标其他历史 key；
-3. 只有搜索兼容基线 migration 69 及目标镜像当前 schema（本次89）、当前语义精确四个 fingerprint、搜索 builder v12、Billboard 聚合 v6、
+3. 只有搜索兼容基线 migration 69 及目标镜像当前 schema（本次90）、当前语义精确四个 fingerprint、搜索 builder v12、Billboard 聚合 v6、
    收听时长策略 `all_music_intervals_v1`、搜索 context orphan=0、
    `integrity_check=ok` 以及宿主容量全部通过，才保留预检副本；报告写入
    `backups/music-search-preflight-<sha>-<timestamp>.json`；
@@ -363,3 +363,5 @@ Backend 停服期间先核对已完成搜索预检的副本，再备份 Analysis
 L3 来源日期精度修复将 Billboard 持久成品独立升级到 `billboard_persistent_snapshot_v4_l3_release_precision`（搜索 v12 不变）。首次在另一个 owned Online Backup 路径用 `scripts/prepare_billboard_publications.py --db-path <副本> --cache-path <独立旁库> --build-on-copy` 准备四组合、六个常规 family 及各组合实际可用年榜，再 `--export <manifest>`；私密成品上传 `backups/billboard-<完整目标SHA>.json`，权限600。以后只从停服 live 的 exact-ready 成品导出复用，缺失即拒绝发布。
 
 Billboard manifest 保留全部事实依赖、分析 COMMON/RECORDS revision vector、日期与署名 policy，允许重绑数据库路径和 inode；不得删除事实 revision 来接受漂移。先验证并导入 stage sidecar；主库提升产生新 inode 后，再以同 manifest 重绑到 live key，独立 verify 后才激活。失败时联合恢复原主库、Billboard/Analysis sidecar、旧 SHA 和模式。闭库重绑拒绝遗留 WAL，运行中检查使用普通只读连接。默认详情目标读取不依赖完整 Billboard sidecar，legacy full/list/release 继续原成品门禁。
+
+自动发布失败恢复在停服并 checkpoint 后保留原数据库的同文件系统硬链接，回退使用原 inode，避免旧 v3 精确 key 因复制到新 inode 失效。旧镜像启动前后均只读检查默认 Billboard exact-ready；不能仅凭 LKG/健康响应宣称恢复成功。发布成功清理该 owned 链接；失败且尚未恢复时保留路径供恢复。此保护只覆盖本次发布失败的自动联合恢复，成功后人工 `rollback.sh` 部署旧 v3 的成品恢复尚未验证。

@@ -62,6 +62,72 @@ billboard_sidecar_backup=""
 billboard_staged_sidecar=""
 billboard_release_manifest=""
 
+checkpoint_live_database() {
+  docker run --rm --init --network none \
+    --mount "type=bind,src=$DEPLOY_DIR/data,dst=/app/data" "$1" python -c '
+import sqlite3
+import sys
+connection = sqlite3.connect(sys.argv[1], timeout=30)
+try:
+    checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+finally:
+    connection.close()
+if checkpoint[0] != 0 or checkpoint[1] != checkpoint[2]:
+    raise SystemExit("live database checkpoint did not complete")
+' /app/data/spotify_stats.db
+}
+
+verify_stopped_billboard_exact() {
+  docker run --rm --init --network none \
+    -e SPOTIFY_STATS_DB_PATH=/app/data/spotify_stats.db \
+    --mount "type=bind,src=$DEPLOY_DIR/data,dst=/app/data,readonly" "$1" python -c '
+from backend.core.access_surface import set_public_readonly_db_guard
+from backend.services.billboard_snapshot_service import billboard_default_snapshots_ready
+set_public_readonly_db_guard(True)
+if not billboard_default_snapshots_ready():
+    raise SystemExit("previous Billboard publications are not exact-ready")
+'
+}
+
+preserve_live_database_inode() {
+  local image="$1" live="$DEPLOY_DIR/data/spotify_stats.db"
+  [[ -f "$live" && -z "$rollback_live_inode_path" ]] || return 1
+  checkpoint_live_database "$image" || return 1
+  [[ ! -s "$live-wal" ]] || return 1
+  rm -f -- "$live-wal" "$live-shm" || return 1
+  rollback_live_inode_dir="$(mktemp -d "$DEPLOY_DIR/data/.rollback-inode.XXXXXX")" || return 1
+  rollback_live_inode_path="$rollback_live_inode_dir/spotify_stats.db"
+  # Same-filesystem hard link keeps the exact old schema, facts and identity.
+  # A link failure must never silently fall back to a new-inode copy.
+  ln -- "$live" "$rollback_live_inode_path" || return 1
+  [[ "$live" -ef "$rollback_live_inode_path" ]] || return 1
+  verify_stopped_billboard_exact "$image"
+}
+
+restore_live_database_inode() {
+  local live="$DEPLOY_DIR/data/spotify_stats.db"
+  [[ -n "$rollback_live_inode_path" && -f "$rollback_live_inode_path" ]] || {
+    echo '原数据库 inode 恢复文件缺失；拒绝伪装成精确回滚。' >&2
+    return 1
+  }
+  rm -f -- "$live-wal" "$live-shm" || return 1
+  mv -f -- "$rollback_live_inode_path" "$live" || return 1
+}
+
+cleanup_live_database_inode() {
+  [[ -n "$rollback_live_inode_dir" && -d "$rollback_live_inode_dir" ]] || return 0
+  if [[ -f "$rollback_live_inode_path" ]]; then
+    if [[ "$release_completed" == true || \
+          "$rollback_live_inode_path" -ef "$DEPLOY_DIR/data/spotify_stats.db" ]]; then
+      rm -f -- "$rollback_live_inode_path"
+    else
+      echo "保留可恢复的原数据库 inode：$rollback_live_inode_path" >&2
+      return 0
+    fi
+  fi
+  rmdir -- "$rollback_live_inode_dir"
+}
+
 billboard_release_command() {
   local image="$1" action="$2" database="$3" sidecar="$4" manifest="${5:-}"
   [[ ! -e "$database-wal" ]] || { echo 'Billboard 重绑要求已闭库并完成 WAL checkpoint。' >&2; return 1; }
@@ -149,5 +215,11 @@ import sys
 script = Path("scripts/prepare_billboard_publications.py")
 if script.is_file():
     subprocess.run([sys.executable, str(script), "--db-path", "/app/data/spotify_stats.db", "--cache-path", "/app/data/billboard_cache.db", "--verify"], check=True)
+else:
+    from backend.core.access_surface import set_public_readonly_db_guard
+    from backend.services.billboard_snapshot_service import billboard_default_snapshots_ready
+    set_public_readonly_db_guard(True)
+    if not billboard_default_snapshots_ready():
+        raise SystemExit("previous Billboard publications are not exact-ready")
 '
 }

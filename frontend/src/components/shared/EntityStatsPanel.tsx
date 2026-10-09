@@ -163,10 +163,11 @@ export function EntityStatsPanel({
     true,
   )
   const { ref: rankingsRef, ready: rankingsReady } = useDeferredInView(JSON.stringify(request.queryKey))
+  const { ref: rankContextRef, ready: rankContextReady } = useDeferredInView(JSON.stringify(rankRequest.queryKey))
   const { data: rankData, isPending: rankPending, error: rankError } = useQuery({
     queryKey: rankRequest.queryKey,
     queryFn: rankRequest.queryFn,
-    enabled: !filtersLoading && entityId !== '' && data?.found === true,
+    enabled: rankContextReady && !filtersLoading && entityId !== '' && data?.found === true,
   })
   const queryError = error instanceof Error ? error.message : error ? String(error) : invalidStats ? '统计响应不完整' : null
 
@@ -345,8 +346,8 @@ export function EntityStatsPanel({
         <KpiCard label="最近播放" value={dateShort(data.last_played)} />
       </div>
 
-      <div className="space-y-5">
-        {/* KPIs Row 2: 个人排名；基础统计就绪后独立异步加载，不阻塞首屏。 */}
+      <div ref={rankContextRef} data-deferred="rank-context" className="space-y-5">
+        {/* KPIs Row 2: 个人排名；实际进入视口后独立加载，不阻塞首屏。 */}
         {rankError && <p role="alert">排名统计加载失败</p>}
         {rankPending && (
           <div className="entity-stats-kpi-grid grid gap-5 md:grid-cols-2 xl:grid-cols-4" aria-label="排名统计加载中">

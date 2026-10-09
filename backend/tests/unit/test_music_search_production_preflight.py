@@ -506,7 +506,10 @@ def test_production_deploy_stages_search_before_atomic_database_promotion() -> N
         0
     ]
     assert 'local database_name="${3:-spotify_stats.db}"' in backup
-    assert 'database_name not in {"spotify_stats.db", "analysis_cache.db"}' in backup
+    assert (
+        'database_name not in {"spotify_stats.db", "analysis_cache.db", "billboard_cache.db"}'
+        in backup
+    )
     assert 'for name in (database_name, database_name + "-wal", database_name + "-shm")' in backup
     assert "copyfile(mounted, source_dir / name)" in backup
     assert "src=$DEPLOY_DIR/data,dst=/source,readonly" in backup

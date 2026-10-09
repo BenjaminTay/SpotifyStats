@@ -298,7 +298,7 @@ from shutil import copyfile
 source_dir = Path("/tmp/offline-source")
 source_dir.mkdir()
 database_name = sys.argv[1]
-if database_name not in {"spotify_stats.db", "analysis_cache.db"}:
+if database_name not in {"spotify_stats.db", "analysis_cache.db", "billboard_cache.db"}:
     raise SystemExit("unsupported offline backup database")
 for name in (database_name, database_name + "-wal", database_name + "-shm"):
     mounted = Path("/source") / name
@@ -336,11 +336,12 @@ with open(target_path, "rb") as stream:
 
 replace_live_database() {
   local source_path="$1"
-  install -m 600 "$source_path" "$DEPLOY_DIR/data/spotify_stats.db.release"
+  install -m 600 "$source_path" "$DEPLOY_DIR/data/spotify_stats.db.release" || return 1
   mv -f -- "$DEPLOY_DIR/data/spotify_stats.db.release" \
-    "$DEPLOY_DIR/data/spotify_stats.db"
+    "$DEPLOY_DIR/data/spotify_stats.db" || return 1
+  database_promoted="true"
   rm -f -- "$DEPLOY_DIR/data/spotify_stats.db-wal" \
-    "$DEPLOY_DIR/data/spotify_stats.db-shm"
+    "$DEPLOY_DIR/data/spotify_stats.db-shm" || return 1
 }
 
 wait_until_healthy() {
@@ -493,10 +494,9 @@ PY
 
 restore_previous_release() {
   compose_all stop backend >/dev/null 2>&1 || true
-  if [[ "$database_promoted" == "true" && -n "$release_backup_path" && \
-        -f "$release_backup_path" ]]; then
+  if [[ "$database_promoted" == "true" ]]; then
     echo "正在恢复发布前 SQLite 备份：$release_backup_path" >&2
-    replace_live_database "${rollback_database_path:-$release_backup_path}" || return 1
+    restore_live_database_inode || return 1
   fi
   restore_versus_rank_release || return 1
   restore_billboard_release || return 1
@@ -504,6 +504,7 @@ restore_previous_release() {
     echo "没有合法的上一镜像 SHA，无法自动回滚。" >&2
     return 1
   fi
+  verify_stopped_billboard_exact "$(backend_image_for_tag "$current_tag")" || return 1
   echo "正在恢复镜像 $current_tag 和部署模式 $current_mode。" >&2
   set_env IMAGE_TAG "$current_tag"
   set_env DEPLOYMENT_MODE "$current_mode"
@@ -521,6 +522,9 @@ release_backup_path=""
 database_promoted="false"
 release_stage_dir=""
 rollback_database_path=""
+rollback_live_inode_dir=""
+rollback_live_inode_path=""
+release_completed=false
 versus_rank_enabled="false"
 versus_rank_sidecar_changed="false"
 versus_rank_sidecar_existed="false"
@@ -530,6 +534,7 @@ versus_rank_previous_manifest=""
 source "$DEPLOY_DIR/versus-rank-release.sh"
 source "$DEPLOY_DIR/music-detail-release.sh"
 cleanup_release_stage() {
+  cleanup_live_database_inode
   if [[ -n "$release_stage_dir" && -d "$release_stage_dir" ]]; then
     rm -rf -- "$release_stage_dir"
   fi
@@ -652,8 +657,17 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
     exit 1
   fi
 
-  if ! replace_live_database "$staged_database"; then
+  if ! preserve_live_database_inode "$(backend_image_for_tag "$current_tag")"; then
     if [[ "$backend_was_running" == "true" ]]; then
+      activate_mode "$current_mode" "$rollback_image_source" || true
+    fi
+    echo "无法保留原数据库 inode 或旧榜单精确成品；拒绝发布。" >&2
+    exit 1
+  fi
+  if ! replace_live_database "$staged_database"; then
+    if [[ "$database_promoted" == "true" ]]; then
+      restore_previous_release || echo "自动恢复未通过，需要人工检查。" >&2
+    elif [[ "$backend_was_running" == "true" ]]; then
       activate_mode "$current_mode" "$rollback_image_source" || true
     fi
     echo "预检副本未能原子发布，生产镜像保持原版本。" >&2
@@ -700,6 +714,7 @@ fi
 printf '%s\n' "$NEW_TAG" > .current-image-tag
 printf '%s\n' "$target_mode" > .current-deployment-mode
 printf '%s\n' "$target_image_source" > .current-image-source
+release_completed=true
 
 echo "部署完成：$NEW_TAG（模式：$target_mode，镜像来源：$target_image_source，简化版访问：$showcase_access_mode）"
 echo "外部 HTTPS 入口未被修改；如需对外访问，请单独配置受控入口。"
