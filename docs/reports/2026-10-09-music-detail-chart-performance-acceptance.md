@@ -270,3 +270,51 @@ click用点击后all，direct用shell后all。8项只有3项满足原门槛，5�
 修复仅在fallback、public/private两模板的/assets/下添加gzip_proxied any，不改全局gzip/API/Caddy/Tailscale。先在已有本地Docker Nginx1.30.5执行三种完整网关配置，dummy token/open showcase include，后端解析为隔离地址且不请求API。每种baseline/candidate各检查direct gzip、Via gzip、Via identity及Via目录外对照，共24项通过。原d838尺寸资产658419B在修复后240744B，内容SHA守恒；随后对整合构建实际main527193B再执行24项，Via gzip为194317B，identity仍527193B，所有解压SHA、Vary、immutable缓存正确。后者是本地传输证据，不能宣称生产已缩小至194317B。局部覆盖使目录外Via压缩仍关闭，完整生产Nginx1.31.6及端到端首次验收待发布后验证。
 
 首次检查将多个Cache-Control转dict丢失重复头，immutable断言实际1；修正诊断为get_all合并后实际0，无产品追加修改，初次失败保留。另首次SSH Python缩进失败1且没有发请求，修正后host controls0。全部隔离自有容器已停止；未清理额外生产文件或镜像。证据位于联合worktree私有`output/versus-personal-acceptance/release-d838814d5790ad9884fa9c30020801fdcb1044bc/static-encoding-readonly/`，包括公开原始headers、host-controls、active-caddy-route、caddy-version、isolated-nginx两轮receipts、初次失败及集成构建log。未提交/推送/发布，原两轮生产失败和本地identity3/8结果保持；详情OPEN/Partial，OOM独立开放。
+
+## 626232b0 正式生产首次验收（2026-10-10，OPEN/Partial）
+
+真实人类授权turn `01a1235c-2b71-7281-8fba-1ded8a98a617`对应固定15文件联合补丁SHA256 `6ddb27a598ec66ffcacf2b8714ace16ce7e8f2e42071c560b8a4b5c59df34cc6`。唯一发布负责人正常提交/推送`626232b0709b4751ff1a95d1f67d76d2e5166882`，CI38012311927、NoDeploy38012311958、Release38012311948均attempt1 success，11实际jobs全部通过，安装114098510565成功；本次Nginx路径实际触发NoDeploy，不能套用d838的未触发状态。独立8运行核验全部0，三healthy同完整SHA，17源码/3host helper精确、schema90/rank4/detail4/BB48ready。
+
+部署新进程提供唯一首次窗口；没有额外手动重启、详情预暖或挑选重跑。Backend container `1a3d2bd6b63a6d74d67509bc674bd3c5fb769d5d8b4b289d2166358ea78e0254`，image `sha256:4073324e8a8db010948569e84e61fb92f44a96690e932ac9e3b2ddc7418f834f`，StartedAt `2026-10-10T01:39:29.622873479Z`，host init2248790、uvicorn2248831/container7/startticks141954778。启动维护01:42:29UTC自然结束，6313done/38failed，无active；handoff01:42:39UTC身份/配置精确，VmRSS已978180kB，启动高基线单列。
+
+所有下列时间为UTC；本节日期按Asia/Shanghai。原FIRST90从01:44:21.384316至01:50:37.092215，fresh contexts、PWA正常、原顺序/同90key及点击核心2000ms、深链核心3000ms、all2500ms保持。45点击all从点击计，45深链all从shell计，不将导航起点all混作门槛。
+
+| 验收层次 | 实际结果 | 边界 |
+| --- | --- | --- |
+| 原FIRST90 | **83通过/7失败，exit1** | Chromium36/42，Firefox23/24，WebKit24/24；全部90完整，不以旧本地8覆盖 |
+| 原116接口 | **116通过/0失败，exit0** | 108个200、8未知404；原全字段/顺序/归属对账与仅四专辑身份字段归一保持 |
+| 唯一50ms资源窗口 | **7881样本，collector0/stop0** | 全UI连续覆盖，同PID/ticks、最大gap51.425ms；整页混合窗口不是单请求64MiB门禁 |
+| 三个完整strict读窗口 | **全部exit0/unchanged** | before→browser、browser→API、before→API；57保护/37源、5队列、21主发布及6侧库全部发布、schema/epoch/fence/inode相同，accessclock变化0 |
+| 最终服务/进程 | **exit0，三healthy同626** | 01:53:55.278796UTC，Backend容器/image/init/StartedAt及uvicornticks全部保持；读连接/浏览器/collector均结束 |
+
+### 七项原始性能失败
+
+没有功能异常、页面错误、非GET或launch失败，12个屏外排名检查符合合同。7项core超门槛，其中2点击另有all失败；完整原结果及截图保留，不再热重跑。
+
+| 浏览器/宽度/实体/导航/变体 | core ms | all导航 ms | shell后all ms | 失败 |
+| --- | ---: | ---: | ---: | --- |
+| Chromium360歌曲direct/L2 dynamic | 3230.4 | 3544.2 | 314.0 | core |
+| Chromium360专辑click/L2 dynamic | 3009.1 | 3339.4 | 6173.4 | core/all点击 |
+| Chromium360专辑direct/L2 dynamic | 3771.2 | 4083.9 | 783.6 | core |
+| Chromium1280歌曲click/L3 fixed | 2524.5 | 2898.0 | 3436.0 | core/all点击 |
+| Chromium1280专辑direct/L3 fixed | 3374.8 | 3712.4 | 876.9 | core |
+| Chromium1280艺人direct/L3 fixed | 3129.9 | 3510.5 | 1262.9 | core |
+| Firefox360歌曲click/L2 dynamic | 2025.0 | 2370.0 | 2515.0 | core |
+
+最大点击core3009.1/all3339.4ms，最大深链core3771.2/shell后all1408ms。相同90key完整离线对照d83830→83：54失败转通过、1通过转失败、29持续通过/6持续失败；对c58739→83：45改善、1退化、38/6持续。唯一原通过→失败为Firefox360歌曲点击，d838 core1898→2025ms、all2231→2370ms；保留127ms退化，不把总体改善称全Pass。三个时点的网络和启动基线不同，不是随机控制因果实验。
+
+### 真实静态传输与剩余服务等待
+
+原浏览器ResourceTiming的首个歌曲深链main encodedBodySize194353B、duration542.1ms、DOMContentLoaded901.6ms，前d838对应main2673ms/DOM2993ms。原工具不含asset Content-Encoding；发布负责人仅在整个自然/资源窗口结束之后，于01:51:38.630763UTC独立两次static GET补足头证据，没有业务API。生产Nginx1.31.6经真实Via:1.1 Caddy：gzip响应Content-Encoding:gzip/194353B，identity527193B，两者解压/原文SHA256 `1a27ff1c20d8dda7ce4ffc3668a4f6c0bc812387c109b5823beee6d698aea705`与安装两Web相同，Vary/immutable正确。真实产物名index-C1TWxgjQ.js，不沿用本地hash名或194317B数值；两GET耗时不是受控网络因果比较。
+
+剩余失败原请求时序已有服务贡献：初始歌曲deep summary/overview server1690.044/1449.609ms；初始专辑click overview2729.247ms；L3 fixed歌曲click overview2267.186ms，Firefox360歌曲click overview1852.866ms。部分取消rank与这些请求时间重叠，不能据此断言rank阻塞/服务端取消有效/缓存驻留根因。后续以现有七失败trace在明确副本定位目标读取及缓存生命周期，避免新增线上诊断或再盲目加预取hook。
+
+### 完整资源与只读证据
+
+资源窗口01:44:12.958524–01:50:46.975996UTC，RSS955.25390625→2508.078125→2198.25MiB，peak增量1552.82421875MiB，CPU184.49秒，OOM事件增量全0。相对前轮462/991等不同维护基线和混合顺序，不能据峰值称内存改善；后端高驻留仍开放，前端与压缩修复不能关闭OOM。
+
+before capture01:43:39.386220–01:44:06.233434；after-browser01:51:18.382943–01:52:03.965348；after-API01:52:50.652050–01:53:24.352036UTC，各7读连接关闭，均在资源测量之外。原API gate仅在完整90结束及exact source/aux/fence匹配之后放行116，未改变失败门禁。唯一collector按token/PID/ticks停止，不给uvicorn信号。最终三healthy同626，所有生产采集正常结束。
+
+私有证据目录`output/music-detail-chart-acceptance/production-first-626232b0/`，文件600；`production-completion-receipt.json`记录实际退出码/进程连续性/全部哈希，原五工具完全未变。主要SHA256：results `cdf7e7bd6ac0d336d3f09e23d7b07c8ab365ced32c0049272af8b355e67adf70`；summary `3948187f206491e7a8f59ee6fe311fa23d37b95005a966cffd598695edad677d`；resources `49e03e7d9bc87cfdc3ee3b82b0db77ff3bda2dc9ee795d8a938ad39256163f17`；API `71d7e71294906e828fec9ed63cc1fee28d0160d1c3e3d830aff18ade89183dca`；三个strict均`0e81dbcf5ee53abcc7f90f558a1003c970a0d9d6dc086e2c5bb2674e9886b6c4`。前两轮生产失败与旧20/parallel8/line8完整保留。
+
+联合修复已实现、已正式发布、压缩端到端证据和功能/守恒通过，整体详情性能仍OPEN/Partial。7项超时和后端驻留后续分开处理；对决完成状态保持，详情计划不归档，OOM不关闭。
