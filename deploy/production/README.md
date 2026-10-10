@@ -367,3 +367,7 @@ L3 来源日期精度修复将 Billboard 持久成品独立升级到 `billboard_
 Billboard manifest 保留全部事实依赖、分析 COMMON/RECORDS revision vector、日期与署名 policy，允许重绑数据库路径和 inode；不得删除事实 revision 来接受漂移。先验证并导入 stage sidecar；主库提升产生新 inode 后，再以同 manifest 重绑到 live key，独立 verify 后才激活。失败时联合恢复原主库、Billboard/Analysis sidecar、旧 SHA 和模式。闭库重绑拒绝遗留 WAL，运行中检查使用普通只读连接。默认详情目标读取不依赖完整 Billboard sidecar，legacy full/list/release 继续原成品门禁。
 
 自动发布失败恢复在停服并 checkpoint 后保留原数据库的同文件系统硬链接，回退使用原 inode，避免旧 v3 与排名精确 key 因复制到新 inode 失效。共同闭库门禁以普通公开只读 guard、immutable 和前后文件状态读取已经 checkpoint 且无 WAL 的主库及旁库，严格验证旧 Billboard 和实际四默认排名；任意残留 WAL、缺成品或来源变化均拒绝。旧镜像启动后继续普通只读 exact-ready 检查，读取已提交 WAL；不能仅凭 LKG/健康响应宣称恢复成功。发布成功清理该 owned 链接；失败且尚未恢复时保留路径供恢复。此保护只覆盖本次发布失败的自动联合恢复，成功后人工 `rollback.sh` 部署旧 v3 的成品恢复尚未验证。
+
+### 静态资源在外层HTTPS代理后的压缩
+
+三种网关配置在`/assets/`中显式设置`gzip_proxied any`。Caddy等外层代理会添加`Via`请求头；Nginx默认`gzip_proxied off`会使已启用的gzip对该请求失效。仅资产目录覆盖此默认值，仍按客户端`Accept-Encoding`协商，保留`Vary: Accept-Encoding`和immutable缓存，API及外层代理配置保持原行为。发布后须通过公开HTTPS核对实际Content-Encoding和传输字节；本机直连压缩不能替代这项验收。

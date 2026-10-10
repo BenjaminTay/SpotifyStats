@@ -41,6 +41,8 @@ server {
     }
 
     location /assets/ {
+        # Outer HTTPS proxies add Via; static bundles must still negotiate gzip.
+        gzip_proxied any;
         expires 1y;
         add_header Cache-Control "public, immutable";
         add_header X-Content-Type-Options "nosniff" always;

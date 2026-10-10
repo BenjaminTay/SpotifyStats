@@ -22,7 +22,7 @@ import {
   navigateMobileBack,
   type MobileDetailOrigin,
 } from '@/lib/mobile-navigation'
-import { MobileBottomSheet } from '@/components/mobile'
+import { MobileBottomSheet } from '@/components/mobile/MobileBottomSheet'
 import { useRuntimeCapabilities } from '@/hooks/useRuntimeCapabilities'
 import { displayName, useChineseTextVersion } from '@/lib/chinese'
 

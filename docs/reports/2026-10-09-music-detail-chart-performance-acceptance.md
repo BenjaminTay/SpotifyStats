@@ -210,3 +210,63 @@ WebKit专辑/艺人多个点击场景服务仅约70–80ms，renderer资源约3.
 - `runtime-read-comparison.json` SHA `0e81dbcf5ee53abcc7f90f558a1003c970a0d9d6dc086e2c5bb2674e9886b6c4`。
 - `offline-c587-d838-case-comparison.json` SHA `eef43f5012dac2836d90aca33b997b1e8d7e0083180d534421763de0dee874bd`。
 - `offline-static-api-timing-comparison.json` SHA `684cdf7792383b603578100f0f85e61997d5daf0977d1c46a04d68acc2702f2f`。
+
+
+## 2026-10-10 本地加载链对照与折线候选（Partial）
+
+生产仍为d838，原30/90结果保持；本节仅本地production preview及既有8013副本后端，未重启、未访问生产、未新增资源采样或完整矩阵。日期采用Asia/Shanghai。私有证据目录为`output/music-detail-chart-acceptance/local-webkit-loading/`。
+
+### 原20场景、并行实验8场景及入口减量
+
+原8个不限速点击场景两种边界均正常；允许SW的重复main记录来自SW，禁用SW时仍有304记录，不能据页面资源条目推定重复下载。受控静态传输使用每响应250KiB/s加80ms、identity编码、immutable资源，API仍沿既有8013代理，属于合成网络诊断。原受控8点击中d838图表约2.4–2.7秒、恢复旧边界约0.15秒；4个直接深链对照中，恢复旧边界却把核心3.2–3.4秒拖至约5.6秒。回退不是完整修复。原传输保留一次旧边界main的BrokenPipeError，不能称全部传输成功。
+
+另8个并行预载实验收益只有几十至约253ms，仍不达标；六文件实验patch保存，源代码已恢复，没有并入当前候选。既有128测试/build/lint与首个TS失败修正回执分别保留。原20和parallel8的数值及请求trace JSON不覆盖；旧本地工具截图使用共享四个文件名，截图只能代表最新场景，不能用于历史图像对照，生产原截图不受影响。
+
+入口既有一次graph提供两处mobile barrel→leaf导入线索。实际仅修改MobileTopBar/MusicSearchResults后，main658419→527193B，gzip205931→165814B；但renderer静态闭包1337957→1319273B仅少18684B，三详情route静态总量各增加约1.9–2.1KB。不能把主入口减20%说成详情总量减20%。正常build/TS、两文件lint与两个既有搜索/移动测试文件32项通过。
+
+### 五前端文件折线候选
+
+在两leaf之上，新增LineEChartRenderer，LazyEChart保留默认full及占位/style/props传递并增加显式line选项，仅RankTrendChart选line。原EChartRenderer逐字保持。三类overview主图及所有叠加series均line；保留Line、DataZoom、Grid、Legend、MarkArea/MarkLine/MarkPoint、Tooltip与Canvas注册，没有预载hooks、全局预载或业务Query修改。
+
+| 实际正常构建闭包 | d838 | line+leaf候选 | 变化 |
+| --- | ---: | ---: | ---: |
+| main，B | 658419 | 527193 | -131226 |
+| renderer冷静态闭包，B | 1337957 | 1241148 | -96809 |
+| Track route + line闭包，B | 1474135 | 1398153 | -75982 |
+| Album route + line闭包，B | 1487699 | 1411829 | -75870 |
+| Artist route + line闭包，B | 1480706 | 1404961 | -75745 |
+| default full冷静态闭包，B | 1337957 | 1321607 | -16350 |
+| 全产物JS，B | 3744653 | 3751775 | +7122 |
+
+文件去重按manifest imports计算，gzip逐文件测量。新折线实际新增下载为core601187加line261，共601448B，不能以261B称图表引擎大小。line/full共享core；对两leaf中间版本，default full闭包增加2334B，三个route静态闭包各增加218B。完整图表及整个站点体积并非全面减少。
+
+### 唯一新受控8场景
+
+WebKit360、album/artist、click/direct、SW allow/block，fresh contexts全部正常关闭，runner实际exit0仅表示诊断无异常。复用原工具local1000/2000/1500ms profile，raw性能失败保持；下表离线按原生产2000/3000/2500ms门槛评估，仍只是本地诊断，不能替代生产首次验收。
+
+| SW / 实体 / 导航 | core ms | all导航 ms | all shell后 ms | 原门槛本地满足 |
+| --- | ---: | ---: | ---: | --- |
+| allow / album / click | 117 | 2555 | 2686 | 否 |
+| allow / artist / click | 90 | 2399 | 2538 | 是 |
+| block / album / click | 72 | 2312 | 2524 | 是 |
+| block / artist / click | 76 | 2299 | 2471 | 是 |
+| allow / album / direct | 2925 | 5407 | 2542 | 否 |
+| allow / artist / direct | 2925 | 5413 | 2539 | 否 |
+| block / album / direct | 2905 | 5382 | 2534 | 否 |
+| block / artist / direct | 2939 | 5433 | 2542 | 否 |
+
+click用点击后all，direct用shell后all。8项只有3项满足原门槛，5项图表可见超时。相对原d838六个可配对场景，业务请求path/query multiset全部一致；新增两个block/direct没有旧对应基线，不能虚构对照。相对parallel8八项业务请求均一致。allow深链album核心3364→2925ms、all6274→5407ms，artist3221→2925ms、all6024→5413ms；allow artist点击all2379→2399ms略回退。核心改善成立，整体修复不成立。
+
+五文件lint、正常build/TS及原六文件128项测试actual0；两leaf32测试复用同未变路径结果，不重跑。另一个真实Chromium桌面艺人overview局部scene复用既有CDP工具验证tooltip内容、实际legend点击selected变化及dataZoom拖动canvas变化，actual0，无console warning/error、pageerror或横向溢出，只加载line/core。首次通用legend比例未命中actual1，完整失败JSON/log保留，按实际legend文本bounds修正诊断后通过，不把首个失败写成0。
+
+临时5196 preview经核对PID/cwd后SIGTERM退出143；5206 transport优雅退出0，322个asset请求无传输错误。既有8013/5183未改。五文件候选patch SHA256为`3d13f4e7191591df453e09efbdfce84292e0be44d4eb29446f5815e478e7ae42`，所有actual exit、source/hash、原门槛离线结果和证据局限见`line-leaf-final-receipt.json`。候选未提交/推送/发布；详情保持OPEN/Partial，OOM保持开放。
+
+## 2026-10-10 静态代理gzip缺口与联合候选（本地验证）
+
+此项只读生产探针在d838 FIRST90完整结束后执行，只有静态GET与运行配置读取，没有业务API、预暖、配置写入、服务重载或重启。原本地八场景禁止新预载；五前端源文件及七份证据SHA逐项与详情任务一致，整合正常build/TS实际0。
+
+公开同一`/assets/index-Cdw7F_pV.js`接受gzip与identity均HTTP200/658419B，无Content-Encoding；原始header有`via: 1.1 Caddy`。本机3002同资产direct gzip为240732B，加`Via: 1.1 probe`为658419B。活动Nginx只有gzip on/vary/min/types，没有gzip_proxied；活动Caddy统计域名路由反代127.0.0.1:3002，无encode handler/显式header操作。安装版本v2.11.4的[官方tag源码](https://github.com/caddyserver/caddy/blob/v2.11.4/modules/caddyhttp/reverseproxy/reverseproxy.go#L808-L809)向上游添加Via；[Nginx官方规则](https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_proxied)按该头识别代理请求，默认off。以上证明静态压缩缺口；两次公开耗时不作为控制变量一致的性能比较，也不证明全部详情慢均由压缩导致。
+
+修复仅在fallback、public/private两模板的/assets/下添加gzip_proxied any，不改全局gzip/API/Caddy/Tailscale。先在已有本地Docker Nginx1.30.5执行三种完整网关配置，dummy token/open showcase include，后端解析为隔离地址且不请求API。每种baseline/candidate各检查direct gzip、Via gzip、Via identity及Via目录外对照，共24项通过。原d838尺寸资产658419B在修复后240744B，内容SHA守恒；随后对整合构建实际main527193B再执行24项，Via gzip为194317B，identity仍527193B，所有解压SHA、Vary、immutable缓存正确。后者是本地传输证据，不能宣称生产已缩小至194317B。局部覆盖使目录外Via压缩仍关闭，完整生产Nginx1.31.6及端到端首次验收待发布后验证。
+
+首次检查将多个Cache-Control转dict丢失重复头，immutable断言实际1；修正诊断为get_all合并后实际0，无产品追加修改，初次失败保留。另首次SSH Python缩进失败1且没有发请求，修正后host controls0。全部隔离自有容器已停止；未清理额外生产文件或镜像。证据位于联合worktree私有`output/versus-personal-acceptance/release-d838814d5790ad9884fa9c30020801fdcb1044bc/static-encoding-readonly/`，包括公开原始headers、host-controls、active-caddy-route、caddy-version、isolated-nginx两轮receipts、初次失败及集成构建log。未提交/推送/发布，原两轮生产失败和本地identity3/8结果保持；详情OPEN/Partial，OOM独立开放。

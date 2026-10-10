@@ -2,7 +2,7 @@ import { ArrowUpRight, RefreshCw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
-import { MobileEntityRow } from '@/components/mobile'
+import { MobileEntityRow } from '@/components/mobile/MobileEntityRow'
 import { CoverCell } from '@/components/shared/CoverCell'
 import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { cn } from '@/lib/utils'

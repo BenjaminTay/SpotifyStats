@@ -488,7 +488,7 @@ export function RankTrendChart({
           </div>
         </div>
       )}
-      <LazyEChart option={option} style={{ height, isolation: 'isolate' } as CSSProperties} notMerge />
+      <LazyEChart renderer="line" option={option} style={{ height, isolation: 'isolate' } as CSSProperties} notMerge />
     </div>
   )
 }

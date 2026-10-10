@@ -1,5 +1,5 @@
 # SpotifyStats 文档地图
-- [`reports/2026-10-09-music-detail-chart-performance-acceptance.md`](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：本项实现、独立规则核验与分层验收，当前Partial，未发布
+- [`reports/2026-10-09-music-detail-chart-performance-acceptance.md`](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：详情已发布d838但原FIRST90仅30/90达标；2026-10-10 line+leaf与静态代理gzip联合候选本地验证，当前Partial，补修未发布
 
 - [榜单对决个人播放统计已完成规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)：S0–S5完成，c58775f0已发布，原公开HTTPS首次14/28及资源/完整守恒通过；人类明确私有入口保持现状
 - [`plans/2026-10-09-music-detail-chart-performance-plan.md`](plans/2026-10-09-music-detail-chart-performance-plan.md)：`SS-2026-10-09-001` 已完成只读诊断并形成修复规划；独立overview、已发布事实复用、project目标化、请求与错误状态、冷访问和资源验收，S0已冻结；S1–S3已实现，S4/S5验收中
