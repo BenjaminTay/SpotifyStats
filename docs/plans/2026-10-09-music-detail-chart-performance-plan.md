@@ -228,3 +228,12 @@ AI空白在原前序导航链及直接进入的基线/候选桌面手机八场�
 50ms全90 RSS947.988→2308.484→2006.082MiB，CPU147.77秒，cgroup/host OOM增量0，host available约2.12→1.02GB。宽表估算预算384MiB不等于RSS上限，整体OOM保持独立开放。失败trace仍有summary/overview服务1.86–2.43秒及导航/请求外等待；本次单轮不能识别budget或revision事务的回归因果。
 
 下一步先由详情任务离线独立核对原证据，再在同源就绪副本按失败请求分段定位revision/projection读取、服务排队和CPU，对共享budget前后做有界同序列对照后决定最小修复。原11失败与旧83/7、AI失败均保留；本计划不归档，不追加生产热重跑/重启/循环部署，对决已完成状态不重开。完整运行、guard、资源和证据绑定见[验收报告](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)6dac首次节。
+
+
+## 2026-10-11 ea93专辑排名正式发布与原首次结果
+
+ea93c476唯一候选精确11路径已正常推送并正式发布，CI/Release attempt1共7实际jobs、独立8步runtime通过；schema90/rank4/detail4/BB48ready，启动维护自然归零。原五工具及90key/顺序/门槛/fresh/PWA保持，新进程不额外重启、预暖或挑热重跑。原FIRST90完整86通过/4失败：相对6dac79/11改善7/退化0，相对62683/7改善6/退化3；45click全部达标，剩4个Chromium专辑direct，Firefox/WebKit各24/24。116 API与三个strict57/37/6侧库读窗口全通过，性能仍Partial。
+
+50ms全90与idle覆盖：RSS958.516→1461.449→1461.188MiB、PSS956.18→1459.113→1458.852MiB、CPU74.34秒、OOM增量0；host available2.16→1.58GB。相对6dac观测资源下降，但idle仍约1.43GiB，384MiB缓存估算预算不等于RSS上限，整体OOM独立OPEN；不能从单窗认定全部根因已消除。
+
+下一步唯一研发负责人为详情任务，先离线核对原四个专辑深链及正常点击trace，再同源ready隔离副本分段定位summary身份解析/overview服务、请求串联和取消rank重叠，依据证据形成最小待审核候选；本轮不追加生产请求、重启、清理、热重跑或循环发布。对决研发继续收口；手机加载弹层SS-2026-10-11-001独立OPEN。本计划不归档，旧83/7、79/11、本轮86/4及本地两轮FAIL/最终fullgate-v3 PASS分层保留。完整证据绑定见[验收报告](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)ea93首次节。
