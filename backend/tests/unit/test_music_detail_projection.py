@@ -16,6 +16,7 @@ from backend.domains.music_search.detail_projection import (
     load_detail_overlays,
     load_detail_project_membership,
     load_detail_source_facts,
+    load_detail_source_l1_ids,
     payload_digest,
     publish_detail_projection,
     source_rows_from_frame,
@@ -124,6 +125,169 @@ def test_target_source_changed_weight_is_rejected(monkeypatch):
     )
     conn.execute("UPDATE music_search_detail_source_facts SET total_ms=90001")
     assert load_detail_source_facts(conn, "exact", source_album_ids=[21]) is None
+
+
+def _count_oracle(conn, key, document, values):
+    from backend.domains.billboard.detail_project import _components
+
+    project_id, _, source = _components(conn, key, document, values)
+    return (
+        int(source["canonical_song_key"].nunique())
+        if project_id is not None and not source.empty
+        else 0
+    )
+
+
+@pytest.mark.parametrize("level,dynamic", [(2, True), (2, False), (3, True), (3, False)])
+@pytest.mark.parametrize("same_song", [True, False])
+def test_lightweight_project_count_matches_source_frame_oracle(
+    monkeypatch, level, dynamic, same_song
+):
+    from backend.domains.billboard.detail_project import project_unique_song_count
+
+    conn, context, rows, entities = fixture()
+    # A second version contributes duration only, with a different source album.
+    # Count canonical songs, never raw versions, source albums or only play_count>0.
+    rows += [(12, 0, 22, "2026-01-09", "2026-01-09", 0, 9999)]
+    members = [
+        {"track_id": 11, "l1_ids": [11], "canonical_song_key": "song"},
+        {"track_id": 12, "l1_ids": [12], "canonical_song_key": "song" if same_song else "other"},
+    ]
+    entities = [
+        (kind, entity_id, json.dumps(members) if kind == "membership" else payload)
+        for kind, entity_id, payload in entities
+    ]
+    publish_detail_projection(conn, context, rows, entities)
+    monkeypatch.setattr(
+        "backend.domains.metadata.artist_identity.canonicalize_artist_frame",
+        lambda frame, conn, dedupe=False: frame,
+    )
+    document = {"album_project_id": 31}
+    values = {"merge_level": level, "dynamic_threshold": dynamic}
+    expected = _count_oracle(conn, "exact", document, values)
+    assert expected == (1 if same_song else 2)
+    monkeypatch.setattr(pd, "read_sql_query", lambda *a, **k: pytest.fail("source frame assembled"))
+    before = conn.total_changes
+    assert project_unique_song_count(conn, "exact", document, values) == expected
+    assert conn.total_changes == before
+
+
+@pytest.mark.parametrize("missing", ["identity", "track", "artist"])
+def test_lightweight_source_ids_keep_metadata_inner_join_filter(monkeypatch, missing):
+    conn, _, _, _ = fixture()
+    table, column, value = {
+        "identity": ("track_l1_identities", "l1_id", 11),
+        "track": ("tracks", "track_id", 101),
+        "artist": ("artists", "artist_id", 1),
+    }[missing]
+    conn.execute(f"DELETE FROM {table} WHERE {column}=?", (value,))
+    monkeypatch.setattr(
+        "backend.domains.metadata.artist_identity.canonicalize_artist_frame",
+        lambda frame, conn, dedupe=False: frame,
+    )
+    old = load_detail_source_facts(conn, "exact", l1_ids=[11])
+    assert old.empty
+    assert load_detail_source_l1_ids(conn, "exact", [11]) == set()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "remove_row",
+        "change_weight",
+        "change_source",
+        "missing_check",
+        "bad_digest",
+        "bad_json",
+        "wrong_check",
+        "stale",
+        "source_drift",
+        "version_drift",
+    ],
+)
+def test_lightweight_source_ids_reject_same_unavailable_sources(monkeypatch, mutation):
+    from fastapi import HTTPException
+
+    from backend.domains.billboard.detail_project import project_unique_song_count
+
+    conn, _, _, _ = fixture()
+    edits = {
+        "remove_row": "DELETE FROM music_search_detail_source_facts WHERE l1_id=11",
+        "change_weight": "UPDATE music_search_detail_source_facts SET total_ms=90001",
+        "change_source": "UPDATE music_search_detail_source_facts SET source_album_id=22",
+        "missing_check": "DELETE FROM music_search_detail_entity_projection WHERE kind='source_check_l1' AND entity_id=11",
+        "bad_digest": "UPDATE music_search_detail_entity_projection SET payload_digest='bad' WHERE kind='source_check_l1' AND entity_id=11",
+        "stale": "UPDATE music_search_snapshot_meta SET status='stale'",
+        "source_drift": "UPDATE music_search_snapshot_meta SET source_revision='next'",
+        "version_drift": "UPDATE music_search_detail_projection_state SET projection_version='next'",
+    }
+    if mutation in edits:
+        conn.execute(edits[mutation])
+    else:
+        payload = {"bad_json": "{", "wrong_check": "{}"}[mutation]
+        conn.execute(
+            "UPDATE music_search_detail_entity_projection SET payload_json=?,payload_digest=? "
+            "WHERE kind='source_check_l1' AND entity_id=11",
+            (payload, payload_digest(payload)),
+        )
+    monkeypatch.setattr(
+        "backend.domains.metadata.artist_identity.canonicalize_artist_frame",
+        lambda frame, conn, dedupe=False: frame,
+    )
+    assert load_detail_source_facts(conn, "exact", l1_ids=[11]) is None
+    assert load_detail_source_l1_ids(conn, "exact", [11]) is None
+    with pytest.raises(HTTPException) as error:
+        project_unique_song_count(conn, "exact", {"album_project_id": 31}, {"merge_level": 3})
+    assert error.value.status_code == 503
+
+
+def test_lightweight_source_ids_check_every_selected_target_and_empty_compatibility():
+    conn, _, _, _ = fixture()
+    assert load_detail_source_l1_ids(conn, "missing", []) is None
+    assert load_detail_source_l1_ids(conn, "exact", []) == set()
+    assert load_detail_source_l1_ids(conn, "exact", [12]) == set()
+    assert load_detail_source_l1_ids(conn, "exact", [11, 11, 12]) == {11}
+    conn.execute(
+        "DELETE FROM music_search_detail_entity_projection WHERE kind='source_check_l1' AND entity_id=12"
+    )
+    assert load_detail_source_l1_ids(conn, "exact", [11, 12]) is None
+
+
+def test_lightweight_source_ids_preserve_legacy_empty_check_and_target_scope():
+    conn, _, _, _ = fixture()
+    conn.execute(
+        "UPDATE music_search_detail_entity_projection SET payload_json='[]',payload_digest=? "
+        "WHERE kind='source_check_l1' AND entity_id=12",
+        (payload_digest("[]"),),
+    )
+    assert load_detail_source_l1_ids(conn, "exact", [11, 12]) == {11}
+    conn.execute(
+        "UPDATE music_search_detail_entity_projection SET payload_digest='bad' "
+        "WHERE kind='source_check_l1' AND entity_id=12"
+    )
+    assert load_detail_source_l1_ids(conn, "exact", [11]) == {11}
+    assert load_detail_source_l1_ids(conn, "exact", [11, 12]) is None
+
+
+def test_lightweight_project_count_preserves_empty_membership_and_missing_publication():
+    from fastapi import HTTPException
+
+    from backend.domains.billboard.detail_project import project_unique_song_count
+
+    conn, _, _, _ = fixture()
+    document = {"album_project_id": 31}
+    values = {"merge_level": 3}
+    conn.execute(
+        "UPDATE music_search_detail_entity_projection SET payload_json='[]',payload_digest=? "
+        "WHERE kind='membership'",
+        (payload_digest("[]"),),
+    )
+    assert project_unique_song_count(conn, "exact", document, values) == 0
+    assert project_unique_song_count(conn, "missing", {"album_project_id": None}, values) == 0
+    assert project_unique_song_count(conn, "missing", document, {"merge_level": 1}) == 0
+    with pytest.raises(HTTPException) as error:
+        project_unique_song_count(conn, "missing", document, values)
+    assert error.value.status_code == 503
 
 
 def test_membership_removed_and_mutated_are_unavailable():

@@ -237,3 +237,13 @@ ea93c476唯一候选精确11路径已正常推送并正式发布，CI/Release at
 50ms全90与idle覆盖：RSS958.516→1461.449→1461.188MiB、PSS956.18→1459.113→1458.852MiB、CPU74.34秒、OOM增量0；host available2.16→1.58GB。相对6dac观测资源下降，但idle仍约1.43GiB，384MiB缓存估算预算不等于RSS上限，整体OOM独立OPEN；不能从单窗认定全部根因已消除。
 
 下一步唯一研发负责人为详情任务，先离线核对原四个专辑深链及正常点击trace，再同源ready隔离副本分段定位summary身份解析/overview服务、请求串联和取消rank重叠，依据证据形成最小待审核候选；本轮不追加生产请求、重启、清理、热重跑或循环发布。对决研发继续收口；手机加载弹层SS-2026-10-11-001独立OPEN。本计划不归档，旧83/7、79/11、本轮86/4及本地两轮FAIL/最终fullgate-v3 PASS分层保留。完整证据绑定见[验收报告](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)ea93首次节。
+
+### 同源副本分段定位已完成，尚无新产品候选
+
+ff-only 同步 f76 文档基线后，以 ea93 产品和相同路径 ready 副本正常启动，原32→33、38→39各回放一次，未扩展原90前缀。缓存观察器 native API 转发烟测、四例原断言、57/37/六侧库完整strict、源码绑定及进程关闭全部通过；产品改动和生产请求为0。33/39 core 2284.1/1761.1ms，本机未复现线上3秒失败。取消排名在后端继续3.4–4.5秒，覆盖下一深链整个summary/overview；目标有效曲目数读取最高491ms，服务 wall明显大于线程CPU。身份解析9–115ms、序列化≤5.65ms、singleflight等待0，不能将所有非CPU时间指定为GIL/锁或直接改前端并发。
+
+下一最小实现方向为同事务、同已验证membership/source-check的有效曲目数有界读取：减少summary和overview为计数完整组装DataFrame、补元数据及逐行SQLite往返的工作。先固定计数、metadata join、L3 scope/别名/404/503/只读/完整响应合同，再决定实现，不跳过身份或source fence。候选需相关回归、同源完整payload/strict/资源专项；专项通过后冻结并仅跑一次默认full8，再交协调审阅提交/发布。当前没有产品候选，不跑full8。Docker daemon未运行，Linux受限对照NOT_RUN；Darwin/10逻辑CPU/24GiB与生产约3.64GiB及原90前缀不同，性能/OOM继续OPEN。完整分段数据见[验收报告](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)同源副本四场景节。
+
+### 有效曲目数轻量读取实现中
+
+真实人类“继续下一步”授权后进入最小后端实现：复用原membership校验，将目标L1完整来源事实与source-check按有界JSON查询读取，逐目标验证原行数/plays/total_ms/digest后保留原representative track/artist inner join，直接按canonical song key计数。仅计数消费改用新路径，完整project来源解释继续原DataFrame路径；不增加缓存、迁移、发布格式或GET写入，不改前端并发。边界回归、同源60完整响应/20计数oracle、原四场景双版本及四strict已通过；计数SQL及服务段减少，深链1.99/1.83→0.73/0.64秒，取消rank及全窗口CPU增加的边界保留。冻结后新默认完整full8于run20261011T102216.614157Z-bc0c921c926f同轮PASS/实际0、2092445ms，1455源码起止一致；发布前两版本各一次串行6请求完整响应及两strict通过，无取消/重叠，rank构建和调用次数相同、CPU约+0.5%，请求CPU6.427→6.349秒。原并发CPU增加和生产边界保留；协调已独立验收并批准精确10路径提交，不push/部署，统一发布交原联合负责人。生产86/90、整体OOM与手机弹层仍独立OPEN。

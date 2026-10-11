@@ -45,12 +45,25 @@ def _components(conn, key, document, values):
 
 
 def project_unique_song_count(conn, key, document, values):
-    project_id, _membership, source = _components(conn, key, document, values)
-    return (
-        int(source["canonical_song_key"].nunique())
-        if project_id is not None and not source.empty
-        else 0
+    from backend.domains.music_search.detail_projection import (
+        load_detail_project_membership,
+        load_detail_source_l1_ids,
     )
+
+    project_id = document["album_project_id"]
+    if project_id is None or int(values["merge_level"]) <= 1:
+        return 0
+    membership = load_detail_project_membership(conn, key, int(project_id))
+    if membership is None:
+        raise snapshot_unavailable("music_detail_project")
+    id_keys = {}
+    for row in membership.to_dict("records"):
+        for l1_id in row.get("l1_ids", [row["track_id"]]):
+            id_keys[int(l1_id)] = str(row["canonical_song_key"])
+    source_ids = load_detail_source_l1_ids(conn, key, id_keys)
+    if source_ids is None:
+        raise snapshot_unavailable("music_detail_project")
+    return len({id_keys[l1_id] for l1_id in source_ids})
 
 
 def published_project(conn, key, document, values):

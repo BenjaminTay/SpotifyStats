@@ -49,6 +49,8 @@ Home target_revision 为现有 exact 文件名摘要，覆盖过滤 context、da
 
 Top250 先选取三个发布范围各前250行涉及的曲目 ID（去重前至多750个），展开 L2 成员后只装载这些候选的播放，再按原排序和展示行边界计数。一个 ID 的多种艺人展示不能合并为单行；合并所需的前置上下文事件不计入候选。旧曲目未建立 L1 关联时保留原始 ID；有项目身份但尚无曲目归属、非默认过滤、非 lifetime 或非主库仍沿用兼容路径，不能把空归属当作没有播放。
 
+专辑摘要、榜单概览及项目视图中的 `unique_canonical_songs` 在既有发布读取事务内按校验后的项目 membership 和有效来源计数。计数专用路径将目标 L1 完整来源事实及对应 source-check 以有界 JSON 批量读取，仍逐目标验证行数、plays、total_ms 和 digest，包括无事实的成员；任何缺失、损坏或不相容发布返回503。校验之后保留原 representative track/artist inner join 过滤，再按 membership 的 canonical song key 去重，不以原始曲目、来源专辑数量或 play_count>0 替代。该路径不组装来源 DataFrame或补展示元数据；完整项目解释仍使用原来源读取。没有新缓存、迁移、发布版本或公开GET维护，外层身份、source/filter、ledger/context和source fence合同不变。
+
 `plays / plays_for_artists / billboard_raw / billboard_raw_for_artists`共享384MiB保守缓存字节预算和各自条目上限；包含附加时长frame及区间，超大单条不驻留，按共享LRU淘汰。失效同时推进generation，在途旧构建不能重新存回缓存。此预算不是进程RSS上限，年度和其他缓存/瞬时材料化仍单独验收。
 
 预算loader保留`cache_clear/cache_info/cache_budget_info`接口，外层`singleflight`显式透传，注册缓存的`get_stats()`返回预算字段。集成测试需由私有fixture先发布精确歌曲rank，再验证GET；缺失发布仍503，不能为测试恢复GET冷建。

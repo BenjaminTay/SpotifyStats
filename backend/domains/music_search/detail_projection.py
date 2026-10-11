@@ -361,6 +361,70 @@ def load_detail_source_facts(conn, snapshot_key, l1_ids=None, source_album_ids=N
     return frame
 
 
+def load_detail_source_l1_ids(conn, snapshot_key, l1_ids):
+    """Read checked target identities without assembling source metadata frames.
+
+    Check every selected L1's complete source rows before applying the same
+    representative-track/artist inner joins as ``load_detail_source_facts``.
+    One JSON value per bounded query avoids stepping through daily fact rows
+    and repeatedly reading projection readiness for each source check.
+    The caller supplies the existing publication read transaction.
+    """
+    if not projection_available(conn, snapshot_key):
+        return None
+    selected = sorted({int(value) for value in l1_ids})
+    if not selected:
+        return set()
+    encoded_ids = json.dumps(selected)
+    encoded_rows = conn.execute(
+        """SELECT json_group_array(json_array(
+                   l1_id,source_album_id,track_album_id,week,day,play_count,total_ms))
+           FROM music_search_detail_source_facts
+           WHERE snapshot_key=? AND l1_id IN (SELECT value FROM json_each(?))""",
+        (snapshot_key, encoded_ids),
+    ).fetchone()[0]
+    grouped = defaultdict(list)
+    for row in json.loads(encoded_rows):
+        grouped[int(row[0])].append(row)
+    encoded_checks = conn.execute(
+        """SELECT json_group_array(json_array(entity_id,payload_json,payload_digest))
+           FROM music_search_detail_entity_projection
+           WHERE snapshot_key=? AND kind='source_check_l1'
+             AND entity_id IN (SELECT value FROM json_each(?))""",
+        (snapshot_key, encoded_ids),
+    ).fetchone()[0]
+    checks = {}
+    for entity_id, payload_json, digest in json.loads(encoded_checks):
+        if payload_digest(payload_json) != digest:
+            return None
+        try:
+            expected = json.loads(payload_json)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if not isinstance(expected, (list, dict)):
+            return None
+        checks[int(entity_id)] = expected
+    for selected_id in selected:
+        rows = grouped.get(selected_id, [])
+        expected = checks.get(selected_id)
+        if (
+            expected is None
+            or (expected == [] and rows)
+            or (expected != [] and expected != source_check(rows))
+        ):
+            return None
+    encoded_present = json.dumps(sorted(grouped))
+    encoded_joined = conn.execute(
+        """SELECT json_group_array(li.l1_id)
+           FROM track_l1_identities li
+           JOIN tracks t ON t.track_id=li.representative_track_id
+           JOIN artists a ON a.artist_id=t.artist_id
+           WHERE li.l1_id IN (SELECT value FROM json_each(?))""",
+        (encoded_present,),
+    ).fetchone()[0]
+    return {int(value) for value in json.loads(encoded_joined)}
+
+
 def _entity_payload(conn, snapshot_key, kind, entity_id):
     if not projection_available(conn, snapshot_key):
         return None
