@@ -669,6 +669,131 @@ def _album_project_response_identity(
     return identity.payload() if identity is not None else None
 
 
+def _published_album_rank_context(conn, filters):
+    from backend.core.access_surface import snapshot_unavailable
+    from backend.services.versus_rank_context_service import read
+
+    requested, _ = read(conn, filters)
+    # These legacy detail fields call chart_rows with its L2 default, even
+    # when the entity's membership/statistics use L3. Keep that contract.
+    compatible = requested
+    if filters["merge_level"] != 2:
+        compatible, _ = read(conn, {**filters, "merge_level": 2})
+    if requested["source_revision"] != compatible["source_revision"]:
+        raise snapshot_unavailable("entity_rank_context", requested["source_revision"])
+    return compatible
+
+
+def _album_member_l1_ids(conn, project_keys, merge_level):
+    from backend.domains.playback.album_projects import apply_canonical_song_keys
+
+    # Membership can name a composition/recording group. Select every L1
+    # member, including plays from singles and other source containers.
+    metadata = pd.read_sql_query(
+        """SELECT DISTINCT COALESCE(links.l1_id,t.track_id) AS track_id,
+                  COALESCE(rep.track_name,t.track_name) AS track_name
+           FROM tracks t
+           LEFT JOIN track_l1_source_links links ON links.track_id=t.track_id
+           LEFT JOIN track_l1_identities li ON li.l1_id=links.l1_id
+           LEFT JOIN tracks rep ON rep.track_id=li.representative_track_id""",
+        conn,
+    )
+    keyed = apply_canonical_song_keys(metadata, conn, merge_level)
+    return keyed.loc[keyed["canonical_song_key"].isin(project_keys), "track_id"].tolist()
+
+
+def _album_source_track_ids(conn, ids):
+    encoded = json.dumps(ids)
+    return [
+        int(row[0])
+        for row in conn.execute(
+            """SELECT track_id FROM track_l1_source_links
+               WHERE l1_id IN (SELECT value FROM json_each(?))
+               UNION
+               SELECT track_id FROM tracks t
+               WHERE track_id IN (SELECT value FROM json_each(?))
+                 AND NOT EXISTS (SELECT 1 FROM track_l1_source_links links
+                                 WHERE links.track_id=t.track_id)""",
+            (encoded, encoded),
+        ).fetchall()
+    ]
+
+
+def _published_album_ranks(conn, context, album_names, artist_name):
+    from backend.domains.playback.album_projects import load_album_project_membership
+
+    membership = load_album_project_membership(conn, merge_level=2, include_compilations=False)
+    ids = (
+        set(
+            membership.loc[
+                membership["album_project_name"].isin(album_names)
+                & (membership["artist_name"] == artist_name),
+                "project_id",
+            ].astype(str)
+        )
+        if not membership.empty
+        else set()
+    )
+    result = {
+        period: min((rank for key, rank in ranks.items() if key in ids), default=None)
+        for period, ranks in context["ranks"]["album"].items()
+    }
+    return {**result, "current_period": result["lifetime"]}
+
+
+def _published_album_top250_counts(conn, context, filters, album_names, artist_name):
+    # A rank map keeps only the first rank when one ID has multiple artist
+    # presentations. Reading *all* rows of IDs whose first rank is <=250 and
+    # applying the original sort/limit retains the exact 250-row boundary.
+    candidates = {
+        int(key)
+        for ranks in context["ranks"]["track"].values()
+        for key, rank in ranks.items()
+        if rank <= 250
+    }
+    from backend.domains.playback.track_groups import load_track_group_keys
+
+    keys = load_track_group_keys(conn, merge_level=2)
+    members = set(candidates)
+    if not keys.empty:
+        members.update(keys.loc[keys["track_agg_id"].isin(candidates), "track_id"].astype(int))
+    members = sorted(members)
+    loader = _scoped_play_loader(
+        conn, _album_source_track_ids(conn, members), music_only=filters["music_only"]
+    )
+    frame, _, _ = load_period_plays(
+        conn,
+        **{key: filters[key] for key in ("min_ms", "music_only", "merge_enabled")},
+        dynamic_threshold=filters["dynamic_threshold"],
+        max_merge_gap_minutes=filters["max_merge_gap_minutes"],
+        attach_duration_slices=False,
+        _loader=loader,
+    )
+    from backend.domains.playback.logical_timeline import (
+        attach_listening_duration_frame,
+        get_listening_duration_frame,
+    )
+
+    # The loader also brings each preceding event for merge boundaries.
+    # Those context rows are not candidates and must not enter the chart.
+    duration_source = get_listening_duration_frame(frame)
+    frame = frame.loc[frame["track_id"].isin(members)].copy()
+    if duration_source is not None:
+        attach_listening_duration_frame(
+            frame, duration_source.loc[duration_source["track_id"].isin(members)].copy()
+        )
+    return {
+        period: _top250_count(
+            conn,
+            filter_period_events(frame, resolved),
+            resolved,
+            album_names=album_names,
+            artist_name=artist_name,
+        )
+        for period, resolved in context["periods"].items()
+    }
+
+
 def _build_album_stats(
     conn: sqlite3.Connection,
     album_name: str,
@@ -706,9 +831,47 @@ def _build_album_stats(
             (album_name,),
         ).fetchone()
         artist_name = str(row[0]) if row else None
-    scoped = not include_rank_context and period in {"lifetime", "custom"}
+    published_context = None
+    published_filters = None
+    project_keys = None
+    if (
+        include_rank_context
+        and period == "lifetime"
+        and merge_level in (2, 3)
+        and identity is not None
+        and artist_name
+        and _is_primary_connection(conn)
+    ):
+        from backend.services.versus_personal_context import normalise_filters
+        from backend.services.versus_rank_context_service import default_configurations
+
+        filters = normalise_filters(
+            conn,
+            dict(
+                min_ms=min_ms,
+                music_only=music_only,
+                merge_enabled=merge_enabled,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+                merge_level=merge_level,
+            ),
+        )
+        if not filters["include_compilations"] and filters in default_configurations(conn):
+            project_keys = _resolve_album_project_song_keys(
+                conn, album_name, artist_name, merge_level, identity.project_id
+            )
+            # An identity without governed membership still uses the legacy
+            # display-name fallback; an empty target loader would lose plays.
+            if project_keys:
+                published_context = _published_album_rank_context(conn, filters)
+                published_filters = filters
+    scoped = (
+        not include_rank_context and period in {"lifetime", "custom"}
+    ) or published_context is not None
     track_ids = (
-        _resolve_album_project_track_ids(
+        _album_member_l1_ids(conn, project_keys, merge_level)
+        if published_context is not None
+        else _resolve_album_project_track_ids(
             conn,
             album_name,
             artist_name,
@@ -718,7 +881,17 @@ def _build_album_stats(
         if scoped and artist_name
         else []
     )
-    loader = _scoped_play_loader(conn, track_ids, music_only=music_only) if scoped else None
+    loader = (
+        _scoped_play_loader(
+            conn,
+            _album_source_track_ids(conn, track_ids)
+            if published_context is not None
+            else track_ids,
+            music_only=music_only,
+        )
+        if scoped
+        else None
+    )
 
     all_df, current_df, resolved = load_period_plays(
         conn,
@@ -734,12 +907,16 @@ def _build_album_stats(
         _loader=loader,
     )
     if scoped:
-        resolved = _global_period_bounds(
-            conn,
-            period=period,
-            start_date=start_date,
-            end_date=end_date,
-            music_only=music_only,
+        resolved = (
+            published_context["periods"]["lifetime"]
+            if published_context is not None
+            else _global_period_bounds(
+                conn,
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+                music_only=music_only,
+            )
         )
         current_df = filter_period_events(all_df, resolved)
     if not artist_name:
@@ -749,16 +926,18 @@ def _build_album_stats(
 
     # Resolve album project track membership — canonical_song_key attribution
     # replaces the old release_group album_name string matching.
-    if artist_name:
-        project_keys = _resolve_album_project_song_keys(
-            conn,
-            album_name,
-            artist_name,
-            merge_level,
-            identity.project_id if identity is not None else None,
+    if project_keys is None:
+        project_keys = (
+            _resolve_album_project_song_keys(
+                conn,
+                album_name,
+                artist_name,
+                merge_level,
+                identity.project_id if identity is not None else None,
+            )
+            if artist_name
+            else set()
         )
-    else:
-        project_keys = set()
 
     duration_all = _duration_source(all_df)
     if project_keys:
@@ -838,7 +1017,9 @@ def _build_album_stats(
             "first_played": str(entity_time_source["ts"].min()),
             "last_played": str(entity_time_source["ts"].max()),
             "ranks": (
-                _ranks(
+                _published_album_ranks(conn, published_context, album_names, artist_name)
+                if published_context is not None
+                else _ranks(
                     conn,
                     all_df,
                     current_df,
@@ -852,7 +1033,11 @@ def _build_album_stats(
                 else None
             ),
             "top250_counts": (
-                _top250_counts(
+                _published_album_top250_counts(
+                    conn, published_context, published_filters, album_names, artist_name
+                )
+                if published_context is not None
+                else _top250_counts(
                     conn,
                     all_df,
                     album_name=album_name,
@@ -866,6 +1051,13 @@ def _build_album_stats(
             "recent_plays": recent_plays(conn, entity_df, 50) if include_rank_context else [],
         }
     )
+    if published_context is not None:
+        from backend.core.access_surface import snapshot_unavailable
+        from backend.services.versus_rank_context_service import read
+
+        current, _ = read(conn, published_filters)
+        if current["source_revision"] != published_context["source_revision"]:
+            raise snapshot_unavailable("entity_rank_context", current["source_revision"])
     return data
 
 

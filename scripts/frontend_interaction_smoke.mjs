@@ -822,6 +822,12 @@ const SCENARIOS = {
     const dataWaitMs = Math.max(waitMs, MOBILE_DATA_WAIT_MS)
     await navigate(client, baseUrl, '/analysis/stats?period=lifetime', waitMs)
     await waitForText(client, '播放统计', dataWaitMs)
+    // The loading and ready views mount the control in different places.
+    // Start this completed-page interaction after the initial view settles.
+    await waitForCondition(async () => {
+      const state = await pageState(client)
+      return analysisResponses.some(response => isAnalysisReady(response, state, 'lifetime') || isAnalysisUnavailable(response, state, 'lifetime')) ? state : null
+    }, dataWaitMs, 'Expected initial lifetime Analysis response and rendered ready or snapshot_unavailable UI')
     await clickByAriaLabel(client, '选择时间范围，当前全部时间', dataWaitMs)
     await waitForSelector(client, '[data-mobile-sheet="time-range"]', waitMs)
     await clickTextWithin(client, '[data-mobile-sheet="time-range"]', '近 4 周', waitMs)
@@ -834,25 +840,25 @@ const SCENARIOS = {
   },
 }
 
-export function isAnalysisReady(response, state) {
+export function isAnalysisReady(response, state, period = 'last_4_weeks') {
   const url = new URL(response.url)
   const finalUrl = new URL(state.url)
   return response.complete && response.status === 200
     && url.origin === finalUrl.origin && url.pathname === '/api/analysis/stats'
-    && url.searchParams.get('period') === 'last_4_weeks'
+    && url.searchParams.get('period') === period
     && finalUrl.pathname === '/analysis/stats'
-    && finalUrl.searchParams.get('period') === 'last_4_weeks'
+    && finalUrl.searchParams.get('period') === period
     && state.statsKpiCount > 0
 }
 
-export function isAnalysisUnavailable(response, state) {
+export function isAnalysisUnavailable(response, state, period = 'last_4_weeks') {
   const url = new URL(response.url)
   const finalUrl = new URL(state.url)
   return response.complete && response.status === 503
     && url.origin === finalUrl.origin && url.pathname === '/api/analysis/stats'
-    && url.searchParams.get('period') === 'last_4_weeks'
+    && url.searchParams.get('period') === period
     && finalUrl.pathname === '/analysis/stats'
-    && finalUrl.searchParams.get('period') === 'last_4_weeks'
+    && finalUrl.searchParams.get('period') === period
     && response.detail?.error === 'snapshot_unavailable'
     && response.detail?.status === 'unavailable'
     && response.detail?.family === 'analysis_stats'

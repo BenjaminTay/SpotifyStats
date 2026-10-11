@@ -45,6 +45,10 @@ Home target_revision 为现有 exact 文件名摘要，覆盖过滤 context、da
 
 默认四配置（L2/L3 × 动态/固定阈值）的lifetime歌曲详情完整排名复用既有 `entity_rank_context_v2` 精确发布。三个范围和current_period排名从发布读取，歌曲自身事件、时长、趋势及最近播放按目标范围计算。数据库身份、完整过滤、来源revision及builder校验沿用原对决发布合同；缺失/漂移返回503，不从GET维护。非默认过滤或非lifetime请求保留既有计算路径。
 
+默认四配置的主库 lifetime 专辑完整统计在项目身份和曲目归属齐备时复用同一发布。实体事件、时长、趋势、曲目拆分与最近播放按目标归属读取，并使用发布中的全局时间边界。历史详情的专辑 ranks 和 Top250 字段沿用 L2 口径，因此 L3 请求同时校验请求配置与同来源 L2 发布；读取结束再校验请求发布，缺失或来源漂移返回503，GET 不准备、写入或排队。
+
+Top250 先选取三个发布范围各前250行涉及的曲目 ID（去重前至多750个），展开 L2 成员后只装载这些候选的播放，再按原排序和展示行边界计数。一个 ID 的多种艺人展示不能合并为单行；合并所需的前置上下文事件不计入候选。旧曲目未建立 L1 关联时保留原始 ID；有项目身份但尚无曲目归属、非默认过滤、非 lifetime 或非主库仍沿用兼容路径，不能把空归属当作没有播放。
+
 `plays / plays_for_artists / billboard_raw / billboard_raw_for_artists`共享384MiB保守缓存字节预算和各自条目上限；包含附加时长frame及区间，超大单条不驻留，按共享LRU淘汰。失效同时推进generation，在途旧构建不能重新存回缓存。此预算不是进程RSS上限，年度和其他缓存/瞬时材料化仍单独验收。
 
 预算loader保留`cache_clear/cache_info/cache_budget_info`接口，外层`singleflight`显式透传，注册缓存的`get_stats()`返回预算字段。集成测试需由私有fixture先发布精确歌曲rank，再验证GET；缺失发布仍503，不能为测试恢复GET冷建。

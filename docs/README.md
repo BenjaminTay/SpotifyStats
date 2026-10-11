@@ -1,5 +1,5 @@
 # SpotifyStats 文档地图
-- [`reports/2026-10-09-music-detail-chart-performance-acceptance.md`](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：6dac后端补修已正式上线，CI/Release7jobs与独立8步runtime通过；原公开FIRST90为79/90（62683/90），5改善/9退化，Firefox/WebKit各24/24；116 API和三strict通过，RSS峰2308/末2006MiB；详情与OOM仍OPEN/Partial。原本地full8/63回归及历史失败分列，下一步仅离线复核与同源副本分段诊断
+- [`reports/2026-10-09-music-detail-chart-performance-acceptance.md`](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：专辑默认排名复用新候选已实现，106专项、20完整响应等价、修正观察器8案例/4读窗口及新默认full8通过（30分54秒）；协调独立验收通过，已授权提交/未发布。前两轮门禁失败保留，手机加载弹层旧问题另记OPEN；6dac生产FIRST90的79/90、116 API与三strict保持独立，详情生产性能与OOM继续开放。
 
 - [榜单对决个人播放统计已完成规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)：S0–S5完成，c58775f0已发布，原公开HTTPS首次14/28及资源/完整守恒通过；人类明确私有入口保持现状
 - [`plans/2026-10-09-music-detail-chart-performance-plan.md`](plans/2026-10-09-music-detail-chart-performance-plan.md)：`SS-2026-10-09-001` 已完成只读诊断并形成修复规划；独立overview、已发布事实复用、project目标化、请求与错误状态、冷访问和资源验收，S0已冻结；S1–S3已实现，S4/S5验收中

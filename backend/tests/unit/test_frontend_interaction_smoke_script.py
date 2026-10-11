@@ -118,6 +118,12 @@ for (const invalid of [
 assert.equal(classify(entry,response,state,'mobile-section-sheet').consoleErrors.length,1);
 const extra = {...entry,networkRequestId:'other',url:url+'/other'};
 assert.equal(classifyAnalysisConsole('mobile-time-filter',[entry,extra],[response],state).consoleErrors.length,1);
+const initialResponse = {...response,url:url.replace('last_4_weeks','lifetime')};
+const initialState = {...state,url:state.url.replace('last_4_weeks','lifetime')};
+assert.equal(isAnalysisUnavailable(initialResponse,initialState,'lifetime'),true);
+assert.equal(isAnalysisUnavailable(initialResponse,initialState),false);
+assert.equal(isAnalysisUnavailable({...initialResponse,complete:false},initialState,'lifetime'),false);
+assert.equal(isAnalysisUnavailable(initialResponse,{...initialState,skeletonCount:1},'lifetime'),false);
 """
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script], cwd=ROOT, capture_output=True, text=True
@@ -142,6 +148,13 @@ for (const invalid of [
  {...state,statsKpiCount:0},
  {...state,url:state.url.replace('last_4_weeks','lifetime')},
 ]) assert.equal(isAnalysisReady(response,invalid),false);
+const initialResponse = {...response,url:url.replace('last_4_weeks','lifetime')};
+const initialState = {...state,url:state.url.replace('last_4_weeks','lifetime')};
+assert.equal(isAnalysisReady(initialResponse,initialState,'lifetime'),true);
+assert.equal(isAnalysisReady(initialResponse,initialState),false);
+assert.equal(isAnalysisReady({...initialResponse,complete:false},initialState,'lifetime'),false);
+assert.equal(isAnalysisReady(initialResponse,{...initialState,statsKpiCount:0},'lifetime'),false);
+assert.equal(isAnalysisReady(response,state,'lifetime'),false);
 """
     result = subprocess.run(
         ["node", "--input-type=module", "-e", script], cwd=ROOT, capture_output=True, text=True

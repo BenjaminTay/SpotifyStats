@@ -479,3 +479,52 @@ before capture01:43:39.386220–01:44:06.233434；after-browser01:51:18.382943�
 私有证据目录为联合worktree的`output/versus-personal-acceptance/release-6dacfae7f293c9a8d5f9b6f573a5f39d5d84535c/`：push/九步/upload/workflow receipt、成功安装日志、8步运行核验与前后process identity，以及`first-production-detail/`内原90、资源、116、三guard与离线同key比较/失败时序。根清单`evidence-manifest.json` SHA256 `e3f7cdd17f1aaf4718085a9f0e0b94e34ce519f3b8e47203d609580f874444a9`固定此时证据；输出/真实数据不提交。详情任务仅离线独立核对，根仅同步交付文档，不另开生产热重跑。
 
 下一步维持`SS-2026-10-09-001` OPEN/Partial与OOM独立OPEN。在同源就绪副本对上述失败请求分段定位来源revision、projection读取与服务排队/CPU，并对共享budget前后做有界相同顺序对照，再决定最小修复；先复用已保存trace，不追加生产预暖/重启/压力或循环部署。旧AI超时原因仍未确定，完整full8准入证据及其历史FAIL分列。本计划不归档，对决已完成状态不重开。
+
+## 2026-10-11 专辑默认排名复用候选（本地完整验证通过，未发布）
+
+以 `47b623f7dc2cae65dbf95de03452c7095e083aad` 文档、6dac 应用为基线，用户授权继续修复。隔离诊断确认：前端取消请求后，专辑完整排名仍会在后端继续计算并与后续榜单请求重叠。原76案例没有复现生产服务慢阈值，不能据此认定全部生产失败由排名引起。旧观察器未透传原生 LRU 的 `cache_info/cache_clear`；原执行文件和结果保留，修正版另存并通过缓存命中、清理和参数接口 smoke，后续回放使用修正版。
+
+候选只修改 `entity_stats_service.py` 与专辑排名专项测试。默认主库 lifetime 四配置、项目归属齐备的专辑复用 exact-ready `entity_rank_context_v2`，其余实体统计按项目成员读取。历史详情 ranks/Top250 实际沿用 L2，因此保留该响应合同，L3 请求仍同时校验自己的精确发布和同源 L2 发布。Top250 从三个范围前250行涉及的候选 ID 展开成员、装载有界播放，再按原展示行排序截取，保留多艺人展示、source album 与第250行语义；不把前置合并上下文事件纳入候选。
+
+兼容性验证发现种子库中 `Beta Hits Remix / Beta` 有项目身份但没有曲目归属。候选保留这类旧专辑的原匹配路径，避免误报 `found:false`；未建立 L1 关联的原曲目 ID 也保留。非默认过滤、自定义范围、非主库沿用原路径。精确发布缺失/漂移返回503，读取结束再次检查来源，不在 GET 上准备发布、写库或排队。
+
+专项回归106项通过（27.76秒），覆盖完整响应、四配置、全局时间边界、零次数但非零时长、全部种子专辑、缺失/漂移503、Top250多展示边界、歌曲排名与公开读取合同。修复前的两个种子目录等价失败及一次测试路径拼写错误日志保留，不作为通过证据。最终源码真实副本和页面回放已完成如下；新默认完整八阶段门禁独立验收，旧6dac full8不替代新候选验证。
+
+最终源码真实副本比较20份完整响应全部一致（五张专辑 × 四配置），基线和候选两个严格读取窗口各退出0，事实与发布守恒。Midnights L2动态/固定从7730.65/7681.02ms降至2813.21/2670.27ms，L3动态/固定从8062.68/8055.29ms降至1582.55/1574.29ms；这是直接 builder、顺序请求窗口，后续配置会复用进程缓存。该窗口峰值RSS基线1246.36MiB、候选683.47MiB，不代表普通启动完整页面窗口、单请求内存或生产OOM修复。证据 `album-rank-final/payload-comparison.json` 及两套原始完整响应、conservation收据保持独立。
+
+修正观察器对基线/最终候选各执行一次 Chromium 连续原索引30–33（歌曲点击/深链、专辑点击/深链，1280px、L3动态），共8案例，均满足本地观测门槛。没有追加0–33前缀或循环热重跑。观察器SHA256为 `2c87d740bba1edec4b2a718d1394a5933f66cc13dbff9c29340a0a6066e6f45a`，原生缓存接口 smoke 另有收据。两次正常 lifespan 启动维护自然结束，四精确发布ready、active jobs为0；全序列不清缓存、不插入预暖请求。
+
+原索引32取消后的完整专辑排名请求：基线总8986.57ms、thread CPU8375.63ms，取消后还运行8902.96ms；候选总3340.24ms、CPU3153.28ms，取消后仍运行3255.79ms。两者均与原索引33 overview重叠，不能称请求取消终止了后台工作。索引33 overview服务163.10→100.25ms、thread CPU43.57→38.24ms，singleflight等待均为0，页面核心1832.1→1707.2ms；此次未复现生产1.5秒以上服务慢阈值，不能把本地改善外推为生产性能Pass。
+
+正常启动页面序列资源：基线RSS启动1358.69/峰1447.84/闲置1438.22MiB，候选1356.66/1356.80/1063.69MiB；整个观测窗口CPU27.97→21.90秒。请求50ms采样，实际最大间隔67.60/71.77ms；共享预算闲置305460701→198535816B，预算外闲置DataFrame列深层字节均为124。这是整个短序列窗口观察，非单请求64MiB或生产整体RSS证明。两个strict读取窗口全部守恒，公开请求写入/排队尝试为0，源码绑定未变，所有自有后端与浏览器/preview已关闭。原始事件、失败请求UTC、完整响应头、资源样本与派生对照见 `album-rank-final/actual-page/`。
+
+新默认full8首轮 `20261011T070019.690377Z-85d74d5b9d4c` 实际退出1，preflight PASS（7528ms）、quality FAIL（15753ms）。mypy检查818文件成功，但执行时并行编辑了验收文档，pre-commit报告“files were modified by this hook”；业务源码绑定未变，不是类型错误。失败summary、完整日志与启动/关闭收据保留。冻结所有仓库文件后另存 `fullgate-v2/` 从默认完整模式重新开始；不使用 `--from` 或 `--only` 把首轮改称Pass。
+
+第二轮 `20261011T070259.019703Z-5b55dbda3f27` 默认full模式实际退出1、1428782ms：preflight/quality/backend/api/browser-routes通过，browser-interactions在手机时间筛选失败，inventory/compat未运行，因此仍为Partial。3876后端种子通过/2skip、186真实副本通过/1skip，前端803/4skip及构建通过，API157正常/113边界、热P95基准通过；全部阶段源码绑定保持不变。失败为点击后未见 `data-mobile-sheet="time-range"`，无控制台/页面错误。原始summary、junit、基准与锁记录已复制到 `fullgate-v2/run-evidence/`，未覆盖首轮。
+
+在未改动前端基线与47b后端上一次受控复现：暂扣真实200分析响应，加载中打开弹层；释放响应后KPI出现、原按钮断开、弹层消失。截图与DOM收据证明 `AnalysisStatsPage` 加载分支的时间控件迁入 `MobileAnalysisStats` 后重新挂载。记为独立 `SS-2026-10-11-001` OPEN/P2，本轮不修改该产品交互；这不是新专辑服务引入的前端变更，也不是性能测量。证据 `mobile-gate-diagnosis/`。
+
+门禁 `mobile-time-filter` 原先只等待页面标题，可能点到加载分支。验证脚本现在等待初始 lifetime 响应完成且有KPI，或明确的同范围snapshot_unavailable UI，再执行已加载页面筛选；沿用原30秒数据等待、5秒弹层等待及应用后的last_4_weeks响应/URL/UI断言。ready/unavailable辅助判断默认仍为last_4_weeks，只显式为初始检查传lifetime；对应边界回归保留错误状态、未完成响应和缺少UI的拒绝。验证脚本及其现有专项测试是产品两文件之外的验收修正，未修改冻结的生产90案例观察器或性能阈值。
+
+门禁专项18项通过（0.17秒），Node语法与Ruff检查通过；正常基线应用中单次手机时间筛选退出0，初始lifetime与应用后last_4_weeks均收到完整200并有实际KPI/正确URL。三场景诊断批次中时间筛选也通过，但栏目场景在关闭外部封面配置下有10个封面404，批次实际退出1，原样保留为Partial；单项成功不替代完整门禁。专辑产品文件的SHA未变，原20完整响应及8页面回放仍绑定同一产品候选。新的默认完整运行独立保存在 `fullgate-v3/`，正常外部封面配置与八阶段不缩减。
+
+最终默认完整门禁 `20261011T073600.905084Z-f1483ad94de8` 实际退出0、overall PASS，1854478ms（30分54.48秒）。没有使用阶段切片，八个必需阶段全部同轮通过；optional未请求、NOT_RUN。以47b为HEAD的未提交候选绑定1455个代码/测试文件，含新专辑测试；起止SHA不变，专辑产品两文件与20响应/8页面回放绑定一致。
+
+| 必需阶段 | 状态 | 实际耗时 ms |
+| --- | --- | ---: |
+| preflight | PASS | 7947 |
+| quality | PASS | 71471 |
+| backend | PASS | 806874 |
+| api | PASS | 194647 |
+| browser-routes | PASS | 399168 |
+| browser-interactions | PASS | 79438 |
+| browser-inventory | PASS | 45569 |
+| browser-compat | PASS | 249234 |
+
+最终门禁：3876后端种子通过/2skip（416.99秒）、186真实副本集成通过/1skip（377.66秒），前端803通过/4skip及build，Ruff/格式/mypy/敏感信息检查通过；API157正常和113边界全通过、51接口热P95基准无500ms慢项；桌面/手机/多视口页面、图表/页签/筛选、控制清单及Chromium/Firefox/WebKit均通过。原失败手机时间筛选在本轮完整模式中通过。此Pass指本地完整全栈，不表示生产90首次性能或手机加载期间弹层状态已修复。
+
+全部自有进程已关闭：backend SIGTERM退出-15，Vite进程组SIGINT退出-2，验证脚本实际退出0。完整summary、源码起止绑定、真实命令/日志、junit、基准和阶段锁保存在 `fullgate-v3/`；原run目录14个证据文件另复制到 `fullgate-v3/run-evidence/`，不依赖临时目录保留。前两次完整模式失败和诊断批次404保持，不作热重跑抹除。
+
+私有证据位于本工作树 `output/music-detail-chart-acceptance/backend-followup/album-rank-final/`；先前候选试验保存在独立 `album-rank-followup/`，原76诊断和生产6dac证据不覆盖。所有真实数据及输出均不提交。协调独立验收已通过，用户授权本次11路径提交，正式推送/部署/生产FIRST90交唯一联合负责人；本任务生产请求为0。`SS-2026-10-09-001`继续OPEN/Partial，生产首次90与整体OOM独立验收；`SS-2026-10-11-001`加载时弹层关闭仍OPEN。
+
+协调独立复核11路径/补丁hash、最终v3八阶段与1455源码起止绑定均通过，并独立运行专辑、歌曲排名及门禁脚本测试30项通过（19.85秒），文档include-archive251份与diff检查通过。产品/测试源码未再修改，仅同步本次授权提交状态。权威最终PASS入口为 `fullgate-v3/fullstack-summary.json` 和 `fullgate-v3/fullstack-binding-after.json`；根目录同名文件仍为第一次FAIL历史，禁止覆盖。额外只读入口索引为 `evidence-entrypoints.json`，提交后的SHA/parent/精确路径及hooks结果另存 `commit-receipt.json`，不将正式提交等同生产已验收。
