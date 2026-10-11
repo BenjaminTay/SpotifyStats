@@ -200,7 +200,7 @@ class TestAnalysisCharts:
 
 class TestMusicStats:
     def test_track_album_artist_stats_structure(
-        self, client, default_params, published_artist_rank_context
+        self, client, default_params, published_artist_rank_context, published_track_rank_context
     ):
         charts = client.get(
             "/api/analysis/charts",

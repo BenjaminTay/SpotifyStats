@@ -5,6 +5,7 @@ from functools import lru_cache
 import pandas as pd
 
 from backend.core.db import _downcast_ints, base_filters, get_db, merge_consecutive_plays
+from backend.core.frame_cache import playback_frame_budget
 
 # Weekday labels
 DOW_NAMES = {0: "周一", 1: "周二", 2: "周三", 3: "周四", 4: "周五", 5: "周六", 6: "周日"}
@@ -150,7 +151,7 @@ def _try_load_from_agg(
         return None, None, None
 
 
-@lru_cache(maxsize=8)
+@playback_frame_budget.cached(maxsize=8)
 def load_billboard_raw(
     min_ms,
     music_only,
@@ -244,7 +245,7 @@ def load_billboard_raw(
     return _downcast_ints(df)
 
 
-@lru_cache(maxsize=8)
+@playback_frame_budget.cached(maxsize=8)
 def load_billboard_raw_for_artists(
     min_ms,
     music_only,

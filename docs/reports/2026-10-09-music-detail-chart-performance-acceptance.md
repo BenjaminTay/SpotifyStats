@@ -1,6 +1,6 @@
 # 音乐详情榜单成绩性能验收
 
-日期：2026-10-09。事项：`SS-2026-10-09-001`。当前结论：**Partial；业务本地 S4 历史证据保持，当前 d838814d 已正式部署。独立生产自然首轮完整 90 项只有 30 项通过、60 项性能失败；旧 c587 的 39 项通过、51 项失败保留。116 项功能对账及完整读取守恒通过。冷页面性能和高驻留仍需修复，本项未收口**。
+日期：2026-10-11。事项：`SS-2026-10-09-001`。当前结论：**后端候选已完成本地默认完整八阶段Pass并通过最终协作验收，本提交收口；联合推送、发布和生产验收已授权，待执行。AI空白历史失败未稳定再现，基线/候选八场景均正常，未新增AI产品代码；原失败与原因未确定的边界保留。生产仍为626，原FIRST90为83通过/7性能失败，生产性能与整体OOM未收口**。
 
 本项基线为 `d5ba3094`，在独立工作树和 94,760 条播放的 Online Backup 副本执行。原始播放、身份、署名、人工覆盖和治理关系不作为本项写入目标；生产 OOM 和对决个人统计分别验收。
 
@@ -318,3 +318,127 @@ before capture01:43:39.386220–01:44:06.233434；after-browser01:51:18.382943�
 私有证据目录`output/music-detail-chart-acceptance/production-first-626232b0/`，文件600；`production-completion-receipt.json`记录实际退出码/进程连续性/全部哈希，原五工具完全未变。主要SHA256：results `cdf7e7bd6ac0d336d3f09e23d7b07c8ab365ced32c0049272af8b355e67adf70`；summary `3948187f206491e7a8f59ee6fe311fa23d37b95005a966cffd598695edad677d`；resources `49e03e7d9bc87cfdc3ee3b82b0db77ff3bda2dc9ee795d8a938ad39256163f17`；API `71d7e71294906e828fec9ed63cc1fee28d0160d1c3e3d830aff18ade89183dca`；三个strict均`0e81dbcf5ee53abcc7f90f558a1003c970a0d9d6dc086e2c5bb2674e9886b6c4`。前两轮生产失败与旧20/parallel8/line8完整保留。
 
 联合修复已实现、已正式发布、压缩端到端证据和功能/守恒通过，整体详情性能仍OPEN/Partial。7项超时和后端驻留后续分开处理；对决完成状态保持，详情计划不归档，OOM不关闭。
+
+## 2026-10-10 后端冷排名与宽表驻留候选（本地 Partial）
+
+基线源码为已发布文档头 `4d9e0ba3`（运行代码626），候选位于 `codex/detail-backend-contention`，未提交、未发布。本轮仅副本开发与验证，未新增生产请求、压力测试、重启或服务器清理。上一轮原生产83/90、7超时和整体OOM状态保持。
+
+使用已准备schema90主库及Billboard副本，其他sidecar经Online Backup复制；正常lifespan、full warmup及维护自然结束后测量。与生产before capture的37套原始来源规范化事实全部相等，55/57保护表逐字事实相等；`artist_identity_state`管理字段和`governance_source_revisions`治理跟踪与生产不同，不能称生产57表完全相等。修前/修后隔离输入的57保护表全部相等；各自GET读窗口内主库与六sidecar文件SHA全部不变。旧sidecar不绕过路径身份校验，由正常维护在当前副本路径准备。
+
+七个失败trace按实际path/query重放，分别做单独请求、原请求偏移并发和有界重复。浏览器已取消的rank在本地让其完整结束，以测量后端实际成本，不用取消传输证明计算终止。原时序并发先运行，随后单独/重复为热对照；另保留首轮单独冷请求诊断。剖析记录wall/thread CPU与SQLite执行/取数，资源采样50ms；DataFrame检查不调用强制GC。SQL汇总含execute/fetch操作，不能与嵌套service时间相加。
+
+主要瓶颈是默认歌曲完整排名仍加载全量播放并三次构建时长切片及排名行。L3固定阈值service5509.240ms，其中builder wall5503.217ms/thread CPU5454.106ms、全量加载1760.345ms、三个全局时长约654.627/575.424/573.437ms；L2动态service3731.772ms。这里实际CPU占主导，未见busy/locked；不能据此推定生产所有summary/overview延迟都由排名造成。本地榜单目标读取约15–49ms，生产1–2.7秒目标服务成本没有完整复现，SQLite/JSON和锁等待并非本轮已确认主因。
+
+候选仅两类改动：
+
+- 默认lifetime歌曲完整排名复用现有 `entity_rank_context_v2` 精确发布，目标歌曲事件/时长/趋势/最近播放仍按原规则计算。只覆盖primary DB、L2/L3和默认四配置，其他scope保留原路径。发布缺失/漂移返回503，不冷建/写入/排队；不新增发布格式或维护任务，不改对决。
+- 四套播放宽表缓存复用历史资源候选的共享384MiB字节预算，各自条目上限保留。计量包括attached DataFrame和嵌套区间，共享引用可能保守重复计量；超大条目只供本次调用。增加缓存失效generation防止在途旧结果重新驻留。未整包合入旧分支，未增加资源锁；预算限制缓存保留量，不是进程RSS上限。
+
+修前/修后七场景×三序列共57个完整HTTP响应的规范化SHA全部相等（包括摘要、榜单、播放统计及排名）。原时序冷rank：L3固定5509.240→64.483ms，L2动态3731.772→51.988ms。正常启动后RSS1539.641→1356.281MiB；整个有界测量peak1795.875→1377.828MiB；结束空闲RSS1288.844→967.609MiB。结束可达DataFrame的深层列内存951.901→304.744MiB，候选共享预算实际327.136MiB。列内存、含区间的预算、RSS各有不同含义；结束RSS下降可能包含分配器/自然回收，不能全部归因于缓存或声称整体OOM已修复。启动等待6.052/18.078秒分别记录，不把启动成本混成详情耗时。
+
+已有前端生产构建在新loopback代理及正常启动候选backend下，七个原失败case key加一个正常艺人点击对照8/8通过原local门槛（click1000/direct2000/all1500ms）。core43–569ms、all64–883.2ms，fresh browser context与PWA正常策略保留；这是本地热后端专项，不能替代生产自然首次、完整90或默认全栈验收。
+
+回归覆盖四变体歌曲完整payload与旧builder逐字段相等、禁止无目标播放装载/全局排名计算、缺失与revision漂移fail-closed、跨loader预算淘汰、超大条目不驻留、在途失效；沿用对决排名兼容测试。完整后端门禁：unit2648通过/2skip（138.81秒）、contract563通过（151.64秒），均实际退出0；backend Ruff、当前/含归档文档审计、CI基线一致性及diff-check通过。其后追加默认完整门禁及定向复验，结果见下节，仍不标全栈Pass。前端及压缩源码未变，原证据按范围复用。
+
+私有完整记录为 `output/music-detail-chart-acceptance/backend-followup/` 的baseline/cold-baseline/candidate、comparison、same-source-receipt及browser-eight；保留初始诊断和修复过程中失败的测试/启动日志，不覆盖为Pass。新开8024/5224进程和全部浏览器上下文已关闭，旧8013/5183与正式数据保持。
+
+## 2026-10-10 追加默认门禁与定向复验（历史 Partial，后续诊断见下节）
+
+`singleflight`原来已由`functools.wraps`自动透传`cache_budget_info`，不是预算可见性缺失；本次增加显式接口透传。实际两个播放loader与注册的`get_stats()`均显示共享预算402653184B，25项缓存/精确排名相关测试通过，实际退出0。已有57响应、本地8场景和资源对照不重复测量；性能路径源码保持，接口补充不改变统计响应。
+
+原脚本未修改，backend为正常lifespan/full warmup，维护自然结束后运行；各轮应用/测试源码清单与SHA绑定到当前未提交候选，轮内均未变化。主库与六sidecar仍为上述schema90隔离副本，正式数据库和生产服务未参与。默认完整门禁首次因调用方使用了不合法dataset枚举而退出2，尚未进入阶段；原日志保留，改为`online_backup`后才进入实际门禁。
+
+| 实际运行 | 选择模式 / 退出码 | 结果 |
+| --- | --- | --- |
+| `20261010T024228.170096Z-f6499c0db4ce`，516.109秒 | `full` / 1 | preflight、quality通过；种子后端3853通过/2skip，集成9通过后歌曲统计503失败，后续5阶段未运行 |
+| `20261010T030237.092011Z-f181765951a3`，479.190秒 | `from api` / 1 | API通过，51接口22次/热P95 500ms原门槛无慢项；路由53/54通过，桌面周榜失败，后续3阶段未运行 |
+| `20261010T031325.939811Z-5e41076e5d02`，309.552秒 | `from browser-interactions` / 0 | 交互80.032秒、清单45.731秒、兼容183.728秒均通过；Chromium/Firefox/WebKit通过，脚本总状态`PARTIAL` |
+
+集成失败已修正测试准备：原测试只发布旧艺人rank，没有发布歌曲现在消费的精确rank。新增私有fixture执行`ensure/read`并断言ready，沿用原HTTP200和内容断言；产品缺失/漂移仍503，GET不构建。fixture hooks通过。定向集成先67通过后封面404失败，原因是复验误继承关闭外部封面的诊断参数；恢复原外部封面配置，剩余118通过/1skip/68 deselect。pytest前缀筛选连带排除了封面失败项，另以精确node ID单测通过。三份JUnit去重覆盖186通过/1skip，共187项；这不是一次完整集成运行，所有失败保留。前端完整803通过/4skip及build通过；新增文件显式hooks与集成两文件hooks通过，不以`--all-files`代替未跟踪文件检查。
+
+桌面周榜首轮三个`projection=page`请求（最新周album/artist及前一周track）503，稍后的相同参数手机请求200；定向桌面复验通过且无控制台错误/告警/溢出。此路径没有直接调用新增歌曲rank读取，但首轮503根因未确定，不能据热复验排除候选资源影响或宣布已修复。原失败和门槛保持，不新增周榜产品改动。
+
+所有测试存储guard均未触发限制并清理自有临时目录；默认轮峰值1099840959B。新后端四进程均完成shutdown并以SIGTERM退出（实际-15），自有Vite核对PID/cwd后SIGINT退出130，8024/5224均无监听；旧8013/5183未操作。私有`*-binding-after.json`、原/续跑summary、`integration-coverage-receipt.json`和`billboard-desktop-retry.json`保存退出码、源码哈希及覆盖边界。
+
+候选实现及本地定向验证已完成；尚无一次默认完整八阶段Pass，整体仍Partial。下一步独立完整门禁与正式发布/生产自然首次验收分开安排，不能拼接本轮结果为Pass。未提交、推送、发布或访问生产；原83/90、7性能失败及整体OOM开放状态保持。
+
+
+## 2026-10-10 周榜503有界因果诊断与补修
+
+本轮真实人类授权来自协调聊天turn `01a123fe-b726-7e71-bf9f-d21b7f2d82b8` 的“可以”，限定副本诊断、必要修复与一次完整本地门禁；未扩大到提交/发布或生产访问。使用同一路径、同源schema90七库，正常lifespan/full warmup，维护自然结束后，依次比较已发布运行代码626对应的4d9e源码、此前候选及补修候选。原三条首轮503的工具仅保存控制台状态与服务访问日志，没有错误体或内部异常；不可恢复为逐请求因果证明。
+
+三轮各限定5个HTTP请求，共15个：首次最新track后并发读取最新album/artist及前一周track，再对原最新album请求穿插受控运维提交。自然四请求三轮全部200，完整响应SHA逐一相等，未稳定自然复现原503。故不无限重试或把自然200称原失败已消失。
+
+有界对照在独立writer线程仅更新现有`cover_cache_state.updated_at`，不写统计事实，不调用GET维护/排队；每轮恢复原运维时间值。基线及修前候选中，三次提交使`PRAGMA data_version`依次2→3→4→5，三次来源向量digest完全相同，却耗尽旧三次采集重试。真实HTTP503错误体为`weekly / snapshot_unavailable / target_revision=null`，内部异常为`Analysis source changed during revision collection`。三轮所有持久来源epoch/revision向量前后相等，exact weekly成品与source/target revision不变。原失败窗口有封面下载提交，初始正常启动报告成品current；本轮确定这是既有可达缺陷，基线与修前候选的revision源码SHA相同，不是共享Frame预算引入。原三条未捕获内部异常，仍不逐条断言与此次机制相同。
+
+最小补修仅令`analysis_snapshot_revision.source_revision()`在一个短只读SQLite事务中读取tracking合同和持久来源向量，finally rollback；拒绝传入未提交事务、无效tracking继续失败，返回一个完整已提交读快照。移除对任意SQLite提交的物理token重试，不改摘要/榜单计算、来源向量格式、schema、发布版本或维护任务。外层Billboard发布前后revision校验和builder漂移校验保留，真实事实提交由下一次读取观察；不缓存过期token，不启用GET冷建、写入或排队。已有Community来源读取也采用相同读快照原则。
+
+新增两family运维提交回归及中途事实提交读快照回归修前3失败、修后相关81项通过；原提交前可见性与非法tracking回归保留，异常后事务已结束。初次hook只自动修正import顺序并退出1，复跑hooks全部通过、实际0，失败日志保留。修后受控HTTP200/56.18ms，发布为exact ready/current，响应SHA与同轮自然album完全相等；自然四请求约68–160ms，仅有界诊断，不作性能P95。未重复57响应、资源、专项8或生产90矩阵。
+
+私有证据位于`output/music-detail-chart-acceptance/backend-followup/weekly503/`：三轮receipt/events、完整HTTP失败体、comparison、regression-before/after、hooks-first/final及七库Online Backup输入收据。七库备份只作冻结输入溯源，实际完整门禁仍使用已就绪同源runtime路径，不借用新文件的LKG身份。首次备份helper因frontend cwd相对路径错误退出1，尚未备份或运行门禁；纠正后冻结7库，原错误保留。
+
+使用标准未注入uvicorn、正常外部封面配置，冻结源码与输入后从头运行默认full模式八个必需阶段；实际完整结果如下。
+
+## 2026-10-11 核验默认完整门禁结果（Partial）
+
+运行`20261010T042212.525715Z-d54c21f86662`于2026-10-10实际结束，2026-10-11续接时核验。选择模式为`full`，未使用`--from/--only`或放宽门槛；总耗时1668.385秒，实际退出1、总状态FAIL，保留完整原日志。
+
+| 必需阶段 | 实际结果 | 耗时秒 |
+| --- | --- | --- |
+| preflight | PASS | 7.645 |
+| quality | PASS | 65.014 |
+| backend | PASS | 683.784 |
+| api | PASS | 204.425 |
+| browser-routes | PASS | 399.552 |
+| browser-interactions | PASS | 79.806 |
+| browser-inventory | FAIL | 228.045 |
+| browser-compat | NOT_RUN | 0 |
+
+同轮种子测试3856通过/2skip，完整真实副本集成186通过/1skip；前端803通过/4skip及build通过。API51接口按原22次/热P95 500ms门槛全部通过，0慢项。原桌面/手机54路由和响应式矩阵通过，榜单页首轮未再报503；不能以本轮正常请求逐条证明历史三个503属于同一机制。
+
+清单已通过前12路由的桌面/手机24场景，随后`/ai-insights`仅导航栏、rootTextLength29，等待45秒后超时。没有原失败时的浏览器网络/异常详细记录，不能认定后端修复或revision事务引起，也不能凭重试通过认定其根因。按授权只做一次有界定向复验与末两阶段续跑，不再重复整轮门禁。
+
+前后1454个应用/测试/脚本文件SHA全部相等，绑定记录实际fullstack_exit1；自有backend正常shutdown、实际SIGTERM退出-15。测试存储guard峰值1107681784B，最低剩余53050650624B，未触发限制，cleaned=true。续接前8024/5224均已无监听；旧Vite会话已不可读取，无法补报其退出码。此前已核实的旧进程退出码保留，不套用本次。所有证据在`backend-followup/final-fullstack-*`与对应run目录；正式库和生产未参与。
+
+2026-10-11有界AI定向复验桌面/手机2/2通过；随后同源正常启动执行`from browser-inventory`续跑`20261011T034319.860761Z-3093766ceeca`，实际退出0、总状态PARTIAL，browser-inventory PASS / 46.840秒；browser-compat PASS / 227.217秒。源码清单仍全部相等。原完整full的AI超时保留、未定位，局部成功不覆盖原FAIL或拼接为默认八阶段Pass。未提交、推送、发布或新增生产请求，原83/90、7性能失败和整体OOM开放状态保持。
+
+续跑自有backend正常关闭、实际退出-15；自有Vite进程组关闭、实际退出-2。收尾核验8024/5224无监听，未操作旧8013/5183。原失败清单和定向/续跑日志、绑定与summary分别保留。
+
+
+## 2026-10-11 AI空白页有界基线对照与最终本地门禁
+
+本轮新增真实人类授权为协调聊天turn`01a12914-b7fd-7023-b09b-88d3b0e4d17d`、human message`01a12914-b846-7f81-87a3-0ba16d2bf2fb`，明确要求定位AI空白并完成必要修复和完整门禁；范围仍仅自有副本/本地，不含提交、发布或生产访问。
+
+对比已发布626对应4d9e后端与当前候选，前端AI/路由/能力发现源码完全相同，正常lifespan/full warmup、外部封面开启，沿用就绪同源runtime路径。每个版本限定一次原控件前序导航链和一次直接进入，桌面/手机均覆盖，共八个AI场景；导航链按原顺序/同一Chrome上下文，每次about:blank重置和45秒等待合同保持。原ready断言仍检查真实AI文本，本次诊断另确认`nav[aria-label="AI 洞察模式"]`实际挂载，不把导航栏AI链接当ready。记录CDP console/pageerror、所有请求及JS/静态响应、UI轮询时序、DOM、截图及对应后端/Vite日志。
+
+八场景全部通过，实际导航开始到功能就绪511–598ms；基线前序链525/511、直接598/538ms，候选前序链528/511、直接596/533ms。八场景均没有pageerror、AI阶段failed request或HTTP错误，模块和runtime/settings请求正常；只读消费，无真实LLM生成调用。持久来源向量与周榜补修诊断后完全一致，两个版本测试源码清单均未变，自有进程已退出。证据为`backend-followup/ai-blank/{baseline,candidate}-receipt.json/comparison.json`及`output/playwright/detail-ai-blank/`四组events、DOM和截图。
+
+未稳定再现历史AI超时，没有证据支持修改AI产品或就绪断言，未新增AI代码。此次排除的是有界正常启动对照中的候选必现回归、原导航链必现问题与“仅导航文本就算ready”；不能排除偶发JS模块/环境/导航竞态，也不能补写缺失的历史错误体。原失败只证明React导航shell出现而AI功能区未就绪，原因仍未知。共享node_modules/Vite缓存为已核实环境事实，但没有失败时的缓存/模块记录，不能认定其为根因。
+
+根据这次明确授权及稳定有界对照，冻结1454应用/测试/脚本文件与七库Online Backup输入，再集中执行一次标准默认full八阶段。既有57响应、资源、专项8及压缩证据按未变源码范围复用。为避免再次失败时缺少证据，使用独立CDP observer只观察本次门禁拥有的control-inventory Chrome，记录AI挂载/错误/资源并截图；不改变标准脚本、断言、导航、等待或门槛，不额外发业务请求。本地冻结候选默认full八个必需阶段于2026-10-11全部通过，run`20261011T035817.979836Z-f647e7686469`、实际退出0、总状态PASS，耗时2330.890秒。原完整FAIL和局部Partial单独保留，不拼接结果。
+
+| 默认完整必需阶段 | 结果 | 耗时秒 |
+| --- | --- | --- |
+| preflight | PASS | 8.023 |
+| quality | PASS | 82.516 |
+| backend | PASS | 1117.354 |
+| api | PASS | 318.728 |
+| browser-routes | PASS | 401.438 |
+| browser-interactions | PASS | 83.728 |
+| browser-inventory | PASS | 55.595 |
+| browser-compat | PASS | 263.330 |
+
+同轮后端种子3856通过/2skip、完整真实副本集成186通过/1skip，前端803通过/4skip及build/hooks通过；API51接口按原22次/热P95 500ms门槛通过，0慢项。路由/响应式矩阵、交互、控件/长列表、Chromium/Firefox/WebKit全部通过。原控件脚本中的AI桌面/手机均PASS。旁路observer实际退出0，pageerror/console error均0，AI阶段采集281个JS响应、HTTP错误和脚本加载失败均0；捕获到一次桌面root29/未挂载的加载中shell以及手机root83/已挂载状态。采样未捕获桌面就绪瞬间，桌面结论以原控件脚本PASS及先前有界功能挂载对照为准；相同shell可出现于正常短暂加载，但历史45秒为何未就绪仍未知，不恢复缺失因果。
+
+源码前后1454文件SHA全部一致，七库Online Backup输入绑定保留，实际运行仍为已有ready runtime路径；正式库未参与。guard峰值1107891343B、最低剩余55788867584B，未触发限制、cleaned=true。自有backend正常shutdown、实际退出-15，Vite进程组退出-2，收尾8024/5224无监听；旧8013/5183未操作。完整日志、summary/JUnit/API与guard副本、binding及observer保存于`backend-followup/ai-fullstack-*`和`output/playwright/detail-ai-blank/fullgate-*`。
+
+本轮只收口本地候选门禁，未提交、推送或发布，未新增生产访问、压力或重启。生产原83/90、7性能失败和OOM开放保持；后续候选审阅、提交/发布及生产自然首次分别取得明确授权。历史AI空白原因仍未确定，不能写成产品缺陷已修复；无需为未复现的问题添加AI行为改动。
+
+
+## 2026-10-11 最终审阅与授权提交
+
+真实人类授权来自协调聊天turn`01a12951-3aa6-7b63-8c19-ef31d0b45f44`、human message`01a12951-3aeb-7580-b6d3-72a8d9b12907`：“可以，你来验收这份补丁，通过后指示它们完成提交、发布和生产验收。”协调session核对18路径候选源码/补丁哈希及默认full同源结果，审阅来源事务、排名失效和预算，未发现阻塞；独立执行analysis_snapshots、playback_frame_budget、track_published_rank_context、closed_publication_source共63项通过，日志为私有`backend-followup/root-final-review-tests.log`。
+
+本任务为唯一候选commit owner，只纳入已验收18路径及现有`docs/CHANGELOG.md`；原始数据、输出证据及其他session工作均不提交。README当前产品描述适用，AGENTS/CLAUDE一致且无需改规则；docs地图和当前交付状态同步。提交前执行文档审计、diff检查与项目hooks，应用/测试源码保持全门禁冻结哈希，纯文档收口不重跑39分钟门禁；提交SHA、父提交与精确路径保存在私有commit receipt及任务最终回复。
+
+人类交付授权已生效，本提交交付冻结候选；联合整合、正常推送和正式发布由“排查榜单对决数据加载慢”session（`01a11bf5-d114-7b40-b133-716fd1e27cc1`）唯一执行。为避免并发生产探针，原FIRST90/资源/116/strict由该执行者单次执行，再由详情任务离线独立核对新release证据。当前没有新增生产请求或重启，626原83/90、7性能失败及OOM开放保持；正式发布与线上结果必须后续另行登记。

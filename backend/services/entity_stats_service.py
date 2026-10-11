@@ -335,7 +335,34 @@ def _build_track_stats(
 ) -> dict:
     aggregation_scope = resolve_track_aggregation_scope(conn, track_id, merge_level)
     member_track_ids = list(aggregation_scope.member_track_ids)
-    scoped = not include_rank_context and period in {"lifetime", "custom"}
+    published_context = None
+    if (
+        include_rank_context
+        and period == "lifetime"
+        and merge_level in (2, 3)
+        and _is_primary_connection(conn)
+    ):
+        from backend.services.versus_personal_context import normalise_filters
+        from backend.services.versus_rank_context_service import default_configurations, read
+
+        filters = normalise_filters(
+            conn,
+            dict(
+                min_ms=min_ms,
+                music_only=music_only,
+                merge_enabled=merge_enabled,
+                dynamic_threshold=dynamic_threshold,
+                max_merge_gap_minutes=max_merge_gap_minutes,
+                merge_level=merge_level,
+            ),
+        )
+        # Default publications already carry the exact global count ranks.
+        # Other scopes retain their existing calculation and compatibility path.
+        if filters in default_configurations(conn):
+            published_context, _publication = read(conn, filters)
+    scoped = (
+        not include_rank_context and period in {"lifetime", "custom"}
+    ) or published_context is not None
     loader = (
         _scoped_play_loader(
             conn,
@@ -360,12 +387,16 @@ def _build_track_stats(
         _loader=loader,
     )
     if scoped:
-        resolved = _global_period_bounds(
-            conn,
-            period=period,
-            start_date=start_date,
-            end_date=end_date,
-            music_only=music_only,
+        resolved = (
+            published_context["periods"]["lifetime"]
+            if published_context is not None
+            else _global_period_bounds(
+                conn,
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+                music_only=music_only,
+            )
         )
         current_df = filter_period_events(all_df, resolved)
     entity_all = all_df[all_df["track_id"].isin(member_track_ids)]
@@ -420,7 +451,17 @@ def _build_track_stats(
             "first_played": str(entity_time_source["ts"].min()),
             "last_played": str(entity_time_source["ts"].max()),
             "ranks": (
-                _ranks(
+                {
+                    **{
+                        name: published_context["ranks"]["track"][name].get(str(primary_track_id))
+                        for name in ("lifetime", "last_6_months", "last_4_weeks")
+                    },
+                    "current_period": published_context["ranks"]["track"]["lifetime"].get(
+                        str(primary_track_id)
+                    ),
+                }
+                if published_context is not None
+                else _ranks(
                     conn,
                     all_df,
                     current_df,

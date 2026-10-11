@@ -43,6 +43,12 @@ Home target_revision 为现有 exact 文件名摘要，覆盖过滤 context、da
 
 排名发布缺失或来源 revision 漂移时返回 503，不把旧排名拼到新实体事实中，不在 GET 上重建。应用启动和已提交的相关变更由私有 JobQueue 维护默认发布；过滤参数、数据库身份和 builder version 参与 key。
 
+默认四配置（L2/L3 × 动态/固定阈值）的lifetime歌曲详情完整排名复用既有 `entity_rank_context_v2` 精确发布。三个范围和current_period排名从发布读取，歌曲自身事件、时长、趋势及最近播放按目标范围计算。数据库身份、完整过滤、来源revision及builder校验沿用原对决发布合同；缺失/漂移返回503，不从GET维护。非默认过滤或非lifetime请求保留既有计算路径。
+
+`plays / plays_for_artists / billboard_raw / billboard_raw_for_artists`共享384MiB保守缓存字节预算和各自条目上限；包含附加时长frame及区间，超大单条不驻留，按共享LRU淘汰。失效同时推进generation，在途旧构建不能重新存回缓存。此预算不是进程RSS上限，年度和其他缓存/瞬时材料化仍单独验收。
+
+预算loader保留`cache_clear/cache_info/cache_budget_info`接口，外层`singleflight`显式透传，注册缓存的`get_stats()`返回预算字段。集成测试需由私有fixture先发布精确歌曲rank，再验证GET；缺失发布仍503，不能为测试恢复GET冷建。
+
 年度 generation-status 优先只读查询已发布 artifact 的 preparation-key / cache-key 元数据，不读取完整 artifact。私有年度构建同步保存 preparation-key，来源、语言或配置变化后不能借用旧 key；旧 sidecar 的元数据只能由私有维护补齐。
 
 ## 前端与验证口径
@@ -58,3 +64,6 @@ Home target_revision 为现有 exact 文件名摘要，覆盖过滤 context、da
 ## Community
 
 Community 三个 GET 的只读发布、LKG、unavailable、分页及私有维护规则见 [Community 持久读模型](community-snapshots.md)。公开请求不构建、不发布、不排队。
+
+
+来源revision采集使用短只读SQLite事务，把tracking合同与持久epoch/revision向量固定为一个已提交快照，结束后rollback。封面缓存或任务簿记提交不能仅凭`PRAGMA data_version`变化使有效来源读取503；无效tracking、未提交调用事务和真实发布前后漂移仍失败，不引入GET修复或事实扫描。

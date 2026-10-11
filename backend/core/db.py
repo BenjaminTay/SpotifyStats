@@ -14,6 +14,7 @@ from typing import Any
 
 from backend.core.cache import singleflight
 from backend.core.config import SPOTIFY_STATS_DB_PATH
+from backend.core.frame_cache import playback_frame_budget
 from backend.domains.metadata.release_dates import SCHEMA as RELEASE_DATE_SCHEMA
 from backend.domains.metadata.spotify_album_credits import SCHEMA as ALBUM_CREDIT_SCHEMA
 from backend.domains.playback.logical_timeline import reconstruct_logical_plays
@@ -2034,7 +2035,7 @@ def query_plays(
 
 
 @singleflight
-@lru_cache(maxsize=16)
+@playback_frame_budget.cached(maxsize=16)
 def _load_plays_cached(
     min_ms: int,
     music_only: bool,
@@ -2261,7 +2262,7 @@ def load_plays(
 
 
 @singleflight
-@lru_cache(maxsize=16)
+@playback_frame_budget.cached(maxsize=16)
 def _load_plays_for_artists_cached(
     min_ms: int,
     music_only: bool,

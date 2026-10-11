@@ -12,6 +12,21 @@ def require_real_data_integration(request):
 
 
 @pytest.fixture
+def published_track_rank_context(client, default_params):
+    """Publish exact personal ranks privately before the detail GET contract."""
+    from backend.core.db import get_db
+    from backend.services.versus_rank_context_service import ensure, read
+
+    conn = get_db(readonly=True)
+    try:
+        ensure(conn, default_params)
+        _, publication = read(conn, default_params)
+        assert publication["status"] == "ready"
+    finally:
+        conn.close()
+
+
+@pytest.fixture
 def published_release_cycle_weekly_snapshot(client, default_params):
     """Prepare the exact real weekly publication before a comparison read."""
     from backend.domains.billboard import persistent_cache

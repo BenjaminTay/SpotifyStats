@@ -262,30 +262,30 @@ def _revision_vector(conn, tables):
     return {r[0]: [r[1], r[2]] for r in rows}
 
 
-def source_revision(conn, family: str, *, _attempt: int = 0) -> str:
+def source_revision(conn, family: str) -> str:
     if family not in {"analysis_stats", "analysis_records"}:
         raise ValueError("Unknown analysis family")
     if conn.in_transaction:
         raise ValueError("Analysis revisions require committed source facts")
     from backend.domains.metadata.genre_display_taxonomy import GENRE_DISPLAY_TAXONOMY_VERSION
     from backend.domains.metadata.language_registry import LANGUAGE_REGISTRY_VERSION
+    from backend.domains.metadata.release_dates import RELEASE_DATE_POLICY_VERSION
     from backend.domains.metadata.track_credits import TRACK_CREDIT_POLICY_VERSION
 
-    token = conn.execute("PRAGMA data_version").fetchone()[0]
-    tables = COMMON + (TASTE if family == "analysis_stats" else RECORDS)
-    dependencies = _revision_vector(conn, tables)
-    # Resolver code can change artist participation without a source-table write.
-    # It is a fact dependency, not a new data revision or a GET-time migration.
-    dependencies["track_credit_policy"] = TRACK_CREDIT_POLICY_VERSION
-    from backend.domains.metadata.release_dates import RELEASE_DATE_POLICY_VERSION
-
-    dependencies["release_date_policy"] = RELEASE_DATE_POLICY_VERSION
-    if family == "analysis_stats":
-        dependencies["taxonomy"] = GENRE_DISPLAY_TAXONOMY_VERSION
-        dependencies["language"] = LANGUAGE_REGISTRY_VERSION
-    identity = database_identity(conn)
-    if conn.execute("PRAGMA data_version").fetchone()[0] != token:
-        if _attempt < 2:
-            return source_revision(conn, family, _attempt=_attempt + 1)
-        raise ValueError("Analysis source changed during revision collection")
-    return digest({"identity": identity, "dependencies": dependencies})
+    # Read the tracking contract and durable vector from one committed SQLite
+    # snapshot. Cover/job bookkeeping changes data_version without changing
+    # these facts; retrying that physical token can otherwise exhaust on a GET.
+    # Callers still fence publication/build reads with independent revisions.
+    conn.execute("BEGIN")
+    try:
+        tables = COMMON + (TASTE if family == "analysis_stats" else RECORDS)
+        dependencies = _revision_vector(conn, tables)
+        # Resolver code is a fact dependency, not a GET-time migration.
+        dependencies["track_credit_policy"] = TRACK_CREDIT_POLICY_VERSION
+        dependencies["release_date_policy"] = RELEASE_DATE_POLICY_VERSION
+        if family == "analysis_stats":
+            dependencies["taxonomy"] = GENRE_DISPLAY_TAXONOMY_VERSION
+            dependencies["language"] = LANGUAGE_REGISTRY_VERSION
+        return digest({"identity": database_identity(conn), "dependencies": dependencies})
+    finally:
+        conn.rollback()

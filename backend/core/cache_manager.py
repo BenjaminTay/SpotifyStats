@@ -130,6 +130,8 @@ def get_stats() -> dict[str, dict[str, Any]]:
                         "currsize": info.currsize,
                         "maxsize": info.maxsize,
                     }
+                    if hasattr(fn, "cache_budget_info"):
+                        lru_stats[key]["budget"] = fn.cache_budget_info()
             if lru_stats:
                 entry["lru"] = lru_stats
         for ns, wrappers in _ttl_registry.items():

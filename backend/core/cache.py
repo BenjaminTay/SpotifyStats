@@ -102,6 +102,8 @@ def singleflight(fn=None, *, key_fn=None):
         wrapper.cache_clear = fn.cache_clear
     if hasattr(fn, "cache_info"):
         wrapper.cache_info = fn.cache_info
+    if hasattr(fn, "cache_budget_info"):
+        wrapper.cache_budget_info = fn.cache_budget_info
 
     def singleflight_stats():
         with locks_guard:

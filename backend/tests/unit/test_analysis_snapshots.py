@@ -734,7 +734,7 @@ def test_concurrent_maintenance_has_only_one_pending_job_per_key(isolated):
     assert all(row[2] == 1 for row in counts)
 
 
-def test_revision_collection_retries_concurrent_commit(isolated, monkeypatch):
+def test_revision_collection_observes_commit_before_snapshot(isolated, monkeypatch):
     from backend.services import analysis_snapshot_revision as revision
 
     original = revision._revision_vector
@@ -755,6 +755,79 @@ def test_revision_collection_retries_concurrent_commit(isolated, monkeypatch):
     assert context("analysis_stats")[2] == first
 
 
+@pytest.mark.parametrize("family", ["analysis_stats", "analysis_records"])
+def test_revision_collection_ignores_concurrent_operational_commits(isolated, monkeypatch, family):
+    from backend.services import analysis_snapshot_revision as revision
+
+    with sqlite3.connect(isolated[0]) as writer:
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        writer.execute(
+            """INSERT OR IGNORE INTO cover_cache_state(
+                entity_type,entity_id,source_url_hash,status
+            ) SELECT 'albums',album_id,'fixture','ready' FROM albums ORDER BY album_id LIMIT 1"""
+        )
+    conn = db.get_db(readonly=True)
+    try:
+        before = revision.source_revision(conn, family)
+        writes = conn.total_changes
+        original = revision._revision_vector
+        commits = []
+
+        def update_operational_state():
+            with sqlite3.connect(isolated[0]) as writer:
+                writer.execute(
+                    "UPDATE cover_cache_state SET updated_at=?",
+                    (str(len(commits)),),
+                )
+            commits.append(True)
+
+        with ThreadPoolExecutor(1) as pool:
+
+            def interleave_commit(reader, tables):
+                result = original(reader, tables)
+                pool.submit(update_operational_state).result(timeout=5)
+                return result
+
+            monkeypatch.setattr(revision, "_revision_vector", interleave_commit)
+            assert revision.source_revision(conn, family) == before
+        assert commits
+        assert conn.total_changes == writes
+        assert not conn.in_transaction
+    finally:
+        conn.close()
+
+
+def test_revision_collection_keeps_one_snapshot_and_next_read_observes_fact_commit(
+    isolated, monkeypatch
+):
+    from backend.services import analysis_snapshot_revision as revision
+
+    with sqlite3.connect(isolated[0]) as writer:
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+    conn = db.get_db(readonly=True)
+    try:
+        before = revision.source_revision(conn, "analysis_records")
+        original = revision._revision_vector
+        changed = []
+
+        def interleave_fact(reader, tables):
+            result = original(reader, tables)
+            if not changed:
+                with sqlite3.connect(isolated[0]) as writer:
+                    writer.execute(
+                        "UPDATE plays SET ms_played=ms_played+1 WHERE play_id=(SELECT MIN(play_id) FROM plays)"
+                    )
+                changed.append(True)
+            return result
+
+        monkeypatch.setattr(revision, "_revision_vector", interleave_fact)
+        assert revision.source_revision(conn, "analysis_records") == before
+        assert not conn.in_transaction
+        assert revision.source_revision(conn, "analysis_records") != before
+    finally:
+        conn.close()
+
+
 def test_revision_reads_no_fact_rows_and_invalid_tracking_fails_closed(isolated, monkeypatch):
     from backend.services import analysis_snapshot_revision as revision
 
@@ -771,6 +844,7 @@ def test_revision_reads_no_fact_rows_and_invalid_tracking_fails_closed(isolated,
             writer.execute("DROP TRIGGER analysis_rev_plays_update")
         with pytest.raises(ValueError, match="private migration or repair"):
             revision.source_revision(conn, "analysis_stats")
+        assert not conn.in_transaction
         with sqlite3.connect(isolated[0]) as writer:
             revision.install_revision_tracking(writer)
         assert revision.source_revision(conn, "analysis_stats") != before
