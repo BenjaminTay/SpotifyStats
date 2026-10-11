@@ -673,3 +673,32 @@ route 身份解析包含 stable-ID 解析及现有 L3 preferred-scope 校验的�
 生产冻结证据在联合工作树私有`output/versus-personal-acceptance/release-ea93c476fc8c8e0584aad7419d5dc77504798cc7/`：唯一候选/1455fullgate整合收据、九步/readiness/上传/push、workflow/job/成功安装日志、8步verify与startup/前后identity，及`first-production-detail/`下原90、50ms样本、116、三guard、两版逐key比较与四失败时序。`evidence-manifest.json` SHA256 `cfbcd109c5e142a05547d2a8648e2b5c263ea8e4f81d06aaac997ca7907b63f9`固定此时证据；原始数据/输出不提交。协调及详情接收此冻结证据仅离线核对；根随后只同步六份交付文档，文档提交不作为新运行版本，不再发生产请求。
 
 `SS-2026-10-09-001`继续OPEN/Partial，`SS-2026-10-08-001`整体OOM与`SS-2026-10-11-001`手机加载弹层问题各自OPEN。本轮专辑补丁已上线，不能称全部详情性能收口。下一步唯一研发负责人为详情任务，先离线复核四个专辑深链/正常点击时序，再在同源ready隔离副本分段定位summary身份解析、overview服务/排队及取消rank重叠，形成最小待审核候选；本发布任务保持对决研发收口，不新增生产预暖、热重跑、重启、清理或部署。当前计划不归档，历史AI/门禁失败继续分列。
+
+
+## 4f3f2ac0 计数轻量读取正式生产首次验收（2026-10-11，OPEN/Partial）
+
+详情为唯一产品commit owner，提交 `4f3f2ac0436ba6556bc3ca90773860e18cd9dc77`，parent `f76e60a3d345a7cf89f5cf9960edbff3affd9b59`，精确两个后端产品文件、一个测试文件和七份文档，共10路径。根按既有用户完整交付授权ff-only整合；1455个commit blob和整合文件与`count-source-final/fullgate/`起止绑定全部相同，默认完整run `20261011T102216.614157Z-bc0c921c926f` 八必需阶段同轮PASS、实际0、2092445ms。3900种子、186真实副本集成、前端803及三浏览器属于本地门禁；协调独立42项回归通过；详情提供的60完整响应/20计数、原四场景及串行每版6请求证据保持分层。原并发CPU28.020→35.316秒、取消rank增加与串行6.427→6.349秒并存，不能用串行控制宣布并发/OOM已解决。详情docs256与根docs237分别是对应工作树全量计数。
+
+发布前仅只读核验：生产ea93三healthy、schema90、6333done/38历史failed且active0，19源事实与原baseline完全相同，rank4/detail4/BB48ready；MemAvailable1399111680B，可用磁盘9843843072B高于保守预算4526792704B。固定SHA现成快照九步verify/export/validate均0，源四库/WAL内容、inode、mtime和哈希不变，零冷建/零源写；三清单600/哈希/原子上传实际0。正常push main实际0；首次内联远端确认断言失败，未保留该次返回码/输出，不判定原因；随后一次独立只读ls-remote实际0确认精确SHA，无重复push。原始异常保留在交付记录。
+
+[CI 38140719684](https://github.com/BenjaminTay/SpotifyStats/actions/runs/38140719684)和[Release 38140719661](https://github.com/BenjaminTay/SpotifyStats/actions/runs/38140719661)均attempt1实际success，共7jobs通过，包括三部署模式、镜像和正式安装114476731493。现有Online Backup、精确ready/source fence、健康与联合回退合同完成正常发布；保存成功安装日志，不称本轮执行过真实回滚演练。NoDeploy为paths-not-triggered。独立8步runtime实际0：三容器完整SHA/healthy一致，25镜像源码和3host helpers哈希匹配，schema90/rank4/detail4/BB48ready。启动维护自然结束，6343done/38历史failed、active0；backend `4a6a7fa581e0df8e79865580c6c708e433a5812d3642be2df53856c60c743783`、image `sha256:69ca984889aa8bebad9ea934c0b3518e94238919ef0f1994468c85af0835fd76`，StartedAt `2026-10-11T13:13:06.235382695Z`、host uvicorn118850/startticks154756440。只验公开HTTPS，私有入口现状保持，无额外手动重启、GC、清理或统计预暖。
+
+原五工具哈希、90key/顺序/断言、fresh contexts、正常PWA及原production阈值保持：click core2000ms、direct core3000ms、all2500ms（direct all从shell计）。唯一首次窗口`summarize_natural`确认完整 **89通过/1性能失败，仍Partial**；Chromium41/42、Firefox24/24、WebKit24/24。45click全部达标，点击core最大1114ms/all1496ms，direct core最大3125.1ms、shell后all最大1638.3ms。pageerror0、非GET0、12屏外排名检查通过，没有热重试覆盖FAIL。浏览器原始UTC窗口为`2026-10-11T13:17:54.134889+00:00`至`2026-10-11T13:23:04.763239+00:00`。
+
+| 对照版本 | 原通过数 | 原失败→本轮通过 | 原通过→本轮失败 | 本轮通过数 |
+| --- | --- | --- | --- | --- |
+| ea93 | 86/90 | 3 | 0 | 89/90 |
+| 6dac | 79/90 | 10 | 0 | 89/90 |
+| 626 | 83/90 | 6 | 0 | 89/90 |
+
+剩余原index39：Chromium/1280px/专辑direct/固定阈值/L3，core3125.1ms超过原3000ms门槛，shell后all1638.3ms通过。原summary请求wall747.19ms/service197.592ms，随后overview wall1258.91ms/service969.220ms；保留串联和请求外等待事实，不把单轮125.1ms超额归因网络、调度或取消rank。该例在ea93为4634.9ms，但仍不能改为Pass。本地候选快速结果和生产旧83/7、79/11、86/4、本轮89/1分别保留。
+
+浏览器关闭后原资源采样继续10秒idle，只用绑定token/PID/startticks停止自有采集器，actual0；之后浏览器strict通过才执行原116 API，108个200+8个未知404全部通过，完整payload/快照头/四album identity规范化/source和filter fence不变。before→browser、browser→API、before→API三strict v2窗口均实际0/all true：57保护表、37原始表、5队列表、搜索发布/FTS、所有aux和6sidecar发布表、schema/epochs/fence/文件身份守恒；access clock变化为空，每次七只读连接关闭。
+
+**原验收wrapper最终实际退出1，原始失败保留。** 所有90/116/strict/资源和after-runtime步骤已取得原始输出，最后`containers/config`整体digest断言失败；原`execution-receipt.json` SHA256 `c2c4adb62834878461b7e29a1b123edf4a0dcebc7f38a85b763cfae049bed5d6`含AssertionError，没有改写成complete/exit0。验收前后全部container ID/image/revision/starttime/init和真实uvicorn PID/startticks相同，仅backend及public-web配置整体digest不同。随后唯一一次只读inspect在相同当前Config/HostConfig及完整Mounts元素下枚举挂载列表排列，三个容器都精确重现前后两个原始digest；backend2挂载/public-web3挂载，证明差异仅为Docker返回列表顺序。补证`identity-order-diagnostic.json` SHA256 `d83675c950524b54bad9be786a8c4e7a9516c834653eaf72a64695e58040ac68`，以及`acceptance-completion-supplement.json`单列物理配置/进程连续性成立。该补证不修改原断言结果、不放宽性能阈值、不重跑90或发统计GET；五冻结工具未变。整体仍因1项性能FAIL为Partial，不能把原wrapper称为实际0。
+
+50ms采样窗口（北京时间）`2026-10-11T21:17:53.950172+08:00—2026-10-11T21:23:17.157600+08:00`，6465样本、最大gap51.256ms，覆盖全部90及idle。RSS940.730469→1513.730469→1493.691406MiB，PSS938.339844→1511.330078→1491.291016MiB，CPU72.72秒；相对ea93的峰/末分别增加52.281250/32.503906MiB，CPU少1.62秒，不能称资源持续改善或确定单因素因果。cgroup全部OOM事件增量0，host MemAvailable2202456064→1621016576B、host oom_kill累计1→1。idle仍约1.46GiB，384MiB宽表预算不是RSS上限；整体OOM继续独立OPEN。副本并发CPU回归与生产此窗口资源各自保留。
+
+生产证据冻结在联合工作树忽略目录`output/versus-personal-acceptance/release-4f3f2ac0436ba6556bc3ca90773860e18cd9dc77/`：候选/整合/1455门禁绑定、现成快照九步/source/上传/push/首次确认边界、actual workflows/jobs/成功安装日志、8步runtime/startup，及`first-production-detail/`原90/116/3strict/全50ms资源、三个旧版逐key比较、原wrapper失败与独立连续性补证。`evidence-manifest.json` SHA256 `44cb4bebec82fd336776abc4af330fdc76cb78e4892c4316a724c57843df6903`固定此时339文件；原始数据和output不提交。协调已独立离线确认89/1、116/三strict、资源增加及挂载顺序补证；原失败与补证分列保留。根随后仅同步六份交付文档，文档提交不是新的运行版本，不再部署或发生产请求。
+
+`SS-2026-10-09-001`继续OPEN/Partial，`SS-2026-10-08-001`整体OOM、`SS-2026-10-11-001`手机加载弹层各自OPEN。后续唯一产品负责人仍是详情任务：先离线复核index39、正常点击和完整资源，再提出同源副本有界分段诊断；不改前端并发猜测归因，不扩大生产热重跑/重启/清理/循环发布，对决已完成状态保持，计划不归档。

@@ -1,5 +1,5 @@
 # SpotifyStats 文档地图
-- [`reports/2026-10-09-music-detail-chart-performance-acceptance.md`](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：ea93专辑排名复用已正式上线，7jobs/8步runtime通过；原FIRST90为86/90，较6dac7改善/0退化、6266改善/3退化，全部点击达标、4专辑深链仍慢。116 API/三strict通过；RSS峰/末约1461MiB、CPU74.34秒，OOM增量0但整体OPEN。原本地fullgate-v3八阶段PASS及历史FAIL分别保留，手机弹层旧问题未修复；新计数轻量读取候选60完整响应/20计数等价、原四场景双版本/四strict通过，新run20261011T102216.614157Z-bc0c921c926f默认完整full8同轮PASS/实际0，1455源码起止一致；全窗口CPU增加、生产归因边界保留，发布前串行6响应/两strict通过，rank CPU约+0.5%，未复现原并发大幅增加；协调已批准提交，未新发布。
+- [`reports/2026-10-09-music-detail-chart-performance-acceptance.md`](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：4f3f计数轻量读取已正式发布，7jobs/8步runtime通过，原90为89/1（ea93改善3/退化0，6dac10/0、6266/0）；116/三strict通过。原wrapper配置哈希断言exit1保留，独立挂载顺序精确置换补证连续性。RSS峰1514/末1494MiB较ea93增加，OOM和手机弹层仍OPEN，下一步仅离线复核剩余一例及副本诊断；本地full8与旧首次/失败分层保留。
 
 - [榜单对决个人播放统计已完成规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)：S0–S5完成，c58775f0已发布，原公开HTTPS首次14/28及资源/完整守恒通过；人类明确私有入口保持现状
 - [`plans/2026-10-09-music-detail-chart-performance-plan.md`](plans/2026-10-09-music-detail-chart-performance-plan.md)：`SS-2026-10-09-001` 已完成只读诊断并形成修复规划；独立overview、已发布事实复用、project目标化、请求与错误状态、冷访问和资源验收，S0已冻结；S1–S3已实现，S4/S5验收中

@@ -244,6 +244,15 @@ ff-only 同步 f76 文档基线后，以 ea93 产品和相同路径 ready 副本
 
 下一最小实现方向为同事务、同已验证membership/source-check的有效曲目数有界读取：减少summary和overview为计数完整组装DataFrame、补元数据及逐行SQLite往返的工作。先固定计数、metadata join、L3 scope/别名/404/503/只读/完整响应合同，再决定实现，不跳过身份或source fence。候选需相关回归、同源完整payload/strict/资源专项；专项通过后冻结并仅跑一次默认full8，再交协调审阅提交/发布。当前没有产品候选，不跑full8。Docker daemon未运行，Linux受限对照NOT_RUN；Darwin/10逻辑CPU/24GiB与生产约3.64GiB及原90前缀不同，性能/OOM继续OPEN。完整分段数据见[验收报告](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)同源副本四场景节。
 
-### 有效曲目数轻量读取实现中
+### 发布前有效曲目数轻量读取实现与验证记录
 
 真实人类“继续下一步”授权后进入最小后端实现：复用原membership校验，将目标L1完整来源事实与source-check按有界JSON查询读取，逐目标验证原行数/plays/total_ms/digest后保留原representative track/artist inner join，直接按canonical song key计数。仅计数消费改用新路径，完整project来源解释继续原DataFrame路径；不增加缓存、迁移、发布格式或GET写入，不改前端并发。边界回归、同源60完整响应/20计数oracle、原四场景双版本及四strict已通过；计数SQL及服务段减少，深链1.99/1.83→0.73/0.64秒，取消rank及全窗口CPU增加的边界保留。冻结后新默认完整full8于run20261011T102216.614157Z-bc0c921c926f同轮PASS/实际0、2092445ms，1455源码起止一致；发布前两版本各一次串行6请求完整响应及两strict通过，无取消/重叠，rank构建和调用次数相同、CPU约+0.5%，请求CPU6.427→6.349秒。原并发CPU增加和生产边界保留；协调已独立验收并批准精确10路径提交，不push/部署，统一发布交原联合负责人。生产86/90、整体OOM与手机弹层仍独立OPEN。
+
+
+## 2026-10-11 4f3f计数补丁发布与原首次结果
+
+4f3f2ac0436ba6556bc3ca90773860e18cd9dc77精确10路径已整合、正常推送并正式发布；默认完整full8/1455源码绑定、独立42回归和既有payload/strict/串行专项仍为本地证据。正式CI/Release attempt1共7jobs、8步runtime通过，启动维护自然结束。原90顺序/fresh/PWA/阈值不变，唯一首轮89通过/1失败，相对ea93改善3/退化0、6dac10/0、6266/0；45click全通过，剩index39固定L3专辑direct3125.1ms超过原3000ms。后置116和三strict57/37/6侧库全通过，性能仍Partial。
+
+原wrapper最后容器config digest断言exit1完整保留；之后单次只读精确置换当前Mounts列表重现前后原hash，证明仅返回顺序变化，物理配置、容器/镜像/启动时间和uvicorn118850/startticks154756440连续。补证与原失败分别存档，未重跑90、改五冻结工具或发统计GET。全50ms资源RSS940.730→1513.730→1493.691MiB、CPU72.72秒，较ea93峰/末增加52.281/32.504MiB，OOM增量0但idle仍约1.46GiB，整体OOM继续OPEN；原副本并发CPU回归不由串行证据抵消。
+
+本轮只收尾六交付docs及实际文档CI，产品source仍4f3f。下一步唯一研发负责人为详情任务，先离线复核index39、正常点击和完整资源，再同源副本有界分段定位；不循环生产热重跑/重启/清理/发布，不猜测修改前端并发。原83/7、79/11、86/4、新89/1和所有本地FAIL、wrapperFAIL均保留，手机加载弹层独立OPEN，对决保持完成，本计划不归档。完整证据和排序补证见[验收报告](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)4f3f首次节。
