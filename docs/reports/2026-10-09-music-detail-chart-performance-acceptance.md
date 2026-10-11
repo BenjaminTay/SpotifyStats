@@ -442,3 +442,40 @@ before capture01:43:39.386220–01:44:06.233434；after-browser01:51:18.382943�
 本任务为唯一候选commit owner，只纳入已验收18路径及现有`docs/CHANGELOG.md`；原始数据、输出证据及其他session工作均不提交。README当前产品描述适用，AGENTS/CLAUDE一致且无需改规则；docs地图和当前交付状态同步。提交前执行文档审计、diff检查与项目hooks，应用/测试源码保持全门禁冻结哈希，纯文档收口不重跑39分钟门禁；提交SHA、父提交与精确路径保存在私有commit receipt及任务最终回复。
 
 人类交付授权已生效，本提交交付冻结候选；联合整合、正常推送和正式发布由“排查榜单对决数据加载慢”session（`01a11bf5-d114-7b40-b133-716fd1e27cc1`）唯一执行。为避免并发生产探针，原FIRST90/资源/116/strict由该执行者单次执行，再由详情任务离线独立核对新release证据。当前没有新增生产请求或重启，626原83/90、7性能失败及OOM开放保持；正式发布与线上结果必须后续另行登记。
+
+
+## 6dacfae7 正式生产首次验收（2026-10-11，OPEN/Partial）
+
+沿用上述真实人类授权，由联合负责人将唯一候选commit `6dacfae7f293c9a8d5f9b6f573a5f39d5d84535c`（parent `4d9e0ba3277af976ee2a8e424706710b3686013a`）ff-only整合，19路径和1454应用文件与通过默认full8的冻结清单精确一致。正常push main实际退出0，05:07:33–05:07:40 UTC。发布前现成rank/detail/Billboard验证、导出、验证共九步全部0，4/4/48ready，源19事实及四库/WAL的inode、字节、mtime和SHA不变，零冷建/零源写入。三个清单上传600/哈希/原子更名通过；发布前可用11680022528B，高于保守晚阶段预算5189046272B，没有新清理。
+
+[CI 38113788309](https://github.com/BenjaminTay/SpotifyStats/actions/runs/38113788309)与[Release 38113788308](https://github.com/BenjaminTay/SpotifyStats/actions/runs/38113788308)均attempt1 success，合计7实际jobs全部通过；Release含独立quality、full/showcase/dual三模式、images及安装114397441797。NoDeploy本次paths-not-triggered，不能套用626的三workflow/11jobs。正式安装按现有Online Backup、exact清单复用、source fence与联合回退流程成功；成功安装日志已保存，不称本轮执行了真实回滚演练。
+
+独立8步实际核验退出0，三healthy且完整SHA一致，23个镜像源码文件和3个host helper哈希匹配固定commit；schema90/rank4/detail4/BB48ready。Backend container `bc9c15f93fa1d0f6d7e49e3308684a83e3b7f26446752862f78152da63c8f7d0`，image `sha256:bd09b2852961203bb96c012ce213f4d6f08246a0106e1d8ea3e78c31e0db1d01`，StartedAt `2026-10-11T05:35:54.152247887Z`，init3861235，host uvicorn3861278/startticks152013232。05:39:27 UTC启动维护自然结束，6323done/38历史failed，无pending/running；首轮前VmRSS970740kB，启动高基线单列。验收后仍为同一三container/config与真实uvicorn，无额外手动重启、预暖、强制GC或挑选重跑；私有入口未改，本次仅公开HTTPS。
+
+原五个验收工具SHA保持，原90key与顺序、fresh contexts、正常PWA、production门槛及断言一致。浏览器窗口05:40:13.125412–05:46:04.321714 UTC；45点击core≤2000ms/all≤2500ms，45深链core≤3000ms、all从shell计≤2500ms。90完整完成，**79通过/11性能失败，生产仍Partial**：Chromium31/42、Firefox24/24、WebKit24/24；无pageerror、无非GET，12个屏外排名检查通过。相对626的83/7，5个原失败改善、9个原通过退化、2个原失败仍失败，净-4；保留历史与本轮失败，不以API通过替代性能通过。点击core最大2585.8ms/all2953.8ms，深链core最大5216.5ms/shell后all3007.1ms。
+
+以下11项均Chromium；all使用对应原flow门槛口径：
+
+| 实体 | 宽度 | flow | dynamic/merge | core ms | all gate ms | 同key变化 |
+| --- | --- | --- | --- | --- | --- | --- |
+| album | 900 | direct | true/L2 | 3868.5 | 1169.8 | 原通过→失败 |
+| artist | 900 | direct | true/L2 | 3257.2 | 449.8 | 原通过→失败 |
+| track | 1280 | direct | true/L2 | 3663.2 | 332.2 | 原通过→失败 |
+| album | 1280 | click | true/L2 | 2585.8 | 2953.8 | 原通过→失败 |
+| album | 1280 | direct | false/L2 | 3397.2 | 1507.4 | 原通过→失败 |
+| artist | 1280 | click | false/L2 | 2496.7 | 2887.5 | 原通过→失败 |
+| artist | 1280 | direct | false/L2 | 3202.5 | 458.5 | 原通过→失败 |
+| album | 1280 | direct | true/L3 | 5216.5 | 3007.1 | 原通过→失败 |
+| track | 1280 | click | false/L3 | 2581.2 | 2938.5 | 原失败仍失败 |
+| track | 1280 | direct | false/L3 | 3545.3 | 397.0 | 原通过→失败 |
+| album | 1280 | direct | false/L3 | 3436.9 | 1709.6 | 原失败仍失败 |
+
+冻结请求时序显示多个失败的summary/overview `detail_service`本身约1.86–2.43秒，例如艺人900深链summary2053.306ms/overview2121.093ms，歌曲1280深链summary2344.495ms/overview2300.876ms；另有页面导航和请求外等待。证明服务路径延迟仍存在，不能归结为纯静态加载；本轮没有控制变量对照，不能直接认定共享预算/来源事务是退化原因，也不能称cold rank复用解决了整个详情路径。
+
+自然90结束且浏览器关闭后才执行原公开116 API，108个200及8个未知404全部通过，完整响应/快照头/四album identity字段规范化沿原合同，source/filter fence与原owned事实一致。before→browser、browser→API、before→API三个strict v2读窗口全部退出0：57保护表、37原源、五队列表、搜索发布/FTS、全部aux与6侧库发布表、schema/epochs/fence/文件身份均守恒；access clocks零变化，各capture的7只读连接关闭。自然90与116分别报告，未在首轮前执行116。
+
+50ms采样从服务基线READY先于浏览器启动，到全context关闭后10秒闲置观察结束；7279样本覆盖完整90窗口，实际最大gap53.22ms，collector凭token/PID/startticks仅停止自身并实际退出0。RSS947.988281→2308.484375→2006.082031MiB，PSS945.613281→2306.126953→2003.724609MiB，CPU147.77秒；相对626同90记录峰值约低199.594MiB、末驻留低192.168MiB，属于两次真实记录的观察差异，非单因素因果。384MiB只是宽表估算预算，**整体RSS/OOM仍开放**。cgroup全部OOM事件增量0；host available2115014656→1022005248B，host oom_kill累计1→1，未新增内核OOM，但仍有约2GiB驻留和主机压力。
+
+私有证据目录为联合worktree的`output/versus-personal-acceptance/release-6dacfae7f293c9a8d5f9b6f573a5f39d5d84535c/`：push/九步/upload/workflow receipt、成功安装日志、8步运行核验与前后process identity，以及`first-production-detail/`内原90、资源、116、三guard与离线同key比较/失败时序。根清单`evidence-manifest.json` SHA256 `e3f7cdd17f1aaf4718085a9f0e0b94e34ce519f3b8e47203d609580f874444a9`固定此时证据；输出/真实数据不提交。详情任务仅离线独立核对，根仅同步交付文档，不另开生产热重跑。
+
+下一步维持`SS-2026-10-09-001` OPEN/Partial与OOM独立OPEN。在同源就绪副本对上述失败请求分段定位来源revision、projection读取与服务排队/CPU，并对共享budget前后做有界相同顺序对照，再决定最小修复；先复用已保存trace，不追加生产预暖/重启/压力或循环部署。旧AI超时原因仍未确定，完整full8准入证据及其历史FAIL分列。本计划不归档，对决已完成状态不重开。

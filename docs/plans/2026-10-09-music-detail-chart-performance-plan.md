@@ -217,3 +217,12 @@ AI空白在原前序导航链及直接进入的基线/候选桌面手机八场�
 ## 2026-10-11 最终验收与交付授权
 
 协调session已核对冻结来源/候选补丁、默认full8/退出0，审阅核心实现并独立63项重点回归全部通过。真实人类turn`01a12951-3aa6-7b63-8c19-ef31d0b45f44`明确授权验收通过后提交、正常推送、正式发布和生产验收；本任务唯一提交已验收18路径及必要CHANGELOG/交付状态，不重复未变源码全门禁。联合发布指定由对决session唯一整合推送/发布并执行原FIRST90/资源/116/strict，详情离线核对，以免两个生产执行者交叉。原AI失败和生产83/90、7性能失败/OOM开放保持；新release证据完成后再登记状态，不提前归档。
+
+
+## 2026-10-11 6dac正式发布与原首次验收
+
+6dacfae7唯一候选已正常推送/正式发布，CI+Release attempt1共7实际jobs及独立8步runtime通过，schema90/rank4/detail4/BB48ready。启动维护自然结束，原五工具/90key/顺序/门槛不变，新进程无额外手动重启、预暖或挑选重跑。公开原FIRST90为79通过/11性能失败，较62683/7有5改善/9退化；Firefox和WebKit各24/24，Chromium31/42。原116 API及三个strict57/37/6侧库完整读窗口通过，性能仍Partial。
+
+50ms全90 RSS947.988→2308.484→2006.082MiB，CPU147.77秒，cgroup/host OOM增量0，host available约2.12→1.02GB。宽表估算预算384MiB不等于RSS上限，整体OOM保持独立开放。失败trace仍有summary/overview服务1.86–2.43秒及导航/请求外等待；本次单轮不能识别budget或revision事务的回归因果。
+
+下一步先由详情任务离线独立核对原证据，再在同源就绪副本按失败请求分段定位revision/projection读取、服务排队和CPU，对共享budget前后做有界同序列对照后决定最小修复。原11失败与旧83/7、AI失败均保留；本计划不归档，不追加生产热重跑/重启/循环部署，对决已完成状态不重开。完整运行、guard、资源和证据绑定见[验收报告](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)6dac首次节。
