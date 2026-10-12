@@ -230,6 +230,7 @@ SpotifyStats/
 | 准备 Spotify JSON 和导入数据 | [`data/README.md`](data/README.md) |
 | 查看已完成、待完成与探索方向 | [`docs/DEVELOPMENT_STATUS.md`](docs/DEVELOPMENT_STATUS.md) |
 | 查看当前文档地图 | [`docs/README.md`](docs/README.md) |
+| 开发协作、提交与分支收尾 | [`docs/reference/development-delivery-workflow.md`](docs/reference/development-delivery-workflow.md) |
 | 理解播放统计口径 | [`docs/reference/playback-stats-rules.md`](docs/reference/playback-stats-rules.md) |
 | 理解音乐档案统计 | [`docs/reference/account-archive-statistics.md`](docs/reference/account-archive-statistics.md) |
 | 处理版本、署名、艺人和流派语言 | [`docs/reference/music-metadata-management.md`](docs/reference/music-metadata-management.md) |

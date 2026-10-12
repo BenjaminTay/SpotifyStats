@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [开发分支、历史补丁与共享文档整理](2026-10-12-development-worktree-closeout.md)：候选取舍、主线提交映射、残余资源补丁与恢复入口。
+
 - [榜单对决个人播放性能与正确性验收](2026-10-08-versus-personal-statistics-performance-acceptance.md)：真实副本 API、资源与完整发布对账通过；浏览器、完整全栈与生产专项正在收口。
 
 - [日期精度与详情空统计生产专项验收、OOM资源跟踪](2026-10-08-release-date-production-delivery.md)

@@ -1,12 +1,26 @@
 # SpotifyStats 开发状态总表
 
-> 最后核验：2026-10-11（4f3f计数轻量读取已正式发布；原公开FIRST90为89通过/1性能失败，116 API/三strict通过；原wrapper配置列表哈希断言失败保留，独立补证证明仅挂载顺序变化；详情性能/OOM/手机弹层仍开放）
-> 当前进展：对决`SS-2026-10-08-002`保持S0–S5完成。详情计数轻量读取已上线，默认完整full8/1455源码及独立42回归通过；生产89/1，相对ea93改善3/0退化、6dac10/0、6266/0。全部点击达标，剩index39固定L3专辑深链3125.1ms；116/三strict通过。RSS941→1514→1494MiB、CPU72.72秒，峰/末较ea93增加52.28/32.50MiB，无新OOM仍不能关闭；原并发CPU回归和手机弹层保持独立。下一步由详情任务离线复核剩余一例和资源。
-> 当前生产：`4f3f2ac0436ba6556bc3ca90773860e18cd9dc77`；CI/Release attempt1共7实际jobs及独立8步runtime通过，三OCI完整SHA/healthy、25源码/3helpers、schema90/rank4/detail4/BB48ready。启动维护自然结束，uvicorn118850/startticks154756440连续；原wrapperexit1与Mounts顺序精确置换补证分列保留，无额外手动重启/预暖/热重跑，私有入口未改。旧83/7、79/11、86/4分别保留。
+> 2026-10-12 仓库整理：冻结的前端、JSON与艺人范围候选以及旧OOM补丁已独立归档；当前仅详情负责人在 `codex/album-rank-cost` 定位 Top 250 统计成本、切页后的排名计算和启动驻留。共享状态文档统一由协调方合入 main；候选功能通过不代表资源准入或生产收口。见[研发收尾规则](reference/development-delivery-workflow.md)与[本轮处置记录](reports/2026-10-12-development-worktree-closeout.md)。
+
+> 最后核验：2026-10-12（本地分支与候选处置已核验；下列生产结论沿用10月11日保存证据，未新做生产复验；4f3f计数轻量读取已正式发布；原公开FIRST90为89通过/1性能失败，116 API/三strict通过；原wrapper配置列表哈希断言失败保留，独立补证证明仅挂载顺序变化；详情性能/OOM/手机弹层仍开放）
+> 当前进展：对决`SS-2026-10-08-002`保持S0–S5完成。详情计数轻量读取已上线，默认完整full8/1455源码及独立42回归通过；生产89/1，相对ea93改善3/0退化、6dac10/0、6266/0。全部点击达标，剩index39固定L3专辑深链3125.1ms；116/三strict通过。RSS941→1514→1494MiB、CPU72.72秒，峰/末较ea93增加52.28/32.50MiB，无新OOM仍不能关闭；原并发CPU回归和手机弹层保持独立。当前由详情唯一负责人在album-rank-cost分段定位Top250统计与启动驻留，详情和OOM未收口。
+> 最后保存生产证据（2026-10-11）：`4f3f2ac0436ba6556bc3ca90773860e18cd9dc77`；CI/Release attempt1共7实际jobs及独立8步runtime通过，三OCI完整SHA/healthy、25源码/3helpers、schema90/rank4/detail4/BB48ready。启动维护自然结束，uvicorn118850/startticks154756440连续；原wrapperexit1与Mounts顺序精确置换补证分列保留，无额外手动重启/预暖/热重跑，私有入口未改。旧83/7、79/11、86/4分别保留。
 > 历史日期专项已发布业务代码：`76a4968`；CI attempt2质量/三模式/镜像/部署success，attempt1传输SSH reset保留。
 > 历史日期专项生产核验：76a4968、schema89、dual三healthy（12:54）；五年精确年度、两端30次API、两端双视口与最终61表事实守恒通过。连接已恢复，OOM及详情访问后内存增长未代码修复。
 > 本轮独立问题：`SS-2026-10-11-001` 手机播放统计加载期间打开时间弹层，数据返回后控件重新挂载、弹层消失。已在未改动前端基线受控复现；门禁仅等待初始页面就绪再验证筛选，产品交互尚未修复，OPEN/P2。
 > 本文件是开发状态与下一步工作的统一入口；详细规则、方案和原始验收证据继续在各自文档维护。
+
+## 当前研发与分支处置
+
+| 状态 | 分支 / 候选 | 负责人及下一步 |
+| --- | --- | --- |
+| ACTIVE | `codex/album-rank-cost`；SS-2026-10-09-001 / SS-2026-10-08-001 | 「排查详情页榜单成绩加载慢」唯一研发负责人；有界定位、最小补丁与新版本验收 |
+| 整合保留 | `codex/versus-detail-integration` | 统一整合与历史生产证据，现成rank manifest仍被当前研发读取；对决不恢复独立开发 |
+| ARCHIVED | 前端设置加载、JSON名称传输、艺人范围身份三个候选 | 收益或总体资源准入未证明，保存补丁/证据，不进入main业务代码 |
+| ARCHIVED | 历史OOM混合补丁 | 已覆盖内容关闭；未采用的串行锁/窄输入等保留归档，只有当前定位证明需要时才提取 |
+| CLOSED（本地） | CI挂起诊断分支 | 主要修复已有主线对应，历史提交与差异已保存；远端未删除 |
+
+实现、提交、推送和发布分别记录；[逐项处置与恢复入口](reports/2026-10-12-development-worktree-closeout.md)。
 
 ## 当前概况
 
@@ -62,7 +76,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 | --- | --- | --- | --- | --- | --- |
 | SS-2026-10-08-001 | 生产OOM与详情访问内存增长 | OPEN；4f3f全90 RSS940.730→1513.730→1493.691MiB、CPU72.72秒，较ea93峰/末增加52.281/32.504MiB；本窗OOM增量0，idle仍约1.46GiB，历史global OOM保持 | P1：同源副本定位预算外驻留和重叠服务，保留原并发CPU回归；384MiB缓存预算不是RSS上限，不以单窗无OOM关闭 | [资源证据](reports/2026-10-09-music-detail-chart-performance-acceptance.md)4f3f首次节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-11 |
 | SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | COMPLETED / RELEASED；c587正式CI/NoDeploy/三模式/镜像/部署及独立runtime通过；原公开FIRST14/28全Pass（最大1.669秒）、420秒完整资源/守恒、96 API与三denial通过。人类明确仅公开HTTPS，S0–S5完成，历史失败保留 | P1：三库准备补修已验证，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push已完成，原公开入口已通过；私有SSH HTTP48仅为功能证据。本项完成；私有入口保持现状。详情独立首次已完成：39/90性能通过、116功能及完整读取守恒通过，详情与OOM仍开放 | [完整规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
-| SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | OPEN/Partial；4f3f已上线，原90为89/1，相对ea93改善3/退化0、6dac10/0、6266/0；全部点击通过，剩index39固定L3专辑深链3125.1ms。116/三strict通过；原wrapperexit1保留，物理配置/进程连续性由挂载排序精确置换补证 | P1：详情任务离线复核剩余一例及资源，再同源副本有界分段定位；不热重跑/重启/循环发布。原并发CPU回归、OOM及手机弹层独立OPEN，计划不归档 | [规划](plans/2026-10-09-music-detail-chart-performance-plan.md)、[验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md)4f3f首次节 | 2026-10-11 |
+| SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | OPEN/Partial；最后保存生产4f3f首次89/1，API116/三strict通过；本轮未生产复验，旧失败保留 | P1：前三轮候选已归档未采用；唯一详情负责人在codex/album-rank-cost分段定位Top250统计、切页后排名计算与启动驻留。源码发现尚待测量确认，不整体合入旧OOM补丁 | [规划](plans/2026-10-09-music-detail-chart-performance-plan.md)、[验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md)、[候选处置](reports/2026-10-12-development-worktree-closeout.md) | 2026-10-12 |
 | SS-2026-10-11-001 | 手机播放统计加载时弹层状态丢失 | OPEN/P2；未改动前端基线受控复现，加载中打开时间弹层后，数据到达导致控件重新挂载并关闭弹层；尚未产品修复 | P2：独立保持控件/编辑状态连续性；本轮门禁只等待初始页面就绪，保留原超时与应用后断言，不用门禁Pass关闭产品问题 | [台账](issues/2026-08-27-issue-register.md)、[受控复现](reports/2026-10-09-music-detail-chart-performance-acceptance.md)本地专辑候选节 | 2026-10-11 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付；本轮单次24分22秒 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07（单次计时，不代表三次稳定收口） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |

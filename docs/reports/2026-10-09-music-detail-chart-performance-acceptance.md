@@ -1,6 +1,6 @@
 # 音乐详情榜单成绩性能验收
 
-日期：2026-10-11。事项：`SS-2026-10-09-001`。当前结论：**后端候选已完成本地默认完整八阶段Pass并通过最终协作验收，本提交收口；联合推送、发布和生产验收已授权，待执行。AI空白历史失败未稳定再现，基线/候选八场景均正常，未新增AI产品代码；原失败与原因未确定的边界保留。生产仍为626，原FIRST90为83通过/7性能失败，生产性能与整体OOM未收口**。
+日期：2026-10-12。事项：`SS-2026-10-09-001`。当前结论：**艺人范围名称读取与已验证身份复用候选已实现，201个不同专项/真实身份oracle/9完整响应/两strict通过；单轮局部收益小，完整资源分窗有正负差异，总体资源准入NOT_PROVEN，整体Partial，full8 NOT_RUN，未提交发布**。最新结果见末尾“艺人范围名称读取与已验证身份复用”；前一JSON候选资源准入NOT_MET仍独立暂缓，旧settings前端候选也保持冻结。最后保存的生产4f3f首次89/1、OOM及手机OPEN保留，本轮无生产复验。
 
 本项基线为 `d5ba3094`，在独立工作树和 94,760 条播放的 Online Backup 副本执行。原始播放、身份、署名、人工覆盖和治理关系不作为本项写入目标；生产 OOM 和对决个人统计分别验收。
 
@@ -702,3 +702,175 @@ route 身份解析包含 stable-ID 解析及现有 L3 preferred-scope 校验的�
 生产证据冻结在联合工作树忽略目录`output/versus-personal-acceptance/release-4f3f2ac0436ba6556bc3ca90773860e18cd9dc77/`：候选/整合/1455门禁绑定、现成快照九步/source/上传/push/首次确认边界、actual workflows/jobs/成功安装日志、8步runtime/startup，及`first-production-detail/`原90/116/3strict/全50ms资源、三个旧版逐key比较、原wrapper失败与独立连续性补证。`evidence-manifest.json` SHA256 `44cb4bebec82fd336776abc4af330fdc76cb78e4892c4316a724c57843df6903`固定此时339文件；原始数据和output不提交。协调已独立离线确认89/1、116/三strict、资源增加及挂载顺序补证；原失败与补证分列保留。根随后仅同步六份交付文档，文档提交不是新的运行版本，不再部署或发生产请求。
 
 `SS-2026-10-09-001`继续OPEN/Partial，`SS-2026-10-08-001`整体OOM、`SS-2026-10-11-001`手机加载弹层各自OPEN。后续唯一产品负责人仍是详情任务：先离线复核index39、正常点击和完整资源，再提出同源副本有界分段诊断；不改前端并发猜测归因，不扩大生产热重跑/重启/清理/循环发布，对决已完成状态保持，计划不归档。
+
+
+## 名称身份有序批量传输候选（2026-10-12，独立后端分支／资源准入未满足）
+
+用户“继续下一步”及协调批准后，在独立managed工作树`album-identity-json-batch/202605-SpotifyStats`、分支`codex/album-identity-json-batch`，从9468bb484f75ad9e0c5c6877447c1698834e42b3（产品4f）实现。旧详情工作树的前端settings提前11路径、全部patch/测试/文档和原证据已绑定保留，未撤销或合入本轮。该前端候选原42专项/full8通过，但38→39/32对照core1381.0→1412.6ms未改善、全批次peak+49.422MiB，发布暂缓；旧有界profile捕获GIL重取等待仍不能认定rank唯一因果，连续RSS/threadCPU未取得的Partial原样保留。
+
+本轮只有`album_project_identity._project_rows`全名称分支改变传输：保留原JOIN、ap.project_id/apa.album_id有序子查询、完整8字段、null/值类型/重复，用SQLite JSON一次传输，再恢复匹配器需要的映射。原stable ID路径继续有界原生Row；返回及匹配器注解如实声明Row或Mapping。NFKC/casefold/空白、artist歧义fail-closed、canonical/member优先、L2/L3 preferred scope及fallback、必要第二次兼容校验均不改；单项和batch共用读取。没有缓存、schema/index/依赖、SQL lower、取消/线程池/预算修改或GET写入/排队。
+
+新回归以旧SQL为独立oracle，覆盖逐字段/类型/null、重复与缺成员/空集合、明确行顺序、大整数精度、Unicode/NFKC/casefold/多空白/引号换行反斜杠、归一后同名艺人歧义、canonical/member多成员、两scope/fallback、stable ID及单项/batch消费。身份/alias API、投影/source/公开只读及详情/未ready边界专项共155项通过（77+64+14）；完整默认unit/contract/full8未宣称已跑。真实副本3181行ordered-value/type digest和完整身份完全相同。测试与实际返回均证明没有改候选事实，不能把“减少传输交接”称为“减少SQL扫描行数”。
+
+### 安静单次行读取与分配
+
+每版一个独立进程、同一Online Backup副本只读一次全行；旧rows为oracle，后续hash/实体匹配在读取计时之后。记录Python tracemalloc而不强制GC，OS页缓存冷暖未控制；tracemalloc自身有开销，不能外推为真实请求CPU。
+
+| 指标 | 基线 | JSON候选 |
+| --- | ---: | ---: |
+| rows / fields | 3181 / 8 | 3181 / 8 |
+| 行读取wall / threadCPU ms | 8.390 / 8.389 | 13.093 / 13.092 |
+| Python分配current / peak B | 1612935 / 1613327 | 2333155 / 3265681 |
+| 进程RSS before / after B | 17154048 / 24035328 | 16990208 / 27721728 |
+
+候选传输285665 UTF8 B/264659字符；有tracemalloc的SQL execute3.982ms、fetchone0.006ms、decode6.362ms。读取CPU增加约4.704ms，Python分配peak增加1652354B（约1.576MiB）；不能用无竞争安静样本宣布更快。这些增加与真实页面收益分列保留。
+
+### 两版各一次38→39，原前端共同基线
+
+另建七库Online Backup副本（schema90/quick_check ok/现成ready），仅在该副本正常lifespan/维护；没有额外预暖、清缓存、强制GC、热重试、生产GET或全90前缀。两版backend分别9468归档及精确一个产品文件候选，均使用相同原前端source/dist，不包含旧settings提前候选。每case fresh context、正常PWA及原production阈值；低开销阶段wrapper保留原生cache/singleflight，没有authorizer或原生/Python栈采样。SQL/JSON阶段只聚合一次调用，不逐行观察。
+
+| case | core基线→候选ms | 原断言 |
+| --- | ---: | --- |
+| 38固定L3点击 | 87.3→84.1 | 两版PASS |
+| 39固定L3直接进入 | 1454.8→1273.2（-181.6ms） | 两版PASS |
+
+9个完成API响应逐URL/filter核对完整body/status/快照头全部相同；两版各自窗口57保护/37原始/队列/六侧库/schema/epochs/fence/七库身份strict全部守恒，零写/排队尝试。跨版进入窗口的57/37/source/fence/epochs/schema/四exact-ready也全部相同。real-row/type oracle、backend归档、共同原前端、观察器及旧前端候选起止绑定一致。
+
+39 summary名称rows95.061ms wall/7.082ms CPU→8.046/8.038ms，完整身份98.067→10.669ms；overview必要名称rows351.233/6.649→11.192/5.599ms，完整名称身份354.132→13.954ms。真实未tracemalloc decode为summary2.736ms、overview1.545ms。服务summary109.967→136.127ms、overview270.925→425.321ms增加也保留，父子不相加；整页净收益181.6ms小于各名称wall下降之和。单轮不是统计结论，也不能等同生产剩余125.1ms已修复。
+
+### 连续资源及停止条件
+
+连续process RSS/CPU/host-headroom50ms采样已先以自有短进程实际校验15样本通过。本轮取得基线2593/候选756样本，最大gap67.598/76.134ms，覆盖startup、请求、真实rank完成和idle。仅正常SIGTERM后记录到ZombieProcess（server_exit=-15），无请求期异常或资源guard触发；没有像前一profile把空samples/guard[]称通过。旧profile缺口仍保留。本次dispatch/singleflight等待没有观测，记录null，不以0伪装无等待。
+
+| 分窗指标 | 基线 | 候选 |
+| --- | ---: | ---: |
+| 正常startup wall s | 126.612 | 20.760 |
+| startup点RSS MiB | 1219.266 | 1372.750 |
+| 请求→真实后端完成wall / CPU s | 5.604 / 3.670528 | 4.931 / 3.711517 |
+| 请求窗口RSS start / end / peak MiB | 1219.266 / 1091.203 / 1219.266 | 1255.172 / 1259.875 / 1285.656 |
+| idle RSS MiB | 1091.203 | 1259.875 |
+| 含startup全批次peak MiB | 1692.797 | 1381.609 |
+| budget start / end B | 326135446 / 196151193 | 326135446 / 196151193 |
+
+请求CPU增加0.040989s（约1.1%），请求peak增加66.391MiB、idle增加168.672MiB（约15.5%）；全批次peak降低主要和不同startup维护历史并存，不能抵消请求/idle驻留增加。首次新路径副本startup维护126.6秒，第二版复用其持久ready事实约20.8秒，OS缓存/allocator/维护历史不同；不能把168.7MiB唯一归给JSON，也不能据此称无资源回归或关闭OOM。约3ms归一匹配不改，结构化传输增加的decode/分配及所有正负结果均保留。
+
+按照已批准的“资源明显恶化就停止扩展”条件，本轮 **资源准入NOT_MET，默认完整full8 NOT_RUN**，没有尝试/失败后重跑fullgate，也不追加配对矩阵、调线程池/取消/缓存或继续微调凑性能。候选功能专项通过，单轮耗时及资源差异已记录，因继承维护状态混杂均未作JSON因果归属，无明显资源回归尚未证明；交协调独立审阅停止决定及原始证据，不commit/push/deploy。前端旧候选继续独立暂缓。生产4f原89/1、wrapperexit1/挂载顺序补证、原并发CPU回归，以及整体OOM/nonframe/native和手机问题全部保留OPEN。
+
+证据在新隔离工作树`output/album-identity-json-acceptance/`：旧前端保留绑定、schema90 Online Backup/preparation、source/tool绑定、旧SQL单位oracle及真实行读取/分配、sampler实际校验、每版原browser完整响应/events/连续samples/strict/receipt、batch实际0及`compare_saved.py`实际0/`comparison.json`。共同原前端source/dist仍绑定于旧工作树的原基线归档，旧未发布前端产品未被包含。只关闭本轮自有backend/preview，8025/5225均关闭；原始数据与output不提交。
+
+
+### 原顺序对照起点离线补证（2026-10-12，不新增测量）
+
+协调反馈独立identity+transfer unit17项actual0、8路径/patch及receipt hashes匹配，认可功能专项与按资源停止、不跑fullgate的决定；并指出相同source/fence不等于相同维护起点。本轮只读16个保存的startup日志/receipt/source captures/preparation/recovery manifest及runner AST，输入SHA起止相同，不打开DB、不启动服务/浏览器、不重跑benchmark/profile/门禁或修改产品。原候选代码、原patch和原对照/收据没有覆盖，只新增解释补证。
+
+runner在版本循环之前做一次七库Online Backup，之后baseline/candidate均使用同一个OUT/runtime；两版之间没有restore或分别派生副本。因此 **候选继承基线正常启动的持久维护结果，-181.6ms、peak+66.391MiB及idle+168.672MiB都只能称观测差异，不能归因JSON**。功能响应/只读守恒继续成立，资源准入未证实、停止扩展与full8 NOT_RUN维持。
+
+保存的日志直接记录：baseline排队analysis_stats/analysis_records各lifetime/last_4_weeks/last_6_months六组维护，并于09:21:20重建2022–2026 Billboard snapshots；candidate未记录这些Analysis排队消息，09:23:43明确Billboard already current、startup rebuild skipped。两版L3均already current/跳过、JobQueue均3worker，settled active0；startup wall126.612→20.760秒、ready点累计processCPU125.749→21.151秒。排队不等于全部实际构建/成功，没有per-job执行/状态明细，不能将全部时间差分配给六项。
+
+baseline窗口结束→candidate启动后窗口开始，主发布表与六侧库发布表的rows/全hash均相同（含clocks），其中Analysis20条、Billboard78条；source57/original37、epochs/schema/四exact-ready及fence相同。这是持久维护状态继承的可见证据，不是相同启动前缓存ready证明。background_jobs总8146→8147且hash改变，其余四队列摘要相同；七库path/device/inode未变，main size645062656→645070848B。未保存新任务的类型/状态，不凭总数认定warmup。
+
+初始runtime-preparation与baseline启动后first capture的57共有保护表摘要中，56相同，只有governance_source_revisions的96行digest改变（65d824f0…→7c535196…）。初始具体行未保存，无法确认revision/domain或时间戳字段变化，不宣称完全相同治理起点或原始播放被重写。初始main清单v12 ready12条/旧v10 running1条，不能代替aux初始ready/request/source/builder摘要，也未证明旧v10是否active或导致重建。recovery manifest仅七DB哈希，本輪未打开备份数据库补读。
+
+内存cache keys/hits/entry身份、allocator/native驻留和OS页缓存/IO/调度均未证明相等；相同326135446B预算不是完整内存起点。原各自read-window strict及跨版两个启动后source/fence比较不能替代相同启动前queue/publication/cache生命周期；此前“局部收益”只保留为观察到耗时差异。
+
+若后续补受控配对，先交具体有界方案：同一初始七库Online Backup派生各自独立runtime，启动前逻辑schema/source/queue及main+aux ready/publication/filter摘要一致；文件inode差异单列，ready/source不匹配就停止。共同原前端/相同配置，各正常lifespan一次并分列启动维护，然后每版恰一次38→39 fresh/PWA，已验证50ms CPU/RSS/headroom、完整响应/strict及startup/请求/真实完成/idle分窗，无预暖/GC/清缓存/热重跑。当前只记录方案，未执行；不自行再跑profile/fullgate或改变实现。
+
+补证为`output/album-identity-json-acceptance/startup-origin-review.py`（实际0）、`startup-origin-review/audit.json`及`audit.md`，绑定原输入、脚本行号、保存日志和摘要差异。原8路径候选/patch与旧前端11路径继续可恢复，155专项与协调17项是功能证据；无commit/push/deploy，生产89/1、wrapper FAIL/排序补证、旧并发CPU回归和上轮采样缺口全部保留，OOM/native/nonframe与手机继续OPEN。本轮完成此离线审阅后结束。
+
+
+### 受控配对的初始ready核验（2026-10-12，测量未启动）
+
+协调通过起点补证并批准一次独立runtime受控配对后，选定已有`output/album-identity-json-acceptance/pre-batch-online-backup`为唯一初始七库来源。原manifest七文件SHA全匹配、无WAL/journal/shm；资源预检约6.7GiB可用内存/46.37GiB磁盘，预计两副本约1.25GiB。产品/测试仍冻结，旧前端候选不包含。计划两个独立路径`controlled-pair/runtime-baseline`和`runtime-candidate`，但未创建或启动。
+
+只读/immutable捕获schema90、57保护/37原始、完整queue/main及六侧库发布摘要、source/filter fence，四音乐查找exact-ready全部True；`projection_available`检查对应详情投影source/version/ready全部True。进一步对默认四组排名参数检查family/request_key/source_revision/builder_version，备份当前文件身份的精确匹配全部0，尽管同版本entity_rank_context存在4条发布记录。
+
+该排名key包含`analysis_snapshot_revision.database_identity`的device/inode，设计明确是file-local lineage；Online Backup及派生副本改变物理身份。以保存的原来源runtime strict capture的device/inode、相同默认params和v2版本计算，四个发布key各匹配1条；以备份当前身份计算均0。故可确认记录位于原文件身份键空间；key-only对照不代替原namespace完整payload/source校验，不称原发布丢失或损坏。
+
+依本轮明确“初始ready/source不满足就报告并停止，不擅自冷建/修复”的门槛，停在前检，**受控配对NOT_RUN、full8 NOT_RUN**。未创建两份runtime、启动backend/browser、重跑benchmark/profile/矩阵、调用ensure/build/rebuild、修改发布key/source或写原备份；所有只读查询后七库SHA不变，连接已关闭，未打开正式数据。正常lifespan可预期为新inode建立本地排名发布，但不是初始exact-ready，本轮没有以自然启动维护越过该初始门槛。
+
+后续需协调明确file-local命名空间失配与初始必要ready门槛的关系（是否作为两副本一致的预期正常启动维护，或依既有严格source安装合同处理），当前不换备份、不共享硬链接、不伪造身份、不自动重绑定或挑测量。前一顺序轮的耗时/RSS均保持非因果观测，155专项/协调17项及只读等价仍有效；原8路径后端、11路径前端候选和全部原补丁/证据保留，发布暂缓，89/1、wrapper FAIL/排序补证、并发CPU回归、上轮采样缺口、OOM/native/nonframe及手机OPEN不改。
+
+初始证据在`output/album-identity-json-acceptance/controlled-pair/`：`preflight.json`、`source-initial-strict.json`（closed immutable捕获实际0）、`source-required-ready.json`、`rank-lineage-key-proof.json`和`preflight-report.md`。不存在新受控回放结果；只追加该前检解释，不覆盖原实验或patch，不commit/push/deploy。
+
+
+### 独立副本命名空间规范准备与受控配对（2026-10-12，已完成，资源准入未满足）
+
+协调已明确解除新file-local命名空间的前检阻断：原备份保持只读，两个独立runtime从同一初始七库派生，初始完整逻辑状态一致；同一现成manifest完整规范验证通过并对称install/verify排名4/4，原源备份未写。单次受控38→39对照已完成，局部耗时下降但资源准入NOT_MET；旧前检停止与原顺序实验记录保留，默认full8 NOT_RUN，未提交发布。
+
+源为原pre-batch-online-backup，新的runtime-baseline/runtime-candidate路径独立、七库inode各异；初始source57/original37、治理/queue/main与六侧pub、schema/fence/ready均相同。采用已有versus-ranks-4f manifest，validate检查完整filters/builder/metadata/source/payload/digest/defaults，通过后用原后端规范工具分别validate/install/verify，各4项实际0。只改两实验Analysis sidecar，源main/queue/main pubs和其它五侧库守恒，原七库SHA未变。测量使用原前端，metadata/rank ready验证放在独立只读进程，不暖被测后端缓存。
+
+
+受控回放工具首次在baseline正常启动后、任何浏览器案例之前因metadata只读助手缺少scripts导入路径退出1；该失败日志/启动样本/副本保留，零浏览器案例，不是性能失败重试。修正仅输出目录内工具导入路径，并从同一原始七库备份重新派生两个全新独立runtime于controlled-pair-v2，对称规范安装4rank。修正助手已在实际runner环境预检通过，初始逻辑状态/完整任务/rank payload合同再次相同；未复用已维护副本，真正页面测量仍每版一次，旧controlled-pair初次工具失败不覆盖。
+
+受控实际回放保存在`output/album-identity-json-acceptance/controlled-pair-v2/`，runner实际退出0，每版仅一次38→39、fresh context、正常PWA/原阈值、共同原前端；没有预暖/GC/清缓存或性能失败后重跑。初始化后rank/search/detail各4 ready、active jobs为空；两版各新增12个正常启动任务且全部done，类型/数量一致（analysis六项，其余community/Billboard/archive/governance/artist-rank/warmup各一），8130个既有任务未变。初始七库source57/original37、queue、main/六侧发布、schema/fence/ready完整逻辑等价，独立inode的命名空间差异单列，未沿用前一顺序轮的维护状态。
+
+| 原案例/窗口 | baseline | candidate | 观测差异 |
+| --- | ---: | ---: | ---: |
+| 38 点击核心可见 ms | 105.5 | 86.4 | -19.1 |
+| 39 固定L3专辑direct核心可见 ms | 1530.0 | 1273.7 | -256.3 |
+| 正常启动 wall s | 108.895 | 112.234 | +3.340 |
+| 启动就绪 RSS MiB | 1260.797 | 1264.547 | +3.750 |
+| 请求至真实后端完成 wall / CPU s | 5.682 / 3.799563 | 4.952 / 3.881736 | -0.730 / +0.082173 |
+| 请求 RSS start / end / peak MiB | 1110.219 / 1115.875 / 1131.141 | 1264.547 / 1262.516 / 1295.406 | peak +164.266 |
+| idle RSS MiB | 1115.875 | 1262.516 | +146.641 |
+| 含启动全窗口 RSS peak MiB | 1541.453 | 1640.453 | +99.000 |
+| 连续样本 / 最大间隔 ms | 2462 / 61.341 | 2394 / 87.797 | 请求窗口105 / 87样本 |
+
+九对完成响应按完整body/status/URL参数/快照头精确相同，38和39原功能断言两版均通过。两版各自请求前后strict全部通过：57保护/37原始/队列/主发布及六侧库/schema/epochs/fence/七库身份不变，公开写入/排队尝试0，无残留统计请求。rank四发布的完整payload/metadata/filters精确相同，artist-rank发布payload同样相等。起止共享宽表预算估算326135446→196151193B、native cache_info相同，但cache完整key包含进程owner和file-local命名空间，opaque key hash不同不等于缓存语义不同；预算估算也不能替代RSS。没有headroom guard触发；采样在自有后端终止时分别记录NoSuchProcess/ZombieProcess，发生于真实完成、idle、strict及停止之后，原异常保留，不计为请求样本缺失。
+
+**跨正常启动的差异不并入strict读窗口Pass**：启动后两版57保护表的原摘要仅`governance_source_revisions`不同，96行domain/revision相同、只有epoch UUID不同（不是时间戳）。离线只读核对已关闭副本：初始备份PRAGMA schema_version=1、治理记录1146，匹配现有治理安装的schema-cookie失配/随机epoch重置分支；两版启动后均573/573。原37表、schema90、source/filter fence与ready保持相等。第一次离线比较误按updated_at排除字段导致实际退出1，原`comparison.log`保留；改为准确排除epoch后`comparison-v2.log`实际0，原raw差异没有改写。
+
+原`comparison.json`的`settled_analysis_payload_semantic_digest_equal=false`保留：该比较包含source_revision，不是纯body比较。随后只在已关闭实验副本做有界解压/长度和SHA校验、13对同publication_id/family/period逐字段离线比较，统计六条body全部相同；记录七条仅最新三个周期的`/meta/generated_at`不同，精确移除这一字段后13对body全部相同。原发布行的request_key/source_revision/created_at仍不同，records三条原sha256也不同；file-local request/source身份不伪造、不统一；其他body字段无差异。`publication-difference-audit.json`保留每对差异路径/哈希及五个closed DB起止SHA，实际0、数据库零写入，没有服务/浏览器/新计时。不能将规范化body相同写成全部原发布行/原source_revision相同。
+
+**停止决定**：虽然39核心可见局部少256.3ms，但请求峰+164.266MiB、idle+146.641MiB、请求CPU+0.082秒，按已授权“资源明显恶化则停止扩展”条件，资源准入NOT_MET，默认完整八阶段full8 NOT_RUN。两版初始持久状态已对齐；OS页缓存/分配器/GC时序未控制，单次配对不证明JSON是耗时或驻留差异的唯一原因。复用155专项及协调独立17项，不再补测/改产品/跑完整门禁。原backend两文件保持冻结，六文档更新，最终8路径补丁及收据供独立审阅；没有commit/push/deploy/生产GET。
+
+原顺序轮、初始ready阻断、零浏览器导入失败、原补丁/收据全部保留；旧前端11路径及补丁哈希未变且不进入本候选。生产89/1、wrapper实际exit1与独立挂载排序补证、并发CPU回归、上轮连续采样缺口、整体OOM/native/nonframe及手机OPEN继续保留。自有后端/preview/context已关闭、8025/5225关闭；原七库备份SHA保持不变。
+
+
+## 艺人范围名称读取与已验证身份复用（2026-10-12，专项完成，资源准入未证实）
+
+用户确认下一步建议并要求执行后，在新独立managed工作树`album-identity-targeted/202605-SpotifyStats`、分支`codex/album-identity-targeted`，从9468原产品基线开始；不合入旧JSON行传输或settings前端候选，其补丁/11路径/原测量与停止决定保持冻结。
+
+离线按已保存请求拆分12次身份读取：4次目标ID读取各1行，8次完整项目JOIN各3181行。后者为名称summary两次、必要L3 release兼容校验四次、stats builder重复名称解析两次。不能写成12次全表扫描，或把wall-threadCPU差额直接归为GIL/IO/锁。原12读取分组与原events SHA保存在`output/album-identity-targeted-acceptance/offline-request-inventory.json`。
+
+最小改动三个产品文件：名称单项查询先按原NFKC/casefold/空白规则筛出所有同名艺人ID（保留归一后不同ID的歧义），以现有artist_id索引缩小原项目JOIN候选；完整8字段、排序、原生Row与匹配器保持。艺人缺省/归一后空白继续完整候选，稳定ID仍单独有界读取，batch仍原一次完整视图。JSON仅用于小型艺人ID参数列表，未恢复旧全行JSON聚合/解码。没有缓存/schema/index/发布格式变化、SQL lower、前端/取消/线程池/预算修改。
+
+L3 release稳定入口原来必须通过名称规则证明没有更优/歧义项目；该校验保留。只有通过这项检查的身份复用到stats builder，连同现有revision进入响应cache key；首选scope ID的名称歧义语义继续原名称解析，避免未经证明直接将ID代替名称规则。route请求身份响应仍由原attach函数生成；不在GET构建或排队，不删除404/503/source fence。
+
+初始41项通过，最终消费者/身份/排名发布/公开只读/投影及API专项199项通过；补充超2**53与2**63-1艺人ID后targeted单文件29项通过，合计201个不同用例通过。首次消费者命令误用不存在的复数文件名实际exit4、未执行用例，原log/xml保留；核对实际路径后最终命令0。首次Ruff检查发现fixture导入和Python3.9 Optional样式问题，按现有fixture导出方式及backend说明修正，最终check/format通过，不把初次检查写成通过。
+
+真实原七库备份只读、有界12身份例与旧完整行oracle精确一致；目标JOIN3181→82行，顺序/字段值/类型完全一致、已有idx_album_projects_artist实际使用。名称查询仍读取1907行艺人目录的两个字段，作为实际成本保留，不称消除所有全表读取。该核对无service/HTTP/计时，备份SHA起止不变。
+
+两版独立runtime来自同一原初始七库，初始完整source/governance/queue/main+六侧发布/schema/fence/ready一致，七库inode不同。现成rank manifest以共同原后端工具规范validate/install/verify各4实际0；main、queue与其它五侧库无安装写入，原备份SHA未变。实际runner环境下metadata助手预检0、rank/search/detail各4、8130既有任务相同且active0，验证放在单独只读进程，不预暖被测后端缓存。源码/共同原前端与低开销观察器均起止绑定，每版唯一正常启动38→39，PWA和原门槛不改；本轮功能和结构性收益已验证；完整资源准入未证实，最终结果分列如下。
+
+
+### 唯一独立副本配对与最终停止决定
+
+两版各自正常启动后，rank/search/detail各4 ready、active0，既有任务不变、新增12正常维护任务类型/数量相同且全部done。runner与离线比较实际0，原PWA/阈值/共同原前端、每版唯一38→39无预暖/GC/清缓存/热重试。两个统计builder少两次重复名称解析，身份读取12→10；四ID读取各1行保持，八个全项目JOIN变为六个艺人范围JOIN各82行，项目JOIN累计25452→496。目录查询成本包含在resolver wall/threadCPU内，不能用JOIN降幅代替完整SQL/读取成本降幅。identity.rows累计wall/threadCPU630.246/71.051→22.629/10.924ms，resolver含目录查询656.255/96.817→105.214/35.501ms；四overview builder累计wall298.733→538.202ms、threadCPU77.609→80.119ms，不能以身份局部改善宣布全部等待消除。两个stats builder累计threadCPU3599.154→3519.328ms，重型统计和切页后继续计算仍是独立后续方向。
+
+| 原案例/窗口 | baseline | candidate | 观测差异 |
+| --- | ---: | ---: | ---: |
+| 38 点击核心可见 ms | 124.3 | 138.4 | +14.1 |
+| 39 固定L3专辑direct核心可见 ms | 1447.0 | 1395.5 | -51.5 |
+| 正常启动 wall s | 117.439 | 115.181 | -2.258 |
+| 启动就绪 RSS MiB | 1173.703 | 1261.734 | +88.031 |
+| 请求至真实后端完成 wall / CPU s | 5.682 / 3.916799 | 5.456 / 3.769922 | -0.226 / -0.146877 |
+| 请求 RSS start / end / peak MiB | 1173.719 / 1195.891 / 1205.609 | 1116.453 / 1134.203 / 1164.563 | absolute peak -41.047 |
+| 请求peak相对请求起点增长 MiB | 31.891 | 48.109 | +16.219 |
+| idle RSS MiB | 1195.891 | 1134.219 | absolute -61.672 |
+| idle相对请求起点增长 MiB | 22.172 | 17.766 | -4.406 |
+| 含启动全窗口 RSS peak MiB | 1684.641 | 1770.734 | +86.094 |
+| 连续样本 / 最大间隔 ms | 2640 / 66.422 | 2577 / 103.953 | 请求窗口106 / 100样本 |
+
+两版各自read-window strict57保护/37原始/全部queue/pub/六侧库/schema/epochs/fence/文件身份全守恒，公开写入/排队尝试0、无未完成stats请求；9对body/status/URL参数/快照头完整相同。四rank完整filters/metadata/payload精确相同；跨版原37与schema/fence/ready相同，治理96行仅epoch UUID不同，初始schema-cookie1/记录1146与启动后573/573单列。13统计发布body仅最新三周期records的meta.generated_at不同，精确排除该元数据后全部相同；原request_key/source_revision/created_at/records原sha不同仍保留，原比较false不改。离线解压/原SHA校验与五closed DB起止SHA核验实际0，没有服务/浏览器新测量。
+
+**资源准入未证实，full8 NOT_RUN**：开始只根据请求/idle绝对值降低曾在commentary提出继续完整门禁；在启动任何门禁之前核对完整分窗，发现请求起点已低57.266MiB、启动峰反高86.094MiB、请求净峰增长反高16.219MiB，及时撤回该过早判断。不能把61.672MiB idle绝对差全归于本补丁驻留改善。单轮深链收益51.5ms、点击退化14.1ms，结构性收益成立，但总体资源准入NOT_PROVEN；没有默认full8尝试，也未局部门禁/重测或挑选结果。OS页缓存/分配器/GC时序未控制，正负RSS差异均不作产品唯一因果归属，整体OOM不关闭。
+
+当前三产品/两测试/六文档共11路径候选冻结，源码起止绑定一致；原JSON8路径补丁及旧前端11路径/原patch全部保持，原备份七SHA未变，自有backend/preview/context关闭、8025/5225关闭。没有commit/push/deploy/生产GET。请求工作量、完整比较、资源复核、发布差异与最终补丁/收据保存在`output/album-identity-targeted-acceptance/`，最终review与停止决定以`controlled-pair/admission-review.json`为准，不能继承前一JSON候选的资源判断或门禁结果。下一步独立核对启动驻留与排名跨页延续的成本，当前不继续微调/扩门禁。
+
+
+## 2026-10-12 候选归档与单一研发工作树
+
+前端设置加载、JSON批量传输和艺人范围读取候选已冻结归档，处置与恢复见[分支整理报告](2026-10-12-development-worktree-closeout.md)。本报告的历史路径/计时/失败保留原样；本机归档`spotifystats-cleanup/20261012T082400Z/path-map.json`解释旧output位置。三个候选均未合入main业务代码，历史full8不能转移到其它候选。
+
+当前唯一研发为`codex/album-rank-cost`，继续有界定位Top250统计、切页后的排名计算与启动驻留；源码已发现排名复用后仍有时长/排行构建路径，因果与资源影响尚待分段测量。协调方统一维护共享状态文档，当前实验通过`archive-locations.json`读取已迁移证据；生产仍保留原89/1及OOM/手机OPEN边界。

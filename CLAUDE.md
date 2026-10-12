@@ -23,6 +23,7 @@
 - 导入健康：[docs/reference/data-import-and-health.md](docs/reference/data-import-and-health.md)
 - 生产运行：[deploy/production/README.md](deploy/production/README.md)
 - 交付证据：[docs/reports/README.md](docs/reports/README.md)
+- 开发与分支收尾：[docs/reference/development-delivery-workflow.md](docs/reference/development-delivery-workflow.md)
 
 ## 项目定位
 
@@ -96,6 +97,8 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 
 ## 文档和 Git 约定
 
+- 遵守[开发、整合与工作树收尾规则](docs/reference/development-delivery-workflow.md)：同一问题链一个研发负责人和活跃分支，共享状态文档由协调负责人统一合并；复用现有工作树，候选阶段必须明确继续、待整合、已合入或归档。
+- 联合整合/重写提交必须记录源 SHA 到 main SHA 的对应关系；未采用候选保存基线、补丁和证据后归档。交付结束同时处理源分支/工作树，长期证据独立保存，不以独有提交数推断遗漏修复。
 - 规则写入 `docs/reference/`，未完成路线写入 `docs/plans/`，设计决策写入 `docs/designs/`，交付证据写入 `docs/reports/`，已完成或取代内容写入 `docs/archive/`。
 - 开始开发前查 [开发状态总表](docs/DEVELOPMENT_STATUS.md)；实现、验收、提交/推送/发布或暂缓决定变化时，更新对应事项、证据、下一步和最后核验日期。新问题复用问题台账稳定 ID；探索方向与已启动任务分开记录。
 - 新增或移动文档后更新 [docs/README.md](docs/README.md)，并运行文档审计。

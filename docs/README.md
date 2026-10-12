@@ -1,5 +1,8 @@
 # SpotifyStats 文档地图
-- [`reports/2026-10-09-music-detail-chart-performance-acceptance.md`](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：4f3f计数轻量读取已正式发布，7jobs/8步runtime通过，原90为89/1（ea93改善3/退化0，6dac10/0、6266/0）；116/三strict通过。原wrapper配置哈希断言exit1保留，独立挂载顺序精确置换补证连续性。RSS峰1514/末1494MiB较ea93增加，OOM和手机弹层仍OPEN，下一步仅离线复核剩余一例及副本诊断；本地full8与旧首次/失败分层保留。
+
+- [开发、整合与工作树收尾规则](reference/development-delivery-workflow.md)：唯一研发负责人、共享文档、检查点、提交映射与证据归档。
+- [2026-10-12 分支与历史补丁处置](reports/2026-10-12-development-worktree-closeout.md)：只保留main、当前排名/驻留研发与统一整合工作树，前三轮候选及旧OOM补丁已归档。
+- [详情性能与资源验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：最后保存生产4f3f首次89/1，OOM与手机问题开放；前三轮候选已归档未采用，当前排名成本与启动驻留诊断继续，历史门禁/失败按原版本保留。
 
 - [榜单对决个人播放统计已完成规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)：S0–S5完成，c58775f0已发布，原公开HTTPS首次14/28及资源/完整守恒通过；人类明确私有入口保持现状
 - [`plans/2026-10-09-music-detail-chart-performance-plan.md`](plans/2026-10-09-music-detail-chart-performance-plan.md)：`SS-2026-10-09-001` 已完成只读诊断并形成修复规划；独立overview、已发布事实复用、project目标化、请求与错误状态、冷访问和资源验收，S0已冻结；S1–S3已实现，S4/S5验收中
