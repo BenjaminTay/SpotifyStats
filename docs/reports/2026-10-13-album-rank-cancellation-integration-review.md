@@ -2,11 +2,11 @@
 
 日期：2026-10-13。事项：`SS-2026-10-09-001`；关联资源事项：`SS-2026-10-08-001`。
 
-结论：源码审阅未发现阻止整合的问题。七个候选文件已应用到现有 `codex/versus-detail-integration` 工作区，并与通过完整本地门禁的研发源码逐文件一致；整合工作区重点回归 57 项通过。当前为 **READY / 整合待提交**，尚未提交、推送、合入 main 或部署。生产详情性能保持 OPEN/Partial，整体 OOM 保持 OPEN。
+结论：源码审阅未发现阻止整合的问题。七个候选文件已应用到现有 `codex/versus-detail-integration` 工作区，并与通过完整本地门禁的研发源码逐文件一致；整合工作区重点回归 57 项通过。已按后续明确授权形成本地业务提交 **`c21250e3922c6488a65418352243a24541bcac0a`**，位于 `codex/versus-detail-integration`；尚未推送、合入 main 或部署。生产详情性能保持 OPEN/Partial，整体 OOM 保持 OPEN。
 
 ## 1. 基线、补丁与取舍
 
-main、研发工作树和整合工作树 HEAD 均为 `2bdf0ce5cd0ad306750f82a5c0763dcb2a559016`。该提交为开发协作规则整理，业务基线仍为已发布 `4f3f2ac0436ba6556bc3ca90773860e18cd9dc77`。本轮采用研发候选固定补丁，不合入前端设置、JSON名称传输、艺人范围身份以及两个实体帧实验。
+审阅应用前，main、研发工作树和整合工作树 HEAD 均为 `2bdf0ce5cd0ad306750f82a5c0763dcb2a559016`。该提交为开发协作规则整理，业务基线仍为已发布 `4f3f2ac0436ba6556bc3ca90773860e18cd9dc77`。本轮采用研发候选固定补丁，不合入前端设置、JSON名称传输、艺人范围身份以及两个实体帧实验。
 
 | 文件 | 采用内容 |
 | --- | --- |
@@ -20,7 +20,7 @@ main、研发工作树和整合工作树 HEAD 均为 `2bdf0ce5cd0ad306750f82a5c0
 
 组合补丁 SHA256：`a37bcf95f05f23ffb957cf228f8bdaec495e2df56b3ca0be3c506e5f65479295`。取消增量补丁 SHA256：`5831bc921afcf9a24e7b455f17eaf9f0f8b5ce49ad4b4b9c42db2ef4be7b51b5`。`git apply --check`、应用及七文件核对通过；完整 backend Python 文件集合亦与研发源码一致。取消增量在临时 Top250 基线上重放后，六个新增或修改文件一致。
 
-尚无源提交到 main 提交的映射：当前采用的是以上固定补丁，未获得本轮提交/推送/发布指令。不得把共同旧 HEAD 当成最终修复提交。README产品入口和统计规则未变化，根 AGENTS/CLAUDE无需新增规则；后端模块地图及交付文档同步新辅助模块。
+审阅时尚未提交，后续用户明确授权提交当前已审阅整合候选。固定组合补丁已映射到本地整合业务提交`c21250e3922c6488a65418352243a24541bcac0a`，父提交为`2bdf0ce5cd0ad306750f82a5c0763dcb2a559016`；提交中16个文件逐一与审阅检查点一致，提交时Ruff、format、mypy、secret hooks全部通过。源补丁到main提交的映射仍待完成，未执行推送/发布。不得把共同旧HEAD当成最终修复提交。README产品入口和统计规则未变化，根 AGENTS/CLAUDE无需新增规则；后端模块地图及交付文档同步新辅助模块。
 
 ## 2. 审阅判断
 
@@ -44,7 +44,7 @@ main、研发工作树和整合工作树 HEAD 均为 `2bdf0ce5cd0ad306750f82a5c0
 | 研发默认完整全栈 | run `20261012T152324.012689Z-fff3d57bed12`，默认full模式八必需阶段同轮PASS，实际退出0，耗时1,722,883ms（28分42.883秒） |
 | 完整测试数量 | seed3937通过/2跳过、真实副本集成186通过/1跳过；三项后端跳过均为Genius客户端不可用。前端803通过/4跳过；构建、API、路由、交互、控件/长列表和Chromium/Firefox/WebKit通过。optional未运行，未验production preview |
 | 首次门禁失败 | 性能测量环境的 `SPOTIFY_STATS_EXTERNAL_COVERS=0` 被沿用到完整门禁，真实副本封面用例404而失败；恢复正常默认1后单项诊断通过，再从头跑默认完整模式通过。原失败、单项控制和第二轮完整记录均保留，产品源码未变 |
-| 整合工作区 | 当前七文件及完整backend Python源码与研发门禁版本相同；在整合路径新执行57项重点回归通过。研发full8是相同源码证据，本轮不声称另跑了一次整合full8；16个命名文件的Ruff/format/mypy/secret hooks、240份全部Markdown审计及diff检查均实际退出0；根AGENTS/CLAUDE一致，暂存区为空 |
+| 整合工作区 | 当前七文件及完整backend Python源码与研发门禁版本相同；在整合路径新执行57项重点回归通过。研发full8是相同源码证据，本轮不声称另跑了一次整合full8；16个命名文件的Ruff/format/mypy/secret hooks、240份全部Markdown审计及diff检查均实际退出0；根AGENTS/CLAUDE一致，审阅结束时暂存区为空 |
 
 原始全栈报告的dataset字段为unknown，保持原值；独立备份与安装收据证明输入为既定七库Online Backup来源。不得改写旧报告标签或把本地副本门禁当生产验证。
 
@@ -73,12 +73,12 @@ Analysis发布语义原始摘要比较仍为false，未追加归一化审计；�
 
 关键入口：`archive-receipt.json`、`rank-cancellation/ready-checkpoint.json`、`rank-cancellation/controlled-pair/cancellation-lifecycle-comparison.json`、`rank-cancellation/fullgate-standard-cover-mode/canonical-reports/summary.json`。归档关键收据及七源码已校验一致；原件为复制，未移动或重写。数据库副本保留WAL/SHM；候选runtime已被后续完整门禁使用，不将其归档字节声称为原性能窗口字节状态。
 
-历史脚本/收据保留原绝对路径，`archive-receipt.json`的old→archive映射用于恢复；保留的安装工具符号链接指向原source-baseline，重放前解析映射，不直接运行失效路径。正式数据与环境链接不跟随。恢复代码时，在指定基线先检查组合补丁，再应用；取消增量只适用于已有Top250候选。新整合复核收据位于整合工作区ignored `output/album-rank-cancellation-integration-review/`，本轮末尾保存到归档的 `integration-review-final/`。
+历史脚本/收据保留原绝对路径，`archive-receipt.json`的old→archive映射用于恢复；保留的安装工具符号链接指向原source-baseline，重放前解析映射，不直接运行失效路径。正式数据与环境链接不跟随。恢复代码时，在指定基线先检查组合补丁，再应用；取消增量只适用于已有Top250候选。新整合复核收据位于整合工作区ignored `output/album-rank-cancellation-integration-review/`，审阅检查点保存到归档的 `integration-review-final/`，保持原样；后续本地提交收据、钩子日志、提交后的状态文档及两次提交的Git bundle另存 `local-commit-final/`，用于恢复业务和状态提交，不覆盖旧审阅收据。
 
-当前保留main、唯一研发工作树和一个统一整合工作树。研发源候选已冻结并等待整合提交；在形成main映射、交付和确认消费者结束后，按[收尾规则](../reference/development-delivery-workflow.md)处理源树，不在本轮删除未提交源码。
+当前保留main、唯一研发工作树和一个统一整合工作树。研发源候选已冻结，七文件已采用到本地整合业务提交`c21250e3`；在形成main映射、交付和确认消费者结束后，按[收尾规则](../reference/development-delivery-workflow.md)处理源树，不在本轮删除未提交源码。
 
 ## 6. 下一步
 
-1. 审阅本整合工作区的七候选文件和必要文档，按精确路径形成获授权提交；届时记录源补丁到main SHA映射，再推进CI、发布准备和部署。
+1. 本地业务提交已完成；下一步核对主线状态并记录源补丁到main SHA映射，再按授权推进推送/CI、发布准备和部署。本轮不包含这些外部交付动作。
 2. 发布后使用原90场景、116API及严格只读守恒合同的首次自然窗口，重点核验固定L3专辑深链与切页取消，保留CPU/RSS/idle和失败；不预暖、重启或热重跑替代失败。
 3. 详情加载、OOM资源和手机弹层分别判定，不用本地full8或单窗无OOM关闭独立问题。
