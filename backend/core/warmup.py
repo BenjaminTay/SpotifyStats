@@ -4,6 +4,7 @@ import logging
 import threading
 
 from backend.core.db import get_db, load_plays, load_plays_for_artists
+from backend.core.native_memory import trim_unused_native_memory
 from backend.domains.account_archive.overview import get_archive_overview
 from backend.domains.settings.repository import SETTINGS_DEFAULTS, SettingsRepository
 from backend.services.analysis_stats_service import get_analysis_charts, get_analysis_stats
@@ -131,6 +132,11 @@ def warm_common_caches(*, mode: str = "full") -> None:
     from backend.services.yearly_review_service import prewarm_latest_yearly_review
 
     prewarm_latest_yearly_review()
+
+    # All builders have returned and source connections are closed. Preserve
+    # warm facts while returning unused native pages at this background boundary.
+    trimmed = trim_unused_native_memory()
+    logger.info("Full cache warmup complete; native pages released=%s", trimmed)
 
 
 def prewarm_import_critical_caches() -> None:
