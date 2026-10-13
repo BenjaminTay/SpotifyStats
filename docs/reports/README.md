@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [完整预热原生内存回收审阅与本地整合](2026-10-13-native-trim-candidate-review.md)：四文件e01a4455已原样进入main，未推送/部署；默认Phase5/full8、Linux仿真9对完整响应及驻留收益、提交映射与独立恢复入口；原生资源/OOM未关闭。
+
 - [2026-10-13 专辑排名取消生产交付](2026-10-13-album-rank-cancellation-production-delivery.md)：c0d发布、原首次90/90、116 API/三strict；资源仍Partial，原失败与证据缺口保留。
 
 - [专辑排名取消与Top250候选审阅、整合](2026-10-13-album-rank-cancellation-integration-review.md)：固定补丁审阅、原自然38→39对照、完整本地full8证据、整合工作区57项复核及独立归档；描述本地整合时的边界，后续正式交付见上方新报告。

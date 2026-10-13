@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [完整预热原生内存回收审阅与本地整合](reports/2026-10-13-native-trim-candidate-review.md)：e01a4455四文件提交已原样进入main，默认Phase5/full8通过；Linux仿真驻留及完整响应证据保留，未推送/部署，原生资源准入/OOM仍开放。
+
 - [专辑排名取消修复正式交付与首次验收](reports/2026-10-13-album-rank-cancellation-production-delivery.md)：c0d已发布，原90/90、116 API/三strict通过，旧index39为3125.1→1716.3ms；资源合同/OOM/手机仍开放，安装首轮、wrapper失败及独立补证分列保留。
 
 - [专辑排名取消与Top250候选审阅、整合](reports/2026-10-13-album-rank-cancellation-integration-review.md)：本地审阅与主线映射检查点，源码等同研发full8通过版本，整合重点57项通过；后续c0d正式发布及首次90/90见上方最新交付。

@@ -6,6 +6,8 @@
 > 生产最后保存记录：c0d699e526f9323a95c63b2abf102c97d314eb2d、schema90、dual三healthy；原首次90/90，116 API/三个strict通过。原index39为3125.1→1716.3ms，RSS峰/末1160.348/1136.430MiB、CPU38.65秒；整体资源仍Partial/OOM OPEN，历史4f3f89/1及其他原失败保留。详见[本轮正式交付](../reports/2026-10-13-album-rank-cancellation-production-delivery.md)。
 > 下文原有数值、环境状态和已解决项证据保留原始日期；9 月 13 日生产、LLM、Spotify 与 HTTPS 记录不自动代表今天的状态。
 
+> 本轮本地资源整合：完整预热后的glibc回收四文件e01a4455已按授权提交并原样进入main，默认Phase5/full8通过；仿真Linux完整响应、strict及驻留对照通过。未推送/部署，原生amd64环境缺失，资源合同/OOM保持OPEN，未新验生产。见[审阅与提交映射](../reports/2026-10-13-native-trim-candidate-review.md)。
+
 ## 当前事项状态与近期收口
 
 ### 2026-10-08 榜单对决个人播放延迟
@@ -13,7 +15,7 @@
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
 | `SS-2026-10-08-002` | 榜单成绩先出现，个人播放次数、时长与排名迟迟补齐 | `RESOLVED / RELEASED`；c587正式三workflow/11jobs及实际安装/独立runtime通过，原公开FIRST14/28全PASS（最大1.669秒）、420秒资源/全守恒、96 API与三denial通过；人类明确仅公开HTTPS，S0–S5完成，旧首次失败保留 | 本地45/90、96、130及详情自然90通过；部署72回归/Linux备份/owned共同恢复与cb8 full8通过，所有旧失败分列 | P1：三库准备最小补修83回归/Linux隔离通过，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push实际0，新c587三流水线及实际安装success，独立runtime确认3完整SHA/healthy和schema90/4rank/4detail/48BBready；启动维护自然结束，原首次公开14/28、840连续资源sample及两面96 API/三denial全通过，不预暖或放宽门槛。本项公开范围已由人类决定并完成；私有保持现状。详情独立唯一额外重启已完成，原90性能39通过/51失败，116功能及完整读取守恒通过，详情和OOM仍开放。见[规划](../archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](../reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节。2026-10-09。 |
-| `SS-2026-10-09-001` | 详情榜单成绩首次加载慢，疑似等待个人排名 | 首次延迟子项PASS；整体`OPEN / Partial`（资源未收口）。c212修复随c0d已正式发布，原首次90/90、116 API/三个strict通过 | 旧index39为3125.1→1716.3ms，较4f3f改善1/0新增失败。原wrapper1、Mounts顺序独立补证、安装attempt1失败与attempt2成功分列保留；RSS末仍约1.11GiB、全资源合同未证明 | P1：后续收敛到驻留/缓存所有权与资源合同，手机弹层另行处理；不追加本轮生产热复验。见[正式交付](../reports/2026-10-13-album-rank-cancellation-production-delivery.md)。2026-10-13。 |
+| `SS-2026-10-09-001` | 详情榜单成绩首次加载慢，疑似等待个人排名 | 首次延迟子项PASS；整体`OPEN / Partial`（资源未收口）。c212随c0d已发布，原首次90/90、116 API/三个strict通过；回收e01a4455已本地整合未发布 | 旧index39为3125.1→1716.3ms，较4f3f改善1/0新增失败。原wrapper1、Mounts顺序独立补证、安装attempt1/2保留；RSS末仍约1.11GiB、全资源合同未证明 | P1：固定版本后续交付及资源准入归SS-2026-10-08-001统一推进，手机弹层另行处理；不追加生产热复验。见[本轮整合](../reports/2026-10-13-native-trim-candidate-review.md)、[正式交付](../reports/2026-10-13-album-rank-cancellation-production-delivery.md)。2026-10-13。 |
 
 `SS-2026-10-09-001` 2026-10-13本地整合检查点（后续交付见上表）：组合补丁SHA256 `a37bcf95f05f23ffb957cf228f8bdaec495e2df56b3ca0be3c506e5f65479295`；七文件在2bdf基线现有统一整合工作区应用，完整backend Python源码等同研发full8版本。研发run `20261012T152324.012689Z-fff3d57bed12` 默认完整八阶段PASS/实际0（3937 seed/186集成/803前端通过，三浏览器）；第一次禁外部封面模式失败与正常模式完整重跑保留。整合57重点复核通过，没有另跑整合full8或生产。源七文件已原样进入main业务提交`c21250e3`，状态提交`8b1b2405`亦快进进入main；研发/整合树安全同步，恢复点独立保存，未推送/发布；原RSS起点差、raw Analysis发布摘要false均保留，OOM独立OPEN。详见[审阅报告](../reports/2026-10-13-album-rank-cancellation-integration-review.md)。
 
@@ -31,7 +33,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；历史global OOM确认，c212取消修复已随c0d上线，完整资源合同未收口 | c0d首次90 RSS965.828→1160.348→1136.430MiB、CPU38.65秒，较4f3f峰/末低353.383/357.262MiB，OOM增量0、host oom_kill仍1→1；末仍约1.11GiB驻留，原并发CPU与多轮平台期边界保留 | P1：依据既有单窗和副本证据界定驻留/缓存所有权，再确定有界验证范围；不把384MiB当RSS上限或本窗无OOM当解决，不追加本轮生产预暖/重启/热复验。见[本轮资源及边界](../reports/2026-10-13-album-rank-cancellation-production-delivery.md)、[历史资源](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)；2026-10-13。 |
+| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；完整预热后原生回收e01a4455已本地整合，未推送/部署，默认Phase5/full8通过；历史global OOM及原生资源准入未关闭 | 仿真Linux9对完整响应及两strict一致，ready/最终idle RSS约低875/789MiB。原c0d首次90 RSS965.828→1160.348→1136.430MiB、CPU38.65秒、host oom_kill1→1保留，不作为本轮新验 | P1：明确固定版本后续交付及资源验证条件；原生amd64环境缺失，逐请求64MiB、平台期、构建峰值/OOM仍开放。不把帧预算当RSS上限，不追加生产预暖/重启/热复验。见[本轮整合](../reports/2026-10-13-native-trim-candidate-review.md)、[原生产资源](../reports/2026-10-13-album-rank-cancellation-production-delivery.md)、[历史资源](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)；2026-10-13。 |
 
 ### 2026-10-07 非榜单详情统计空值
 
