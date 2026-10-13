@@ -8,8 +8,10 @@ from typing import Literal, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from backend.core.access_surface import is_public_readonly
+from backend.core.request_cancellation import run_disconnect_aware_read
 from backend.dependencies import BillboardFilters, MergeConfig, PlayFilters, get_conn
 from backend.domains.metadata.track_presentation import resolve_track_presentations
 from backend.domains.music_search.context import build_music_search_filter_context
@@ -747,9 +749,10 @@ def legacy_track_stats(
 
 
 @router.get("/albums/{album_name}/stats", response_model=EntityStatsResponse)
-def album_stats(
+async def album_stats(
     album_name: str,
     response: Response,
+    request: Request,
     artist: str | None = Query(default=None),
     filters: PlayFilters = Depends(),
     merge_level: int = Query(
@@ -764,31 +767,37 @@ def album_stats(
     include_rank_context: bool = Query(default=True),
     conn: Connection = Depends(get_conn),
 ):
-    timing = MusicSearchTiming()
-    with timing.measure("entity_stats"):
-        result = get_album_stats(
-            conn,
-            album_name,
-            artist,
-            filters.min_ms,
-            filters.music_only,
-            filters.merge_enabled,
-            period,
-            start_date,
-            end_date,
-            filters.dynamic_threshold,
-            filters.max_merge_gap_minutes,
-            merge_level=merge_level,
-            include_rank_context=include_rank_context,
-        )
-    response.headers["Server-Timing"] = timing.server_timing_header()
-    return result
+    def build_response():
+        timing = MusicSearchTiming()
+        with timing.measure("entity_stats"):
+            result = get_album_stats(
+                conn,
+                album_name,
+                artist,
+                filters.min_ms,
+                filters.music_only,
+                filters.merge_enabled,
+                period,
+                start_date,
+                end_date,
+                filters.dynamic_threshold,
+                filters.max_merge_gap_minutes,
+                merge_level=merge_level,
+                include_rank_context=include_rank_context,
+            )
+        response.headers["Server-Timing"] = timing.server_timing_header()
+        return result
+
+    if include_rank_context:
+        return await run_disconnect_aware_read(request, build_response)
+    return await run_in_threadpool(build_response)
 
 
 @router.get("/album-projects/{project_id}/stats", response_model=EntityStatsResponse)
-def album_project_stats(
+async def album_project_stats(
     project_id: int,
     response: Response,
+    request: Request,
     filters: PlayFilters = Depends(),
     merge_level: int = Query(default=2, ge=2, le=3),
     period: str = Query(default="lifetime"),
@@ -797,26 +806,31 @@ def album_project_stats(
     include_rank_context: bool = Query(default=True),
     conn: Connection = Depends(get_conn),
 ):
-    identity = _album_project_or_404(conn, project_id, merge_level)
-    timing = MusicSearchTiming()
-    with timing.measure("entity_stats"):
-        result = get_album_stats(
-            conn,
-            identity.canonical_name,
-            identity.artist_name,
-            filters.min_ms,
-            filters.music_only,
-            filters.merge_enabled,
-            period,
-            start_date,
-            end_date,
-            filters.dynamic_threshold,
-            filters.max_merge_gap_minutes,
-            merge_level=merge_level,
-            include_rank_context=include_rank_context,
-        )
-    response.headers["Server-Timing"] = timing.server_timing_header()
-    return _attach_requested_album_identity(result, identity)
+    def build_response():
+        identity = _album_project_or_404(conn, project_id, merge_level)
+        timing = MusicSearchTiming()
+        with timing.measure("entity_stats"):
+            result = get_album_stats(
+                conn,
+                identity.canonical_name,
+                identity.artist_name,
+                filters.min_ms,
+                filters.music_only,
+                filters.merge_enabled,
+                period,
+                start_date,
+                end_date,
+                filters.dynamic_threshold,
+                filters.max_merge_gap_minutes,
+                merge_level=merge_level,
+                include_rank_context=include_rank_context,
+            )
+        response.headers["Server-Timing"] = timing.server_timing_header()
+        return _attach_requested_album_identity(result, identity)
+
+    if include_rank_context:
+        return await run_disconnect_aware_read(request, build_response)
+    return await run_in_threadpool(build_response)
 
 
 @router.get("/artists/{artist_name}/stats", response_model=EntityStatsResponse)

@@ -2,8 +2,8 @@
 
 > 状态：持续维护
 > 首次建立：2026-08-27
-> 最后状态核验：2026-10-11（专辑排名复用候选新默认完整全栈及独立验收通过、已授权提交/未发布；6dac生产首次79通过/11性能失败，OOM独立开放）
-> 生产最后确认记录：6dacfae7、schema90、dual；CI/Release7实际jobs与独立8步runtime通过，原公开FIRST90为79/11、116 API与三strict通过。新专辑候选已授权提交/未发布，历史版本与失败原样保留，资源缓解不等于整体OOM已修复。开发优先级见[开发状态总表](../DEVELOPMENT_STATUS.md)。
+> 最后状态核验：2026-10-13（Top250/请求取消候选源码审阅及整合工作区复核；研发full8、整合重点57项通过，未提交/推送/合入main/部署；生产仍沿用10月11日4f3f89/1保存证据）
+> 生产最后保存记录：4f3f2ac0436ba6556bc3ca90773860e18cd9dc77、schema90、dual；原FIRST90为89/1，116API/三strict通过，原wrapper失败及挂载顺序补证分别保留。本轮未生产复验；详情/OOM/手机问题保持开放。下文6dac/ea93等按原日期保留，不代替当前生产证据。开发优先级见[开发状态总表](../DEVELOPMENT_STATUS.md)。
 > 下文原有数值、环境状态和已解决项证据保留原始日期；9 月 13 日生产、LLM、Spotify 与 HTTPS 记录不自动代表今天的状态。
 
 ## 当前事项状态与近期收口
@@ -13,7 +13,9 @@
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
 | `SS-2026-10-08-002` | 榜单成绩先出现，个人播放次数、时长与排名迟迟补齐 | `RESOLVED / RELEASED`；c587正式三workflow/11jobs及实际安装/独立runtime通过，原公开FIRST14/28全PASS（最大1.669秒）、420秒资源/全守恒、96 API与三denial通过；人类明确仅公开HTTPS，S0–S5完成，旧首次失败保留 | 本地45/90、96、130及详情自然90通过；部署72回归/Linux备份/owned共同恢复与cb8 full8通过，所有旧失败分列 | P1：三库准备最小补修83回归/Linux隔离通过，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push实际0，新c587三流水线及实际安装success，独立runtime确认3完整SHA/healthy和schema90/4rank/4detail/48BBready；启动维护自然结束，原首次公开14/28、840连续资源sample及两面96 API/三denial全通过，不预暖或放宽门槛。本项公开范围已由人类决定并完成；私有保持现状。详情独立唯一额外重启已完成，原90性能39通过/51失败，116功能及完整读取守恒通过，详情和OOM仍开放。见[规划](../archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](../reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节。2026-10-09。 |
-| `SS-2026-10-09-001` | 详情榜单成绩首次加载慢，疑似等待个人排名 | `OPEN / Partial`；最后保存生产4f3f首次89/1，116 API/三strict通过；本轮未生产复验 | 原Chromium1280固定L3专辑direct3125.1ms失败，生产驻留与整体OOM仍开放；原wrapper失败/排序补证、并发CPU与采样缺口保留 | P1：前三轮前端/JSON/艺人范围候选已归档未采用。当前唯一研发在codex/album-rank-cost定位Top250统计、切页后排名计算与启动驻留，根因仍待测量。见[验收](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)、[候选处置](../reports/2026-10-12-development-worktree-closeout.md)与[规划](../plans/2026-10-09-music-detail-chart-performance-plan.md)；2026-10-12。 |
+| `SS-2026-10-09-001` | 详情榜单成绩首次加载慢，疑似等待个人排名 | `OPEN / Partial`；固定Top250/请求取消候选审阅通过、整合工作区待提交；本地研发full8 PASS、整合重点57项通过；未生产复验 | 本次副本真实取消后56.5ms结束、未进入Top250，不再覆盖下一summary；直达1166.7→537.2ms、请求CPU2.722→0.796秒，9完整响应/两strict通过。原生产L3直达3125.1ms及驻留/OOM、wrapper/并发CPU/采样边界保留 | P1：按授权提交七候选文件及必要文档，再CI、正式发布与首次自然矩阵。见[审阅/整合](../reports/2026-10-13-album-rank-cancellation-integration-review.md)、[历史验收](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)；2026-10-13（本地）。 |
+
+`SS-2026-10-09-001` 2026-10-13当前候选记录：组合补丁SHA256 `a37bcf95f05f23ffb957cf228f8bdaec495e2df56b3ca0be3c506e5f65479295`；七文件在2bdf基线现有统一整合工作区应用，完整backend Python源码等同研发full8版本。研发run `20261012T152324.012689Z-fff3d57bed12` 默认完整八阶段PASS/实际0（3937 seed/186集成/803前端通过，三浏览器）；第一次禁外部封面模式失败与正常模式完整重跑保留。整合57重点复核通过，没有另跑整合full8或生产。源候选冻结，未提交/合入main/发布；原RSS起点差、raw Analysis发布摘要false均保留，OOM独立OPEN。详见[审阅报告](../reports/2026-10-13-album-rank-cancellation-integration-review.md)。
 
 `SS-2026-10-09-001` 发布前本地候选验证记录（本轮生产结论见上表）：最终run `20261011T073600.905084Z-f1483ad94de8` 默认完整八阶段同轮PASS/实际0；后端3876/2skip、真实副本186/1skip、前端803/4skip、API157/113与51热基准、三浏览器通过。首轮文档编辑触发hook修改判定、第二轮手机加载竞态失败全部保留；已加载页面筛选门禁补充初始响应/UI就绪后从头验收，没有改超时或最终断言。协调独立验收通过后，候选已按授权提交并统一发布；该次ea93生产86/4、旧6dac79/11和62683/7分别保留，历史AI失败保持，OOM独立OPEN。
 
@@ -29,7 +31,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / MITIGATED`；历史global OOM确认，计数补丁已上线但资源未收口 | 4f3f全90 RSS940.730→1513.730→1493.691MiB/CPU72.72秒，较ea93峰/末增加52.281/32.504MiB；host available2.20→1.62GB，OOM增量0，idle仍约1.46GiB；原并发CPU增加保留 | P1：同源副本定位预算外驻留和重叠服务，不把384MiB预算当RSS上限或单窗无OOM当解决。无新增重启、生产压力或入口修改。见[资源验收](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)4f3f首次节、[原OOM](../reports/2026-10-08-release-date-production-delivery.md)；2026-10-11。 |
+| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / MITIGATED`；历史global OOM确认，计数补丁已上线但资源未收口 | 4f3f全90 RSS940.730→1513.730→1493.691MiB/CPU72.72秒，较ea93峰/末增加52.281/32.504MiB；host available2.20→1.62GB，OOM增量0，idle仍约1.46GiB；原并发CPU增加保留 | P1：同源副本定位预算外驻留和重叠服务，不把384MiB预算当RSS上限或单窗无OOM当解决。本地取消候选未证明整体驻留/OOM改善；无新增生产重启、压力或入口修改。见[资源验收](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)4f3f首次节、[原OOM](../reports/2026-10-08-release-date-production-delivery.md)；2026-10-11。 |
 
 ### 2026-10-07 非榜单详情统计空值
 

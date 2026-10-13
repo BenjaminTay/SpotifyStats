@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [专辑排名取消与Top250候选审阅、整合](2026-10-13-album-rank-cancellation-integration-review.md)：固定补丁审阅、原自然38→39对照、完整本地full8证据、整合工作区57项复核及独立归档；生产未复验。
+
 - [开发分支、历史补丁与共享文档整理](2026-10-12-development-worktree-closeout.md)：候选取舍、主线提交映射、残余资源补丁与恢复入口。
 
 - [榜单对决个人播放性能与正确性验收](2026-10-08-versus-personal-statistics-performance-acceptance.md)：真实副本 API、资源与完整发布对账通过；浏览器、完整全栈与生产专项正在收口。

@@ -41,6 +41,7 @@ FastAPI 后端采用四层分离：**api/**（路由 + Depends 依赖注入）�
 | `core/auth.py` | `require_auth()` 依赖，本地模式放行，远程模式校验 Bearer Token |
 | `core/logging_config.py` | `SensitiveDataFilter` 脱敏敏感字段，全局 500 不泄露 stack trace |
 | `core/request_context.py` | Request ID 上下文（`ContextVar`），响应返回 `X-Request-ID`，日志包含 request id |
+| `core/request_cancellation.py` | 专辑stats GET的请求级协作取消；不取消共享loader或年度后台生成，先结束工作线程再关闭连接 |
 | `core/warmup.py` | 启动后台预热 Billboard + Dashboard + artist fan-out，并以精确 key 持久预建最新年度总结；默认使用当前前端过滤口径（`dynamic_threshold=True`），`SPOTIFY_STATS_WARMUP=0` 可关闭 |
 | `core/job_queue.py` | 3 worker 线程池 + `background_jobs` 表持久化，enrichment 用 stale-cache+refresh 模式 |
 | `core/spotify_utils.py` | OAuth PKCE + Token 加密持久化 + 自动刷新 + 10 scope 全量数据拉取 |

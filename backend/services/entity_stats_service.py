@@ -18,6 +18,7 @@ from backend.core.db import (
     load_plays,
     load_plays_for_artists,
 )
+from backend.core.request_cancellation import check_read_cancelled
 from backend.domains.music_search.revisions import get_music_search_revision_state
 from backend.domains.playback.album_project_identity import (
     AlbumProjectIdentity,
@@ -210,8 +211,11 @@ def _ranks(
 
     def rows_for(resolved: dict, frame: pd.DataFrame | None = None) -> list[dict]:
         scope = (resolved.get("start_date"), resolved.get("end_date"))
+        check_read_cancelled()
         if scope not in rows_by_scope:
             scoped = frame if frame is not None else filter_period_events(all_df, resolved)
+            duration = build_duration_frame(all_df, resolved)
+            check_read_cancelled()
             _, rows_by_scope[scope] = chart_rows(
                 conn,
                 scoped,
@@ -220,7 +224,7 @@ def _ranks(
                 None,
                 0,
                 merge_level=merge_level,
-                duration_frame=build_duration_frame(all_df, resolved),
+                duration_frame=duration,
             )
         return rows_by_scope[scope]
 
@@ -255,7 +259,12 @@ def _top250_count(
     album_name: str | None = None,
     album_names: list[str] | None = None,
     artist_name: str | None = None,
+    duration_frame=None,
 ) -> int:
+    check_read_cancelled()
+    if duration_frame is None:
+        duration_frame = build_duration_frame(df, resolved)
+    check_read_cancelled()
     _, rows = chart_rows(
         conn,
         df,
@@ -263,8 +272,9 @@ def _top250_count(
         "plays",
         250,
         0,
-        duration_frame=build_duration_frame(df, resolved),
+        duration_frame=duration_frame,
     )
+    check_read_cancelled()
     count = 0
     for row in rows:
         row_album = row.get("album_name")
@@ -742,6 +752,7 @@ def _published_album_ranks(conn, context, album_names, artist_name):
 
 
 def _published_album_top250_counts(conn, context, filters, album_names, artist_name):
+    check_read_cancelled()
     # A rank map keeps only the first rank when one ID has multiple artist
     # presentations. Reading *all* rows of IDs whose first rank is <=250 and
     # applying the original sort/limit retains the exact 250-row boundary.
@@ -752,6 +763,7 @@ def _published_album_top250_counts(conn, context, filters, album_names, artist_n
         if rank <= 250
     }
     from backend.domains.playback.track_groups import load_track_group_keys
+    from backend.services.versus_rank_context_service import RANK_SOURCE_COLUMNS
 
     keys = load_track_group_keys(conn, merge_level=2)
     members = set(candidates)
@@ -759,8 +771,14 @@ def _published_album_top250_counts(conn, context, filters, album_names, artist_n
         members.update(keys.loc[keys["track_agg_id"].isin(candidates), "track_id"].astype(int))
     members = sorted(members)
     loader = _scoped_play_loader(
-        conn, _album_source_track_ids(conn, members), music_only=filters["music_only"]
+        conn,
+        _album_source_track_ids(conn, members),
+        music_only=filters["music_only"],
+        loader=partial(
+            load_plays, columns=RANK_SOURCE_COLUMNS + ", al_src.album_name AS source_album_name"
+        ),
     )
+    check_read_cancelled()
     frame, _, _ = load_period_plays(
         conn,
         **{key: filters[key] for key in ("min_ms", "music_only", "merge_enabled")},
@@ -769,6 +787,7 @@ def _published_album_top250_counts(conn, context, filters, album_names, artist_n
         attach_duration_slices=False,
         _loader=loader,
     )
+    check_read_cancelled()
     from backend.domains.playback.logical_timeline import (
         attach_listening_duration_frame,
         get_listening_duration_frame,
@@ -782,6 +801,11 @@ def _published_album_top250_counts(conn, context, filters, album_names, artist_n
         attach_listening_duration_frame(
             frame, duration_source.loc[duration_source["track_id"].isin(members)].copy()
         )
+    # Slice the unfiltered listening source once. Filtering event dates first
+    # would lose duration crossing a window boundary; each window still gets
+    # its independently filtered counts and duration rows.
+    duration = build_duration_frame(frame)
+    check_read_cancelled()
     return {
         period: _top250_count(
             conn,
@@ -789,6 +813,7 @@ def _published_album_top250_counts(conn, context, filters, album_names, artist_n
             resolved,
             album_names=album_names,
             artist_name=artist_name,
+            duration_frame=filter_period_events(duration, resolved).reset_index(drop=True),
         )
         for period, resolved in context["periods"].items()
     }
@@ -811,6 +836,7 @@ def _build_album_stats(
 ) -> dict:
     from backend.domains.playback.album_projects import apply_canonical_song_keys
 
+    check_read_cancelled()
     requested_album_name = album_name
     identity = resolve_album_project_identity(
         conn,
@@ -893,6 +919,7 @@ def _build_album_stats(
         else None
     )
 
+    check_read_cancelled()
     all_df, current_df, resolved = load_period_plays(
         conn,
         min_ms,
@@ -906,6 +933,7 @@ def _build_album_stats(
         attach_duration_slices=False,
         _loader=loader,
     )
+    check_read_cancelled()
     if scoped:
         resolved = (
             published_context["periods"]["lifetime"]
@@ -975,13 +1003,16 @@ def _build_album_stats(
         ].copy()
     if entity_all.empty and entity_duration_source.empty:
         return {"found": False}
+    check_read_cancelled()
     entity_duration = build_duration_frame(
         entity_all,
         resolved,
         duration_source=entity_duration_source,
     )
     entity_time_source = entity_all if not entity_all.empty else entity_duration_source
+    check_read_cancelled()
     data = _entity_base(all_df, entity_df, resolved, entity_duration)
+    check_read_cancelled()
     # Keep the legacy summary payload bounded; the detail UI uses the dedicated
     # rankings endpoint for every page instead of downloading the full project.
     if include_rank_context:
@@ -996,6 +1027,7 @@ def _build_album_stats(
         )
     else:
         breakdown = []
+    check_read_cancelled()
     data.update(
         {
             "found": True,
@@ -1051,6 +1083,7 @@ def _build_album_stats(
             "recent_plays": recent_plays(conn, entity_df, 50) if include_rank_context else [],
         }
     )
+    check_read_cancelled()
     if published_context is not None:
         from backend.core.access_surface import snapshot_unavailable
         from backend.services.versus_rank_context_service import read
