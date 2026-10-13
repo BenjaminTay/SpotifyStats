@@ -1,10 +1,10 @@
 # SpotifyStats 文档地图
 
-- [专辑排名取消与Top250候选审阅、整合](reports/2026-10-13-album-rank-cancellation-integration-review.md)：七文件已进入现有整合工作区，源码等同研发full8通过版本，整合重点回归57项通过；整合分支本地业务提交`c21250e3`，未合入main/推送/发布，生产详情与OOM继续开放。
+- [专辑排名取消与Top250候选审阅、整合](reports/2026-10-13-album-rank-cancellation-integration-review.md)：七文件已进入现有整合工作区，源码等同研发full8通过版本，整合重点回归57项通过；本地main业务提交`c21250e3`，源SHA原样保留，未推送/发布，生产详情与OOM继续开放。
 
 - [开发、整合与工作树收尾规则](reference/development-delivery-workflow.md)：唯一研发负责人、共享文档、检查点、提交映射与证据归档。
 - [2026-10-12 分支与历史补丁处置](reports/2026-10-12-development-worktree-closeout.md)：只保留main、当前排名/驻留研发与统一整合工作树，前三轮候选及旧OOM补丁已归档。
-- [详情性能与资源验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：最后保存生产4f3f首次89/1，OOM与手机问题开放；历史候选已归档未采用；Top250与请求取消候选已审阅并在整合分支本地提交`c21250e3`，启动驻留与生产验收仍开放，历史门禁/失败按原版本保留。
+- [详情性能与资源验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：最后保存生产4f3f首次89/1，OOM与手机问题开放；历史候选已归档未采用；Top250与请求取消候选已审阅并以`c21250e3`合入本地main，尚未推送/发布，启动驻留与生产验收仍开放，历史门禁/失败按原版本保留。
 
 - [榜单对决个人播放统计已完成规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)：S0–S5完成，c58775f0已发布，原公开HTTPS首次14/28及资源/完整守恒通过；人类明确私有入口保持现状
 - [`plans/2026-10-09-music-detail-chart-performance-plan.md`](plans/2026-10-09-music-detail-chart-performance-plan.md)：`SS-2026-10-09-001` 已完成只读诊断并形成修复规划；独立overview、已发布事实复用、project目标化、请求与错误状态、冷访问和资源验收，S0已冻结；S1–S3已实现，S4/S5验收中
