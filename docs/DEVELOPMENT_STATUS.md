@@ -1,6 +1,8 @@
 # SpotifyStats 开发状态总表
 
-> 当前交付（2026-10-14，本地INTEGRATED，未推送部署）：业务`8f46b3cb`按授权精确三文件提交，54提交前回归及四项hooks通过；源`8f46b3cb9af8ebc2c546727df089d4d97e7f5309`→main同SHA快进，代码仍等于已通过默认完整8/8的冻结版本。十份协调文档独立提交，三树在本轮安全同步最终HEAD；具体docs SHA与同步收据见[提交映射与恢复入口](reports/2026-10-14-native-trim-maintenance-submission-review.md)。原生资源/OOM继续OPEN、发布HOLD；下一步取得后续推送/CI授权，不推main或部署，不新验生产。
+> 当前交付（2026-10-14，驻留缓解已发布，整体资源Partial）：固定b1260208已普通推送研发/main；研发及main CI attempt1成功、正式Release attempt2成功，首轮SSH reset保留且仅重试deploy。独立runtime/30源码核验、唯一原首次90/90、116/116 API和三strict/wrapper0通过；RSS起点965.828→396.059、末尾1136.430→748.363MiB，但读取增长与CPU略高、启动高水位基本不变。峰值/64MiB/平台期/OOM继续OPEN；本轮交付、归档与工作树收尾见[正式报告](reports/2026-10-14-native-trim-maintenance-production-delivery.md)。
+
+> 前一本地检查点（2026-10-14，本地INTEGRATED，未推送部署）：业务`8f46b3cb`按授权精确三文件提交，54提交前回归及四项hooks通过；源`8f46b3cb9af8ebc2c546727df089d4d97e7f5309`→main同SHA快进，代码仍等于已通过默认完整8/8的冻结版本。十份协调文档独立提交，三树在本轮安全同步最终HEAD；具体docs SHA与同步收据见[提交映射与恢复入口](reports/2026-10-14-native-trim-maintenance-submission-review.md)。原生资源/OOM继续OPEN、当时发布HOLD；后续授权与实际交付见顶部最新记录。
 
 > 提交前交接（2026-10-14，精确提交审阅READY）：三文件源码与已通过完整门禁的独立归档一致，无阻塞代码发现；main/整合树apply-check实际0，未改目标源码或暂存。地图“新full8未运行”的过时描述已修正；固定研发三文件与main十文档的两份提交草案。下一步等待明确提交指令后执行精确提交/本地整合及SHA映射；不推送部署，资源/OOM继续OPEN、发布HOLD。见[提交整合范围审阅](reports/2026-10-14-native-trim-maintenance-submission-review.md)。
 
@@ -27,8 +29,8 @@
 
 | 状态 | 分支 / 候选 | 负责人及下一步 |
 | --- | --- | --- |
-| INTEGRATED（本地）；发布HOLD | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | 新三文件业务`8f46b3cb`已提交并以同SHA进入main，提交前54回归/四hooks通过，当前默认full8代码一致；十份协调文档独立提交并同步三树。资源/OOM仍开放；同一问题链保留唯一研发与统一整合，后续推送/CI另获授权，暂不部署。见[映射与收尾](reports/2026-10-14-native-trim-maintenance-submission-review.md) |
-| INTEGRATED；统一整合保留 | `codex/versus-detail-integration` | c0d发布与唯一首次验收完成，原失败及私密成品已独立归档；统一交付路径保留至当前状态文档收尾，不再发本轮生产请求或重复验收；共享文档只在main维护 |
+| INTEGRATED / RELEASED；资源合同OPEN | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | 同SHA业务8f46随b126正式发布，研发/main CI与Release、唯一90/116及三strict通过；驻留缓解交付完成，剩余峰值/64MiB/平台期/OOM沿同一唯一研发与统一整合链维护，不新开候选、不重复当前生产窗口。见[正式交付与恢复入口](reports/2026-10-14-native-trim-maintenance-production-delivery.md) |
+| INTEGRATED；同链统一整合保留 | `codex/versus-detail-integration` | b126发布与唯一首次验收完成，原失败及私密成品独立保存；用于同一OPEN资源合同的候选审阅与主线整合，合同结束后归档，不新增第二研发分支；共享文档只在main维护 |
 | ARCHIVED | 前端设置加载、JSON名称传输、艺人范围身份三个候选 | 收益或总体资源准入未证明，保存补丁/证据，不进入main业务代码 |
 | ARCHIVED | 历史OOM混合补丁 | 已覆盖内容关闭；未采用的串行锁/窄输入等保留归档，只有当前定位证明需要时才提取 |
 | CLOSED（本地） | CI挂起诊断分支 | 主要修复已有主线对应，历史提交与差异已保存；远端未删除 |
@@ -87,9 +89,9 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| SS-2026-10-08-001 | 详情与年度维护资源 | OPEN / Partial：warmup=0队列回收`8f46b3cb`按授权本地提交/整合，54专项及新默认full8通过；源→main同SHA，未推送/新CI/部署 | P0：后续研发推送/CI另行授权；原生峰值/64MiB/平台期/OOM开放，发布HOLD | [提交映射](reports/2026-10-14-native-trim-maintenance-submission-review.md)、[当前门禁](reports/2026-10-14-native-trim-maintenance-fullgate.md)、[Linux专项](reports/2026-10-13-native-trim-maintenance-candidate.md) | 2026-10-14（本地整合，未新验生产） |
+| SS-2026-10-08-001 | 详情与年度维护资源 | OPEN / Partial：warmup=0维护回收8f46随b126正式发布；研发/main CI、Release与原首次90/116/三strict通过 | P0：驻留缓解本轮已交付；末RSS低388MiB，但读取增长/CPU未改善、启动高水位基本不变。峰值/64MiB/平台期/OOM仍开放，不以功能Pass关闭资源合同 | [正式交付](reports/2026-10-14-native-trim-maintenance-production-delivery.md)、[当前门禁](reports/2026-10-14-native-trim-maintenance-fullgate.md) | 2026-10-14（新生产唯一首次） |
 | SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | COMPLETED / RELEASED；c587正式CI/NoDeploy/三模式/镜像/部署及独立runtime通过；原公开FIRST14/28全Pass（最大1.669秒）、420秒完整资源/守恒、96 API与三denial通过。人类明确仅公开HTTPS，S0–S5完成，历史失败保留 | P1：三库准备补修已验证，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push已完成，原公开入口已通过；私有SSH HTTP48仅为功能证据。本项完成；私有入口保持现状。详情独立首次已完成：39/90性能通过、116功能及完整读取守恒通过，详情与OOM仍开放 | [完整规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
-| SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | 首次延迟子项PASS；整体OPEN/Partial（资源未收口）。c212随c0d已发布，原首次90/90、116 API/三strict通过；原生回收e01a4455已本地整合但未发布。原wrapper1与Mounts顺序补证、旧89/1保留 | P1：固定版本后续交付及资源准入归SS-2026-10-08-001统一推进，不追加生产重跑。手机弹层另行处理 | [回收审阅/映射](reports/2026-10-13-native-trim-candidate-review.md)、[正式交付与首次](reports/2026-10-13-album-rank-cancellation-production-delivery.md)、[审阅/映射](reports/2026-10-13-album-rank-cancellation-integration-review.md)、[规划](plans/2026-10-09-music-detail-chart-performance-plan.md) | 2026-10-13 |
+| SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | 首次延迟子项PASS；整体OPEN/Partial（资源未收口）。b126新首次90/90、116/116 API/三strict及wrapper0，旧c0d90/116与旧失败保留 | P1：时延子项已达标；资源归SS-2026-10-08-001同链维护。当前窗口不热重跑，手机弹层另行处理 | [新生产交付](reports/2026-10-14-native-trim-maintenance-production-delivery.md)、[规划](plans/2026-10-09-music-detail-chart-performance-plan.md) | 2026-10-14 |
 | SS-2026-10-11-001 | 手机播放统计加载时弹层状态丢失 | OPEN/P2；未改动前端基线受控复现，加载中打开时间弹层后，数据到达导致控件重新挂载并关闭弹层；尚未产品修复 | P2：独立保持控件/编辑状态连续性；本轮门禁只等待初始页面就绪，保留原超时与应用后断言，不用门禁Pass关闭产品问题 | [台账](issues/2026-08-27-issue-register.md)、[受控复现](reports/2026-10-09-music-detail-chart-performance-acceptance.md)本地专辑候选节 | 2026-10-11 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付；本轮单次24分22秒 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07（单次计时，不代表三次稳定收口） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |

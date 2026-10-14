@@ -1,5 +1,11 @@
 # 变更日志
 
+## 2026-10-14 维护完成原生回收正式交付
+
+- 固定b126按授权推送研发/main；研发及main CI成功，Release第二次部署成功，首轮SSH reset/原失败保留且仅重试失败job。目标源码、三模式、Online Backup与精确统计复用通过。
+- 生产原首次90/90、116/116 API、三个完整strict read windows和wrapper0通过，无额外手动重启/预暖/热复验；实际运行身份连续。
+- 窗口末RSS1136.430→748.363MiB，驻留缓解已交付；读取增长与CPU未改善、启动高水位基本不变，峰值/逐请求64MiB/平台期/OOM仍OPEN。独立证据、文档提交及三树同步见[正式交付](reports/2026-10-14-native-trim-maintenance-production-delivery.md)。
+
 ## 2026-10-14 维护回收候选本地提交整合（未推送）
 
 - 用户授权后精确提交三文件`8f46b3cb`，54提交前回归、四项hooks通过；同一业务commit快进main，源码等于已通过当前默认完整门禁的冻结版本。

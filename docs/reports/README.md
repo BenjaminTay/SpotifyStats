@@ -1,11 +1,13 @@
 # 交付与验证报告索引
 
-- [维护回收候选提交与整合范围审阅](2026-10-14-native-trim-maintenance-submission-review.md)：三文件`8f46b3cb`已按授权本地提交并以同SHA进入main；54回归/四hooks通过，十文档独立提交、三树同步与独立恢复入口；未推送部署。
-- [维护回收候选当前完整门禁](2026-10-14-native-trim-maintenance-fullgate.md)：10-14当前冻结三文件默认八阶段同轮PASS，3955/186/803、API157/113及三浏览器；首轮历史artifact失败保留；代码随后按同版本`8f46b3cb`本地提交整合，未推送部署，资源仍Partial。
-- [warmup=0维护完成回收候选](2026-10-13-native-trim-maintenance-candidate.md)：10-13冻结三文件专项，54定向、11次真实调用/9对完整响应/两strict通过；随后同版本`8f46b3cb`本地提交整合；驻留下降但采样峰与增长未改善；同一候选10-14新完整门禁通过，尚无新提交CI，发布HOLD。
-- [原生回收研发CI与发布准备](2026-10-13-native-trim-release-preparation.md)：6c74b9b4仅研发分支已推送，CI attempt1成功；源fence匹配私密输入和静态三模式，生产warmup=0触发阻塞、隔离导出OOM与原失败保留；不推main/不部署。
+- [维护完成原生回收生产交付与首次验收](2026-10-14-native-trim-maintenance-production-delivery.md)：固定b126已正式发布；研发/main CI及Release通过，原首次90/90、116/116 API、三strict与wrapper0；RSS末低388MiB，增长/CPU/峰值/OOM仍Partial，失败与独立恢复入口保留。
 
-- [完整预热原生内存回收审阅与本地整合](2026-10-13-native-trim-candidate-review.md)：四文件e01a4455已原样进入main，未推送/部署；默认Phase5/full8、Linux仿真9对完整响应及驻留收益、提交映射与独立恢复入口；原生资源/OOM未关闭。
+- [维护回收候选提交与整合范围审阅](2026-10-14-native-trim-maintenance-submission-review.md)：三文件`8f46b3cb`已按授权本地提交并以同SHA进入main；54回归/四hooks通过，十文档独立提交、三树同步与独立恢复入口；未推送部署。（历史检查点；当前交付见上方10-14生产报告。）
+- [维护回收候选当前完整门禁](2026-10-14-native-trim-maintenance-fullgate.md)：10-14当前冻结三文件默认八阶段同轮PASS，3955/186/803、API157/113及三浏览器；首轮历史artifact失败保留；代码随后按同版本`8f46b3cb`本地提交整合，未推送部署，资源仍Partial。（历史检查点；当前交付见上方10-14生产报告。）
+- [warmup=0维护完成回收候选](2026-10-13-native-trim-maintenance-candidate.md)：10-13冻结三文件专项，54定向、11次真实调用/9对完整响应/两strict通过；随后同版本`8f46b3cb`本地提交整合；驻留下降但采样峰与增长未改善；同一候选10-14新完整门禁通过，尚无新提交CI，发布HOLD。（历史检查点；当前交付见上方10-14生产报告。）
+- [原生回收研发CI与发布准备](2026-10-13-native-trim-release-preparation.md)：6c74b9b4仅研发分支已推送，CI attempt1成功；源fence匹配私密输入和静态三模式，生产warmup=0触发阻塞、隔离导出OOM与原失败保留；不推main/不部署。（历史检查点；当前交付见上方10-14生产报告。）
+
+- [完整预热原生内存回收审阅与本地整合](2026-10-13-native-trim-candidate-review.md)：四文件e01a4455已原样进入main，未推送/部署；默认Phase5/full8、Linux仿真9对完整响应及驻留收益、提交映射与独立恢复入口；原生资源/OOM未关闭。（历史检查点；当前交付见上方10-14生产报告。）
 
 - [2026-10-13 专辑排名取消生产交付](2026-10-13-album-rank-cancellation-production-delivery.md)：c0d发布、原首次90/90、116 API/三strict；资源仍Partial，原失败与证据缺口保留。
 

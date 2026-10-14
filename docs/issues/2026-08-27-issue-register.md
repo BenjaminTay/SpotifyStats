@@ -1,8 +1,10 @@
 # SpotifyStats 问题台账
 
+> 本轮交付（2026-10-14）：b126已正式发布，研发/main CI与Release成功；原首次90/90、116/116 API、三个strict和wrapper0通过，末RSS低388MiB。读取增长/CPU未改善、启动高水位基本不变，OOM/峰值/64MiB/平台期继续OPEN，详见[正式交付与恢复入口](../reports/2026-10-14-native-trim-maintenance-production-delivery.md)。
+
 > 状态：持续维护
 > 首次建立：2026-08-27
-> 最后状态核验：2026-10-13（c0d已发布，CI成功；Release首轮安装拒绝、补齐现成私密成品后attempt2成功；原首次90/90、116 API/三个strict通过。原wrapper1保留，Mounts顺序独立补证通过；资源/OOM/手机仍OPEN）
+> 历史状态核验：2026-10-13（c0d已发布，CI成功；Release首轮安装拒绝、补齐现成私密成品后attempt2成功；原首次90/90、116 API/三个strict通过。原wrapper1保留，Mounts顺序独立补证通过；资源/OOM/手机仍OPEN）
 > 生产最后保存记录：c0d699e526f9323a95c63b2abf102c97d314eb2d、schema90、dual三healthy；原首次90/90，116 API/三个strict通过。原index39为3125.1→1716.3ms，RSS峰/末1160.348/1136.430MiB、CPU38.65秒；整体资源仍Partial/OOM OPEN，历史4f3f89/1及其他原失败保留。详见[本轮正式交付](../reports/2026-10-13-album-rank-cancellation-production-delivery.md)。
 > 下文原有数值、环境状态和已解决项证据保留原始日期；9 月 13 日生产、LLM、Spotify 与 HTTPS 记录不自动代表今天的状态。
 
@@ -17,7 +19,7 @@
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
 | `SS-2026-10-08-002` | 榜单成绩先出现，个人播放次数、时长与排名迟迟补齐 | `RESOLVED / RELEASED`；c587正式三workflow/11jobs及实际安装/独立runtime通过，原公开FIRST14/28全PASS（最大1.669秒）、420秒资源/全守恒、96 API与三denial通过；人类明确仅公开HTTPS，S0–S5完成，旧首次失败保留 | 本地45/90、96、130及详情自然90通过；部署72回归/Linux备份/owned共同恢复与cb8 full8通过，所有旧失败分列 | P1：三库准备最小补修83回归/Linux隔离通过，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push实际0，新c587三流水线及实际安装success，独立runtime确认3完整SHA/healthy和schema90/4rank/4detail/48BBready；启动维护自然结束，原首次公开14/28、840连续资源sample及两面96 API/三denial全通过，不预暖或放宽门槛。本项公开范围已由人类决定并完成；私有保持现状。详情独立唯一额外重启已完成，原90性能39通过/51失败，116功能及完整读取守恒通过，详情和OOM仍开放。见[规划](../archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](../reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节。2026-10-09。 |
-| `SS-2026-10-09-001` | 详情榜单成绩首次加载慢，疑似等待个人排名 | 首次延迟子项PASS；整体`OPEN / Partial`（资源未收口）。c212随c0d已发布，原首次90/90、116 API/三个strict通过；回收e01a4455已本地整合未发布 | 旧index39为3125.1→1716.3ms，较4f3f改善1/0新增失败。原wrapper1、Mounts顺序独立补证、安装attempt1/2保留；RSS末仍约1.11GiB、全资源合同未证明 | P1：固定版本后续交付及资源准入归SS-2026-10-08-001统一推进，手机弹层另行处理；不追加生产热复验。见[本轮整合](../reports/2026-10-13-native-trim-candidate-review.md)、[正式交付](../reports/2026-10-13-album-rank-cancellation-production-delivery.md)。2026-10-13。 |
+| `SS-2026-10-09-001` | 详情榜单成绩首次加载慢，疑似等待个人排名 | 首次延迟子项PASS；整体`OPEN / Partial`（资源未收口）。b126新首次90/90、116/116 API/三strict及wrapper0通过；c0d原首次与原失败保留 | 点击核心最大1084ms、直达最大2368.6ms均达标；原index39 L3专辑直达1716.3→1498ms。末RSS低388MiB，但读取增长与CPU未改善、启动高水位基本不变 | P1：资源归SS-2026-10-08-001统一推进，手机弹层另行处理；不追加生产热复验。见[新生产交付](../reports/2026-10-14-native-trim-maintenance-production-delivery.md)。2026-10-14。 |
 
 `SS-2026-10-09-001` 2026-10-13本地整合检查点（后续交付见上表）：组合补丁SHA256 `a37bcf95f05f23ffb957cf228f8bdaec495e2df56b3ca0be3c506e5f65479295`；七文件在2bdf基线现有统一整合工作区应用，完整backend Python源码等同研发full8版本。研发run `20261012T152324.012689Z-fff3d57bed12` 默认完整八阶段PASS/实际0（3937 seed/186集成/803前端通过，三浏览器）；第一次禁外部封面模式失败与正常模式完整重跑保留。整合57重点复核通过，没有另跑整合full8或生产。源七文件已原样进入main业务提交`c21250e3`，状态提交`8b1b2405`亦快进进入main；研发/整合树安全同步，恢复点独立保存，未推送/发布；原RSS起点差、raw Analysis发布摘要false均保留，OOM独立OPEN。详见[审阅报告](../reports/2026-10-13-album-rank-cancellation-integration-review.md)。
 
@@ -35,7 +37,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；warmup=0三文件`8f46b3cb`按授权提交并以同SHA进入本地main，54提交前回归/四hooks通过，当前full8源码不变。未推送/新CI/部署，发布HOLD | 当前seed3955、真实集成186、前端803，API157/113与三浏览器通过；仿真ready/final低343/333MiB，采样峰高40MiB、读取增长略大；首轮失败原样保留 | P1：后续研发推送/CI另行授权；原生峰值/64MiB/平台期/OOM仍OPEN，不追加生产预暖/重启/热复验。见[源→main映射](../reports/2026-10-14-native-trim-maintenance-submission-review.md)、[门禁](../reports/2026-10-14-native-trim-maintenance-fullgate.md)；2026-10-14。 |
+| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；warmup=0维护回收8f46随b126正式发布，研发/main CI与Release成功；原首次90/116、三strict/wrapper0通过 | 起点RSS965.828→396.059、末尾1136.430→748.363MiB；读取增长+181.703MiB、CPU+2.94秒，启动VmHWM1193.258→1186.516MiB。单窗驻留缓解，不证明完整资源准入 | P1：本轮驻留缓解交付完成，峰值/64MiB/平台期/OOM沿同链OPEN；不追加生产预暖/重启/热复验。见[正式报告](../reports/2026-10-14-native-trim-maintenance-production-delivery.md)；2026-10-14。 |
 
 ### 2026-10-07 非榜单详情统计空值
 

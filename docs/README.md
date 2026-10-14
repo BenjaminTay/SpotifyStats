@@ -1,11 +1,13 @@
 # SpotifyStats 文档地图
 
-- [维护回收候选提交与整合范围审阅](reports/2026-10-14-native-trim-maintenance-submission-review.md)：三文件`8f46b3cb`已按授权本地提交并以同SHA进入main；54回归/四hooks通过，十文档独立提交、三树同步与独立恢复入口；未推送部署。
-- [维护回收候选当前完整门禁](reports/2026-10-14-native-trim-maintenance-fullgate.md)：10-14当前冻结三文件默认八阶段同轮PASS，3955/186/803、API157/113及三浏览器；首轮历史artifact失败保留；代码随后按同版本`8f46b3cb`本地提交整合，未推送部署，资源仍Partial。
-- [warmup=0维护完成回收候选](reports/2026-10-13-native-trim-maintenance-candidate.md)：10-13冻结三文件专项，54定向、11次真实调用/9对完整响应/两strict通过；随后同版本`8f46b3cb`本地提交整合；驻留下降但采样峰与增长未改善；同一候选10-14新完整门禁通过，尚无新提交CI，发布HOLD。
-- [原生回收研发CI与发布准备](reports/2026-10-13-native-trim-release-preparation.md)：仅研发分支已推送，CI attempt1成功，私密成品与静态三模式已准备；生产warmup=0使当前回收路径不可达，发布HOLD，main及部署暂停。
+- [维护完成原生回收生产交付与首次验收](reports/2026-10-14-native-trim-maintenance-production-delivery.md)：固定b126已正式发布；研发/main CI及Release通过，原首次90/90、116/116 API、三strict与wrapper0；RSS末低388MiB，增长/CPU/峰值/OOM仍Partial，失败与独立恢复入口保留。
 
-- [完整预热原生内存回收审阅与本地整合](reports/2026-10-13-native-trim-candidate-review.md)：e01a4455四文件提交已原样进入main，默认Phase5/full8通过；Linux仿真驻留及完整响应证据保留，未推送/部署，原生资源准入/OOM仍开放。
+- [维护回收候选提交与整合范围审阅](reports/2026-10-14-native-trim-maintenance-submission-review.md)：三文件`8f46b3cb`已按授权本地提交并以同SHA进入main；54回归/四hooks通过，十文档独立提交、三树同步与独立恢复入口；未推送部署。（历史检查点；当前交付见上方10-14生产报告。）
+- [维护回收候选当前完整门禁](reports/2026-10-14-native-trim-maintenance-fullgate.md)：10-14当前冻结三文件默认八阶段同轮PASS，3955/186/803、API157/113及三浏览器；首轮历史artifact失败保留；代码随后按同版本`8f46b3cb`本地提交整合，未推送部署，资源仍Partial。（历史检查点；当前交付见上方10-14生产报告。）
+- [warmup=0维护完成回收候选](reports/2026-10-13-native-trim-maintenance-candidate.md)：10-13冻结三文件专项，54定向、11次真实调用/9对完整响应/两strict通过；随后同版本`8f46b3cb`本地提交整合；驻留下降但采样峰与增长未改善；同一候选10-14新完整门禁通过，尚无新提交CI，发布HOLD。（历史检查点；当前交付见上方10-14生产报告。）
+- [原生回收研发CI与发布准备](reports/2026-10-13-native-trim-release-preparation.md)：仅研发分支已推送，CI attempt1成功，私密成品与静态三模式已准备；生产warmup=0使当前回收路径不可达，发布HOLD，main及部署暂停。（历史检查点；当前交付见上方10-14生产报告。）
+
+- [完整预热原生内存回收审阅与本地整合](reports/2026-10-13-native-trim-candidate-review.md)：e01a4455四文件提交已原样进入main，默认Phase5/full8通过；Linux仿真驻留及完整响应证据保留，未推送/部署，原生资源准入/OOM仍开放。（历史检查点；当前交付见上方10-14生产报告。）
 
 - [专辑排名取消修复正式交付与首次验收](reports/2026-10-13-album-rank-cancellation-production-delivery.md)：c0d已发布，原90/90、116 API/三strict通过，旧index39为3125.1→1716.3ms；资源合同/OOM/手机仍开放，安装首轮、wrapper失败及独立补证分列保留。
 
