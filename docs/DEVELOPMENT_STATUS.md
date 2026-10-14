@@ -1,6 +1,15 @@
 # SpotifyStats 开发状态总表
 
-> 当前阶段（2026-10-13，原生回收已本地整合，未推送/部署）：e01a4455四文件业务提交已原样快进进入main；静态审阅、默认Phase5及默认本地full8通过，源码与验收候选一致。Linux仿真对照支持驻留收益，原生资源准入与整体OOM仍开放。下一步明确固定版本的后续交付及资源验证条件，当前不推送或部署，不追加生产复验。
+> 当前交付（2026-10-14，本地INTEGRATED，未推送部署）：业务`8f46b3cb`按授权精确三文件提交，54提交前回归及四项hooks通过；源`8f46b3cb9af8ebc2c546727df089d4d97e7f5309`→main同SHA快进，代码仍等于已通过默认完整8/8的冻结版本。十份协调文档独立提交，三树在本轮安全同步最终HEAD；具体docs SHA与同步收据见[提交映射与恢复入口](reports/2026-10-14-native-trim-maintenance-submission-review.md)。原生资源/OOM继续OPEN、发布HOLD；下一步取得后续推送/CI授权，不推main或部署，不新验生产。
+
+> 提交前交接（2026-10-14，精确提交审阅READY）：三文件源码与已通过完整门禁的独立归档一致，无阻塞代码发现；main/整合树apply-check实际0，未改目标源码或暂存。地图“新full8未运行”的过时描述已修正；固定研发三文件与main十文档的两份提交草案。下一步等待明确提交指令后执行精确提交/本地整合及SHA映射；不推送部署，资源/OOM继续OPEN、发布HOLD。见[提交整合范围审阅](reports/2026-10-14-native-trim-maintenance-submission-review.md)。
+
+> 提交前核验（2026-10-14，新候选完整门禁READY）：冻结三文件候选默认完整run `20261014T005816.915594Z-9d1a29cefca3` 八阶段同轮PASS/实际0；seed3955、真实集成186、前端803通过，API157/113、51端点1122样本/最高hot P95 267.241ms、三浏览器通过。首轮旧output报告链接preflight失败保留，字节改存snapshot后默认全阶段重跑。源码/旧fixture/原七库不变，owned进程关闭。候选仅研发树未提交/整合，未推送CI或部署；原生峰值/64MiB/平台期/OOM仍OPEN，发布HOLD。完整门禁已通过，后续精确提交范围见最新交接；原始门禁见[当前源码完整门禁](reports/2026-10-14-native-trim-maintenance-fullgate.md)。
+
+
+> 前一专项检查点（2026-10-13，新队列候选专项READY / Partial）：保持warmup=0，在成功重型维护结束、仍持CPU gate时回收native闲置页。唯一研发树三文件未提交，54定向通过；Linux仿真11次真实回收、9对完整响应（6个200+3个预期404）和两strict通过，ready/final低约343/333MiB，但采样峰高约40MiB、读取增长略大。新full8/CI未运行，main未新增业务整合、未推送部署；原生峰值/OOM仍OPEN。下一步审阅并运行当前源码新门禁，见[维护完成回收候选](reports/2026-10-13-native-trim-maintenance-candidate.md)。
+
+> 上一检查点（2026-10-13，旧6c研发CI通过，发布HOLD）：6c74b9b4仅推送到codex/album-rank-cost，远端main仍为c0d；日常CI attempt1/实际job成功，unit2735、contract571、前端803通过。只读发布准备发现生产warmup=0，e01a4455的full预热回收路径不会触发；三份源fence匹配的私密输入及三模式静态检查已准备，但不推送main、不部署、不调整预热配置。下一步先解决实际启动条件下的调用边界，原生资源/OOM仍开放。见[发布准备与阻塞](reports/2026-10-13-native-trim-release-preparation.md)。
 
 > 本轮核验：验收基线13ec3ec1，研发→main业务映射为同一e01a4455；精确四文件提交，钩子全部通过，提交前13项回归通过。默认完整run `20261013T093055.808116Z-598e44fa152c` 八阶段同轮PASS/实际0；3948后端、186真实集成、803前端通过，API157/113、51端点延迟门禁及三浏览器通过。仿真Linux9对完整响应逐字节相同、两側strict通过，ready/最终idle RSS分别低约875/789MiB；不证明原生时延、构建峰值或OOM修复。详见[审阅、映射与独立归档](reports/2026-10-13-native-trim-candidate-review.md)。
 
@@ -18,7 +27,7 @@
 
 | 状态 | 分支 / 候选 | 负责人及下一步 |
 | --- | --- | --- |
-| INTEGRATED；资源问题链保留 | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | e01a4455四文件已提交并原样进入main，默认Phase5/full8及有界Linux仿真响应/驻留对照通过，证据独立归档。安全同步状态文档后保留同一研发树用于资源问题链；原生amd64环境缺失，资源准入/OOM保持Partial/OPEN，不复跑生产矩阵 |
+| INTEGRATED（本地）；发布HOLD | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | 新三文件业务`8f46b3cb`已提交并以同SHA进入main，提交前54回归/四hooks通过，当前默认full8代码一致；十份协调文档独立提交并同步三树。资源/OOM仍开放；同一问题链保留唯一研发与统一整合，后续推送/CI另获授权，暂不部署。见[映射与收尾](reports/2026-10-14-native-trim-maintenance-submission-review.md) |
 | INTEGRATED；统一整合保留 | `codex/versus-detail-integration` | c0d发布与唯一首次验收完成，原失败及私密成品已独立归档；统一交付路径保留至当前状态文档收尾，不再发本轮生产请求或重复验收；共享文档只在main维护 |
 | ARCHIVED | 前端设置加载、JSON名称传输、艺人范围身份三个候选 | 收益或总体资源准入未证明，保存补丁/证据，不进入main业务代码 |
 | ARCHIVED | 历史OOM混合补丁 | 已覆盖内容关闭；未采用的串行锁/窄输入等保留归档，只有当前定位证明需要时才提取 |
@@ -78,7 +87,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| SS-2026-10-08-001 | 生产OOM与详情访问内存增长 | OPEN/Partial；完整预热后glibc回收e01a4455已本地整合，未推送/部署，默认Phase5/full8通过；仿真Linux完整响应/strict一致，ready/idle RSS约低875/789MiB。原c0d生产证据保持 | P1：明确固定版本后续交付及资源验证条件；原生amd64环境不可用，逐请求64MiB、多轮平台期、构建峰值及整体OOM仍开放。不额外生产预暖/重启/热复验 | [本轮审阅/映射](reports/2026-10-13-native-trim-candidate-review.md)、[原生产资源](reports/2026-10-13-album-rank-cancellation-production-delivery.md)、[历史资源](reports/2026-10-09-music-detail-chart-performance-acceptance.md) | 2026-10-13 |
+| SS-2026-10-08-001 | 详情与年度维护资源 | OPEN / Partial：warmup=0队列回收`8f46b3cb`按授权本地提交/整合，54专项及新默认full8通过；源→main同SHA，未推送/新CI/部署 | P0：后续研发推送/CI另行授权；原生峰值/64MiB/平台期/OOM开放，发布HOLD | [提交映射](reports/2026-10-14-native-trim-maintenance-submission-review.md)、[当前门禁](reports/2026-10-14-native-trim-maintenance-fullgate.md)、[Linux专项](reports/2026-10-13-native-trim-maintenance-candidate.md) | 2026-10-14（本地整合，未新验生产） |
 | SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | COMPLETED / RELEASED；c587正式CI/NoDeploy/三模式/镜像/部署及独立runtime通过；原公开FIRST14/28全Pass（最大1.669秒）、420秒完整资源/守恒、96 API与三denial通过。人类明确仅公开HTTPS，S0–S5完成，历史失败保留 | P1：三库准备补修已验证，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push已完成，原公开入口已通过；私有SSH HTTP48仅为功能证据。本项完成；私有入口保持现状。详情独立首次已完成：39/90性能通过、116功能及完整读取守恒通过，详情与OOM仍开放 | [完整规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
 | SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | 首次延迟子项PASS；整体OPEN/Partial（资源未收口）。c212随c0d已发布，原首次90/90、116 API/三strict通过；原生回收e01a4455已本地整合但未发布。原wrapper1与Mounts顺序补证、旧89/1保留 | P1：固定版本后续交付及资源准入归SS-2026-10-08-001统一推进，不追加生产重跑。手机弹层另行处理 | [回收审阅/映射](reports/2026-10-13-native-trim-candidate-review.md)、[正式交付与首次](reports/2026-10-13-album-rank-cancellation-production-delivery.md)、[审阅/映射](reports/2026-10-13-album-rank-cancellation-integration-review.md)、[规划](plans/2026-10-09-music-detail-chart-performance-plan.md) | 2026-10-13 |
 | SS-2026-10-11-001 | 手机播放统计加载时弹层状态丢失 | OPEN/P2；未改动前端基线受控复现，加载中打开时间弹层后，数据到达导致控件重新挂载并关闭弹层；尚未产品修复 | P2：独立保持控件/编辑状态连续性；本轮门禁只等待初始页面就绪，保留原超时与应用后断言，不用门禁Pass关闭产品问题 | [台账](issues/2026-08-27-issue-register.md)、[受控复现](reports/2026-10-09-music-detail-chart-performance-acceptance.md)本地专辑候选节 | 2026-10-11 |
@@ -125,6 +134,8 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 6. 每次更新运行 `python3 scripts/docs_audit.py --include-archive` 和 `git diff --check`；若改变共同工作约定，保持 `AGENTS.md` 与 `CLAUDE.md` 完全一致。
 
 ### 本次核验与维护记录
+
+2026-10-13 研发分支CI与发布准备：按授权仅推送现有研发分支6c74b9b4，远端main仍c0d；CI38414168750 attempt1、实际job115354026493成功，unit2735/contract571/前端803通过。以readonly源及规范成品工具准备三份私密输入、本地验证三模式；512MiB隔离Billboard导出工具OOM失败保留，改为本地关闭副本规范验证现成清单并比对live fence。生产身份、启动时间和源物理状态未变；发现warmup=0使当前回收路径不可达，发布HOLD，不改配置、不推main、不部署。当前协调文档未新增提交，详见[准备报告](reports/2026-10-13-native-trim-release-preparation.md)。
 
 2026-10-13 资源候选审阅、本地提交与整合：在13ec3ec1基线核对四文件冻结SHA、独立归档和默认Phase5/full8；用户授权后精确提交e01a4455，13项回归及提交钩子通过。业务提交原样快进进入main，六份原文档逐字节保护后统一更新状态及映射；文档作为独立状态提交保存，安全同步既有研发/整合树。仿真驻留收益与本地功能通过分列，原生资源、64MiB、平台期、峰值和OOM仍开放；不追加运行副本、仿真配对、生产请求、推送或发布。
 

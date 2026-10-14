@@ -2,6 +2,8 @@
 
 2026-10-13；`SS-2026-10-08-001`，关联 `SS-2026-10-09-001`。
 
+后续状态：6c74b9b4仅研发分支已推送，main未推送/部署；发布前只读核对发现生产warmup=0，当前full预热回收不会触发，发布HOLD。原完整预热实验及本地整合证据保留原范围；最新CI与准备见[发布准备报告](2026-10-13-native-trim-release-preparation.md)。
+
 **结论：INTEGRATED（本地），未推送或部署。** 最小补丁已实现并审阅，默认 Phase5 与默认完整本地八阶段门禁通过；Linux 仿真对照证明维护完成后的驻留收益及样本响应等价。用户授权后，业务提交 `e01a44550ee0082a71788bd37f2cd939e53542a2` 已原样快进进入 main，整体资源合同与 OOM 保持 Partial/OPEN。
 
 ## 基线与精确范围
@@ -98,3 +100,5 @@ fullstack 八个必需阶段为 preflight、quality、backend、api、browser-ro
 用户已说明没有非生产原生amd64环境。原生时延/CPU/绝对RSS、逐请求64MiB、多轮进程平台期、构建峰值和整体OOM仍未关闭。下一步是明确固定版本的后续交付与资源验证条件；推送、CI和部署尚未执行。资源门槛若仍不达标，短生命周期builder应作为新的有界阶段单独评估，不扩入当前补丁。现有两工作树保留用于同一资源问题链和统一交付，不新建并行候选。
 
 README、AGENTS/CLAUDE无需改变产品或协作规则；本轮同步开发总表、问题台账、变更日志及文档索引。历史[生产交付](2026-10-13-album-rank-cancellation-production-delivery.md)和[前一整合检查点](2026-10-13-album-rank-cancellation-integration-review.md)继续保留原版本与范围。
+
+后续本地交付（2026-10-14）：新维护结束回收三文件`8f46b3cb`已按授权提交并以同SHA进入main，代码与上述冻结门禁版本一致；十份协调文档及同步/恢复记录见[提交映射](2026-10-14-native-trim-maintenance-submission-review.md)。此前“未提交/整合”等保留为各检查点范围；当前仍未推送/新CI/部署，原生峰值与OOM继续OPEN。

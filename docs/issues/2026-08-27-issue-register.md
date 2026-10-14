@@ -8,6 +8,8 @@
 
 > 本轮本地资源整合：完整预热后的glibc回收四文件e01a4455已按授权提交并原样进入main，默认Phase5/full8通过；仿真Linux完整响应、strict及驻留对照通过。未推送/部署，原生amd64环境缺失，资源合同/OOM保持OPEN，未新验生产。见[审阅与提交映射](../reports/2026-10-13-native-trim-candidate-review.md)。
 
+> 后续发布准备：6c74b9b4仅研发分支已推送，main未推送；CI38414168750 attempt1/实际job成功。生产warmup=0使full预热回收路径不可达，发布HOLD；私密成品及静态三模式准备不替代触发条件或资源准入。下一步先审阅实际维护完成边界的最小修正，不改生产配置、不部署。见[CI与发布准备](../reports/2026-10-13-native-trim-release-preparation.md)。
+
 ## 当前事项状态与近期收口
 
 ### 2026-10-08 榜单对决个人播放延迟
@@ -33,7 +35,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；完整预热后原生回收e01a4455已本地整合，未推送/部署，默认Phase5/full8通过；历史global OOM及原生资源准入未关闭 | 仿真Linux9对完整响应及两strict一致，ready/最终idle RSS约低875/789MiB。原c0d首次90 RSS965.828→1160.348→1136.430MiB、CPU38.65秒、host oom_kill1→1保留，不作为本轮新验 | P1：明确固定版本后续交付及资源验证条件；原生amd64环境缺失，逐请求64MiB、平台期、构建峰值/OOM仍开放。不把帧预算当RSS上限，不追加生产预暖/重启/热复验。见[本轮整合](../reports/2026-10-13-native-trim-candidate-review.md)、[原生产资源](../reports/2026-10-13-album-rank-cancellation-production-delivery.md)、[历史资源](../reports/2026-10-09-music-detail-chart-performance-acceptance.md)；2026-10-13。 |
+| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；warmup=0三文件`8f46b3cb`按授权提交并以同SHA进入本地main，54提交前回归/四hooks通过，当前full8源码不变。未推送/新CI/部署，发布HOLD | 当前seed3955、真实集成186、前端803，API157/113与三浏览器通过；仿真ready/final低343/333MiB，采样峰高40MiB、读取增长略大；首轮失败原样保留 | P1：后续研发推送/CI另行授权；原生峰值/64MiB/平台期/OOM仍OPEN，不追加生产预暖/重启/热复验。见[源→main映射](../reports/2026-10-14-native-trim-maintenance-submission-review.md)、[门禁](../reports/2026-10-14-native-trim-maintenance-fullgate.md)；2026-10-14。 |
 
 ### 2026-10-07 非榜单详情统计空值
 
