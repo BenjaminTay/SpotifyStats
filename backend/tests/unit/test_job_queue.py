@@ -17,6 +17,11 @@ from backend.core.job_queue import Job, JobQueue
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def skip_native_allocator_in_queue_tests(monkeypatch):
+    monkeypatch.setattr(job_queue_module, "trim_unused_native_memory", lambda: False)
+
+
 @pytest.fixture
 def temp_db():
     """Create a temporary SQLite DB with background_jobs table."""

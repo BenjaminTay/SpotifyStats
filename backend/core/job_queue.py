@@ -28,6 +28,7 @@ from os.path import realpath
 from typing import Any
 
 from backend.core.db import connect_sqlite_path
+from backend.core.native_memory import trim_unused_native_memory
 
 logger = logging.getLogger(__name__)
 
@@ -721,6 +722,13 @@ class JobQueue:
             }
             with self._cpu_heavy_gate if cpu_heavy else nullcontext():
                 handler(job)
+                # Full startup warmup already trims at its own completion boundary.
+                # Hold the gate until freed maintenance pages have been returned.
+                if cpu_heavy and job.job_type != "startup_cache_warmup":
+                    trimmed = trim_unused_native_memory()
+                    logger.debug(
+                        "Maintenance native pages released=%s after %s", trimmed, job.job_type
+                    )
             self._update_db_status(job.job_id, "done")
             if job.job_type in {
                 "playback_import_maintenance",
