@@ -23,6 +23,8 @@ on:
       - "deploy/production/prepare-local-release-images.sh"
       - "deploy/production/bootstrap-current-release-images.sh"
       - "deploy/production/activate-release-images.sh"
+      - "deploy/production/cleanup-release-files.py"
+      - "backend/tests/unit/test_release_file_cleanup.py"
       - "backend/tests/unit/test_production_image_transport.py"
       - "backend/tests/unit/test_image_transport_cas.py"
       - "backend/tests/unit/test_music_search_production_preflight.py"
@@ -332,7 +334,7 @@ jobs:
             verify-music-search-runtime.py image_transport.py \
             load-release-images.sh publish-release-images.sh \
             transfer-image-artifact.sh prepare-local-release-images.sh \
-            bootstrap-current-release-images.sh activate-release-images.sh README.md
+            bootstrap-current-release-images.sh activate-release-images.sh cleanup-release-files.py README.md
           scp -P "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
             "$RUNNER_TEMP/spotify-stats-deploy.tgz" \
             "$SERVER_USER@$SERVER_HOST:/tmp/spotify-stats-deploy.tgz"
@@ -396,6 +398,16 @@ jobs:
           rmdir -- "$staging_dir"
           sudo rmdir --ignore-fail-on-non-empty "/opt/spotify-stats/releases/incoming/$revision"
           REMOTE
+
+      - name: Clean obsolete generated release files after successful deployment
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -p "$SERVER_PORT" -i "$RUNNER_TEMP/spotify-stats-deploy-key" \
+            "$SERVER_USER@$SERVER_HOST" \
+            "sudo -n python3 /opt/spotify-stats/cleanup-release-files.py --revision '$GITHUB_SHA' --apply"
 
       - name: Record bounded deployment job total
         if: always()

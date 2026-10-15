@@ -142,6 +142,18 @@ docker compose -f compose.yml exec -T backend python scripts/backfill_cover_thum
 
 重要数据导入前，先运行 `SPOTIFY_STATS_BACKUP_NAME="spotify-stats-pre-import-$(date -u +%Y%m%dT%H%M%SZ).db" ./backup.sh` 并确认成功；导入完成后再以 `spotify-stats-post-import-` 前缀运行一次。普通周备份之间的其他写入最多可能损失约一周。修改本文件或 timer 模板后，须重新安装 timer，并用 `systemctl cat spotify-stats-backup.timer` 核对服务器生效规则。
 
+### 发布文件收尾
+
+正式 workflow 在部署和健康门禁成功、CAS current/previous 更新及本次上传暂存清理完成后，运行 `cleanup-release-files.py --revision <完整SHA> --apply`。它只处理有固定命名的自动发布文件：主库及 Analysis/Billboard 的 `*-pre-release-<12位SHA>-<UTC时间>.db[.gz]`、`music-detail/billboard/versus-ranks-<完整SHA>.json` 和旧上传目录中的 `docker-save.tar`。
+
+- 自动发布恢复材料保留最近 **4 个版本**，始终包含 current/previous；对应私密成品清单也保留。
+- 其他版本的上述文件至少经过 **48 小时**才清理，给待发布准备和失败诊断留出缓冲。打开中的文件、有非空 WAL 的数据库及符号链接跳过；current/previous 状态不一致或恢复材料缺失时拒绝清理。
+- 普通周备份仍按原 28 天规则；导入、恢复、独立数据修复前等人工命名保护点，以及运行库、当前 `music-search-resume.db`、CAS blobs 和正式镜像回滚归档不由该工具处理。独立维护完成后，由执行者清理当次处理副本，必要保护点压缩保存；不要把历史副本留在 `data/`。
+
+不带 `--apply` 时只输出删除预览。例如在服务器执行 `sudo python3 /opt/spotify-stats/cleanup-release-files.py --revision <当前完整SHA>`；核对后加 `--apply`。清理失败会在 workflow 中明确报错，已健康的应用不因空间收尾失败回滚。该步骤随包含本改动的 workflow 发布后执行，无额外 timer 或常驻服务。
+
+历史 `.db.gz` 恢复点先用 `gzip -dk -- /绝对路径/备份.db.gz` 解压，再把生成的 `.db` 交给原有恢复流程。压缩前后内容必须一致，不能用压缩运行中的数据库代替 SQLite Online Backup。
+
 建议预先生成网关密钥：
 
 ```bash
