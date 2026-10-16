@@ -1,5 +1,37 @@
 # 交付与验证报告索引
 
+- [累计资源候选冻结与阶段提交](2026-10-17-oom-candidate-freeze-review.md)：R0独立审阅无阻塞，AI测试线程竞态在HEAD自然复现并最小隔离；23文件本地阶段提交c844，资源准入与发布HOLD。
+
+- [有限多实体读取与空闲平台验证](2026-10-17-oom-finite-read-platform.md)：空闲/六实体读取各15分钟均平台，7帧根与结果缓存稳定复用；18正文/六事实/两strict一致。无新增业务补丁，22文件沿用10-16同版本full8，原生/64MiB/长期并发/生产OOM仍OPEN。
+
+- [日期警告候选自然启动与累计门禁](2026-10-16-oom-date-warning-startup-validation.md)：A-B-A ready低20.719–25.133MiB，27响应/六事实/三strict一致；默认full8与三浏览器通过，AI线程SQLite警告保留。启动峰/CPU/读取增长未收口，22文件仅本地、整体资源HOLD。
+
+- [启动arena路径与迟载导入对照](2026-10-16-oom-arena-paths-and-import-timing.md)：确认OpenCC和linecache根；提前导入ready低17.203MiB、峰未改善。仅保留日期警告最小候选，139项/Linux27返回及27时长表一致；后续自然对照与完整门禁见新报告。
+
+- [启动arena持有者与探针自干扰](2026-10-16-oom-startup-arena-owner-attribution.md)：相同业务代码改原生采样，ready低52.590MiB属于观测校正、峰未降；缓存/模块常量/代码缓存帧路径已定位，18响应/六事实/两strict一致。22文件不变，未新增业务修复，整体资源Partial。
+- [读取驻留缓存与分配器归因](2026-10-16-oom-read-cache-residency-attribution.md)：四个181.076MiB估算根三轮稳定、定向失效后全部释放；保留缓存trim下降15.273MiB。29项/9完整响应/两段strict通过，未新增业务修复，22文件候选不变，整体OOM仍Partial。
+- [合作署名窄表展开与累计候选审阅](2026-10-15-oom-collaboration-credit-expansion-and-cumulative-review.md)：441项、52旧builder/144榜、231组HEAD实体及三窗守恒通过；后端2项存储门槛失败在HEAD同现，整体Partial。累计启动峰1303.668→995.094MiB、末尾893.277→607.395MiB，二十二文件保留本地，下一读取驻留，资源HOLD。
+- [启动CPU归因与专辑时长最后消费点](2026-10-15-oom-startup-cpu-duration-attribution.md)：同一B启动CPU差46.060秒；本轮A/C138.440/134.050秒，稳定回归未证且未全排除。释放无用时长/Series引用，417项/231组对账及三窗守恒通过；C启动最高采样991.102MiB、读取增长69.758MiB，二十一文件仅本地，整体Partial/HOLD。
+- [专辑发行日期以两列键查询代替整表合并](2026-10-15-oom-album-release-lookup.md)：右键唯一、源表及统计一致；411项/231组旧builder与两窗守恒通过，merge55→2列、owned返回复用。启动最高采样仅低2.445MiB、CPU更高，二十文件仅本地，整体Partial/HOLD。
+- [快进纪录在assign前投影必要列](2026-10-15-oom-skip-storm-projection.md)：392项/90组旧函数及两窗守恒通过，assign输入52/56/48→5/5/3列；启动最高采样1014.605→1008.027MiB，仅局部候选，十九文件未提交，整体OOM仍Partial/HOLD。
+- [Records计算结束后释放工作表再处理封面](2026-10-15-oom-records-presentation-lifetime.md)：373项及两窗守恒通过；封面入口工作表引用归零，首次964.086→750.301MiB；整体峰值仍在计算阶段。十七文件仅本地，整体OOM仍Partial/HOLD。
+- [实体构建复用已具逻辑身份事件表](2026-10-15-oom-entity-identity-ownership.md)：源表不变、主返回表独立；300项、156组旧builder/468主表及468时长表一致。两窗启动最高采样1020.035→1017.312MiB，小幅差异未证稳定OOM收益；十六文件仅本地，整体Partial/HOLD。
+- [合作聚合中间表必要列投影](2026-10-15-oom-collaboration-aggregate-projection.md)：258项、52次builder/144旧聚合榜/26直接调用一致；两窗总体最高采样1025→1052MiB、读取658→664MiB，未改善。十五文件仅本地局部候选，整体OOM仍Partial/HOLD。
+- [启动最高采样归因与合作事件表生命周期修复](2026-10-15-oom-collaboration-event-lifetime.md)：231项、52次旧函数对账及144榜相同；两有效窗启动最高采样1027→1021MiB、最终低27.1MiB。十四文件仅本地，驻留及整体OOM仍Partial/HOLD。
+- [合作纪录select先筛选后复制](2026-10-15-oom-collaboration-select-projection.md)：225项、52次旧函数对账及144份聚合相同；两窗启动采样峰1054→1031MiB、最终低11.8MiB。十三文件仅本地，驻留及整体OOM仍Partial/HOLD。
+- [歌曲canonical合并前宽表副本修复](2026-10-15-oom-track-merge-ownership.md)：194项、歌曲/实体各39组对账通过；两窗启动采样峰1078→1062MiB，末尾仅低2.8MiB；十二文件仅本地，驻留及整体OOM仍Partial/HOLD。
+
+- [合作纪录署名键收集最小候选](2026-10-15-oom-collaboration-credit-keys.md)：169项/22完整事实与66榜对账通过；消除六次宽表复制。两窗启动采样峰1081→1047MiB，因果收益未量化、驻留未改善；十一文件仅本地，整体资源Partial/HOLD。
+
+- [Records启动宽表生命周期修复](2026-10-15-oom-records-working-set.md)：150项/39旧函数对账通过；启动采样峰下降56.828MiB，三窗9响应/六事实/strict一致；九文件仅本地，驻留及整体OOM仍Partial。
+
+- [外层时长候选撤回与Python分配器归因](2026-10-15-oom-duration-rejected-allocator-attribution.md)：外层134项/35响应对账通过但峰值收益未证，恢复原八文件；malloc只归因，驻留下降伴随启动峰/增长/仿真CPU代价。三窗9响应/六事实/strict一致，下一目标Records启动宽表，整体OOM仍Partial。
+- [艺人专辑中间表投影与生命周期](2026-10-15-oom-artist-album-intermediates.md)：120通过，两窗9响应/六事实/strict一致；首次峰增量低30.102MiB、读取峰低20.832MiB。末尾高9.301MiB且arena差异启动后已存在，驻留收益未证明；八文件未提交推送部署，整体OOM仍Partial。
+- [艺人统计首次载入与署名展开投影](2026-10-15-oom-artist-first-projection.md)：130通过，两窗9完整响应/六事实/strict一致；首次峰增量低25.289MiB、本轮读取峰低27.465MiB、末尾低8.230MiB。七文件未提交推送部署，启动及整体OOM仍Partial。
+- [冷个人统计曲目/Top250输入投影](2026-10-14-oom-cold-stats-track-projection.md)：151通过，三窗33完整响应/六事实/strict一致，冷专辑峰低36–39MiB；总峰/末尾未降，下一目标艺人stats首次；六文件未提交推送部署，整体资源Partial。
+- [镜像封装、启动重排与有界读取验证](2026-10-14-oom-image-startup-bounded-verification.md)：169通过；封存基底两镜像/33完整响应/六事实/strict一致，启动峰低90MiB，读取略高；默认Python基镜像构建未通过，未提交推送部署，整体资源Partial。
+- [OOM启动峰值与读取增长隔离候选](2026-10-14-oom-peak-growth-isolated-candidate.md)：仅Dockerfile固定mmap阈值128KiB；同源采样峰/末尾/增长改善，9完整响应、六统计/Records事实与strict通过；旧代码/arena试验不采用，未提交推送部署，原生资源/生产OOM仍Partial。
+
 - [维护完成原生回收生产交付与首次验收](2026-10-14-native-trim-maintenance-production-delivery.md)：固定b126已正式发布；研发/main CI及Release通过，原首次90/90、116/116 API、三strict与wrapper0；RSS末低388MiB，增长/CPU/峰值/OOM仍Partial，失败与独立恢复入口保留。
 
 - [维护回收候选提交与整合范围审阅](2026-10-14-native-trim-maintenance-submission-review.md)：三文件`8f46b3cb`已按授权本地提交并以同SHA进入main；54回归/四hooks通过，十文档独立提交、三树同步与独立恢复入口；未推送部署。（历史检查点；当前交付见上方10-14生产报告。）

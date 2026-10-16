@@ -1,5 +1,52 @@
 # SpotifyStats 开发状态总表
 
+> 收口执行（2026-10-17，R0完成、R1 ACTIVE）：独立审阅无阻塞；修复unit收集及HEAD自然复现的AI测试线程竞态，2项unit/6项contract、四hooks通过。23文件阶段提交 `c844b98f` 仅在研发分支，main/整合树apply-check通过、未应用业务补丁；恢复包CRC/读回通过。正在完成实际默认镜像及可移植包，原生资源与正式交付仍HOLD。见[R0交付](reports/2026-10-17-oom-candidate-freeze-review.md)及[收口规划](plans/2026-10-17-oom-resource-closeout-plan.md)。
+
+> 收口路线（2026-10-17，规划已落地、R0/R1推进）：已建立R0–R7全路线，当前任务是完成22文件精确审阅与最终镜像/可移植验收包；随后补非生产原生amd64、原overview64MiB、多实体50%/LRU、长期并发及容量准入，再进入整合CI、固定版本发布与唯一首次、72小时观察。核心冷读矩阵为72次独立进程，边界用例另列；当前无原生环境，资源HOLD。授权以文首最新执行范围为准。见[完整规划](plans/2026-10-17-oom-resource-closeout-plan.md)。
+
+> 当前隔离检查点（2026-10-17，有限读取平台验证）：固定空闲/六实体读取各15分钟均进入有限平台：I1先增20.438MiB、M1三轮18请求后RSS470.125MiB稳定，末五分钟中位数跨度/斜率均0。7帧根及203.892MiB估算权重、3+3结果条目稳定复用，18完整正文/六事实/两strict通过。22文件未改，沿用10-16同版本full8；无新增业务修复。原生/default镜像、overview64MiB、长期并发/生产OOM仍OPEN，整合/发布HOLD，暂不提交推送部署。见[本轮验证](reports/2026-10-17-oom-finite-read-platform.md)。
+
+> 上一隔离检查点（2026-10-16，自然启动与累计门禁完成）：日期警告候选A-B-A自然对照，ready低20.719–25.133MiB、idle120低21.492–26.219MiB；27完整响应/六事实/三strict一致。启动峰约994MiB未改善，CPU高3.10–3.32秒信号保留，读取至idle120仍增约83MiB。最终22文件额外hooks及156项fixture回归通过；默认full8同轮PASS/实际0，seed4292/2跳、真实集成186/1跳、前端803/4跳、API157/113与51热基准、三浏览器通过。seed一条AI线程SQLite I/O警告单独保留。整体资源HOLD/Partial，原生/overview64MiB/长期/生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-16-oom-date-warning-startup-validation.md)。
+
+> 磁盘收尾（2026-10-16）：已核验并删除28个实验阶段230个归档重复大文件，合计45.678GiB；可用空间约3→51GiB。正式数据、22候选及Git状态不变，归档与小型证据保留；旧runtime大文件需按清理映射按需恢复。见[清理补记](reports/2026-10-16-oom-arena-paths-and-import-timing.md)。
+
+> 上一隔离检查点（2026-10-16，arena路径与迟载导入/整体Partial）：原288个冻结arena新增109个路径、73个全块可追；外部dict/list缓冲缺失，未全部逐地址还原。新控制窗根图覆盖96.53%高空闲块，确认OpenCC与linecache源码行根。提前导入ready低17.203MiB但峰高16.570MiB，仅实验不入业务。保留日期回填显式dtype候选以消除FutureWarning触发的整份源码缓存；139项、Linux9组27返回/27时长表及七库不变通过，候选完整启动RSS净收益待验。两导入窗18响应/六事实/strict一致。仍22文件，仅本轮2处增改，整体OOM/原生/64MiB/长期OPEN，暂不提交推送部署。见[本轮报告](reports/2026-10-16-oom-arena-paths-and-import-timing.md)。
+> 上一隔离检查点（2026-10-16，启动arena持有者与探针校正/整体Partial）：少量分散对象占住大量空闲pool；发现旧逐样本字典探针本身持有时间戳/RSS对象。相同22文件/镜像下改原生缓冲，ready RSS473.914→421.324MiB、arena313→260MiB，仅观测校正且峰值未降。清四个小业务缓存及GC仅释放1MiB；剩余有署名/元数据、迟载模块常量及code缓存帧，仍288个高空闲arena未由受限根图解释。18完整响应/六事实/两strict一致，正式源/业务候选不变。最小修复仅诊断采样器，不新增业务补丁；旧RSS因果收益需按探针自干扰重新限定，整体OOM/原生/64MiB/长期仍OPEN，暂不提交推送部署。见[归因报告](reports/2026-10-16-oom-startup-arena-owner-attribution.md)。
+
+> 上一隔离检查点（2026-10-16，读取驻留归因完成/整体Partial）：原64.785MiB为有界缓存与allocator驻留混合，Python arena总量未增，存活块复用既有空闲池；四个播放表根合计181.076MiB估算，三轮根ID稳定、结果层命中。轻探针有效窗ready481.359→末尾546.652MiB；保留缓存诊断trim下降15.273MiB，定向失效后根及附件全部失活。29项、9份完整响应和两段strict通过，失败首窗保留。未发现需修复的淘汰/未知持有者缺陷，22文件候选字节不变，资源HOLD；下一优先启动Python pool碎片与长期小对象分布/原生资源验收，整体OOM仍OPEN，暂不提交推送部署。见[归因报告](reports/2026-10-16-oom-read-cache-residency-attribution.md)。
+
+> 上一隔离检查点（2026-10-15，合作署名展开与累计候选审阅/整体Partial）：合作署名先以3/2列键展开，再按行位置取独立完整返回表，原去重键、dtype、索引、字段及源表保持；时长中间表在最后消费点释放局部引用。441项（新增24项）、52次旧builder/144榜/26聚合、231组HEAD实体对账通过；后端3634通过/2跳过，另2项存储门槛失败已在未改动HEAD复现，完整后端Partial。三窗27响应/六事实/strict一致。累计HEAD→最终启动峰1303.668→995.094MiB、末尾893.277→607.395MiB；CPU130.840→131.300秒，仅同源仿真观察。二十二文件保留本地，累计审阅完成、资源HOLD/Partial；读取后仍增64.785MiB，下一转向新增缓存owner与空闲分配器驻留及平台期，不再无界追加启动微优化。原生/默认镜像、64MiB、长期和生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-15-oom-collaboration-credit-expansion-and-cumulative-review.md)。
+
+> 上一隔离检查点（2026-10-15，CPU归因与专辑时长最后消费点/整体Partial）：CPU正反序与三启动对照完成：同一B镜像CPU150.110→196.170秒证明显著波动，B两轮均高于A的信号保留；本轮A/C为138.440/134.050秒，候选未复现同规模增量，稳定回归未证且未全排除。日期处理后释放album_duration与precision局部引用，歌曲入口无用时长owner失活；417项（新增6项）、231组旧builder/693主表与693时长表一致。三窗27完整响应/六事实/strict通过，启动最高采样A/B/C1009.598/1006.820/991.102MiB；C读取后仍增69.758MiB，驻留与整体OOM未收口。二十一文件仅本地，资源HOLD/Partial。下一核对合作facts署名merge及selected/tracks/albums/时长投影的必要列与最后消费点；原生/默认镜像、64MiB/长期及生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-15-oom-startup-cpu-duration-attribution.md)。
+
+> 上一隔离检查点（2026-10-15，专辑日期窄表回填候选/整体Partial）：专辑发行日期右键按专辑名/艺人名归并唯一，隔离源4行无重复；owned专辑表用两列键查询后回填，保留原索引/attrs和统计口径。411项（新增19项）、231组旧builder/693主表与693时长表一致，源表不变。两窗各3次merge输入55→2列、返回复用owned投影，9响应/六事实/strict通过。启动最高采样1009.484→1007.039MiB，启动CPU133.340→150.110秒更高，资源收益未证。二十文件仅本地，资源HOLD/Partial。下一核对歌曲时长merge峰点的存活owner与最后消费点，并定位启动CPU增量；读取驻留、原生/默认镜像、64MiB/长期及生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-15-oom-album-release-lookup.md)。
+
+> 上一隔离检查点（2026-10-15，快进纪录窄表候选/整体Partial）：_skip_storm在assign前投影分组键、play_id和ms_played，原计数、门槛与排序不变。392项（新增19项）、90组完整旧函数对账通过，源表及attrs守恒；旧函数3个复制检查复现、16个对照通过。两窗各9次assign输入52/56/48→5/5/3列，9响应/六事实/strict一致。启动最高采样1014.605→1008.027MiB、读取669.996→668.586MiB，小幅观察未证稳定OOM收益。十九文件仅本地，资源HOLD/Partial。下一核对实体构建专辑发行日期回填merge的整表复制、键唯一性与所有权；读取驻留、原生/默认镜像、64MiB/长期及生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-15-oom-skip-storm-projection.md)。
+
+> 上一隔离检查点（2026-10-15，Records展示阶段生命周期候选/整体Partial）：Records计算结束后释放事件、终身历史、时长及实体表局部引用，再解析封面；源表和年度预载表不变，结果引用继续保活。373项（新增28项）通过，旧函数24个滞留案例复现、4个对照通过。两窗9响应/六事实/strict一致；三次封面入口工作表引用8/7/7→0/0/0，主输入weakref5→0，首次入口964.086→750.301MiB。启动最高采样1010.586→1003.230MiB、末尾619.754→600.859MiB；读取后增长仅少2.391MiB，整体OOM未收口。十七文件仅本地，资源HOLD/Partial。下一验证_skip_storm的宽表assign最小列集，并对照合作构建持有关系；读取驻留、原生/默认镜像、64MiB/长期及生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-15-oom-records-presentation-lifetime.md)。
+
+> 上一隔离检查点（2026-10-15，实体身份复用候选/整体Partial）：实体构建已有逻辑ID时只读复用输入，缺失时保留原分配；源表不变、三张主返回表独立。300项（新增42项）、156组旧builder/468主表及468时长表对账通过。两窗9响应/六事实/strict一致；启动最高采样1020.035→1017.312MiB、读取661.715→658.613MiB，差异较小，不能证明稳定OOM收益。本轮最高采样均已离开实体构建，运行时入口复用标为NOT_OBSERVED，直接复用证据来自单元检查。十六文件仅本地，资源HOLD/Partial。下一按实体构建、Records计算与展示解析核对owner及最后消费点，再选择修复；读取驻留、默认镜像/原生/64MiB/长期及生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-15-oom-entity-identity-ownership.md)。
+
+> 上一隔离检查点（2026-10-15，合作aggregate局部候选/总体未改善）：合作aggregate只复制必要事件列和完整时长去重列；258项、52次builder对账（48完整/4同异常）、144旧聚合榜及26直接调用一致。两窗9响应/六事实/strict通过；启动最高采样1025.184→1052.148MiB、读取最高采样657.531→663.789MiB，总体资源未改善。十五文件仅本地局部候选，资源HOLD/Partial。候选最高采样在更早的歌曲时长merge，且两份已具逻辑ID的事件表同时存活。下一验证_build_entity_frames复用已具逻辑ID的只读输入，消除身份重复副本并保持所有返回表独立；读取驻留、默认镜像/原生/64MiB/长期及生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-15-oom-collaboration-aggregate-projection.md)。
+
+> 上一隔离检查点（2026-10-15，合作events生命周期候选/整体Partial）：补齐启动最高采样同点栈，保存事件总数后在最后消费处释放合作完整events表；231项、52次旧函数对账（48完整/4同异常）及144榜相同。两有效窗9响应/六事实/strict一致；启动最高采样1027.375→1020.602MiB、最终低27.102MiB，读取驻留未证稳定改善。十四文件仅本地，资源HOLD/Partial。修复窗最高采样位于合作艺人时长去重，已无完整events引用；首个探针失败窗单独保留。下一处理合作aggregate必要列与局部生命周期，保留事件/署名/时长去重键；读取驻留、默认镜像/原生/64MiB/长期及生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-15-oom-collaboration-event-lifetime.md)。
+
+> 上一隔离检查点（2026-10-15，合作select候选/整体Partial）：合作纪录select先转换署名键并筛选，再复制命中行；225项、52次旧函数对账（48完整/4同异常）及144份聚合相同。两窗9响应/六事实/strict一致；启动峰1053.914→1031.418MiB，读取峰仅低1.438MiB，最终低11.840MiB。十三文件仅本地，资源HOLD/Partial。绝对峰未捕获同点栈，不能将1017MiB署名merge栈当作绝对峰归因；CPU及观测开销保留。下一先补1031MiB绝对峰同点ownership证据，再定最小修复；读取驻留、默认镜像/原生/64MiB/长期及生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](reports/2026-10-15-oom-collaboration-select-projection.md)。
+
+> 上一隔离检查点（2026-10-15，歌曲merge副本候选/整体Partial）：歌曲canonical合并路径移除两份merge前宽表副本；194项、歌曲/实体各39组旧函数对账通过。两窗9响应/六事实/strict一致；启动峰1078.055→1062.219MiB，末尾仅低2.781MiB，CPU与采样差异保留，驻留未收口。十二文件仅本地，资源HOLD/Partial。未提交推送部署。见[本轮验证](reports/2026-10-15-oom-track-merge-ownership.md)。
+
+> 上一隔离检查点（2026-10-15，合作纪录键收集候选/整体Partial）：合作纪录键收集消除六次宽表复制，169项/22完整事实及66榜对账通过；两窗9响应/六事实/strict一致。启动采样峰1081.211→1046.914MiB，但不认定全部因果收益；ready/末尾各高约15MiB，读取增长仍约65MiB。十一文件仅本地，资源准入HOLD，整体OOM仍Partial。未提交推送部署。见[本轮验证](reports/2026-10-15-oom-collaboration-credit-keys.md)。
+
+> 上一隔离检查点（2026-10-15，Records启动局部候选/整体Partial）：Records启动生命周期候选保留，150项/39旧函数对账通过；最终启动采样峰1154.004→1097.176MiB，三窗9完整响应/六事实/strict一致。初版异常回退差异已修正并弃用，最终九文件未提交；读取驻留、默认镜像/原生/64MiB/长期及生产OOM仍OPEN。未推送部署。见[本轮验证](reports/2026-10-15-oom-records-working-set.md)。
+
+> 上一隔离检查点（2026-10-15，两项试验不采用/整体Partial）：外层候选134项及35旧函数响应对账通过，但峰值收益未证明，已恢复原八文件。最后一个malloc归因窗ready低204.445MiB，但启动峰高44.379、读取增长高160.105MiB，未改Dockerfile或生产。三窗9响应/六事实/strict一致；启动后空闲pymalloc pool约264.754MiB，下一目标Records启动宽表。未提交推送部署。见[处置与归因](reports/2026-10-15-oom-duration-rejected-allocator-attribution.md)。
+
+> 上一隔离检查点（2026-10-15，艺人专辑中间表局部候选/整体Partial）：研发八文件未提交，专辑子聚合投影与作用域收窄，删除无效全历史副本；120项通过，两窗9完整响应/六事实/strict一致。首次艺人峰增量99.199→69.098MiB，读取峰699.699→678.867；末尾高9.301MiB，arena差异启动后已存在，驻留收益未证明。默认镜像/原生/overview64MiB/长期及生产OOM仍OPEN。见[中间表验证](reports/2026-10-15-oom-artist-album-intermediates.md)。
+
+> 上一隔离检查点（2026-10-15，艺人首次局部候选保留/整体Partial）：研发七文件未提交，新增已发布艺人详情 SQL 前置投影；130项通过，同源两窗9完整响应/六事实/strict一致。首次艺人峰增量126.879→101.590MiB，本轮读取峰724.988→697.523，末尾低8.230MiB；启动峰未改善。默认镜像/原生/overview64MiB/长期及生产OOM仍OPEN，未推送部署。见[艺人首次验证](reports/2026-10-15-oom-artist-first-projection.md)。
+
+> 上一隔离检查点（2026-10-14，局部冷专辑候选保留/整体Partial）：研发六文件保留原mmap+Records启动候选，新增曲目加权六列与Top250切片前八列投影；151项专项/消费、三有效窗33完整响应/六事实/strict通过。冷专辑采样峰增量83/77/107→44/40/69MiB，合法帧预算均321.388MiB；总读取峰/末尾未下降，最高点转至艺人stats首次。未提交推送部署，默认镜像/原生/overview64MiB/长期仍OPEN。见[冷stats投影验证](reports/2026-10-14-oom-cold-stats-track-projection.md)。
+
 > 当前交付（2026-10-14，驻留缓解已发布，整体资源Partial）：固定b1260208已普通推送研发/main；研发及main CI attempt1成功、正式Release attempt2成功，首轮SSH reset保留且仅重试deploy。独立runtime/30源码核验、唯一原首次90/90、116/116 API和三strict/wrapper0通过；RSS起点965.828→396.059、末尾1136.430→748.363MiB，但读取增长与CPU略高、启动高水位基本不变。峰值/64MiB/平台期/OOM继续OPEN；本轮交付、归档与工作树收尾见[正式报告](reports/2026-10-14-native-trim-maintenance-production-delivery.md)。
 
 > 前一本地检查点（2026-10-14，本地INTEGRATED，未推送部署）：业务`8f46b3cb`按授权精确三文件提交，54提交前回归及四项hooks通过；源`8f46b3cb9af8ebc2c546727df089d4d97e7f5309`→main同SHA快进，代码仍等于已通过默认完整8/8的冻结版本。十份协调文档独立提交，三树在本轮安全同步最终HEAD；具体docs SHA与同步收据见[提交映射与恢复入口](reports/2026-10-14-native-trim-maintenance-submission-review.md)。原生资源/OOM继续OPEN、当时发布HOLD；后续授权与实际交付见顶部最新记录。
@@ -29,7 +76,7 @@
 
 | 状态 | 分支 / 候选 | 负责人及下一步 |
 | --- | --- | --- |
-| INTEGRATED / RELEASED；资源合同OPEN | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | 同SHA业务8f46随b126正式发布，研发/main CI与Release、唯一90/116及三strict通过；驻留缓解交付完成，剩余峰值/64MiB/平台期/OOM沿同一唯一研发与统一整合链维护，不新开候选、不重复当前生产窗口。见[正式交付与恢复入口](reports/2026-10-14-native-trim-maintenance-production-delivery.md) |
+| 局部候选保留；有限平台验证完成、资源HOLD/Partial | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | 固定空闲/六实体读取各15分钟均进入有限平台：I1先增20.438MiB、M1三轮18请求后RSS470.125MiB稳定，末五分钟中位数跨度/斜率均0。7帧根及203.892MiB估算权重、3+3结果条目稳定复用，18完整正文/六事实/两strict通过。22文件未改，沿用10-16同版本full8；无新增业务修复。原生/default镜像、overview64MiB、长期并发/生产OOM仍OPEN，整合/发布HOLD，暂不提交推送部署。下一按R0/R1完成精确审阅与镜像/验收包，后续原生准入、授权交付与72小时观察见[完整收口规划](plans/2026-10-17-oom-resource-closeout-plan.md)；不追加无界微优化。见[本轮验证](reports/2026-10-17-oom-finite-read-platform.md) |
 | INTEGRATED；同链统一整合保留 | `codex/versus-detail-integration` | b126发布与唯一首次验收完成，原失败及私密成品独立保存；用于同一OPEN资源合同的候选审阅与主线整合，合同结束后归档，不新增第二研发分支；共享文档只在main维护 |
 | ARCHIVED | 前端设置加载、JSON名称传输、艺人范围身份三个候选 | 收益或总体资源准入未证明，保存补丁/证据，不进入main业务代码 |
 | ARCHIVED | 历史OOM混合补丁 | 已覆盖内容关闭；未采用的串行锁/窄输入等保留归档，只有当前定位证明需要时才提取 |
@@ -89,7 +136,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| SS-2026-10-08-001 | 详情与年度维护资源 | OPEN / Partial：warmup=0维护回收8f46随b126正式发布；研发/main CI、Release与原首次90/116/三strict通过 | P0：驻留缓解本轮已交付；末RSS低388MiB，但读取增长/CPU未改善、启动高水位基本不变。峰值/64MiB/平台期/OOM仍开放，不以功能Pass关闭资源合同 | [正式交付](reports/2026-10-14-native-trim-maintenance-production-delivery.md)、[当前门禁](reports/2026-10-14-native-trim-maintenance-fullgate.md) | 2026-10-14（新生产唯一首次） |
+| SS-2026-10-08-001 | 详情与年度维护资源 | OPEN / Partial：本地22文件同版本full8 PASS；有限平台验证完成，资源HOLD | P1：无请求也先增20.438MiB后平台；六实体18请求、缓存身份与权重稳定、18正文/六事实/两strict通过，无新增业务补丁。下一按[R0–R7收口规划](plans/2026-10-17-oom-resource-closeout-plan.md)先审阅/镜像/验证包；原生、64MiB、50%/LRU、长期并发与生产OOM仍待验。 | [本轮验证](reports/2026-10-17-oom-finite-read-platform.md)、[既有发布](reports/2026-10-14-native-trim-maintenance-production-delivery.md) | 2026-10-17（隔离；未新验生产） |
 | SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | COMPLETED / RELEASED；c587正式CI/NoDeploy/三模式/镜像/部署及独立runtime通过；原公开FIRST14/28全Pass（最大1.669秒）、420秒完整资源/守恒、96 API与三denial通过。人类明确仅公开HTTPS，S0–S5完成，历史失败保留 | P1：三库准备补修已验证，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push已完成，原公开入口已通过；私有SSH HTTP48仅为功能证据。本项完成；私有入口保持现状。详情独立首次已完成：39/90性能通过、116功能及完整读取守恒通过，详情与OOM仍开放 | [完整规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
 | SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | 首次延迟子项PASS；整体OPEN/Partial（资源未收口）。b126新首次90/90、116/116 API/三strict及wrapper0，旧c0d90/116与旧失败保留 | P1：时延子项已达标；资源归SS-2026-10-08-001同链维护。当前窗口不热重跑，手机弹层另行处理 | [新生产交付](reports/2026-10-14-native-trim-maintenance-production-delivery.md)、[规划](plans/2026-10-09-music-detail-chart-performance-plan.md) | 2026-10-14 |
 | SS-2026-10-11-001 | 手机播放统计加载时弹层状态丢失 | OPEN/P2；未改动前端基线受控复现，加载中打开时间弹层后，数据到达导致控件重新挂载并关闭弹层；尚未产品修复 | P2：独立保持控件/编辑状态连续性；本轮门禁只等待初始页面就绪，保留原超时与应用后断言，不用门禁Pass关闭产品问题 | [台账](issues/2026-08-27-issue-register.md)、[受控复现](reports/2026-10-09-music-detail-chart-performance-acceptance.md)本地专辑候选节 | 2026-10-11 |
