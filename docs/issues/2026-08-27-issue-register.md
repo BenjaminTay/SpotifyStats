@@ -1,8 +1,8 @@
 # SpotifyStats 问题台账
 
-> 收口执行（2026-10-17，R0完成、R1推进）：独立审阅无阻塞，unit收集与AI契约测试线程隔离补修完成，23文件研发阶段提交c844；尚未应用main业务代码。实际镜像/验收包继续，原生64MiB/50%/LRU、长期并发与容量准入、CI/正式交付及72小时观察仍待验。当前无原生环境、资源HOLD。见[R0交付](../reports/2026-10-17-oom-candidate-freeze-review.md)与[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)。
+> 收口执行（2026-10-17，R0/R1本地准备完成）：c844业务候选、bdcf资源准入工具均仅研发本地阶段提交；main业务未整合。实际两镜像及9容器合成通路、33纯测试/四hooks与恢复包通过，114窗及两版原90固定。当前缺非生产原生amd64、容量与私密通道，R2资源HOLD；未推送/部署，正式交付与72小时观察待验。见[R1交付](../reports/2026-10-17-oom-images-portable-acceptance.md)及[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)。
 
-> 当前隔离检查点（2026-10-17，有限读取平台验证）：固定空闲/六实体读取各15分钟均进入有限平台：I1先增20.438MiB、M1三轮18请求后RSS470.125MiB稳定，末五分钟中位数跨度/斜率均0。7帧根及203.892MiB估算权重、3+3结果条目稳定复用，18完整正文/六事实/两strict通过。22文件未改，沿用10-16同版本full8；无新增业务修复。原生/default镜像、overview64MiB、长期并发/生产OOM仍OPEN，整合/发布HOLD，暂不提交推送部署。见[本轮验证](../reports/2026-10-17-oom-finite-read-platform.md)。
+> 上一隔离检查点（2026-10-17，有限读取平台验证）：固定空闲/六实体读取各15分钟均进入有限平台：I1先增20.438MiB、M1三轮18请求后RSS470.125MiB稳定，末五分钟中位数跨度/斜率均0。7帧根及203.892MiB估算权重、3+3结果条目稳定复用，18完整正文/六事实/两strict通过。22文件未改，沿用10-16同版本full8；无新增业务修复。原生/default镜像、overview64MiB、长期并发/生产OOM仍OPEN，整合/发布HOLD，暂不提交推送部署。见[本轮验证](../reports/2026-10-17-oom-finite-read-platform.md)。
 
 > 上一隔离检查点（2026-10-16，自然启动与累计门禁完成）：日期警告候选A-B-A自然对照，ready低20.719–25.133MiB、idle120低21.492–26.219MiB；27完整响应/六事实/三strict一致。启动峰约994MiB未改善，CPU高3.10–3.32秒信号保留，读取至idle120仍增约83MiB。最终22文件额外hooks及156项fixture回归通过；默认full8同轮PASS/实际0，seed4292/2跳、真实集成186/1跳、前端803/4跳、API157/113与51热基准、三浏览器通过。seed一条AI线程SQLite I/O警告单独保留。整体资源HOLD/Partial，原生/overview64MiB/长期/生产OOM仍OPEN，暂不提交推送部署。见[本轮验证](../reports/2026-10-16-oom-date-warning-startup-validation.md)。
 
@@ -80,7 +80,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；R0完成、23文件阶段提交c844，资源HOLD；生产未新验 | 同业务版full8/有限平台证据保留；独立审阅无阻塞。AI测试线程竞态在HEAD自然复现并最小隔离，2项unit/6项contract、四hooks及main/整合apply-check通过，恢复包已验 | P1：按[R0–R7规划](../plans/2026-10-17-oom-resource-closeout-plan.md)继续R1实际镜像/验收包；原生/64MiB/50%/LRU/长期并发及正式交付仍待验，未推送部署。见[R0交付](../reports/2026-10-17-oom-candidate-freeze-review.md)；2026-10-17。 |
+| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；R0/R1本地准备完成，R2环境待定、资源HOLD；生产未新验 | c844业务候选与bdcf工具仅本地。实际镜像同基础/依赖、正常启动及独立client/strict/采样/恢复通路通过；114窗/两版原90固定，33纯测试、四hooks与恢复读回通过；这些不等于真实资源通过 | P1：确定非生产原生amd64、容量与私密通道，执行原64MiB/50%/LRU及长期/维护准入，继而最终整合CI/full8、正式交付与72小时观察。见[R1交付](../reports/2026-10-17-oom-images-portable-acceptance.md)、[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)；2026-10-17，未推送部署。 |
 
 ### 2026-10-07 非榜单详情统计空值
 

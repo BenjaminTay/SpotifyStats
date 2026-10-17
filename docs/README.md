@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [资源对照镜像与可移植验收包](reports/2026-10-17-oom-images-portable-acceptance.md)：R1本地准备完成，实际两镜像、114窗口与独立客户端/审计/恢复通路通过有界自检；阶段提交bdcf，原生环境与资源准入HOLD。
+
 - [累计资源候选冻结与阶段提交](reports/2026-10-17-oom-candidate-freeze-review.md)：R0独立审阅无阻塞，AI测试线程竞态在HEAD自然复现并最小隔离；23文件本地阶段提交c844，资源准入与发布HOLD。
 
 - [详情资源与OOM完整收口规划](plans/2026-10-17-oom-resource-closeout-plan.md)：R0候选审阅→R1镜像/验证包→R2原生准入→必要整改→整合CI→发布准备→唯一首次→72小时观察与工作树收尾。原64MiB/多实体50%及LRU合同不降标；当前R0/R1推进，本地按完整阶段提交，原生环境与正式发布仍有准入条件。
