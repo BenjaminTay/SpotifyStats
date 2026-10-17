@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [原生热请求有界归因](reports/2026-10-17-native-hot-request-attribution.md)：14正文/守恒/实际恢复及独立审阅通过，采样成本与并行重复工作分列；学校本次资源已清理，第一轮最小候选729a0ed3已本地提交、正确性通过，新镜像原生收益待验，完整资源HOLD。
+
 - [学校共享宿主原生资源准入](reports/2026-10-17-school-native-resource-admission.md)：共享限额和双批时间已获授权；旧无效窗保留，准备/复用/WAL工具135项验证通过，两版第1次ready样本已恢复，首对热305/303ms超100ms、候选有效FAIL，R2停止转R3，LRU未启动；完整资源HOLD；三旧run及两镜像实际清理、原16/29保全。
 
 - [资源对照镜像与可移植验收包](reports/2026-10-17-oom-images-portable-acceptance.md)：R1本地准备完成，实际两镜像、114窗口与独立客户端/审计/恢复通路通过有界自检；阶段提交bdcf，原生环境与资源准入HOLD。
