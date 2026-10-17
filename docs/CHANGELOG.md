@@ -4,8 +4,8 @@
 
 - 固定14请求诊断正常退出并完整恢复，原响应/事实守恒；暂停重采样并行仍超100ms，串行更快，原R2失败保留。
 - 记录sampler线程成本、quota throttling及每请求重复的两张artist map/发布解析；第一轮同事务事实复用候选本地提交729a0ed3，127定向unit、6 seed公开合同、独立审阅及四hooks通过，新镜像原生对照有效FAIL：热145.521/192.171ms仍超100ms，冷223.767/277.018ms通过500ms；单次准备峰低约21.4%、CPU高约6.1%，不代表完整收益。
-- 当前729源码第二诊断712.847秒/14正文/守恒与恢复通过，确认history/tail很小，署名抑制有无消费的全量索引工作；学校资源再次精确清理，第二轮惰性读取候选0ee340cb已本地提交，161 unit/6 seed contract/独审/hooks及实际镜像通过，新原生待验，资源未准入。
-- 独立归档后清理本次学校run/guard/两镜像及proof，原16服务/29镜像保全，完整资源HOLD。见[归因报告](reports/2026-10-17-native-hot-request-attribution.md)。
+- 当前729源码第二诊断712.847秒/14正文/守恒与恢复通过，确认history/tail很小，署名抑制有无消费的全量索引工作；学校资源再次精确清理，第二轮惰性读取候选0ee340cb已本地提交，161 unit/6 seed contract/独审/hooks及实际镜像通过，最终新原生对照仍有效FAIL：hot150.305/163.493ms，cold204.406/213.700ms；正文/守恒/采样/恢复有效，资源未准入。
+- 两轮业务整改上限已到，矩阵STOP；最终本批run/guard/两镜像及proof已精确清理、原16服务/29镜像保全，完整资源HOLD。准备[架构/容量决策](designs/2026-10-17-detail-resource-architecture-decision.md)，推荐目标署名事实随exact-ready发布，尚未选择/实现；不启动第三轮微优化。见[归因报告](reports/2026-10-17-native-hot-request-attribution.md)。
 
 ## 2026-10-17 学校原生首组与验收工具修复（未发布）
 

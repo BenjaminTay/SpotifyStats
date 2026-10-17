@@ -1,6 +1,6 @@
 # 原生热请求成本的有界归因
 
-日期：2026-10-17。事项：`SS-2026-10-08-001`。**两次有界诊断与各批学校资源清理完成；第一轮最小业务候选729a0ed3已本地提交且正确性通过；该第一轮镜像原生对照有效FAIL，热请求145.521/192.171ms仍超100ms；第二轮0ee340cb正确性/审阅/本地提交与实际镜像完成，原生待验，完整准入HOLD。** 未推送、部署或重新验收生产。原R2候选有效FAIL保持不变，见[学校准入报告](2026-10-17-school-native-resource-admission.md)。
+日期：2026-10-17。事项：`SS-2026-10-08-001`。**两次有界诊断与各批学校资源清理完成；第一轮最小业务候选729a0ed3已本地提交且正确性通过；该第一轮镜像原生对照有效FAIL，热请求145.521/192.171ms仍超100ms；第二轮0ee340cb原生热150.305/163.493ms仍有效FAIL，正文/守恒/采样/恢复有效，本批资源已清理；两轮整改用尽，下一为架构/容量决策，完整准入HOLD。** 未推送、部署或重新验收生产。原R2候选有效FAIL保持不变，见[学校准入报告](2026-10-17-school-native-resource-admission.md)。
 
 ## 诊断身份与事实
 
@@ -54,7 +54,7 @@
 
 baseline原raw PASS/实际exit0只作有效参考；候选原raw FAIL/实际exit2、invalid为空，只有两条热请求超100ms，normal_lifespan_exit=true。独立审阅核对八份实际完整正文与旧R2指纹相同，五barrier的37来源事实、strict、六成品/103历史任务/main inode复用、原采样与容量均有效。每版13个helper及prepare/measure Backend的实际镜像、1核/内存/swap/UID/network和终态已保存，candidate measure按原失败退出2，其他正常退出，无OOM或既有服务变化。
 
-两窗含真实准备分别耗680.0402414482087和705.5551124280319秒，各自只arm一次1800秒clock；宿主guard记录最低可用3865448448字节、最高新增3288989696字节；准备worker采样的最低可用为3715268608字节，两种口径均高于2GiB，保护线未触发。单次准备峰约低21.4%，准备CPU约高6.1%；不是三次中位数或全场景50%收益，不据此关闭启动CPU与OOM。R2原矩阵继续STOP/HOLD，LRU和后续浏览器未启动。这是R3第一轮业务整改；下一步适配当前源码的第二次有界诊断，只在剩余主要开销有证据时做第二轮最小修复，仍最多两轮业务整改。
+两窗含真实准备分别耗680.0402414482087和705.5551124280319秒，各自只arm一次1800秒clock；宿主guard记录最低可用3865448448字节、最高新增3288989696字节；准备worker采样的最低可用为3715268608字节，两种口径均高于2GiB，保护线未触发。单次准备峰约低21.4%，准备CPU约高6.1%；不是三次中位数或全场景50%收益，不据此关闭启动CPU与OOM。R2原矩阵继续STOP/HOLD，LRU和后续浏览器未启动。这是R3第一轮业务整改检查点；随后已完成适配当前源码的第二次有界诊断及第二轮最小修复，最终结果见后文。
 
 两窗原生ZIP SHA分别为`1268a3883a65fe0fc6e25f30388552abbe098b0a7dac3fdde7e12c4bc1b02513`和`79b571187d2509bcec950857af83b3c8c5f9e4366bbf2538f3894e91a5c51ed9`，均完整回传、CRC及逐文件实际恢复通过。baseline按完整恢复写精确ACK，候选FAIL仅恢复，不写PASS ACK。审阅结束后mirror原子迁到独立归档`R3-first-fix-native-mirror`，168文件/286152163字节，原回执不变，另存路径映射。374文件工具/元数据/清理包`R3-first-fix-native-results-cleanup.zip`为1815494字节、SHA `881e44f50f98a14ae678ebdbf6cd7cac06012b9c8e1f5ab844e388c7848e7f6e`，CRC及实际恢复通过，不含数据库内容。
 
@@ -80,9 +80,35 @@ baseline原raw PASS/实际exit0只作有效参考；候选原raw FAIL/实际exit
 
 原生ZIP SHA `5903f8164964ccfc92b54e3cfc4606f615d93bf4be351ff53567d64505e76ea7`，唯一transfer `f80a3f66c097404d9b063d16f762ed01`为COMPLETE、CRC及逐文件实际恢复通过，远端ZIP/metadata package释放。mirror原子迁至独立归档`R3-second-hot-diagnostic-mirror`，146文件/143417494字节，原回执不变，另存路径映射。工具/元数据包`R3-second-native-hot-diagnostic-tools-metadata.zip`共120文件、1917124字节，SHA `8e555e1a4714acb82f5308ed693df63f70ccd719be9bdb9190da5cbaa1dcef53`，不含数据库内容，CRC及逐文件实际恢复通过。175份清理元数据实际恢复ACK后，guard实际STOPPED，测试run/两镜像/proof清零；原16服务/29镜像保全，cleanup receipt SHA `04fd63c2380c4ceeb76a8959b3ad17910e79a5c92d5662c300cbe638264cc3e6`，清后可用41209147392字节。任务私有SSH socket已不存在、空父目录已移除。
 
-最终候选实际镜像从固定0ee提交构建，同一基础digest、Python 3.9.25/glibc 2.41、45依赖和729运行ENV保持；540源码/requirements逐项匹配，无私密数据或密钥。Mac config ID `a44530dd4efaae438541c8dd64b8c9bfd226616cab9e6c154b7431d0710ee690`，导出OCI manifest ID `1d5b1f1614e27b0c6736f4756251728c30f215168feed6357cdcf04d3e74e29f`；原baseline与新候选包135809489字节，SHA `2ac683094eb6f12eb3a83c11da9ab688be1213adf4de6e785c04e23801ea1d10`。来源/审阅包`R3-final-local-candidate-source-review.zip`共34文件、90494字节，SHA `4088031217bc628c31110b5de4e5a98e34e5277e2b2caba513985ce630cbbe52`，不含数据库或完整镜像，CRC及实际恢复通过。新run `oom-school-20261017-r3fix2-50f9535a`已准备官方pending包，尚无该镜像的原生窗口结果；仍仅恢复原两cold窗、不重开initial预算。这是第二且最后一轮业务整改，若仍失败，按规划保持HOLD并提交明确设计/容量决策，不继续无界微优化。
+最终候选实际镜像从固定0ee提交构建，同一基础digest、Python 3.9.25/glibc 2.41、45依赖和729运行ENV保持；540源码/requirements逐项匹配，无私密数据或密钥。Mac config ID `a44530dd4efaae438541c8dd64b8c9bfd226616cab9e6c154b7431d0710ee690`，导出OCI manifest ID `1d5b1f1614e27b0c6736f4756251728c30f215168feed6357cdcf04d3e74e29f`；原baseline与新候选包135809489字节，SHA `2ac683094eb6f12eb3a83c11da9ab688be1213adf4de6e785c04e23801ea1d10`。来源/审阅包`R3-final-local-candidate-source-review.zip`共34文件、90494字节，SHA `4088031217bc628c31110b5de4e5a98e34e5277e2b2caba513985ce630cbbe52`，不含数据库或完整镜像，CRC及实际恢复通过。新run `oom-school-20261017-r3fix2-50f9535a`已完成原两cold窗，实际结果见下节；不重开initial预算。这是第二且最后一轮业务整改，最终仍有效FAIL，按规划保持HOLD并准备明确架构/容量决策，不启动第三轮微优化。
 
 本轮两处执行工具错误均保留：首个内联启动wrapper因换行转义SyntaxError退出，确认没有controller child/Backend/runtime/archive/clock后，独立wrapper经合成检查和窄审只启动一次真实controller；原job/log不覆盖、原时钟未重开。清理plan首次因提前创建了空proof目录被原工具拒绝；核对仅为空的本批目录后移除，沿原prepare生成新plan，未覆盖旧清理证据或更改删除范围。两者不算业务性能样本。
+
+## 第二且最后一轮候选的原生对照与清理
+
+run `oom-school-20261017-r3fix2-50f9535a`，实际final manifest canonical SHA `873c84244b198870f2718351c298c3e628f7785e11cc049157423ad60d62c8a0`。baseline仍为dc1cf9ad/bc8fc6b0，候选为0ee340cb/1d5b1f16；实际源码、镜像与限额核验匹配。原CLI/worker/client、500ms冷/100ms热目标、1核/2GiB和采样保持不变。pending身份材料沿用旧export config的预检发现已在启动前修正并重封，原错误和审阅记录保留，不影响实际final manifest。
+
+| 指标 | baseline dc1cf9ad | 最终候选0ee340cb |
+| --- | ---: | ---: |
+| 冷summary / overview（ms） | 304.096 / 276.159 | 204.406 / 213.700 |
+| 热summary / overview（ms） | 190.334 / 215.033 | **150.305 / 163.493** |
+| 准备采样RSS峰（字节） | 1275592704 | 1016254464 |
+| 准备CPU（秒） | 410.006989539 | 431.647377409 |
+| 测量采样RSS峰 / 末驻留（字节） | 228507648 / 228507648 | 216293376 / 216240128 |
+| 测量启动CPU（秒） | 14.597107271 | 14.425516891 |
+| 冷overview采样RSS增量（字节） | 9916416 | 9195520 |
+
+候选原raw FAIL/实际exit2、normal_lifespan_exit=true、invalid为空，只有两条hot超过100ms；prepare正常exit0。controller实际exit1和pair `FAIL_OR_INVALID_STOP`是如实保留测量FAIL，不能误写为丢失证据或业务进程崩溃。baseline raw PASS/实际0仅作参考；并未应用候选100ms门槛。每版四份实际完整正文与原固定summary/overview SHA相同，37来源事实五barrier、strict、六成品/103历史jobs/同main inode复用、采样与实际容器证据有效。每版prepare/measure两个Backend及13个helper的实际镜像、UID、限额和终态已核对。独立基线及最终候选审阅均未发现证据缺口。
+
+两窗含真实准备分别为685.1285330830142和702.4621563758701秒，各沿同一个1800秒continued clock。guard记录最低宿主可用4050714624字节、最大新增3289141248字节；准备worker更细采样的最低可用为3953160192字节，均高于2GiB。单次准备RSS峰低20.33%、CPU高5.28%；单次冷overview增量约8.77MiB只证明这个样本在64MiB以内。尚无三次CPU中位数、完整多实体50%/LRU/长期与并发证据；不把这些单次结果扩大为OOM准入。
+
+原生ZIP SHA为baseline `9a9422a63c9a970c7043d3557098ea87581db57a5c600b9a2ecc3ca32710a8f5`、candidate `f5eccf6747f91f6ffbfe4cb59a9860e418f09398549c48e6bcb02050831a8cac`。两份transfer均COMPLETE，CRC及逐文件实际恢复通过，远端ZIP/metadata package均释放。baseline按恢复后的原PASS写精确ACK；候选FAIL完整恢复而不写PASS ACK。审阅结束后mirror原子迁至独立归档`R3-final-fix-native-mirror`，168文件/286181141字节；原回执不修改，另存`R3-final-fix-native-path-mapping.json`。
+
+原清理器SHA `8926b97400e8ffece936e6805da8e16fd1bc86e2805e21889cd2f3044dfb49e7`未修改。191份元数据CRC及逐文件实际恢复ACK后，按final manifest精确清理：guard实际STOPPED，本批run/容器/两镜像和proof暂存均清零，原16服务/29镜像保全。metadata SHA `0bebbe85a1e2bae99b49575cdd9997d79e33bf3ed055f0b653e111100ed45b6f`，cleanup receipt SHA `2227d7477cc40058189c23f9aaaee3c25a74f4e5c85ac5956952138de7254ddd`，清后磁盘可用41206792192字节。任务私有SSH control连接实际exit0关闭、socket及空父目录移除。一次Mac工具进程创建瞬时失败经只读核对工作树和原进程后恢复；没有重启工作负载或测试时钟。
+
+工具/元数据/审阅/清理包`R3-final-fix-native-results-cleanup.zip`共564文件、3571354字节，SHA `53b9badc9934954ffaba8929680b7cae860348444f7fe8e23f9c505d34de17d4`，不含数据库载荷，CRC及逐文件实际恢复通过。原始两份私密ZIP在独立mirror中保留，包内只带对应小元数据。研发`R3-credit-lazy-native/final-native-pair-analysis.json`、两份native审阅和`cleanup-execution/`分别记录最终分析、独立核对与实际清理。
+
+两轮业务整改已经用尽，原矩阵STOP，整体OOM继续OPEN/Partial、资源HOLD，业务没有整合至main、未推送或部署。下一步仅为选择[目标事实发布架构或容量方案](../designs/2026-10-17-detail-resource-architecture-decision.md)；推荐维护期发布目标署名事实，revision覆盖、版本和原子发布尚须设计与验证，不宣称该方向已经达标，不另起第三轮局部补丁。
 
 ## 恢复、清理与证据边界
 
