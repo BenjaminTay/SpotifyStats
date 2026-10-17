@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [学校共享宿主原生资源准入](reports/2026-10-17-school-native-resource-admission.md)：共享限额和双批时间已获授权；旧无效窗保留，准备/复用/WAL工具135项验证通过，两版第1次ready样本已恢复，第一对冷请求执行中；完整资源HOLD、结束精准清理。
+
 - [资源对照镜像与可移植验收包](reports/2026-10-17-oom-images-portable-acceptance.md)：R1本地准备完成，实际两镜像、114窗口与独立客户端/审计/恢复通路通过有界自检；阶段提交bdcf，原生环境与资源准入HOLD。
 
 - [累计资源候选冻结与阶段提交](reports/2026-10-17-oom-candidate-freeze-review.md)：R0独立审阅无阻塞，AI测试线程竞态在HEAD自然复现并最小隔离；23文件本地阶段提交c844，资源准入与发布HOLD。
