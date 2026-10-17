@@ -1,6 +1,6 @@
 # 学校共享宿主的原生资源准入
 
-日期：2026-10-17。事项：`SS-2026-10-08-001`。当前状态：**R2进行中，完整资源准入HOLD**；未推送、未部署或重新验收Spotify生产。
+日期：2026-10-17。事项：`SS-2026-10-08-001`。当前状态：**首对冷请求候选有效FAIL，R2停止、进入R3有界归因，完整资源准入HOLD**；未推送、未部署或重新验收Spotify生产。
 
 ## 范围与授权
 
@@ -59,12 +59,26 @@ ready3基线完成同inode真实准备、正式含WAL的rank三步骤与全新�
 
 候选同为74文件ZIP，SHA `333494c9207ccf51d943506b2c2e0485b9c83735e69b32a4abec1b9cd21bd0f0`；本机恢复、远端释放及精确ACK均已完成。guard最终闭合基线709.181193秒、候选731.031119秒，含旧失败583秒合2023.212312秒，小于批准2400秒；两窗分别低于900/917秒上限，未重跑基线或重置预算。首组只贡献原114窗中的两个ready启动样本，完整R2合同继续HOLD。
 
-工具三文件已形成研发阶段提交 `ede04ab8052b8139c20772760e820117d4b89af9`，提交四hooks通过，源码与受审冻结包一致。main尚未整合本轮业务或工具，不存在源SHA到main的业务映射；未推送/部署。随后按原授权进入`cold-track-l2-d0-1-baseline/candidate`固定对，四请求/窗，保持同包、同输入、1800秒原单窗上限及逐窗恢复核验；当前基线执行中。
+工具三文件已形成研发阶段提交 `ede04ab8052b8139c20772760e820117d4b89af9`，提交四hooks通过，源码与受审冻结包一致。main尚未整合本轮业务或工具，不存在源SHA到main的业务映射；未推送/部署。随后按原授权进入`cold-track-l2-d0-1-baseline/candidate`固定对，四请求/窗，保持同包、同输入、1800秒原单窗上限及逐窗恢复核验；该固定对已完整恢复；候选因热请求门槛失败停止，未自动重跑。
+
+## 第一对冷请求的有效失败与R3边界
+
+两版各按原固定四请求完成：summary/overview并行冷读，再并行热读。候选cold服务时间332.610/379.656ms，均低于500ms；hot为305.175/303.222ms，均高于100ms，因此原raw FAIL、worker/container实际exit2和唯一性能failure保持原样，invalid为空。基线cold为294.730/353.762ms，hot为309.146/296.270ms；其raw PASS仅表示有效参考，热目标超限已保留，不表示达标。
+
+八份实际HTTP正文逐一重算SHA，跨版及冷热对应相同：summary为`7e9abd17030cfb7047252176abe0751eb7636e908e8bc9e2572b17a2b2a1b816`，overview为`b2dcb55f1e706464563aaec1d85d448f7c58a89b4f74403b0dc9606a81ec932a`。两版六analysis成品四barrier/103历史任务不变、测量无重建，37来源与strict守恒；准备与测量的UID/cgroups、实际退出、采样和容量均有效。overview单请求采样RSS增量约9.48/9.58MiB，仅此场景低于64MiB，不代表矩阵通过。两版92项归档均已实际恢复及远端释放，SHA分别为`9a44438dab634f86792cc4d01e220d55d99b5765454772d9b195f982eb63c229`、`ab43a3841773e057f531eff903a21ed306bf57066f83888bcce9a3ac87ddd149`。
+
+当前run共3个raw PASS（两个启动样本和一个基线有效参考）及1个有效候选FAIL；第一对controller明确STOP，LRU从未启动，其余110矩阵窗及两版原90浏览器未验。原失败不改为INVALID或PASS，不放宽100ms，完整资源准入保持HOLD。
+
+只读源码核对发现投影链内重复解析上下文/快照与艺人身份映射，但实际耗时尚无证据；50ms进程内采样线程也可能与1CPU下并行请求竞争，现有样本缺少线程CPU与完整throttling字段，不能认定为根因。下一阶段R3固定最多14请求：2个诊断warmup后，重采样开启并行、重采样暂停并行、重采样开启串行各4请求；始终保留独立容量/宿主/OOM/磁盘/deadline保护。补充分组cpu.stat、sampler自身成本及两个必要业务阶段计时，明确DIAGNOSTIC且不计作R2通过。先归因再决定最小业务补丁，最多两轮有证据整改，原始合同不变。
 
 ## 证据、剩余工作与清理
 
-原始证据在研发树 `output/oom-closeout-execution-20261017/R2-school-admission/`、`R2-school-ready-attempt2/`及`R2-school-ready-attempt3/`；首轮判定见`first-attempt-assessment.json`，工具与审阅见`tool-ready-report.txt`、`tool-initial-batches-report.txt`、`tool-rank-wal-report.txt`、`threshold-scope-fix-review.txt`及第三attempt的`budget-carry-preflight-review.txt`、`rank-wal-fix-review.txt`。工具、原始失败及已完成首组元数据已独立保存至`~/.codex/archives/spotifystats-delivery/oom-closeout-execution-20261017/R2-initial-native-tools-metadata.zip`：2414795字节、528文件，SHA `80047be66cd008056fdb2ae93bdabb328f47b648b3d1286aa2421296c782c500`，CRC及逐文件读回通过。相邻receipt记录范围与工具commit；数据库ZIP仍在活跃mirror供后续门禁使用，待批次结束迁移并保存旧路径映射；该2.3MiB包不含真实七库，不能作为私密运行库恢复包。
+原始证据在研发树 `output/oom-closeout-execution-20261017/R2-school-admission/`、`R2-school-ready-attempt2/`及`R2-school-ready-attempt3/`；首轮判定见`first-attempt-assessment.json`，工具与审阅见`tool-ready-report.txt`、`tool-initial-batches-report.txt`、`tool-rank-wal-report.txt`、`threshold-scope-fix-review.txt`及第三attempt的`budget-carry-preflight-review.txt`、`rank-wal-fix-review.txt`。工具、原始失败及已完成首组元数据已独立保存至`~/.codex/archives/spotifystats-delivery/oom-closeout-execution-20261017/R2-initial-native-tools-metadata.zip`：2414795字节、528文件，SHA `80047be66cd008056fdb2ae93bdabb328f47b648b3d1286aa2421296c782c500`，CRC及逐文件读回通过。相邻receipt记录范围与工具commit；三份完整私密mirror已在审阅结束后同文件系统原子迁入该独立archive目录，保留目录inode及原回执，`R2-school-mirror-path-mapping.json`记录旧路径到`R2-school-original-mirror`、`R2-school-ready2-mirror`、`R2-school-ready3-mirror`的映射；未复制第二套数据库ZIP；该2.3MiB包不含真实七库，不能作为私密运行库恢复包。
 
-首组真实ready已完成；原矩阵其余112窗与两版浏览器合同、必要R3整改及最终整合CI/full8仍待完成；发布另需固定包批准，唯一首次验收与至少72小时生产观察仍未执行。当前不能关闭OOM。
+首组真实ready及第一对冷请求已完成，候选热时延失败；原矩阵其余110窗与两版浏览器合同、R3归因整改及最终整合CI/full8仍待完成；发布另需固定包批准，唯一首次验收与至少72小时生产观察仍未执行。当前不能关闭OOM。
 
-学校清理尚未执行。最终先回传核验三个run的元数据及每窗私密恢复包，再按精确白名单停止guard/owner容器，依次清理ready3、ready2、旧source-owner三根目录及此前不存在的两测试镜像；核对原16容器ID/健康/重启/OOM及原29镜像保留。禁止global prune，不改既有服务或其配置。清理工具的三根拓扑和反向/循环/未知归属拒绝已做纯合成验证，不能当作学校现场清理完成。
+学校三旧run及清理proof暂存已实际清理完成。三个guard的原PID/start_ticks均确认退出，ready3→ready2→旧source-owner三根目录与两张测试镜像删除，owned容器/镜像/根残留为零；原16容器ID/运行/健康/重启/OOM状态相同，原29镜像保留。清后宿主磁盘可用41216741376字节（约38.39GiB）；清理前后回执已回传读回验证，proof暂存随后按八文件精确白名单删除，无global prune或既有服务配置变更。
+
+清理预检曾因原29镜像完整ID/tag行顺序不同拒绝；最小工具修复为等长与完整行集合比较，顺序置换接受、改变ID/标签/缺失/额外/重复均在变更前拒绝，原单/双/三根纯mock及独立审阅通过。plan输出时SSH断开，先确认远端计划已落盘再回传核验，未重复plan/execute。完整CRC及逐文件实际恢复ACK后才执行清理，最终receipt为COMPLETE。
+
+首对失败、只读归因报告和实际清理证据另存独立`R2-native-first-cold-and-cleanup.zip`：2393302字节、98文件，SHA `ed12e60f2c323d44829e17c6912897165579043afe4b62b2e996bfa0a7dd431a`，CRC及逐文件实际恢复核验通过；该包不含数据库内容，六窗私密恢复ZIP由前述三份mirror保存。下一R3使用独立新run及单诊断窗，原run和原累计时钟不复活、不重置。
