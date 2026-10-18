@@ -1,6 +1,6 @@
 # 详情资源两轮整改后的架构与容量决策
 
-日期：2026-10-17；更新：2026-10-18。事项：`SS-2026-10-08-001`。状态：**用户已选择A，本地正确性与独立审阅通过，实际镜像核验通过，原生对照待验。** 两轮局部业务整改已经用尽，原生资源准入和正式交付保持HOLD。本文不改变原验收标准，A按独立架构候选推进。原始结果见[有界归因报告](../reports/2026-10-17-native-hot-request-attribution.md)，实现与边界见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)，后续阶段见[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)。
+日期：2026-10-17；更新：2026-10-18。事项：`SS-2026-10-08-001`。状态：**用户已选择A，本地正确性与独立审阅通过，首版原生INVALID已保存清理，启动接线补修本地验证通过，bfecef52及新actual镜像已冻结，原生重验待完成。** 两轮局部业务整改已经用尽，原生资源准入和正式交付保持HOLD。本文不改变原验收标准，A按独立架构候选推进。原始结果见[有界归因报告](../reports/2026-10-17-native-hot-request-attribution.md)，实现与边界见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)，后续阶段见[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)。
 
 ## 为什么需要改变工作范围
 
@@ -44,3 +44,5 @@
 ## 当前资源收尾
 
 第二轮学校run `oom-school-20261017-r3fix2-50f9535a`已完整恢复并按原清理器精确清理，原16服务/29镜像保全。2026-10-18首次SSH超时保留，用户重试后恢复。今日host/engine、原16服务/29镜像及容量已重新核对；19e66ab2和实际镜像本地冻结，本次输入/镜像和live guard已核验，原生基线准备窗执行中。原容量不变。
+
+2026-10-18实际正常启动暴露search-ready快路未升级旧详情版本，首版四503窗口按INVALID保存并已精确清理。补修仅在私有维护检测版本/fence并原子补齐详情，不重建已ready search，不放宽GET或reuse-only；累计3275 unit/2跳、6 startup contract及两次真实lifespan验证通过。原生重验与Online Backup跨库发布仍未通过，原性能FAIL停止点及完整合同不变。

@@ -1,6 +1,6 @@
 # SpotifyStats 文档地图
 
-- [目标歌曲署名事实发布候选](reports/2026-10-18-track-presentation-publication-candidate.md)：架构A已选，schema91九表revision/fence与四详情变体目标读取已实现；219 unit/6 contract、完整正文/源守恒及独审通过，实际镜像核验通过、原生待验，资源HOLD；Online Backup跨库导入仍待解决。
+- [目标歌曲署名事实发布候选](reports/2026-10-18-track-presentation-publication-candidate.md)：架构A已选，schema91九表revision/fence与四详情变体目标读取已实现；首版native因旧ready未升级详情为INVALID并已清理；私有接线补修、3275 unit/2跳、6 startup contract及两次真实lifespan/正文/源守恒通过，bfecef52及新actual镜像已冻结、原生对照待验，资源HOLD。
 
 - [原生热请求有界归因](reports/2026-10-17-native-hot-request-attribution.md)：两轮候选原生对照均有效FAIL，最终0ee热150.305/163.493ms仍超100ms；正文/来源/复用/采样/恢复有效，学校本批精确清理、原16/29保全。两轮上限已到，下一为架构/容量决策，完整资源HOLD。
 

@@ -1,5 +1,9 @@
 # SpotifyStats 问题台账
 
+> 架构A启动补修（2026-10-18）：首版原生503/INVALID及完整恢复/清理保留；已补私有详情版本/fence检查、仅排详情维护并复用search统计，reuse-only缺失拒绝。累计unit3275通过/2跳、6 startup与6公开边界contract与两次真实七库lifespan（一次四变体backfill、第二新进程零补建）、两版正文/11源及search meta完整行一致、独审通过。补修bfecef52已仅本地提交、新actual镜像541源码/45依赖通过，新原受影响native包正fresh核对和上传；资源HOLD，Online Backup跨库导入仍R4/R5阻塞；未推送、业务整合或部署。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
+
+> 架构A首轮原生INVALID（2026-10-18）：19e候选四次503、缺服务计时，不能计性能FAIL/PASS；真实恢复SQL确认schema91/cookie601水印有效，但四详情仍v1且无目标署名事实，正常startup的search-ready快路漏了独立详情升级。本地最小私有维护接线补修与正常lifespan验证中；旧显式准备219 unit/6 contract/正文证据保留，不能覆盖此缺口。两窗完整恢复、本批run/guard/两镜像/proof及SSH控制已清理、原16/29保全。资源HOLD，未整合业务、推送或部署。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
+
 > 架构A实施（2026-10-18）：用户已选择维护期发布目标署名事实；schema91九表revision/fence和四详情变体目标载荷已实现。219 unit/6 seed contract、两版各8份完整正文及来源守恒、独审和四hooks通过；实际镜像核验通过，原生受影响首组执行中，原R2 FAIL/资源HOLD保持。Online Backup跨库ready导入仍是R4/R5阻塞；今日SSH重试恢复，现场16服务/29镜像与容量核对通过，输入/镜像与live guard已核验，原生基线准备窗执行中。未整合业务、推送或部署，见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
 
 > R3两轮整改闭合（2026-10-17）：729a0ed3热145.521/192.171ms、最终0ee340cb热150.305/163.493ms均为原生有效FAIL；原正文/来源/strict/成品复用/实际容器/采样和完整恢复通过。学校各批run/guard/测试镜像/proof均已精确清理，原16服务/29镜像保全。两轮上限已到，停止微优化，下一为[架构/容量决策](../designs/2026-10-17-detail-resource-architecture-decision.md)，尚未选择/实现；原R2 FAIL和完整资源HOLD不变。见[归因报告](../reports/2026-10-17-native-hot-request-attribution.md)。
