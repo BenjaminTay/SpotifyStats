@@ -1,6 +1,6 @@
 # SpotifyStats 文档地图
 
-- [目标歌曲署名事实发布候选](reports/2026-10-18-track-presentation-publication-candidate.md)：架构A修正版bfecef52在原1核/2GiB通过受影响pair，冷97.752/119.510、热64.782/58.499ms、四HTTP200；正文/源守恒/复用/恢复通过，本批学校资源已精确清理。单次准备峰低22.17%、CPU高43.12%保留；仅Partial，下一返回原R2，完整114/90/64MiB/50%/LRU/长期与CPU仍HOLD。
+- [目标歌曲署名事实发布候选](reports/2026-10-18-track-presentation-publication-candidate.md)：A受影响pair通过，仅Partial；R2首LRU旧公开路径协议INVALID已恢复清理，等价L1路径纠正134项纯测试通过，独审通过，现场核验上传中。原114/90/64MiB/50%/LRU/长期与CPU仍HOLD，原16/29保全。
 
 - [原生热请求有界归因](reports/2026-10-17-native-hot-request-attribution.md)：两轮候选原生对照均有效FAIL，最终0ee热150.305/163.493ms仍超100ms；正文/来源/复用/采样/恢复有效，学校本批精确清理、原16/29保全。两轮上限已到，下一为架构/容量决策，完整资源HOLD。
 

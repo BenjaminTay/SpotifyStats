@@ -1,5 +1,7 @@
 # 详情资源两轮整改后的架构与容量决策
 
+2026-10-18 R2补记：首LRU的旧canonical stats路径被public-readonly策略拒绝，已按协议INVALID恢复清理，候选未启动，不构成A的有效性能失败。下一仅在新清单/工具中纠正到同track_stats处理函数、同L1 ID的既有L1路径；原capsule、资源标准与样本保持，新gate只允许明确两条boundary路径反向还原后仍核原matrix hash。134项纯测试通过，独审通过，新现场结果待补。
+
 日期：2026-10-17；更新：2026-10-18。事项：`SS-2026-10-08-001`。状态：**用户已选择A，修正版bfecef52原生受影响pair通过，仅Partial；原生资源准入和正式交付仍HOLD，下一返回原R2。** 两轮局部业务整改已经用尽，原生资源准入和正式交付保持HOLD。本文不改变原验收标准，A按独立架构候选推进。原始结果见[有界归因报告](../reports/2026-10-17-native-hot-request-attribution.md)，实现与边界见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)，后续阶段见[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)。
 
 ## 为什么需要改变工作范围

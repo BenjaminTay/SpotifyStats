@@ -1,5 +1,7 @@
 # 目标歌曲署名事实发布候选
 
+当前补记（2026-10-18）：R2首LRU旧公开路径协议INVALID已完整恢复清理，候选未启动；等价L1路径纠正134项纯测试通过，新包独审通过，现场结果待补。原性能标准保持，整体资源HOLD。
+
 日期：2026-10-18。事项：`SS-2026-10-08-001`。用户已选择[架构方案A](../designs/2026-10-17-detail-resource-architecture-decision.md)。状态：**修正版bfecef52原生受影响pair通过，仅Partial；首版INVALID保留，当前学校资源已清理，下一返回原R2，完整资源HOLD。** 旧两轮R3有效FAIL保持原样，本轮不作为第三次局部微优化。未整合业务到main、推送或部署。
 
 ## 实现与失效边界
@@ -99,3 +101,15 @@ Online Backup会改变副本schema cookie；显式`--build-on-copy`在owned副�
 本地权威收据为研发树`output/oom-closeout-execution-20261018/A-startup-native/final-native-pair-analysis.json`；原始结果/失败历史不改。下一先准备原R2有界续跑与磁盘预算，不能直接将当前只允许两ID的guard用于其他窗口，也不能把不同manifest的历史pair冒充新114全部通过。Online Backup跨库ready交付、最终整合CI/full8、发布批准和生产观察仍未完成。
 
 独立审阅核合候选及清理后，168个原始文件/293132657字节已复制到长期归档`A-startup-fixed-native-mirror/`并逐文件读回SHA。元数据/工具/审阅/清理包`A-startup-fixed-native-metadata-cleanup.zip`，640文件/3498241字节，SHA `9fdffbc9081e8a961be4d2537e3eedbbb7d720fcdfaca50c508cdcc5b1c82626`；ZIP CRC及逐项实际恢复通过，不含真实DB载荷。完整DB归档只在私有raw mirror；独立归档根沿用本报告前述2026-10-18长期目录。
+
+## 原R2首LRU路径协议INVALID与精确清理
+
+R2分批适配86项纯fixture/ruff/编译与独审通过，新run `oom-school-20261018-r2-a69a7f16`的final canonical为`3bd2c35d586aaba610436b005bde24bf7f3767c3ddeabddbbf35b7f08644cb4c`。两版实际镜像与bfe候选不变；原114分30批、LRU优先，1 Backend/1CPU/2GiB、最多1个512MiB helper及原保护线/1800秒保持。guard PID3376024/ticks354772447，receipt `cffdf3a929e37a2b16b1dca15a9f8533a95ec77ce2015918124826e5b625588c`；唯一pending→actual绑定核验通过，initial永久闭合/new0。
+
+首LRU准备后，旧`/api/music/tracks/canonical/{L1}/stats`被public-readonly策略直接404拒绝，未进入歌曲统计handler。137次完成请求中130个404、7个专辑200；root精确停止本run测量Backend，原工具INVALID、coordinator实际1，测量worker result与完整strict缺失，不能计性能FAIL/PASS或中途RSS收益。候选未启动，原关窗836.931秒；完整ZIP SHA`6a7e0716088d3092d6392c6ef38baa7169add267ca08405a204f0533ccb2082e`，CRC/逐项实际恢复和远端release核合，没有续跑ACK。
+
+原清理器plan→本机CRC实际恢复ACK→execute完成，清理回执SHA`48e1d598a0e1bc0cba29864ce07f590e0ed62a29828dabddf2747fd372e9d7ed`：原16服务/29镜像保全、guard STOPPED、owned residue zero。root/两镜像/proof已移除。proof删除后本机socket立即断言遇到SSH异步关闭竞态，wrapper实际1保留；随后仅本机有界复查确认socket消失并移除空目录，未重复远端删除。
+
+1022个原始文件/144063117字节已独立复制至`R2-first-route-invalid-native-mirror/`并逐项读回SHA。元数据/清理包`R2-first-route-invalid-metadata-cleanup.zip`，1321文件/2991114字节，SHA`0cfdf30057ea4b7ef479e8acefdfa1cab4ee4309b54a6f3e2a759a070428d2d9`，CRC及逐项实际恢复通过，不含真实DB载荷。首版控制源码包`R2-original114-control-freeze-review.zip`，74文件/690447字节、SHA`cc79ea34f7f3129dc0c5e457849b01b114f32c6d43437407536925e94da1153a`，实际恢复核验通过。两版镜像包也已独立读回核验，沿用SHA`3ec7f2600ec95f0aa8ec8f5cedcfa7fc3d4a274fb5717500344fb5bb61188189`。
+
+离线审计459份含matrix副本的请求定义，132处旧canonical stats被禁：129个LRU目标、1个独立zero-eligible边界及两role副本；其余路径均公开允许并匹配原handler。仅改为同track_stats函数、同L1整数ID与参数的既有`/l1/`路径；不使用会二次解析ID的legacy入口，不改surface头、公开策略或业务。新清单独立前后对账通过，新guard只允许两条明确boundary路径反向还原后核原matrix SHA，其余frozen keys原hash；原capsule与失败字节不改。原86项保持，新增48项，共134纯测试通过；新包独审通过，现场结果待补，不计新LRU或完整资源通过。
