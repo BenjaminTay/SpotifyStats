@@ -1,6 +1,8 @@
 # SpotifyStats 文档地图
 
-- [目标歌曲署名事实发布候选](reports/2026-10-18-track-presentation-publication-candidate.md)：prep-only47纯测/实际包/独审与原boundary-2两窗通过，四HTTP200/正文、复用和守恒核合，仅2/114；学校本批已清理、原16/29保全。两LRU各90分钟具体预算提案待批准，未实现/启用，完整114/90/64MiB/50%/长期与CPU仍HOLD。
+- [两LRU窗口授权扩时与原生对照](reports/2026-10-19-lru-budget-native-acceptance.md)：基线786次全200，但三轮RSS增长74.54MiB超原8MiB容差，有效FAIL；按原规则候选未启动。完整恢复和学校精确清理完成，现有16/原29保全；下一候选单窗诊断待调整停止规则，整体资源HOLD。
+
+- [目标歌曲署名事实发布候选](reports/2026-10-18-track-presentation-publication-candidate.md)：10-18准备检查点：prep-only47纯测/实际包/独审与原boundary-2两窗通过，四HTTP200/正文、复用和守恒核合，仅2/114；该批学校资源已清理、原16/29保全。后续LRU授权与实测见10-19报告，完整资源仍HOLD。
 
 - [原生热请求有界归因](reports/2026-10-17-native-hot-request-attribution.md)：两轮候选原生对照均有效FAIL，最终0ee热150.305/163.493ms仍超100ms；正文/来源/复用/采样/恢复有效，学校本批精确清理、原16/29保全。两轮上限已到，下一为架构/容量决策，完整资源HOLD。
 

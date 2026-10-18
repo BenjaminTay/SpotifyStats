@@ -94,7 +94,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；A受影响pair与本次原boundary-2两窗通过；当前2/114，完整资源HOLD | bfecef52实际镜像及正常startup验证保持；prep-only47纯测/实际包/独审通过，只补prepare与测量前早拒，GET不变 | P1：原boundary-2四HTTP200/四完整正文一致，六Analysis/103jobs/default+fixed复用、源37/strict及限额/退出/CRC恢复/ACK通过。两clock839.420/1117.582秒；required-prep区间含其它维护，不作净ensure归因。学校本批已清理、原16/29保全，旧FAIL/INVALID保留。下一两LRU各90分钟具体提案待批准，未实现或启用；原1800/7200保持。余112窗/两版原90、64MiB/50%/长期、三次CPU、最终整合CI/full8、Online Backup跨库ready、发布及72小时观察待验。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)、[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)；2026-10-18，未推送、业务整合或部署。 |
+| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；原生LRU基线有效FAIL，候选未启动；完整资源HOLD | 基线68分38秒完成786次全200、259目标重访稳定，原37/strict/九项淘汰/采样/限额有效；三轮RSS714.51→757.80→789.05MiB，增长74.54MiB超原8MiB容差，帧权重仅增102字节 | P1：完整恢复及学校清理完成，现有16/原29保全。下一候选单窗90分钟诊断需批准调整停止规则，阈值不降、不发失败基线ACK。完整114/原90、64MiB/50%/长期、三次CPU、整合CI/full8、跨库ready发布及72小时观察待验。见[本轮报告](../reports/2026-10-19-lru-budget-native-acceptance.md)、[规划](../plans/2026-10-17-oom-resource-closeout-plan.md)；2026-10-19，未推送、业务整合或部署。 |
 
 ### 2026-10-07 非榜单详情统计空值
 
