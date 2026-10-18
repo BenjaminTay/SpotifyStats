@@ -1,5 +1,7 @@
 # SpotifyStats 开发状态总表
 
+> 架构A实施（2026-10-18）：用户已选择维护期发布目标署名事实、GET只读目标载荷；schema91九表revision/fence、四详情变体原子发布与目标读取已实现，219 unit/6 seed contract、四变体两版各8份完整正文及源守恒、独立审阅与四hooks通过。候选19e66ab2已本地提交、实际镜像/541源码/45依赖核验通过，原受影响原生首组执行中；热100ms/64MiB/50%/完整矩阵仍未通过，资源HOLD。Online Backup跨库ready导入安全拒绝，portability仍是R4/R5阻塞。SSH原超时保留，用户重试后现场16服务/29镜像及容量核对通过，本次输入/镜像和live guard已核验，原生基线准备窗执行中；未整合业务、推送或部署。见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)。
+
 > R3两轮整改闭合（2026-10-17）：729a0ed3热145.521/192.171ms、最终0ee340cb热150.305/163.493ms均为原生有效FAIL；最后一轮冷204.406/213.700ms通过500ms。正文/37来源/strict/六成品103jobs同inode/实际容器限额/采样与完整恢复有效，资源HOLD。最终候选161 unit/6 seed contract/独审/hooks及实际镜像证据保留；单次准备峰低20.33%、CPU高5.28%不代替完整合同。两轮上限已到，停止微优化，准备[架构/容量决策](designs/2026-10-17-detail-resource-architecture-decision.md)，尚未实现。各批学校run/guard/两镜像及proof已清理、原16服务/29镜像保全。OOM继续OPEN/Partial；未整合业务、推送或部署。见[归因报告](reports/2026-10-17-native-hot-request-attribution.md)。
 
 > 收口执行（2026-10-17，R0/R1本地准备完成）：研发c844业务候选与bdcf/ede04验收工具阶段提交仅本地。相同基础/45依赖的实际两镜像构建、正常启动及9容器合成工具链通过；114窗口、两版各原90浏览器合同固定，33纯测试/四hooks与恢复包通过。学校共享宿主及传输已获授权、原生预检READY，R2完整资源合同仍HOLD；未推送或部署。见[R1交付](reports/2026-10-17-oom-images-portable-acceptance.md)及[完整规划](plans/2026-10-17-oom-resource-closeout-plan.md)。

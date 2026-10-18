@@ -1,8 +1,10 @@
 # SpotifyStats 文档地图
 
+- [目标歌曲署名事实发布候选](reports/2026-10-18-track-presentation-publication-candidate.md)：架构A已选，schema91九表revision/fence与四详情变体目标读取已实现；219 unit/6 contract、完整正文/源守恒及独审通过，实际镜像核验通过、原生待验，资源HOLD；Online Backup跨库导入仍待解决。
+
 - [原生热请求有界归因](reports/2026-10-17-native-hot-request-attribution.md)：两轮候选原生对照均有效FAIL，最终0ee热150.305/163.493ms仍超100ms；正文/来源/复用/采样/恢复有效，学校本批精确清理、原16/29保全。两轮上限已到，下一为架构/容量决策，完整资源HOLD。
 
-- [详情资源架构/容量决策](designs/2026-10-17-detail-resource-architecture-decision.md)：待选择，推荐维护期发布目标署名事实；revision覆盖、版本和原子发布尚待验证，不启动第三轮局部修补，不降原合同。
+- [详情资源架构/容量决策](designs/2026-10-17-detail-resource-architecture-decision.md)：2026-10-18已选择A，维护期发布目标署名事实；本地正确性与独审通过，原生资源待验，不降原合同。
 
 - [学校共享宿主原生资源准入](reports/2026-10-17-school-native-resource-admission.md)：共享限额和双批时间已获授权；旧无效窗保留，准备/复用/WAL工具135项验证通过，两版第1次ready样本已恢复，首对热305/303ms超100ms、候选有效FAIL，R2停止转R3，LRU未启动；完整资源HOLD；三旧run及两镜像实际清理、原16/29保全。
 
@@ -10,7 +12,7 @@
 
 - [累计资源候选冻结与阶段提交](reports/2026-10-17-oom-candidate-freeze-review.md)：R0独立审阅无阻塞，AI测试线程竞态在HEAD自然复现并最小隔离；23文件本地阶段提交c844，资源准入与发布HOLD。
 
-- [详情资源与OOM完整收口规划](plans/2026-10-17-oom-resource-closeout-plan.md)：R0候选审阅→R1镜像/验证包→R2原生准入→必要整改→整合CI→发布准备→唯一首次→72小时观察与工作树收尾。原64MiB/多实体50%及LRU合同不降标；R0/R1完成，两轮R3有效FAIL后等待架构/容量决策；本地按完整阶段提交，正式发布仍HOLD。
+- [详情资源与OOM完整收口规划](plans/2026-10-17-oom-resource-closeout-plan.md)：R0候选审阅→R1镜像/验证包→R2原生准入→必要整改→整合CI→发布准备→唯一首次→72小时观察与工作树收尾。原64MiB/多实体50%及LRU合同不降标；R0/R1完成，两轮R3有效FAIL后已选择架构A，本地正确性通过，原生待验；本地按完整阶段提交，正式发布仍HOLD。
 
 - [有限多实体读取与空闲平台验证](reports/2026-10-17-oom-finite-read-platform.md)：空闲/六实体读取各15分钟均平台，7帧根与结果缓存稳定复用；18正文/六事实/两strict一致。无新增业务补丁，22文件沿用10-16同版本full8，原生/64MiB/长期并发/生产OOM仍OPEN。
 

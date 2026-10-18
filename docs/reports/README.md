@@ -1,5 +1,7 @@
 # 交付与验证报告索引
 
+- [目标歌曲署名事实发布候选](2026-10-18-track-presentation-publication-candidate.md)：架构A已选，schema91九表revision/fence与四详情变体目标读取已实现；219 unit/6 contract、完整正文/源守恒及独审通过，实际镜像核验通过、原生待验，资源HOLD；Online Backup跨库导入仍待解决。
+
 - [原生热请求有界归因](2026-10-17-native-hot-request-attribution.md)：两轮候选原生对照均有效FAIL，最终0ee热150.305/163.493ms仍超100ms；正文/来源/复用/采样/恢复有效，学校本批精确清理、原16/29保全。两轮上限已到，下一为架构/容量决策，完整资源HOLD。
 
 - [学校共享宿主原生资源准入](2026-10-17-school-native-resource-admission.md)：共享限额和双批时间已获授权；旧无效窗保留，准备/复用/WAL工具135项验证通过，两版第1次ready样本已恢复，首对热305/303ms超100ms、候选有效FAIL，R2停止转R3，LRU未启动；完整资源HOLD。
