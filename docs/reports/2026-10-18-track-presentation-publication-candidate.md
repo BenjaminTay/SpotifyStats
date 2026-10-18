@@ -1,8 +1,8 @@
 # 目标歌曲署名事实发布候选
 
-当前补记（2026-10-18）：R2首LRU旧公开路径协议INVALID已完整恢复清理，候选未启动；等价L1路径纠正134项纯测试通过，新包独审通过，现场结果待补。原性能标准保持，整体资源HOLD。
+当前补记（2026-10-18）：prep-only工具47纯测/实际pack/独审通过；原boundary-2两窗PASS，四HTTP200/四完整正文一致，当前六Analysis/103jobs/default+fixed、原37/strict、限额/退出/恢复ACK通过，仅2/114，整体资源HOLD。学校本批清理、原16/29保全。下一两LRU窗各90分钟提案待批准，未实现或启用，原1800/7200仍有效。先前路径及准备协议INVALID保持原样；准备成本归因限制与完整证据见文末。
 
-日期：2026-10-18。事项：`SS-2026-10-08-001`。用户已选择[架构方案A](../designs/2026-10-17-detail-resource-architecture-decision.md)。状态：**修正版bfecef52原生受影响pair通过，仅Partial；首版INVALID保留，当前学校资源已清理，下一返回原R2，完整资源HOLD。** 旧两轮R3有效FAIL保持原样，本轮不作为第三次局部微优化。未整合业务到main、推送或部署。
+日期：2026-10-18。事项：`SS-2026-10-08-001`。用户已选择[架构方案A](../designs/2026-10-17-detail-resource-architecture-decision.md)。状态：**修正版bfecef52受影响pair与原boundary-2准备验证通过，当前2/114、整体Partial；旧FAIL/INVALID保留，学校本批已清理。两LRU各90分钟提案待批准，完整资源HOLD。** 旧两轮R3有效FAIL保持原样，本轮不作为第三次局部微优化。未整合业务到main、推送或部署。
 
 ## 实现与失效边界
 
@@ -113,3 +113,54 @@ R2分批适配86项纯fixture/ruff/编译与独审通过，新run `oom-school-20
 1022个原始文件/144063117字节已独立复制至`R2-first-route-invalid-native-mirror/`并逐项读回SHA。元数据/清理包`R2-first-route-invalid-metadata-cleanup.zip`，1321文件/2991114字节，SHA`0cfdf30057ea4b7ef479e8acefdfa1cab4ee4309b54a6f3e2a759a070428d2d9`，CRC及逐项实际恢复通过，不含真实DB载荷。首版控制源码包`R2-original114-control-freeze-review.zip`，74文件/690447字节、SHA`cc79ea34f7f3129dc0c5e457849b01b114f32c6d43437407536925e94da1153a`，实际恢复核验通过。两版镜像包也已独立读回核验，沿用SHA`3ec7f2600ec95f0aa8ec8f5cedcfa7fc3d4a274fb5717500344fb5bb61188189`。
 
 离线审计459份含matrix副本的请求定义，132处旧canonical stats被禁：129个LRU目标、1个独立zero-eligible边界及两role副本；其余路径均公开允许并匹配原handler。仅改为同track_stats函数、同L1整数ID与参数的既有`/l1/`路径；不使用会二次解析ID的legacy入口，不改surface头、公开策略或业务。新清单独立前后对账通过，新guard只允许两条明确boundary路径反向还原后核原matrix SHA，其余frozen keys原hash；原capsule与失败字节不改。原86项保持，新增48项，共134纯测试通过；新包独审通过，现场结果待补，不计新LRU或完整资源通过。
+
+## L1纠正实测与fixed艺人排名准备缺口
+
+run `oom-school-20261018-r2route-73c91a4e`已完成，final canonical `f7f19d805c4a365f1f56034f8f88935094b1a1ee3719cf69156cdc0f5f2c8f2d`，实际身份/新guard/最终绑定独审通过。两镜像与业务候选bfe不变，原114、各普通1800秒/soak7200秒及initial永久关闭/new0保持。新工具源码包`R2-l1-route-corrected-control-review.zip`共67文件/686200字节、SHA`557bef8e1c871892fcf439afc95451ac35113175cb51176da518dc4f313b6e42`，已独立CRC及逐项实际恢复核验。
+
+原歌曲L1请求及专辑请求实际返回200，路径纠正已进入业务处理；第一轮两类首项重访均记录真实结果缓存miss。艺人请求却返回503 `snapshot_unavailable`，family为`artist_rank_context`；root精确停止本run测量Backend，最终344次完成为278个200、66个503（65艺人加重访）。原工具INVALID、coordinator实际1，测量worker result及完整after-reads/strict缺失，候选未启动；不能计为性能FAIL/PASS、三轮平台或50%收益。窗口1661.902秒，原1800秒没有延长。ZIP SHA`d95c1b8647754858e21dfb38ac6f5ac3eba5105eaa4010025647496452b5de1b`、CRC/逐项实际恢复及远端release通过。
+
+对完整回传ZIP只临时恢复main/analysis及对应WAL，以只读SQL查询元数据；使用原prepare回执device64512/inode808995计算旧key，未用恢复后的新inode推旧发布。默认动态True key`e123ddc02af17eab2629fc95fcbf74455c279ebdfedb9fa905376ca9cbb58db9`对应pub44且revision吻合；LRU fixed False key`195d3aec67eefb1953d475509e0d02a758067db08f33f6ba4f46e0108179e5cb`不存在。临时数据库已移除，原ZIP前后SHA不变，无build或HTTP。根因是正常startup只准备默认动态艺人排名；原versus ready准备的是另一family `entity_rank_context/v2`，不能覆盖此处`artist_rank_context/v1`。
+
+实际20个family/key中16个非保留槽已满。原store淘汰SQL与当前元数据共同证明：仅新增这一fixed key时，会自然淘汰旧pub17，保留本inode当前六Analysis pub38–43、默认artist pub44和保留区四entity pub45–48。此为当前快照的条件性预测，不表示新准备已执行；新每窗仍须真实核必要成品共存。不增加MAX_KEYS、不手删或重签默认、不在GET构建。最小候选仅在prepare Backend自然settle后按实际消费的五字段准备fixed artist成品，并在正式测量前独立核验/早拒。下一先原boundary-2两版、每窗1800秒验证，源业务与原判据保持。
+
+本次准备约500秒，专辑完整调用常约6秒、部分36–49秒；artist503不提供正常200成本，不能据此承诺完整786请求耗时。普通1800秒与soak阶段预算仍有风险；LRU90分钟只是待决选项，未获新增授权、未实施，不减请求、轮次、尾段或资源门槛来制造通过。
+
+原清理器plan→本机CRC实际恢复ACK→execute→proof完成，回执SHA`79866c6cabb13d7e4b781fdc3647cce395348a898dbbd6d99b85162e9dee1f1a`：guard STOPPED、原16服务/29镜像保全、owned residue zero；root/两镜像/proof及SSH控制目录已清，proof流程实际0。2471个原始文件/157565157字节已独立复制至`R2-fixed-artist-missing-native-mirror/`并逐项读回SHA；元数据/清理包`R2-fixed-artist-missing-metadata-cleanup.zip`，2954文件/7440490字节、SHA`a309775495def25d22773d2cc3182a1d6a28947858634e752b365b780b696c44`，CRC及实际恢复通过、不含真实DB载荷。readiness INVALID/metadata/清理窄审通过，原失败与资源HOLD保持。
+
+## fixed艺人准备工具与原边界两窗验证
+
+用户要求重试后，学校SSH已连通。准备修正只新增离线CLI/worker副本：同最终owned inode、同镜像的正常prepare Backend在startup settle后调用既有私有ensure，参数严格限定实际消费者的五字段；独立helper核原37来源、当前六Analysis完整对象、默认/fixed艺人成品及自然淘汰。最终rank安装后先独立检查成品，缺失即在创建测量Backend前拒绝。业务、GET、缓存容量、原采样和测量分支不改。
+
+47项纯fixture、ruff、真实旧14源码的小包pack/verify均实际0；仅CLI/worker两份新源码，另12份逐字保持。CLI SHA`b4a58782314a9bb4915beeac85a87a50039fe9746e2e869b65ede03dbaabd107`，worker SHA`1fd7184f179181c62f58b5fb6cb5e17bc8aad5f79b37674b98fc361308b3e4e4`；guard7186/coordinator d188、capsule、六oracle及client均不变。正式27文件包、114窗/31批计划和源/实际重封独审通过。预执行源码恢复包`R2-fixed-artist-prep-only-control-review.zip`共79文件/770458字节、SHA`209247a057a7b32943129792f20521bb867c6dcfc3b1f824aed1ecc8f4c78544`，CRC及逐项实际恢复通过。
+
+新run `oom-school-20261018-r2ready-814b2fd0`的final canonical为`d647c6ee227cbcb083343c96edac9e620af8e36fb08be09ff5861d4d0248da4b`，实际guard PID3673222/ticks355414551、receipt SHA`bc56622ec9725234a651a332732b8b7a0510ad372ae3aab4e4a00329dca48b7b`核合。只将原boundary-2基线/候选提前，原114定义和其余窗口顺序保持；每窗1800秒、soak7200秒、初批永久关闭/new0不变，未实现90分钟选项。
+
+两窗worker/window均PASS/实际0、coordinator实际0，四次HTTP200，四份完整保存正文相同。自然发布均仅在Analysis store淘汰旧pub17，当前六Analysis/103个job完整对象及default/fixed artist从准备后到final-rank gate、fresh startup和reads后持续复用；原37/保护来源、measure strict、同inode及每窗2个先后Backend/16个helper的身份、限额、退出和独立恢复核合，实际并发始终最多1 Backend/1 helper。
+
+| 本批观测 | 基线 | 候选 |
+| --- | ---: | ---: |
+| 正常prepare startup CPU（秒） | 411.319 | 594.038 |
+| required-prep区间CPU / wall（秒） | 59.601 / 82.481 | 128.531 / 155.281 |
+| prepare采样RSS峰（字节） | 1261797376 | 1020542976 |
+| measure采样RSS峰 / 末尾（字节） | 260038656 / 259878912 | 243462144 / 240672768 |
+| 两别名HTTP wall（毫秒） | 2741.139 / 1364.390 | 2686.971 / 1306.009 |
+| guard闭合clock（秒，含远端归档） | 839.420 | 1117.582 |
+
+required-prep计时覆盖ensure及后续独立capture等待，CPU还包含进程中其他任务。候选该区间的background_jobs及governance sidecar元数据存在变化；六Analysis、默认/fixed artist及测量strict均稳定。**这些数值不能作为孤立artist ensure的净成本，也不能归因整个CPU增量。** 两个别名不是65个不同艺人的成本样本；本边界窗不执行详情冷/热时延或50%门槛，不能据此声称这些门槛通过。
+
+基线完整ZIP SHA`f947ece6e759ac2c764332a5c050363df171e5ef5ccfcdc01ba460570a95594f`，候选`e6a3ec7f0f82860bf1184db53e75d439f962fef6c108e1ff6f575b12b54344c0`；逐窗CRC/实际恢复、远端release及精确ACK完成。保护进程记录宿主可用内存最低3998081024字节、磁盘新增最高3330859008字节。分类为`R2_ARTIST_READINESS_BOUNDARY_PAIR_PASS_PARTIAL`：当前manifest仅2/114有效窗，余112、两版原90、LRU/soak/50%/全局64MiB及三次启动CPU门槛仍待验。
+
+清理plan/execute/proof均实际0，原清理器回执SHA`3974bd428de9edb796bc95c0cb288ad1da6749bd2906a3939f706baaef8a6b54`：guard STOPPED、原16服务/29镜像保全、owned residue zero。root/两镜像/proof及本机SSH socket目录均已移除；无学校本批资源遗留。恢复元数据222文件，SHA`196f32532aadddbc409cb798b161883b58ea4ecf0d30a838eaa18bc63ebc8ac9`已本机CRC和逐项实际恢复核验。
+
+## 下一批LRU预算提案，尚未授权
+
+上次INVALID现成事件日志中，首轮130个歌曲200的HTTP合计45.572秒、阶段约173.781秒；66个专辑200的HTTP合计577.855秒、阶段约643.812秒。66个艺人503只提供拒绝成本。本次两别名200的HTTP为1.306–2.741秒，仍不能代表全部艺人。
+
+用于预算敏感性核算：把已观测首轮歌曲/专辑阶段简单重复三次约40.88分钟；198次艺人请求若套用本次两个别名HTTP范围并假设每请求约1秒辅助开销，再加本批较长边界闭合clock，合计约67.12–71.85分钟。这是明确假设下的情景，**不是预测、上下界或完成保证**；没有以503代替正常艺人成本。原30分钟不足以有根据地准入下一完整LRU。
+
+具体提案仅将下一新run的`lru-baseline`、`lru-candidate`各执行wall上限设为5400秒，两窗合计最多10800秒；准备、final rank、fresh startup、786请求/三轮、strict/退出和远端归档继续计时，回传继续原有界恢复流程。其他普通1800秒、soak7200秒不变，本批不跑soak；名单、顺序、过滤、HTTP/事实、50%/64MiB/CPU/尾段和1CPU/2GiB/swap0、helper512MiB、宿主2GiB/磁盘12GiB/新增6GiB保护线均不变。
+
+获得明确预算授权后，才在新工具副本对恰好两LRU ID增加窄执行边界，保留旧capsule/历史字节，完成纯测、实际pack、独审和新现场身份/guard核验后执行。基线完整恢复/ACK后候选，任一FAIL/INVALID停止并完整回收，结束精确清理。当前未实现或启用该扩时，未启动新SSH/Backend。预算提案的数学与范围独审无阻塞；本机目前只证明达到collector入口线，完整LRU归档体积尚未知，须逐窗按实际footprint重新核验，不保证两窗磁盘一定足够。完整114原始长期保留的容量仍需在后续批次前解决。Online Backup跨库ready、整合/CI/full8和发布仍HOLD，未推送、业务整合或部署。
+
+本批独立长期归档：`R2-artist-readiness-native-mirror/`共194文件/294933041字节，复制后逐项读回SHA；`R2-artist-readiness-native-metadata-cleanup.zip`共742文件/4279289字节、SHA`b08bd5b9d48e2f73caa27898424192e59b64dd2cddc7a33f0e7e5779b5a5a19b`，CRC及逐项实际恢复通过，不含真实DB载荷。新预算提案和成本归因说明同包保存，仍是未授权提案。原始与元数据均在前述2026-10-18长期归档根。

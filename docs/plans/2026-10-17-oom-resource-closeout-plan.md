@@ -1,8 +1,10 @@
 # 详情统计资源与 OOM 完整收口规划
 
+> 最新R2准备验证（2026-10-18）：原boundary-2两窗PASS/四HTTP200/完整正文与复用守恒通过，仅2/114；prep-only47纯测/实际pack/独审通过，学校本批已清理、原16/29保全。下一仅两LRU窗各90分钟的具体提案待授权，未实现或启用，原1800/7200保持。详见第10.12–10.13节，资源HOLD。
+
 > 2026-10-18 R2路径协议补记：新分批工具启动首LRU后发现旧canonical统计路径被公开策略拒绝，按INVALID保留并完整恢复清理；候选未启动。等价L1路径纠正134项纯测试通过，独审通过，新现场准入进行中，原114/90、全部门槛及initial永久闭合/new0不变。详见第10.10节。
 
-> 当前执行范围（2026-10-18）：用户已要求完整连续执行R0–R7，允许必要子agent，并授权每完成大步骤/阶段后自主Git提交。R0/R1本地准备完成，R2有效FAIL后两轮R3整改仍未达标；学校旧批资源已清理。用户已选择架构A，第10.7节记录实现与验证；首版原生INVALID已恢复清理，启动接线补修已通过本地验证，bfecef52/新actual镜像原生受影响pair通过，仅Partial，当前资源已清理，下一准备返回原R2；完整资源仍HOLD。环境选择、真实数据传输和最终发布包仍按第5节处理，未达资源准入条件不进入正式部署。
+> 当前执行范围（2026-10-18）：用户已要求完整连续执行R0–R7，允许必要子agent，并授权每完成大步骤/阶段后自主Git提交。R0/R1本地准备完成，R2有效FAIL后两轮R3整改仍未达标；学校旧批资源已清理。用户已选择架构A，第10.7节记录实现与验证；首版原生INVALID已恢复清理，启动接线补修已通过本地验证，bfecef52/新actual镜像原生受影响pair与原boundary-2两窗均通过，仅当前2/114；学校本批已清理，下一两LRU各90分钟预算提案待明确批准，未实现或启用，完整资源仍HOLD。环境选择、真实数据传输和最终发布包仍按第5节处理，未达资源准入条件不进入正式部署。
 
 日期：2026-10-17。主事项 `SS-2026-10-08-001`，关联 `SS-2026-10-09-001`。本文件同时记录完整路线、当前授权和逐阶段准入条件；阶段提交权限以文首最新范围为准。资源通过、推送、部署和最终事项关闭须分别有对应证据。
 
@@ -214,3 +216,27 @@ Online Backup副本schema cookie变化后的显式owned-copy重建已有两个CL
 完整恢复后原清理器收尾，回执`48e1d598a0e1bc0cba29864ce07f590e0ed62a29828dabddf2747fd372e9d7ed`确认原16服务/29镜像保全、owned residue zero。root/guard/两镜像/proof及本机SSH控制已清。proof删除后SSH退出的立即socket断言遇到异步关闭竞态，wrapper实际1保留；随后仅本机有界复查确认socket消失并移除空目录，未重复远端删除。
 
 离线审计定位129个LRU track和1个独立zero-eligible边界，源定义130处、边界两role副本2处，共132个path字段需canonical→l1同ID纠正。两路径装饰同一track_stats处理函数，保持L1 ID与全部参数；不使用会二次解析ID的legacy入口，不改公开策略、client surface头或业务。新清单逐字段证明其它请求字段、实际镜像、114数量、名单/过滤/次数/判据保持。旧capsule不动，新guard仅允许两条明确boundary row反向还原路径后核原matrix SHA，其余frozen keys仍原hash。134项纯测试通过，原86项字节不变；新包独审通过，现场准入进行中。本次为工具协议纠正，不是新的业务性能微修。
+
+## 10.11 fixed艺人成品准备与执行预算核对
+
+L1纠正后的新首LRU在1661.902秒结束，344次完成为278个200、66个缺`artist_rank_context`的503；root精确停止，原工具INVALID，候选未启动，没有完整测量result/strict。路径已有效纠正，但本窗不提供内存收益或三轮耗时证明。完整恢复后学校本批root/guard/两镜像/proof/SSH已清，原16/29保全；清理回执`79866c6cabb13d7e4b781fdc3647cce395348a898dbbd6d99b85162e9dee1f1a`。
+
+原inode与只读sidecar元数据确认默认动态艺人成品存在，fixed key缺失。正常startup只enqueue默认动态True；versus ready是另一family，不能代替。当前16非保留槽满，按原淘汰SQL仅新增fixed会自然淘汰旧pub17，保当前六Analysis/默认artist及四保留entity；须新每窗实际核验，不改容量/手删默认或GET冷建。
+
+下一先完成离线准备工具候选、纯fixture、实际包与独审：prepare Backend自然settle后，只传handler实际消费五字段准备必要artist成品，独立捕获37源/当前六对象守恒和默认/fixed共存；正式measure前缺失即拒，不能先跑数十个503。随后在原预算内先执行原boundary-2两版对照（1800秒、1CPU/2GiB/保护线不变），不将其作为LRU平台通过。
+
+LRU786请求及soak850/原节拍的执行预算另行核算，artist503成本不能当正常200估计。准备、copy、两段rank、fresh startup、真实三轮、strict/退出与archive均计入原wall；不拆轮拼PASS、不把准备移出预算。若需要增加LRU wall，须先给实测范围与保守余量、精确工具差异及新的有界限额，再获得明确预算授权；当前没有90分钟新额度，原1800/7200继续有效。
+
+## 10.12 准备工具与原boundary-2两窗通过
+
+47项纯fixture、ruff、真实14源码pack/verify及源/最终实际包独审通过；仅新CLI/worker，guard/coordinator/client及六oracle原字节。正常prepare settle后按实际五字段准备fixed，前后独立捕获原37来源、当前六Analysis和default/fixed；final rank后先独立早拒再创建measure Backend。
+
+新run `oom-school-20261018-r2ready-814b2fd0`的final manifest `d647c6ee227cbcb083343c96edac9e620af8e36fb08be09ff5861d4d0248da4b`，原两窗均PASS/actual0、四HTTP200/四完整保存正文相同，六成品/103jobs/default+fixed复用、源37/strict及实际限额/退出/CRC恢复/精确ACK通过。两guard clock839.420/1117.582秒，原1800/7200、initial closed/new0保持。每版只自然淘汰旧pub17；required-prep区间CPU/wall为59.601/82.481与128.531/155.281秒，候选区间另有队列/governance元数据变化，不当孤立ensure净成本。
+
+只计当前2/114有效窗，不计LRU、50%、全局64MiB或原90浏览器通过。学校本批已精确清理，receipt `3974bd428de9edb796bc95c0cb288ad1da6749bd2906a3939f706baaef8a6b54`，原16/29保全、zero，root/guard/两镜像/proof/SSH均清。详细证据和计时口径见[当前报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
+
+## 10.13 下一LRU对照的具体预算提案
+
+基于已有首轮歌曲/专辑阶段时间、本次两别名200及本批准备/归档clock，显式假设下的敏感性情景约67.12–71.85分钟；样本不足以提供65艺人或三轮耗时预测/上下界。提案仅下一新run两LRU ID各最多5400秒、合计10800秒，三轮786请求与原全部事实/资源门槛不变，准备到远端归档继续同clock。其他普通1800、soak7200不变且本批不跑soak；回传沿用原有界恢复与精确ACK，任一FAIL/INVALID停止，完成后精确清理。
+
+该预算**未获授权、未实现、未执行**，提案数学与范围独审无阻塞。仅在收到明确预算批准后，制作新工具副本的两ID窄执行边界、保留原capsule/历史，纯测、实际pack与独审后fresh现场核验；不自动扩大114其它窗或重开initial。本机当前只证明达到collector入口线，未知LRU归档体积仍须逐窗按实际footprint核验，不保证两窗磁盘一定足够；后续完整114长期原始归档仍需容量方案。资源准入、R4/R5/R6/R7和所有旧FAIL/INVALID继续保留。

@@ -1,5 +1,9 @@
 # 详情资源两轮整改后的架构与容量决策
 
+2026-10-18 R2准备验证：原boundary-2两窗PASS，四HTTP200/四完整正文一致，六Analysis/103jobs/default+fixed、原37/strict与完整恢复/ACK通过；prep-only47纯测/实际包/独审通过。仅当前2/114，非LRU/50%或整体资源通过。学校本批已清理、原16/29保全；下一两LRU各90分钟具体提案待批准，尚未实现/启用，不改A业务与原性能标准。
+
+2026-10-18 R2准备补记：L1路径已实际200；下一首LRU因fixed艺人排名成品未准备返回503，协议INVALID已完整恢复清理、原16/29保全，不构成A的有效性能失败。离线工具仅补prepare所需成品与测量前检查，保持GET只读；先原boundary-2两窗/1800秒验证，不扩大LRU预算，原资源HOLD。
+
 2026-10-18 R2补记：首LRU的旧canonical stats路径被public-readonly策略拒绝，已按协议INVALID恢复清理，候选未启动，不构成A的有效性能失败。下一仅在新清单/工具中纠正到同track_stats处理函数、同L1 ID的既有L1路径；原capsule、资源标准与样本保持，新gate只允许明确两条boundary路径反向还原后仍核原matrix hash。134项纯测试通过，独审通过，新现场结果待补。
 
 日期：2026-10-17；更新：2026-10-18。事项：`SS-2026-10-08-001`。状态：**用户已选择A，修正版bfecef52原生受影响pair通过，仅Partial；原生资源准入和正式交付仍HOLD，下一返回原R2。** 两轮局部业务整改已经用尽，原生资源准入和正式交付保持HOLD。本文不改变原验收标准，A按独立架构候选推进。原始结果见[有界归因报告](../reports/2026-10-17-native-hot-request-attribution.md)，实现与边界见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)，后续阶段见[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)。

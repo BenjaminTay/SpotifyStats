@@ -1,5 +1,7 @@
 # SpotifyStats 问题台账
 
+> R2准备验证检查点（2026-10-18）：原boundary-2两窗PASS，四HTTP200/四完整正文一致，六Analysis/103jobs/default+fixed、原37/strict及限额/退出/CRC恢复/ACK通过，仅2/114；prep-only47纯测/实际pack/独审通过。学校本批清理、原16/29保全，资源HOLD。下一仅两LRU窗各90分钟预算提案待批准，未实现或启用，原1800/7200保持。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
+
 > R2路径协议检查点（2026-10-18）：首LRU旧canonical统计路径被公开策略拒绝，按INVALID保存并完整恢复清理、原16/29保全；候选未启动，不计性能失败。等价L1路径纠正134项纯测试通过，原合同不变，资源仍HOLD。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
 
 > 架构A原生受影响对照（2026-10-18）：修正版bfecef52在原1核/2GiB与500/100ms条件下，四次HTTP200，冷97.752/119.510ms、热64.782/58.499ms；八完整正文一致，37来源/strict/六成品103jobs复用/实际限额与退出/采样/CRC实际恢复及精确ACK通过，仅受影响pair Partial。准备RSS峰低22.17%、CPU高43.12%为单样本，非50%/三次中位数证明。两窗686.303/935.233秒，当前run/guard/两镜像/proof和SSH控制已清理，原16/29保全。下一返回原R2矩阵，完整114窗、两版原90、全局64MiB/50%/LRU/长期并发与CPU门禁仍HOLD；Online Backup跨库导入仍R4/R5阻塞。未推送、业务整合或部署。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
@@ -92,7 +94,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；架构A修正版原生受影响pair通过，返回R2；完整资源HOLD，生产未新验 | bfecef52、actual镜像541源码/45依赖；3275 unit/2跳、12专项contract与两次真实lifespan通过；正常启动补齐旧详情，GET仍只读目标成品 | P1：原1核/2GiB下冷97.752/119.510、热64.782/58.499ms、四HTTP200；八完整正文、37来源/strict/六成品103jobs复用、实际容器/采样/CRC恢复与ACK通过。单次准备峰低22.17%、CPU高43.12%，不替代50%/三次中位数。当前学校run/guard/两镜像/proof和SSH控制已清理、原16/29保全。旧两轮FAIL与首版INVALID保留。下一准备有界返回原R2；完整114窗/两版原90、全局64MiB/50%/LRU/长期并发、CPU、最终整合CI/full8、Online Backup跨库ready交付、正式发布与72小时观察仍未完成。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)、[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)；2026-10-18，未推送、业务整合或部署。 |
+| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；A受影响pair与本次原boundary-2两窗通过；当前2/114，完整资源HOLD | bfecef52实际镜像及正常startup验证保持；prep-only47纯测/实际包/独审通过，只补prepare与测量前早拒，GET不变 | P1：原boundary-2四HTTP200/四完整正文一致，六Analysis/103jobs/default+fixed复用、源37/strict及限额/退出/CRC恢复/ACK通过。两clock839.420/1117.582秒；required-prep区间含其它维护，不作净ensure归因。学校本批已清理、原16/29保全，旧FAIL/INVALID保留。下一两LRU各90分钟具体提案待批准，未实现或启用；原1800/7200保持。余112窗/两版原90、64MiB/50%/长期、三次CPU、最终整合CI/full8、Online Backup跨库ready、发布及72小时观察待验。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)、[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)；2026-10-18，未推送、业务整合或部署。 |
 
 ### 2026-10-07 非榜单详情统计空值
 

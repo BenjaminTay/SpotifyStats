@@ -1,5 +1,7 @@
 # SpotifyStats 开发状态总表
 
+> R2准备验证检查点（2026-10-18）：prep-only工具47纯测/实际pack/独审通过；原boundary-2两窗PASS，四HTTP200/四完整正文一致，六Analysis/103jobs/default+fixed复用、原37/strict、限额/退出/CRC恢复与ACK通过，仅2/114、资源HOLD。两clock839.420/1117.582秒；required-prep成本含其它维护，不作净ensure归因。学校本批已清理、原16/29保全。下一仅两LRU窗各90分钟的具体预算提案待批准，未实现或启用；原1800/7200保持。未推送、业务整合或部署。见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)。
+
 > R2路径协议检查点（2026-10-18）：首LRU冻结旧canonical统计路径被public-readonly策略拒绝；137次完成请求为130个404、7个200，原工具INVALID，候选未启动，不计性能失败或收益。完整恢复后本批学校资源已清理、原16服务/29镜像保全。等价L1路径纠正134项纯测试通过，新包独审通过，现场核验上传中；原114/90/64MiB/50%等门槛不变，资源HOLD。未推送、业务整合或部署。见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)。
 
 > 架构A原生受影响对照（2026-10-18）：修正版bfecef52在原1核/2GiB与500/100ms条件下，四次HTTP200，冷97.752/119.510ms、热64.782/58.499ms；八完整正文一致，37来源/strict/六成品103jobs复用/实际限额与退出/采样/CRC实际恢复及精确ACK通过，仅受影响pair Partial。准备RSS峰低22.17%、CPU高43.12%为单样本，非50%/三次中位数证明。两窗686.303/935.233秒，当前run/guard/两镜像/proof和SSH控制已清理，原16/29保全。下一返回原R2矩阵，完整114窗、两版原90、全局64MiB/50%/LRU/长期并发与CPU门禁仍HOLD；Online Backup跨库导入仍R4/R5阻塞。未推送、业务整合或部署。见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)。
