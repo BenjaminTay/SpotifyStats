@@ -1,6 +1,6 @@
 # 目标歌曲署名事实发布候选
 
-日期：2026-10-18。事项：`SS-2026-10-08-001`。用户已选择[架构方案A](../designs/2026-10-17-detail-resource-architecture-decision.md)。状态：**首版原生INVALID已完整恢复清理；私有启动升级补修已实现并通过本地验证，待固定新镜像及原受影响对照，资源HOLD。** 旧两轮R3有效FAIL保持原样，本轮不作为第三次局部微优化。未整合业务到main、推送或部署。
+日期：2026-10-18。事项：`SS-2026-10-08-001`。用户已选择[架构方案A](../designs/2026-10-17-detail-resource-architecture-decision.md)。状态：**修正版bfecef52原生受影响pair通过，仅Partial；首版INVALID保留，当前学校资源已清理，下一返回原R2，完整资源HOLD。** 旧两轮R3有效FAIL保持原样，本轮不作为第三次局部微优化。未整合业务到main、推送或部署。
 
 ## 实现与失效边界
 
@@ -73,3 +73,29 @@ Online Backup会改变副本schema cookie；显式`--build-on-copy`在owned副�
 新镜像config `sha256:cc2280d6f24a3a1d3e112ab193bfabcf101981a94240b438f69d777bfd10e292`，actual OCI `sha256:5ad74e6baa95b25faa8dcbd37ff9d1ee5c9f06cf362978825c1963fc16a16e67`，541源码/依赖清单和45项依赖逐项核验，与19e同基础digest/Python3.9.25/glibc2.41/ENV，无私密数据或密钥。两镜像实际导出135816741字节，SHA `3ec7f2600ec95f0aa8ec8f5cedcfa7fc3d4a274fb5717500344fb5bb61188189`。
 
 新run `oom-school-20261018-afix-9ec62f30`已准备独立包，现重新执行现场host/engine/原16服务29镜像/容量核对与限速上传。仍用原coordinator、guard/capsule、CLI/worker/client、采样和原两cold窗口；原初批永久闭合、新initial预算0、每窗1800秒和1核/2GiB不变。本轮修复的是首轮不可测的正常startup升级缺口，未增加性能微优化或覆盖无效原窗。最终live guard重封与实际原生结果待补记，资源HOLD。
+
+## 修正版原生受影响对照与清理
+
+新run `oom-school-20261018-afix-9ec62f30`已完成，final canonical manifest为`2356c54f000b68e48fdcaf3c54cf4eb4bc5a3595854d6f7fc1da3cee1eed6533`；独立现场审阅核合actual OCI/source/config/rootfs、原guard PID3178376/ticks354211781/receipt及完整重封。原CLI/worker/client、coordinator、guard/capsule、114矩阵、500/100ms、原采样及限额未改。初批2023.212312秒永久闭合、新initial预算0；两continued窗各1800秒上限。
+
+| 指标 | 本批基线dc1cf9ad | 修正版bfecef52 |
+| --- | ---: | ---: |
+| 冷summary / overview（ms） | 324.854 / 332.156 | 97.752 / 119.510 |
+| 热summary / overview（ms） | 242.456 / 258.065 | 64.782 / 58.499 |
+| 准备采样RSS峰（MiB） | 1239.316 | 964.543 |
+| 准备CPU（秒） | 418.243 | 598.592 |
+| 测量采样RSS峰 / 末尾（MiB） | 218.207 / 218.207 | 203.449 / 203.664 |
+| 此冷overview采样RSS增量（MiB） | 9.555 | 6.750 |
+| 关窗耗时（秒） | 686.303 | 935.233 |
+
+四次请求均HTTP200，worker/window均PASS/actual0，coordinator actual0；两版八份完整正文逐字段相同。37来源五capture一致，读取strict通过；准备后六analysis成品与103jobs完整对象同inode复用，测量无新analysis；每窗实际2 Backend/13 helper的镜像/UID/网络/1核及2GiB或512MiB限额、所有终态exit0/无OOM核合，原采样有效。不得以基线高于100ms为由调整候选标准。
+
+每窗77个非DB归档文件SHA和完整DB归档CRC/逐项实际恢复核合；精确ACK后才续下一窗。基线archive SHA `e0f9472e0a69a3d8a61c7a1a825cc05b31a18add56aca5699b9f0cd9aaf694ee`，候选`0ec14237f07cb998c5aed0aa2bd5fd22cd0b0bd7cae2648af9b39dc8dd8233a4`。保护进程记录宿主可用内存最低4004388864字节、新增磁盘最高3329036288字节，未触保护线。
+
+分类为`AFFECTED_ORIGINAL_PAIR_PASS_PARTIAL`，resource_admission仍false。本批准备峰低22.17%、CPU高43.12%只是一组样本；本批包含首次目标事实发布，尚未做分段CPU归因，不能把全部增量直接归给署名发布，也不据此声称稳定CPU回归已证或已排除。此一overview的6.750MiB不代表全部overview≤64MiB；也没有完成50%峰值/驻留、LRU/长期并发、三次启动CPU、完整114窗或两版原90浏览器门槛。
+
+原清理器完成plan→Mac元数据CRC实际恢复ACK→execute→proof。清理回执SHA `4f7b247525e9d794dbe2876865ed5f97f6c4e2de165366a71b1697009c024146`：COMPLETE、原16服务/29镜像保全、owned residue zero，guard STOPPED；run/两镜像/proof全部移除，SSH控制连接及目录已关闭清理。本批元数据191文件、SHA `f95644bd784e99e020609d7e3084ee1b2563817ad0e65fccd24c74ec2bce1209`已实际恢复核验。
+
+本地权威收据为研发树`output/oom-closeout-execution-20261018/A-startup-native/final-native-pair-analysis.json`；原始结果/失败历史不改。下一先准备原R2有界续跑与磁盘预算，不能直接将当前只允许两ID的guard用于其他窗口，也不能把不同manifest的历史pair冒充新114全部通过。Online Backup跨库ready交付、最终整合CI/full8、发布批准和生产观察仍未完成。
+
+独立审阅核合候选及清理后，168个原始文件/293132657字节已复制到长期归档`A-startup-fixed-native-mirror/`并逐文件读回SHA。元数据/工具/审阅/清理包`A-startup-fixed-native-metadata-cleanup.zip`，640文件/3498241字节，SHA `9fdffbc9081e8a961be4d2537e3eedbbb7d720fcdfaca50c508cdcc5b1c82626`；ZIP CRC及逐项实际恢复通过，不含真实DB载荷。完整DB归档只在私有raw mirror；独立归档根沿用本报告前述2026-10-18长期目录。

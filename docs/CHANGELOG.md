@@ -2,7 +2,8 @@
 
 ## 2026-10-18 目标歌曲署名事实发布候选（未发布）
 
-- 首版19e正常启动保留四v1旧详情，四次503使native INVALID；原窗完整恢复、精确清理且原16/29保全。补私有版本/fence检查和独立backfill，保持search ready、reuse-only拒绝及GET只读；累计3275 unit/2跳、6 startup contract、两次真实七库lifespan与完整正文/来源对账及独审通过，bfecef52及新actual镜像已冻结，原生重验待完成，不能计性能PASS。
+- bfecef52新原生受影响pair通过：四HTTP200，冷97.752/119.510、热64.782/58.499ms，八完整正文/来源/strict/六成品103jobs复用/实际容器与恢复核验通过。单次准备RSS峰低22.17%、CPU高43.12%如实保留；当前学校资源已精确清理、原16/29保全。仅Partial，返回原R2，完整114/90/64MiB/50%/LRU/长期与三次CPU仍HOLD。
+- 首版19e正常启动旧详情导致四503/INVALID与原清理证据保留；私有启动接线补修不降级搜索ready、不放宽GET或reuse-only；累计3275 unit/2跳、6 startup及6公开边界contract、两次真实七库lifespan/正文与来源对账和独审通过。未推送、业务整合或部署。
 
 - 用户选择架构A；维护期发布目标署名和primary，schema91以九表revision/fence约束四详情变体原子发布；GET呈现核只读目标载荷，保留原完整性校验与不可用边界。
 - 219 unit、6 seed公开合同、两版四变体各8份完整正文、来源守恒、独立审阅及四hooks通过。19e66ab2仅本地提交、实际镜像核验通过，原生对照准备中，原两轮R3 FAIL及全部资源HOLD保持；Online Backup跨库ready导入仍为R4/R5阻塞。未整合业务、推送或部署，见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)。

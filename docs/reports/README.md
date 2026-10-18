@@ -1,6 +1,6 @@
 # 交付与验证报告索引
 
-- [目标歌曲署名事实发布候选](2026-10-18-track-presentation-publication-candidate.md)：架构A已选，schema91九表revision/fence与四详情变体目标读取已实现；首版native因旧ready未升级详情为INVALID并已清理；私有接线补修、3275 unit/2跳、6 startup contract及两次真实lifespan/正文/源守恒通过，bfecef52及新actual镜像已冻结、原生对照待验，资源HOLD。
+- [目标歌曲署名事实发布候选](2026-10-18-track-presentation-publication-candidate.md)：架构A修正版bfecef52在原1核/2GiB通过受影响pair，冷97.752/119.510、热64.782/58.499ms、四HTTP200；正文/源守恒/复用/恢复通过，本批学校资源已精确清理。单次准备峰低22.17%、CPU高43.12%保留；仅Partial，下一返回原R2，完整114/90/64MiB/50%/LRU/长期与CPU仍HOLD。
 
 - [原生热请求有界归因](2026-10-17-native-hot-request-attribution.md)：两轮候选原生对照均有效FAIL，最终0ee热150.305/163.493ms仍超100ms；正文/来源/复用/采样/恢复有效，学校本批精确清理、原16/29保全。两轮上限已到，下一为架构/容量决策，完整资源HOLD。
 

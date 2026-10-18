@@ -1,6 +1,6 @@
 # SpotifyStats 问题台账
 
-> 架构A启动补修（2026-10-18）：首版原生503/INVALID及完整恢复/清理保留；已补私有详情版本/fence检查、仅排详情维护并复用search统计，reuse-only缺失拒绝。累计unit3275通过/2跳、6 startup与6公开边界contract与两次真实七库lifespan（一次四变体backfill、第二新进程零补建）、两版正文/11源及search meta完整行一致、独审通过。补修bfecef52已仅本地提交、新actual镜像541源码/45依赖通过，新原受影响native包正fresh核对和上传；资源HOLD，Online Backup跨库导入仍R4/R5阻塞；未推送、业务整合或部署。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
+> 架构A原生受影响对照（2026-10-18）：修正版bfecef52在原1核/2GiB与500/100ms条件下，四次HTTP200，冷97.752/119.510ms、热64.782/58.499ms；八完整正文一致，37来源/strict/六成品103jobs复用/实际限额与退出/采样/CRC实际恢复及精确ACK通过，仅受影响pair Partial。准备RSS峰低22.17%、CPU高43.12%为单样本，非50%/三次中位数证明。两窗686.303/935.233秒，当前run/guard/两镜像/proof和SSH控制已清理，原16/29保全。下一返回原R2矩阵，完整114窗、两版原90、全局64MiB/50%/LRU/长期并发与CPU门禁仍HOLD；Online Backup跨库导入仍R4/R5阻塞。未推送、业务整合或部署。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
 
 > 架构A首轮原生INVALID（2026-10-18）：19e候选四次503、缺服务计时，不能计性能FAIL/PASS；真实恢复SQL确认schema91/cookie601水印有效，但四详情仍v1且无目标署名事实，正常startup的search-ready快路漏了独立详情升级。本地最小私有维护接线补修与正常lifespan验证中；旧显式准备219 unit/6 contract/正文证据保留，不能覆盖此缺口。两窗完整恢复、本批run/guard/两镜像/proof及SSH控制已清理、原16/29保全。资源HOLD，未整合业务、推送或部署。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
 
@@ -90,7 +90,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；R0/R1本地准备完成，R2首对候选有效FAIL，R3两轮原生有效FAIL，最终0ee热150.305/163.493ms；架构A已选且本地正确性/独审通过，实际镜像通过、原生待验，资源HOLD；生产未新验 | c844业务候选与bdcf工具仅本地；两镜像同基础/依赖，shared/UID/guard预检READY。旧两次无效窗已恢复，准备/复用/WAL工具修复135项测试与定向审阅通过；114窗及两版原90合同固定，不能据工具测试称资源通过 | P1：有效首组完成后热305/303ms超100ms、R2停止；本次旧资源已清理、原16/29保全，第一轮新镜像完整对照和清理已完成；第二诊断已完整恢复/清理，按无遗留标题署名却建全量索引的证据完成第二轮惰性读取候选0ee340cb的正确性/独审/本地提交及实际镜像，新原生受影响窗有效FAIL，正文/来源/复用/采样/退出与完整恢复通过，学校本批已精确清理、原16/29保全；两轮上限用尽，架构A已选，219 unit/6 contract及完整正文/源守恒通过，19e66ab2实际镜像已核验，原受影响原生首组执行中；Online Backup跨库ready导入仍为R4/R5阻塞。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。原64MiB/50%/LRU及长期/维护、最终整合CI/full8、正式交付与72小时观察均未完成。见[学校准入报告](../reports/2026-10-17-school-native-resource-admission.md)、[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)；2026-10-18，未推送部署。 |
+| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；架构A修正版原生受影响pair通过，返回R2；完整资源HOLD，生产未新验 | bfecef52、actual镜像541源码/45依赖；3275 unit/2跳、12专项contract与两次真实lifespan通过；正常启动补齐旧详情，GET仍只读目标成品 | P1：原1核/2GiB下冷97.752/119.510、热64.782/58.499ms、四HTTP200；八完整正文、37来源/strict/六成品103jobs复用、实际容器/采样/CRC恢复与ACK通过。单次准备峰低22.17%、CPU高43.12%，不替代50%/三次中位数。当前学校run/guard/两镜像/proof和SSH控制已清理、原16/29保全。旧两轮FAIL与首版INVALID保留。下一准备有界返回原R2；完整114窗/两版原90、全局64MiB/50%/LRU/长期并发、CPU、最终整合CI/full8、Online Backup跨库ready交付、正式发布与72小时观察仍未完成。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)、[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)；2026-10-18，未推送、业务整合或部署。 |
 
 ### 2026-10-07 非榜单详情统计空值
 

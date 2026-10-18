@@ -1,6 +1,6 @@
 # SpotifyStats 开发状态总表
 
-> 架构A启动补修（2026-10-18）：首版原生503/INVALID及完整恢复/清理保留；已补私有详情版本/fence检查、仅排详情维护并复用search统计，reuse-only缺失拒绝。累计unit3275通过/2跳、6 startup与6公开边界contract与两次真实七库lifespan（一次四变体backfill、第二新进程零补建）、两版正文/11源及search meta完整行一致、独审通过。补修bfecef52已仅本地提交、新actual镜像541源码/45依赖通过，新原受影响native包正fresh核对和上传；资源HOLD，Online Backup跨库导入仍R4/R5阻塞；未推送、业务整合或部署。见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)。
+> 架构A原生受影响对照（2026-10-18）：修正版bfecef52在原1核/2GiB与500/100ms条件下，四次HTTP200，冷97.752/119.510ms、热64.782/58.499ms；八完整正文一致，37来源/strict/六成品103jobs复用/实际限额与退出/采样/CRC实际恢复及精确ACK通过，仅受影响pair Partial。准备RSS峰低22.17%、CPU高43.12%为单样本，非50%/三次中位数证明。两窗686.303/935.233秒，当前run/guard/两镜像/proof和SSH控制已清理，原16/29保全。下一返回原R2矩阵，完整114窗、两版原90、全局64MiB/50%/LRU/长期并发与CPU门禁仍HOLD；Online Backup跨库导入仍R4/R5阻塞。未推送、业务整合或部署。见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)。
 
 > 架构A首轮原生INVALID（2026-10-18）：19e候选四次503、缺服务计时，不能计性能FAIL/PASS；真实恢复SQL确认schema91/cookie601水印有效，但四详情仍v1且无目标署名事实，正常startup的search-ready快路漏了独立详情升级。本地最小私有维护接线补修与正常lifespan验证中；旧显式准备219 unit/6 contract/正文证据保留，不能覆盖此缺口。两窗完整恢复、本批run/guard/两镜像/proof及SSH控制已清理、原16/29保全。资源HOLD，未整合业务、推送或部署。见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)。
 
@@ -86,7 +86,7 @@
 
 | 状态 | 分支 / 候选 | 负责人及下一步 |
 | --- | --- | --- |
-| R0/R1本地准备完成；R2首对候选有效FAIL；R3两轮有效FAIL，最终0ee热150.305/163.493ms；待架构/容量决策，资源HOLD | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | c844业务候选、bdcf/ede04验收工具均本地阶段提交；实际两镜像同基础/45依赖、正常启动及独立容器通路通过，114窗口/两版原90固定，33纯测试与恢复包通过。有限平台证据保留；真实原生64MiB/50%/LRU/长期并发、最终整合CI与生产交付未完成。学校共享宿主与传输已授权，原生预检READY；有效首组耗时2023.212秒；首对热305/303ms超100ms，原失败/全部恢复包独立归档，LRU未启动；三旧run/两镜像已清理、原16/29保全；第一轮新镜像热145.521/192.171ms仍超100ms；完整正文/守恒/复用有效，本批两窗恢复归档、资源清理完成；第二诊断已完整恢复/清理，第二轮署名索引惰性读取候选0ee340cb正确性/实际镜像通过，原生热150.305/163.493ms仍有效FAIL；两窗恢复归档并精确清理，原16/29保全，两轮上限已到，下一为架构/容量决策。见[R1交付](reports/2026-10-17-oom-images-portable-acceptance.md)和[完整收口规划](plans/2026-10-17-oom-resource-closeout-plan.md)。 |
+| 架构A修正版原生受影响pair通过 / Partial；返回R2，完整资源HOLD | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | bfecef52及actual镜像已冻结；冷97.752/119.510、热64.782/58.499ms，完整正文/来源/复用/采样/恢复与独审核合。3275 unit/2跳、12专项contract通过。单次准备峰低22.17%、CPU高43.12%仍需完整合同核验；当前学校run/guard/两镜像/proof及SSH控制已清理、原16/29保全。先准备保持initial永久闭合的有界R2续跑，不将此pair冒充完整114窗或两版原90；64MiB/50%/LRU/长期并发、三次启动CPU、最终整合CI/full8、跨库ready发布与生产交付仍待完成。旧两轮有效FAIL与首版503 INVALID保留。见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)及[完整规划](plans/2026-10-17-oom-resource-closeout-plan.md)。 |
 | INTEGRATED；同链统一整合保留 | `codex/versus-detail-integration` | b126发布与唯一首次验收完成，原失败及私密成品独立保存；用于同一OPEN资源合同的候选审阅与主线整合，合同结束后归档，不新增第二研发分支；共享文档只在main维护 |
 | ARCHIVED | 前端设置加载、JSON名称传输、艺人范围身份三个候选 | 收益或总体资源准入未证明，保存补丁/证据，不进入main业务代码 |
 | ARCHIVED | 历史OOM混合补丁 | 已覆盖内容关闭；未采用的串行锁/窄输入等保留归档，只有当前定位证明需要时才提取 |
