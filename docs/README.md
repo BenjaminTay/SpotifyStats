@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [当前：加载结项与内存精简收口](plans/2026-10-19-performance-scope-and-memory-closeout.md)：两个加载体验任务已交付；内存独立跟踪，以当前归因、实际生产容量、最小补丁和受影响验证收口。取消默认补齐114窗口及组合资源指标；以下旧报告保留历史结果，旧规划后续执行以此为准。
+
 - [原生LRU基线与单候选诊断](reports/2026-10-19-lru-budget-native-acceptance.md)：候选786全200/事实与实际限额有效，但RSS增长69.43MiB，峰/末驻留仅低12.28%/18.64%，未达原8MiB/50%，有效FAIL。完整恢复、学校精确清理及16/29保全完成；下一先准备结果深层对象/分配器归因，资源HOLD。
 
 - [目标歌曲署名事实发布候选](reports/2026-10-18-track-presentation-publication-candidate.md)：10-18准备检查点：prep-only47纯测/实际包/独审与原boundary-2两窗通过，四HTTP200/正文、复用和守恒核合，仅2/114；该批学校资源已清理、原16/29保全。后续LRU授权与实测见10-19报告，完整资源仍HOLD。
@@ -14,7 +16,7 @@
 
 - [累计资源候选冻结与阶段提交](reports/2026-10-17-oom-candidate-freeze-review.md)：R0独立审阅无阻塞，AI测试线程竞态在HEAD自然复现并最小隔离；23文件本地阶段提交c844，资源准入与发布HOLD。
 
-- [详情资源与OOM完整收口规划](plans/2026-10-17-oom-resource-closeout-plan.md)：R0候选审阅→R1镜像/验证包→R2原生准入→必要整改→整合CI→发布准备→唯一首次→72小时观察与工作树收尾。原64MiB/多实体50%及LRU合同不降标；R0/R1完成，两轮R3有效FAIL后已选择架构A，本地正确性通过，原生待验；本地按完整阶段提交，正式发布仍HOLD。
+- [旧详情资源与OOM完整收口规划](plans/2026-10-17-oom-resource-closeout-plan.md)：保存R0–R7路线、原合同、阶段授权和失败历史；后续执行已由10-19精简计划取代。
 
 - [有限多实体读取与空闲平台验证](reports/2026-10-17-oom-finite-read-platform.md)：空闲/六实体读取各15分钟均平台，7帧根与结果缓存稳定复用；18正文/六事实/两strict一致。无新增业务补丁，22文件沿用10-16同版本full8，原生/64MiB/长期并发/生产OOM仍OPEN。
 
@@ -64,7 +66,7 @@
 - [详情性能与资源验收](reports/2026-10-09-music-detail-chart-performance-acceptance.md)：保存历次首次结果和原失败；c0d已发布、原首次90/90、116 API/三strict通过，资源合同/OOM/手机仍开放。
 
 - [榜单对决个人播放统计已完成规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)：S0–S5完成，c58775f0已发布，原公开HTTPS首次14/28及资源/完整守恒通过；人类明确私有入口保持现状
-- [`plans/2026-10-09-music-detail-chart-performance-plan.md`](plans/2026-10-09-music-detail-chart-performance-plan.md)：`SS-2026-10-09-001` 已完成只读诊断并形成修复规划；独立overview、已发布事实复用、project目标化、请求与错误状态、冷访问和资源验收，S0已冻结；S1–S3已实现，S4/S5验收中
+- [详情加载原实施与验收规划](plans/2026-10-09-music-detail-chart-performance-plan.md)：加载体验已交付结项，资源剩余项独立移交内存稳定性任务；保留原实施、指标与历史验证。
 
 - [榜单对决个人播放性能与正确性验收](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)：c587正式部署/独立runtime、原首次14/28、420秒资源、96API及三denial通过；历史失败保留，详情首次与OOM独立
 

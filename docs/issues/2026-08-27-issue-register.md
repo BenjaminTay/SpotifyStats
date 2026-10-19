@@ -1,5 +1,7 @@
 # SpotifyStats 问题台账
 
+> 2026-10-19范围调整：对决与详情加载体验已交付结项，内存问题独立保持OPEN。当前执行以[精简计划](../plans/2026-10-19-performance-scope-and-memory-closeout.md)为准；下方旧检查点与失败保持历史含义，不再要求默认补齐旧114矩阵及组合资源门槛。
+
 > R2准备验证检查点（2026-10-18）：原boundary-2两窗PASS，四HTTP200/四完整正文一致，六Analysis/103jobs/default+fixed、原37/strict及限额/退出/CRC恢复/ACK通过，仅2/114；prep-only47纯测/实际pack/独审通过。学校本批清理、原16/29保全，资源HOLD。下一仅两LRU窗各90分钟预算提案待批准，未实现或启用，原1800/7200保持。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
 
 > R2路径协议检查点（2026-10-18）：首LRU旧canonical统计路径被公开策略拒绝，按INVALID保存并完整恢复清理、原16/29保全；候选未启动，不计性能失败。等价L1路径纠正134项纯测试通过，原合同不变，资源仍HOLD。见[本轮报告](../reports/2026-10-18-track-presentation-publication-candidate.md)。
@@ -76,7 +78,7 @@
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
 | `SS-2026-10-08-002` | 榜单成绩先出现，个人播放次数、时长与排名迟迟补齐 | `RESOLVED / RELEASED`；c587正式三workflow/11jobs及实际安装/独立runtime通过，原公开FIRST14/28全PASS（最大1.669秒）、420秒资源/全守恒、96 API与三denial通过；人类明确仅公开HTTPS，S0–S5完成，旧首次失败保留 | 本地45/90、96、130及详情自然90通过；部署72回归/Linux备份/owned共同恢复与cb8 full8通过，所有旧失败分列 | P1：三库准备最小补修83回归/Linux隔离通过，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push实际0，新c587三流水线及实际安装success，独立runtime确认3完整SHA/healthy和schema90/4rank/4detail/48BBready；启动维护自然结束，原首次公开14/28、840连续资源sample及两面96 API/三denial全通过，不预暖或放宽门槛。本项公开范围已由人类决定并完成；私有保持现状。详情独立唯一额外重启已完成，原90性能39通过/51失败，116功能及完整读取守恒通过，详情和OOM仍开放。见[规划](../archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](../reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节。2026-10-09。 |
-| `SS-2026-10-09-001` | 详情榜单成绩首次加载慢，疑似等待个人排名 | 首次延迟子项PASS；整体`OPEN / Partial`（资源未收口）。b126新首次90/90、116/116 API/三strict及wrapper0通过；c0d原首次与原失败保留 | 点击核心最大1084ms、直达最大2368.6ms均达标；原index39 L3专辑直达1716.3→1498ms。末RSS低388MiB，但读取增长与CPU未改善、启动高水位基本不变 | P1：资源归SS-2026-10-08-001统一推进，手机弹层另行处理；不追加生产热复验。见[新生产交付](../reports/2026-10-14-native-trim-maintenance-production-delivery.md)。2026-10-14。 |
+| `SS-2026-10-09-001` | 详情榜单成绩首次加载慢，疑似等待个人排名 | `RESOLVED / RELEASED`（加载体验范围，10-19划分） | 10-14 b126生产首次90/90、116 API与三strict通过；点击核心最大1084ms、直达最大2368.6ms | 加载任务结项；资源剩余项归SS-2026-10-08-001，手机弹层另列。旧资源失败保留，未新验生产。见[交付](../reports/2026-10-14-native-trim-maintenance-production-delivery.md)、[新范围](../plans/2026-10-19-performance-scope-and-memory-closeout.md)。 |
 
 `SS-2026-10-09-001` 2026-10-13本地整合检查点（后续交付见上表）：组合补丁SHA256 `a37bcf95f05f23ffb957cf228f8bdaec495e2df56b3ca0be3c506e5f65479295`；七文件在2bdf基线现有统一整合工作区应用，完整backend Python源码等同研发full8版本。研发run `20261012T152324.012689Z-fff3d57bed12` 默认完整八阶段PASS/实际0（3937 seed/186集成/803前端通过，三浏览器）；第一次禁外部封面模式失败与正常模式完整重跑保留。整合57重点复核通过，没有另跑整合full8或生产。源七文件已原样进入main业务提交`c21250e3`，状态提交`8b1b2405`亦快进进入main；研发/整合树安全同步，恢复点独立保存，未推送/发布；原RSS起点差、raw Analysis发布摘要false均保留，OOM独立OPEN。详见[审阅报告](../reports/2026-10-13-album-rank-cancellation-integration-review.md)。
 
@@ -94,7 +96,7 @@
 
 | ID | 问题 | 当前状态 | 证据与判断 | 下一步 / 最后核验 |
 | --- | --- | --- | --- | --- |
-| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN / Partial`；原生LRU基线与单候选均有效FAIL，完整资源HOLD | 候选77分35秒闭窗；786全200、259目标正文/原37/strict/九项淘汰/采样/实际限额有效，三轮RSS增长69.43MiB，测量峰/末驻留仅低12.28%/18.64%，未达8MiB/50%。帧权重仅增102字节，深层结果对象/arena/glibc未分 | P1：完整恢复与学校精确清理、原16/29保全。下一先准备有界持有者归因，不追加学校窗；原完整114/原90、64MiB/长期/三次CPU、CI/full8、跨库ready发布与72小时观察保持待验。见[本轮报告](../reports/2026-10-19-lru-budget-native-acceptance.md)、[规划](../plans/2026-10-17-oom-resource-closeout-plan.md)；2026-10-19，未推送、业务整合或部署。 |
+| `SS-2026-10-08-001` | 详情与年度准备期间资源耗尽，管理连接失去响应 | `OPEN`；独立内存稳定性任务 | 历史真实OOM；10-19原生候选786请求全部200，三轮RSS增长69.43MiB，未达旧8MiB/50%标准；旧结论保留 | 当前有界归因收尾，核实生产容量后选择最小补丁和受影响验证；不默认返回114矩阵。见[精简计划](../plans/2026-10-19-performance-scope-and-memory-closeout.md)、[原生报告](../reports/2026-10-19-lru-budget-native-acceptance.md)。2026-10-19规划调整，未新验生产或发布。 |
 
 ### 2026-10-07 非榜单详情统计空值
 

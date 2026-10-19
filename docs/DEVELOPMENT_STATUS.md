@@ -1,5 +1,9 @@
 # SpotifyStats 开发状态总表
 
+> 当前范围（2026-10-19重新划分）：榜单对决与详情首次加载体验均已交付结项；内存稳定性单独由SS-2026-10-08-001跟踪。后续以[精简收口计划](plans/2026-10-19-performance-scope-and-memory-closeout.md)为准，取消默认补齐114窗口及50%/64MiB/100ms组合门槛的路线，按实际容量、正常体验、统计正确性和受影响验证推进。旧失败保留。详情会话当前有界归因仍在执行，本次未操作其运行进程，也未新验生产。
+
+> 下方截至本次调整前的检查点保留历史语境；其中“原合同保持”“完整矩阵待验”不再代表新的执行要求。
+
 > 候选单窗诊断（2026-10-19，已恢复清理）：786次全200、259目标正文与负对照/重访一致，原37/strict/淘汰/采样/实际限额有效；RSS572.62→619.95→642.05MiB增长69.43MiB，测量峰/末驻留仅低12.28%/18.64%，有效FAIL，未达8MiB与50%门槛。77分35秒闭窗，学校本run/guard/两镜像/proof/SSH均清、现有16/原29保全。帧权重只增102字节，结果深层字节与分配器未分；下一先准备有界归因，不新增学校窗。完整资源HOLD，未推送或部署。见[本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)。
 
 > 首批LRU检查点（2026-10-19）：用户批准各90分钟；基线786次全200、九项实际淘汰和事实/采样/限额/退出有效，但三轮RSS714.51→757.80→789.05MiB，增长74.54MiB超原8MiB容差，有效FAIL。按原停止规则候选未启动，68分38秒闭窗；完整恢复及学校精确清理完成，现有16服务/原29镜像保全、owned zero。帧权重仅增加102字节，深层结果对象与分配器尚未区分；候选单窗诊断需明确调整FAIL后停止规则。完整资源HOLD，未推送或部署。见[本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)。
@@ -94,7 +98,7 @@
 
 | 状态 | 分支 / 候选 | 负责人及下一步 |
 | --- | --- | --- |
-| 原生LRU基线/单候选有效FAIL；资源HOLD | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | bfecef52冻结；候选786全200及事实/strict/淘汰/采样/实际限额有效，但三轮RSS增长69.43MiB，测量峰/末驻留仅低12.28%/18.64%，未达原8MiB/50%。完整恢复与学校精确清理、16/29保全通过。下一先核结果LRU深层持有与Python/glibc驻留，不追加学校窗；完整114/原90/64MiB/长期/三次CPU、最终整合CI/full8及跨库ready发布仍待验。见[本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)及[完整规划](plans/2026-10-17-oom-resource-closeout-plan.md)。 |
+| ACTIVE：内存归因收尾与范围收缩 | `codex/album-rank-cost`；SS-2026-10-08-001 | 复用当前bfecef52及已授权本地窗口，完成归因后给修复或暂存决定；先核实际生产容量，再选最小补丁和单组受影响验证。旧LRU失败保留，不默认返回114矩阵；未推送、部署或新验生产。见[精简计划](plans/2026-10-19-performance-scope-and-memory-closeout.md)。 |
 | INTEGRATED；同链统一整合保留 | `codex/versus-detail-integration` | b126发布与唯一首次验收完成，原失败及私密成品独立保存；用于同一OPEN资源合同的候选审阅与主线整合，合同结束后归档，不新增第二研发分支；共享文档只在main维护 |
 | ARCHIVED | 前端设置加载、JSON名称传输、艺人范围身份三个候选 | 收益或总体资源准入未证明，保存补丁/证据，不进入main业务代码 |
 | ARCHIVED | 历史OOM混合补丁 | 已覆盖内容关闭；未采用的串行锁/窄输入等保留归档，只有当前定位证明需要时才提取 |
@@ -140,6 +144,10 @@
 
 ## 近期生产收口
 
+`SS-2026-10-08-002` 榜单对决个人播放加载：**COMPLETED / RELEASED**。10-09公开首次14/28、96 API及来源守恒通过，最大1.669秒。范围已完成，不随内存实验重新开放。见[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)。
+
+`SS-2026-10-09-001` 详情榜单成绩首次加载：**COMPLETED / RELEASED（加载体验范围）**。10-14生产首次90/90、116 API与三个只读窗口通过，点击核心最大1084ms、直达最大2368.6ms。2026-10-19将资源剩余项独立归入SS-2026-10-08-001；手机弹层另记SS-2026-10-11-001。此为范围结项，未把旧资源失败改成通过，未重新测线上。见[生产交付](reports/2026-10-14-native-trim-maintenance-production-delivery.md)。
+
 `SS-2026-10-06-001` 已完成：生产2faadc64正式发布并完成两端API与桌面/手机视口验收，15曲目减少18条错误/冗余有效署名；My Heart仅覆盖层单条纠正，revision38 ready，原始事实及34条既有人工覆盖保持。失败发布和17表仅复用补修证据保留；别名歧义与真实补充继续独立维护，不新增全库审核。见[归档计划](archive/06-productization-closeout/2026-10-06-track-credit-resolution-plan.md)及[验收记录](reports/2026-10-06-track-credit-resolution-acceptance.md)。最后核验2026-10-07。
 
 `SS-2026-10-03-004` 已随2faadc64发布：Records歌曲ID统一整数，兼容1493.0并保留查询/锚点，不改统计或写回公开快照。生产公开手机实际点击vampire和旧URL规范化通过；原本地110/39项专项保持原日期。见[生产验收](reports/2026-10-06-track-credit-resolution-acceptance.md)，最后核验2026-10-07。
@@ -154,9 +162,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| SS-2026-10-08-001 | 详情与年度维护资源 | OPEN / Partial：原生LRU基线与单候选均有效FAIL，资源HOLD | P1：候选786全200、259目标正文/原37/strict/九项淘汰/采样/限额有效；三轮RSS572.62→619.95→642.05MiB增长69.43MiB，峰/末驻留仅低12.28%/18.64%，未达8MiB/50%。完整恢复、学校清理、16/29保全；下一只准备结果深层对象/arena/glibc有界归因，原R2–R7合同保持。 | [本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)、[完整规划](plans/2026-10-17-oom-resource-closeout-plan.md) | 2026-10-19（学校隔离；未新验Spotify生产） |
-| SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | COMPLETED / RELEASED；c587正式CI/NoDeploy/三模式/镜像/部署及独立runtime通过；原公开FIRST14/28全Pass（最大1.669秒）、420秒完整资源/守恒、96 API与三denial通过。人类明确仅公开HTTPS，S0–S5完成，历史失败保留 | P1：三库准备补修已验证，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push已完成，原公开入口已通过；私有SSH HTTP48仅为功能证据。本项完成；私有入口保持现状。详情独立首次已完成：39/90性能通过、116功能及完整读取守恒通过，详情与OOM仍开放 | [完整规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
-| SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | 首次延迟子项PASS；整体OPEN/Partial（资源未收口）。b126新首次90/90、116/116 API/三strict及wrapper0，旧c0d90/116与旧失败保留 | P1：时延子项已达标；资源归SS-2026-10-08-001同链维护。当前窗口不热重跑，手机弹层另行处理 | [新生产交付](reports/2026-10-14-native-trim-maintenance-production-delivery.md)、[规划](plans/2026-10-09-music-detail-chart-performance-plan.md) | 2026-10-14 |
+| SS-2026-10-08-001 | 后端内存稳定性 | OPEN：历史真实OOM；当前候选未完成资源交付 | P1：当前归因收尾→生产容量核实→最小补丁取舍→受影响验证→发布与自然观察；旧8MiB/50%失败保留，不再按旧全矩阵排期 | [精简计划](plans/2026-10-19-performance-scope-and-memory-closeout.md)、[原生报告](reports/2026-10-19-lru-budget-native-acceptance.md) | 2026-10-19（规划调整；未新验生产） |
 | SS-2026-10-11-001 | 手机播放统计加载时弹层状态丢失 | OPEN/P2；未改动前端基线受控复现，加载中打开时间弹层后，数据到达导致控件重新挂载并关闭弹层；尚未产品修复 | P2：独立保持控件/编辑状态连续性；本轮门禁只等待初始页面就绪，保留原超时与应用后断言，不用门禁Pass关闭产品问题 | [台账](issues/2026-08-27-issue-register.md)、[受控复现](reports/2026-10-09-music-detail-chart-performance-acceptance.md)本地专辑候选节 | 2026-10-11 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付；本轮单次24分22秒 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07（单次计时，不代表三次稳定收口） |
 | SS-2026-08-06-005 | PWA 双平台与 OAuth | 外部待验收：PWA 工程已完成，iPhone/Android 安装、键盘、安全区、返回及真实 consent 回跳缺闭环证据 | P1（需要移动使用时）：先核验受控 HTTPS，再完成真机矩阵 | [PWA 路线](plans/2026-08-06-appification-pwa-capacitor-plan.md)；9 月 13 日环境记录只是历史快照 | 2026-10-02（文档核对，未真机验收） |
@@ -165,9 +171,9 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 | DATA-02 / SS-2026-10-03-002 | 生产搜索派生外键遗留 | 已有60,294条FK orphan，Album维护前后集合不变；当前四精确变体读取门禁通过 | P2：先在副本调查轮转/清理合同；本轮未删除或修复 | [生产报告](reports/2026-10-03-album-metadata-production-delivery.md)、[台账](issues/2026-08-27-issue-register.md) | 2026-10-03 |
 | DATA-03 | Album未解析身份审核 | 13个Album的24条艺人行中17条未解析，保持来源证据；不猜测canonical，不批准关系 | P2：取得唯一稳定身份后人工治理；不是代码交付失败 | [生产报告](reports/2026-10-03-album-metadata-production-delivery.md) | 2026-10-03 |
 
-建议开发顺序：优先解决已取得生产证据的OOM与详情内存增长，再推进真实模型/终端验收和门禁效率。日期精度、详情空统计及其生产专项已收口；资源缓解不等于代码问题解决。身份歧义、FK清理继续独立维护。
+建议开发顺序：按[精简计划](plans/2026-10-19-performance-scope-and-memory-closeout.md)收尾当前内存归因，以实际容量和正常使用决定修复与交付，不默认追加跨环境矩阵。两个加载任务已结项；手机弹层独立排期，真实模型/终端验收与身份/FK治理不并入本轮。
 
-对决个人统计优化与详情优化由本任务统一整合发布。业务S4已通过，6430发布失败保留；部署修复cb8d05b1 hooks、新默认完整八阶段和成品准备上传通过，正常推送后CI/NoDeploy与Release质量/三模式/镜像通过，但三次deploy均失败、旧9dd恢复健康。新三库准备补修已通过相关回归及Linux隔离验证；新范围已获真实人类确认，四文件精确清理、上传及正常push c587均实际完成。c587单次正式CI/NoDeploy/Release及11实际jobs均success，实际三OCI完整SHA/healthy、schema90/search4/rank4/detail4/BB48ready。独立只读核验0、启动维护自然结束；原公开FIRST14/28及420秒整页资源窗口/完整守恒、两面96 API和三denial均通过。人类明确只验公开HTTPS，私有保持停止现状；对决完成。一次另行授权重启后的详情原90只有39通过，116功能及三个完整读取窗口通过；冷页面与高驻留继续修复，整站OOM未关闭。
+历史联合交付经过（以下止于10-09，后续加载结项见上方“近期生产收口”）：对决个人统计优化与详情优化由本任务统一整合发布。业务S4已通过，6430发布失败保留；部署修复cb8d05b1 hooks、新默认完整八阶段和成品准备上传通过，正常推送后CI/NoDeploy与Release质量/三模式/镜像通过，但三次deploy均失败、旧9dd恢复健康。新三库准备补修已通过相关回归及Linux隔离验证；新范围已获真实人类确认，四文件精确清理、上传及正常push c587均实际完成。c587单次正式CI/NoDeploy/Release及11实际jobs均success，实际三OCI完整SHA/healthy、schema90/search4/rank4/detail4/BB48ready。独立只读核验0、启动维护自然结束；原公开FIRST14/28及420秒整页资源窗口/完整守恒、两面96 API和三denial均通过。人类明确只验公开HTTPS，私有保持停止现状；对决完成。一次另行授权重启后的详情原90只有39通过，116功能及三个完整读取窗口通过；冷页面与高驻留继续修复，整站OOM未关闭。
 
 ## 可以探索的方向
 
