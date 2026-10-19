@@ -157,11 +157,12 @@ def test_deploy_order_has_no_activation_before_rank_ready_and_joint_rollback():
     deploy = (ROOT / "deploy/production/deploy.sh").read_text()
     promote = deploy.index('if ! replace_live_database "$staged_database"')
     preserve = deploy.index("if ! preserve_live_database_inode")
+    detail = deploy.index("if ! prepare_music_detail_release")
     prepare = deploy.index("if ! prepare_versus_rank_release")
     backup = deploy.index("if ! backup_versus_rank_release")
     install = deploy.index("if ! install_versus_rank_release")
     activate = deploy.index('if ! activate_mode "$target_mode"')
-    assert prepare < preserve < backup < promote < install < activate
+    assert preserve < detail < prepare < backup < promote < install < activate
     restore = deploy[
         deploy.index("restore_previous_release() {") : deploy.index('backend_was_running="false"')
     ]

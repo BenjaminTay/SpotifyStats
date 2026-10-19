@@ -95,3 +95,5 @@
 必要修复仅把deploy.sh中已有的“checkpoint、保留原inode并核验旧精确成品”步骤前移到详情/Billboard准备之前；不放宽闭库读取、exact-ready、源fence或联合回退，不改五业务文件。新增一项执行实际部署片段的回归：崩溃写进程留下真实已提交WAL，旧顺序同错误失败，新顺序保留原inode、闭合三库WAL并保全事实值37。相关发布/榜单传递46项、生产契约28项及公共配置验证通过，280份文档审计通过；旧busy/checkpoint拒绝及恢复用例继续通过；不追加业务全量或资源实验。
 
 部署修复的固定SHA、后续CI与最终线上结果在本轮独立发布回执及后续交付报告记录，不用旧6805的CI覆盖新部署脚本。当前私密发布证据位于统一整合树output/oom-minimal-release-20261019/；原研发树已可恢复归档，完整ignored output经同文件系统rename保全至~/.codex/archives/spotifystats-delivery/oom-source-closeout-20261019/ignored-output，不复制或删除其中失败/数据库材料。
+
+顺序修复f6968158远端必需unit发现一条未同步的旧排名发布顺序断言（prepare < preserve）。该轮CI及发布均按失败保留，未构建/部署。新增真实WAL回归和实现不变，只将既有断言同步为preserve < detail < rank prepare < backup < promote < install < activate，并继续检查联合恢复顺序；对应定向回归结果单独记录。本轮不是移除失败断言或将旧CI改标成功。
