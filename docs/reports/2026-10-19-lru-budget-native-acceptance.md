@@ -1,6 +1,10 @@
-# 两LRU窗口授权扩时与原生对照
+# 原生LRU基线与单候选诊断
 
-日期：2026-10-19。主事项：`SS-2026-10-08-001`。状态：**原生基线完成三轮786请求后有效FAIL：RSS连续增长超原8MiB容差；按原停止规则未启动候选。完整恢复和学校资源精确清理已完成，整体资源HOLD。** 未推送或部署。
+日期：2026-10-19。主事项：`SS-2026-10-08-001`。状态：**基线与后续单候选均为有效FAIL。候选三轮786请求全200、事实/淘汰/采样/限额有效，但RSS增长69.43MiB超原8MiB容差；测量峰值和末驻留仅低12.28%/18.64%，未达原50%门槛。两批均完整恢复及学校精确清理，整体资源HOLD。** 未推送或部署。
+
+## 首批：基线失败后的检查点
+
+本节保留首批停止时的历史事实及当时提案；后续明确授权和候选执行结果见下一节。
 
 用户原文：“可以，批准下一批基线、候选各最多90分钟，合计最多3小时，仍限1核/2GiB，其他判据不变，测试后清理干净。继续按方案推进，不用每一步等我确认，暂不推送或部署。”
 
@@ -39,3 +43,35 @@
 独立档案位于私有`~/.codex/archives/spotifystats-delivery/oom-closeout-execution-20261019/`：原始恢复副本5587文件、201059732字节，复制后逐文件SHA核合；元数据与清理ZIP为6670项、23201970字节，SHA `ca5d36ca6529c34fcdb3f28127454b3f164812e6e5b38ac73d7ee2d50417d343`，CRC及实际恢复通过。专用恢复源码/独审ZIP SHA `cb2f0b045786f5f89e460025a73ee3e72fe3a9b1e618e47a4a0bb089813d6884`；工具与文档、真实数据库载荷分别保存，未重新复制大镜像档案。原生结论见`LRU-native/final-native-lru-analysis.json`和`bounded-baseline-postmortem.json`，旧FAIL、工具失败及所有原始日志均保留。
 
 下一阶段的具体提案是**把该有效失败基线作为负对照，单独执行候选90分钟诊断窗**：复用同一七库/ready、原786请求/三轮及1核/2GiB，要求来源、响应、采样、限额和退出证据有效，继续原8MiB/帧释放与50%峰值/驻留判据；任一事实、观察器或宿主保护失败仍立即停止，完整回传后清理，不推送或部署。此提案需要明确调整当前“任一FAIL/INVALID停止”的执行规则，不能默认为已有授权；候选窗未启动，也未为该提案改写已冻结guard或签发失败基线ACK。跨manifest的诊断比较只能单列，不能拼为完整114通过。若候选仍连续增长，再依据差额定位持有对象与分配器驻留，获得证据后做最小修复。
+
+## 后续授权：单候选诊断实测与清理
+
+用户随后明确批准：“可以，批准保留失败基线作为负对照，单独运行候选最多90分钟，仅调整基线失败后的停止顺序，其他判据和1核/2GiB限额不变。继续推进，测试后清理干净，暂不推送或部署，不用每一步等我确认。”仅调整基线FAIL后的执行顺序，原负对照保留FAIL/exit 2，不复制为新run样本或签发基线ACK。新run为`oom-school-20261019-cdiag-6e1f2a90`，final manifest为`0f0e4d607fd0ff62923f5bd9607e2ce601a9e1352ffe835028053756f6b3f363`，父manifest仍为首批`77b4ce202225988ca3236ad2ea563cb5a2f96aff694ef255a862cec42fc55d5b`。只允许`lru-candidate`，准备至远端归档总5400秒；实际guard clock为4654.974982秒（77分35秒），CLI内部copy/prepare/rank/measure/archive为4595.426420秒。两种计时口径分别保留，初批仍永久closed/new0；本机回传未重开窗口或借用未用额度。
+
+候选业务源码`bfecef52`与原生镜像保持冻结。365项纯工具测试、ruff/编译、官方pack和实际30文件包及最终接线独审通过；实际包SHA`056bf4d41ce7913bc828f324df6a4ada268bfb2e7b6d2d7e92315c7e6a85808c`。worker/client及其余oracle来源保持原字节；新的CLI/guard/coordinator仅增加本run单候选profile、负对照比较及诊断标签。成功也只能标DIAGNOSTIC/resource_admission=false；FAIL、INVALID、正文或相对门槛失败仍在完整回传后停止。专用collector仅换本run/窗口/final SHA三常量并沿用8192文件/512MiB保护，17项继承元数据合成验证通过；清理排序例外也仅换精确run/final绑定，原源均保留。
+
+原worker为FAIL/actual exit 2，invalid为空，唯一failure仍为`three-round RSS still increases beyond frozen tolerance`；外层batch实际exit 1，停止理由为完整恢复后保留FAIL，不把原生失败写成工具INVALID。完整本地分项核对确认786次HTTP全200、259目标全部正文与负对照及重访一致，九项满缓存重访未命中均真；原37来源/受保护表、strict只读窗口、六Analysis/103 jobs、default+fixed共存和原inode复用通过。测量31997采样点/max gap 1.011秒，准备7506点/max gap 2.131秒，均有效；累计先后2 Backend与800 helper的实际镜像/归属/UID/1核/内存/swap/网络及退出证据核合，同时最多1 Backend+1 helper。准备/helper正常exit 0，测量正常lifespan退出为原FAIL/2，全部无OOM。采样宿主可用内存最低约3.65GiB，guard最低约3.66GiB，新增磁盘峰约3.18GiB，原2GiB/12GiB/6GiB保护线未触发。
+
+| 轮末 | 基线RSS MiB | 候选RSS MiB | 候选帧权重 MiB | 候选帧数 | 结果缓存条数 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 1 | 714.51 | 572.62 | 193.40 | 23 | 128 / 64 / 64 |
+| 2 | 757.80 | 619.95 | 193.40 | 23 | 128 / 64 / 64 |
+| 3 | 789.05 | 642.05 | 193.40 | 23 | 128 / 64 / 64 |
+
+候选轮1至3增加72798208字节（69.43MiB），超过原8MiB容差；帧权重只增加102字节，帧及附件释放计数均235→490→745。结果缓存条数稳定并不证明深层字节不变，帧释放也不等于分配器已归还RSS。测量进程峰值1285.00→1127.18MiB，仅低12.28%，高于642.50MiB目标；末驻留789.05→641.96MiB，仅低18.64%，高于394.53MiB目标。两个50%门槛均未通过。当前证据不能区分未计入帧权重的结果对象、Python存活小对象、arena空闲与glibc空闲页，也不证明存在未失效的帧泄漏。
+
+| 单窗成本 | 基线 | 候选 |
+| --- | ---: | ---: |
+| 准备进程总墙钟 秒 | 642.45 | 919.62 |
+| 准备进程startup CPU 秒 | 434.41 | 709.23 |
+| 准备进程RSS峰 MiB | 1224.64 | 955.08 |
+| exact-ready测量进程startup CPU 秒 | 14.758 | 14.670 |
+| 786请求的测量进程总墙钟 秒 | 3349.83 | 3606.00 |
+
+准备startup CPU单样本高63.26%，准备总墙钟高43.14%；exact-ready测量启动CPU未同幅上升。准备包含版本发布/后台维护以及独立oracle/helper等待，不能把总墙钟当CPU或当接口延迟；required-artist区间CPU65.29/墙钟94.09秒也包含其它维护，不是隔离ensure净成本。未完成三次CPU中位数，不能判定稳定回归或CPU门禁通过。本轮LRU统计接口的长请求不替代详情summary/overview冷500/热100ms验收；完整114、两版原90、全局64MiB、长期并发及R4–R7仍未通过。
+
+原归档154744755字节、SHA`f8fbcf142125a6e18ed43edb1e91ad173cd1748a22097ee2cdd60a4bb37061f2`；唯一COMPLETE transfer为`lru-candidate-f1546f0925834ffa88e5f803ef2f04a2.json`，SHA`344beecefdf8c01c8ff54b05d9362e84a1a821db95726bcf973d1dadeb5c4316`。本机CRC/实际恢复与逐文件SHA核验后才释放远端ZIP和元数据包，未发送失败候选的准入ACK。清理metadata包含5613文件，归档SHA为`6ef83df617424831a2417b0e81e0fe31b6f73f6cd3e8f633e030d6e310fbd225`；元数据回传CRC/实际恢复后执行删除及proof均exit 0。清理receipt SHA`c1326b9c1f9b2e49fe8613bdcbe4dd390c6aa79458e4f146218cc57699cf29da`：本run目录、guard、两测试镜像、proof及专用SSH控制均清，owned residue zero；原16服务/29镜像保全，最终远端可用磁盘41075585024字节，未改服务器配置。
+
+独立档案仍位于私有`~/.codex/archives/spotifystats-delivery/oom-closeout-execution-20261019/`。`LRU-cdiag-6e1f2a90-frozen-control-source.zip`为102项/632685字节，SHA`10d11c53e9996c1a972b9d75a8a44b55f2dd4354d075ebe71b39cbf4489bd9d5`，CRC和实际恢复通过；原始恢复副本5587文件/209638936字节，复制后逐项SHA读回核合。`LRU-cdiag-6e1f2a90-native-metadata-cleanup.zip`为6707项/23334313字节，SHA`b5c90654ffb6d186489dd8202c6fd41a197866ece50783893306c8adc9e4459b`，CRC/实际恢复通过；真实数据库载荷只保留在私密原始恢复副本，不进入Git、业务镜像或元数据ZIP。
+
+有界静态核对补齐了下一归因入口：`entity_stats_service.py:1967`的128/64/64结果LRU强持有嵌套dict/list，`frame_bytes`只估计指定帧与直接帧附件，两套淘汰不级联；结果daily/cumulative数组没有深层字节预算，展示names map及versus context也不计入帧预算。worker自身仅保留259个请求指纹，完整响应由独立helper另存。这些是源码持有边界，不是本轮增长的因果证明。下一步先在本地准备最小归因候选：复用修正后的弱引用/固定native采样，只测已知三结果LRU的去重深层对象，并用原始pymalloc/glibc侧证及独立末尾“仅清结果→GC→trim”区分驻留来源；不把探针干预当产品修复，不盲改缓存预算或分配器。任何新学校窗口需另有精确有界范围，当前没有追加窗口或部署。本轮原始结论见私密`LRU-candidate-diagnostic-native/bounded-diagnostic-postmortem.json`、`final-native-diagnostic-analysis.json`及`LRU-candidate-diagnostic-review/cache-holders-static-review.txt`。

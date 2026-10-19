@@ -1,6 +1,8 @@
 # SpotifyStats 开发状态总表
 
-> R2两LRU实测（2026-10-19）：用户批准各90分钟；基线786次全200、九项实际淘汰和事实/采样/限额/退出有效，但三轮RSS714.51→757.80→789.05MiB，增长74.54MiB超原8MiB容差，有效FAIL。按原停止规则候选未启动，68分38秒闭窗；完整恢复及学校精确清理完成，现有16服务/原29镜像保全、owned zero。帧权重仅增加102字节，深层结果对象与分配器尚未区分；候选单窗诊断需明确调整FAIL后停止规则。完整资源HOLD，未推送或部署。见[本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)。
+> 候选单窗诊断（2026-10-19，已恢复清理）：786次全200、259目标正文与负对照/重访一致，原37/strict/淘汰/采样/实际限额有效；RSS572.62→619.95→642.05MiB增长69.43MiB，测量峰/末驻留仅低12.28%/18.64%，有效FAIL，未达8MiB与50%门槛。77分35秒闭窗，学校本run/guard/两镜像/proof/SSH均清、现有16/原29保全。帧权重只增102字节，结果深层字节与分配器未分；下一先准备有界归因，不新增学校窗。完整资源HOLD，未推送或部署。见[本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)。
+
+> 首批LRU检查点（2026-10-19）：用户批准各90分钟；基线786次全200、九项实际淘汰和事实/采样/限额/退出有效，但三轮RSS714.51→757.80→789.05MiB，增长74.54MiB超原8MiB容差，有效FAIL。按原停止规则候选未启动，68分38秒闭窗；完整恢复及学校精确清理完成，现有16服务/原29镜像保全、owned zero。帧权重仅增加102字节，深层结果对象与分配器尚未区分；候选单窗诊断需明确调整FAIL后停止规则。完整资源HOLD，未推送或部署。见[本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)。
 
 > R2准备验证检查点（2026-10-18）：prep-only工具47纯测/实际pack/独审通过；原boundary-2两窗PASS，四HTTP200/四完整正文一致，六Analysis/103jobs/default+fixed复用、原37/strict、限额/退出/CRC恢复与ACK通过，仅2/114、资源HOLD。两clock839.420/1117.582秒；required-prep成本含其它维护，不作净ensure归因。学校本批已清理、原16/29保全。下一仅两LRU窗各90分钟的具体预算提案待批准，未实现或启用；原1800/7200保持。未推送、业务整合或部署。见[本轮报告](reports/2026-10-18-track-presentation-publication-candidate.md)。
 
@@ -92,7 +94,7 @@
 
 | 状态 | 分支 / 候选 | 负责人及下一步 |
 | --- | --- | --- |
-| 原生LRU基线有效FAIL；候选未启动，资源HOLD | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | bfecef52及两业务镜像保持冻结。基线68分38秒完成786次全200、来源/strict/淘汰/采样/限额有效，但三轮RSS增长74.54MiB超原8MiB容差；完整恢复及学校清理完成，现有16/原29保全。下一候选单窗90分钟诊断需明确调整停止规则。完整114、两版原90、64MiB/50%/长期、三次CPU、最终整合CI/full8和跨库ready发布仍待验。见[本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)及[完整规划](plans/2026-10-17-oom-resource-closeout-plan.md)。 |
+| 原生LRU基线/单候选有效FAIL；资源HOLD | `codex/album-rank-cost`；SS-2026-10-08-001，关联SS-2026-10-09-001 | bfecef52冻结；候选786全200及事实/strict/淘汰/采样/实际限额有效，但三轮RSS增长69.43MiB，测量峰/末驻留仅低12.28%/18.64%，未达原8MiB/50%。完整恢复与学校精确清理、16/29保全通过。下一先核结果LRU深层持有与Python/glibc驻留，不追加学校窗；完整114/原90/64MiB/长期/三次CPU、最终整合CI/full8及跨库ready发布仍待验。见[本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)及[完整规划](plans/2026-10-17-oom-resource-closeout-plan.md)。 |
 | INTEGRATED；同链统一整合保留 | `codex/versus-detail-integration` | b126发布与唯一首次验收完成，原失败及私密成品独立保存；用于同一OPEN资源合同的候选审阅与主线整合，合同结束后归档，不新增第二研发分支；共享文档只在main维护 |
 | ARCHIVED | 前端设置加载、JSON名称传输、艺人范围身份三个候选 | 收益或总体资源准入未证明，保存补丁/证据，不进入main业务代码 |
 | ARCHIVED | 历史OOM混合补丁 | 已覆盖内容关闭；未采用的串行锁/窄输入等保留归档，只有当前定位证明需要时才提取 |
@@ -152,7 +154,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| SS-2026-10-08-001 | 详情与年度维护资源 | OPEN / Partial：原生LRU基线有效FAIL，候选按原规则未启动，完整资源HOLD | P1：786次全200、259目标重访和原37/strict/淘汰/采样/限额有效；三轮RSS714.51→757.80→789.05MiB，增长74.54MiB，帧权重仅增102字节。完整恢复及学校清理完成，现有16/原29保全。下一候选单窗90分钟诊断需批准调整停止规则；原全部阈值及完整R2–R7合同保持。 | [本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)、[完整规划](plans/2026-10-17-oom-resource-closeout-plan.md) | 2026-10-19（学校隔离；未新验Spotify生产） |
+| SS-2026-10-08-001 | 详情与年度维护资源 | OPEN / Partial：原生LRU基线与单候选均有效FAIL，资源HOLD | P1：候选786全200、259目标正文/原37/strict/九项淘汰/采样/限额有效；三轮RSS572.62→619.95→642.05MiB增长69.43MiB，峰/末驻留仅低12.28%/18.64%，未达8MiB/50%。完整恢复、学校清理、16/29保全；下一只准备结果深层对象/arena/glibc有界归因，原R2–R7合同保持。 | [本轮报告](reports/2026-10-19-lru-budget-native-acceptance.md)、[完整规划](plans/2026-10-17-oom-resource-closeout-plan.md) | 2026-10-19（学校隔离；未新验Spotify生产） |
 | SS-2026-10-08-002 | 榜单对决个人播放统计延迟 | COMPLETED / RELEASED；c587正式CI/NoDeploy/三模式/镜像/部署及独立runtime通过；原公开FIRST14/28全Pass（最大1.669秒）、420秒完整资源/守恒、96 API与三denial通过。人类明确仅公开HTTPS，S0–S5完成，历史失败保留 | P1：三库准备补修已验证，c587本地固定/hooks与清单九步通过；授权四文件清理/上传/push已完成，原公开入口已通过；私有SSH HTTP48仅为功能证据。本项完成；私有入口保持现状。详情独立首次已完成：39/90性能通过、116功能及完整读取守恒通过，详情与OOM仍开放 | [完整规划](archive/06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)、[验收报告](reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)第21.9–21.13节、[台账](issues/2026-08-27-issue-register.md) | 2026-10-09 |
 | SS-2026-10-09-001 | 音乐详情榜单成绩首次加载与附属计算 | 首次延迟子项PASS；整体OPEN/Partial（资源未收口）。b126新首次90/90、116/116 API/三strict及wrapper0，旧c0d90/116与旧失败保留 | P1：时延子项已达标；资源归SS-2026-10-08-001同链维护。当前窗口不热重跑，手机弹层另行处理 | [新生产交付](reports/2026-10-14-native-trim-maintenance-production-delivery.md)、[规划](plans/2026-10-09-music-detail-chart-performance-plan.md) | 2026-10-14 |
 | SS-2026-10-11-001 | 手机播放统计加载时弹层状态丢失 | OPEN/P2；未改动前端基线受控复现，加载中打开时间弹层后，数据到达导致控件重新挂载并关闭弹层；尚未产品修复 | P2：独立保持控件/编辑状态连续性；本轮门禁只等待初始页面就绪，保留原超时与应用后断言，不用门禁Pass关闭产品问题 | [台账](issues/2026-08-27-issue-register.md)、[受控复现](reports/2026-10-09-music-detail-chart-performance-acceptance.md)本地专辑候选节 | 2026-10-11 |
