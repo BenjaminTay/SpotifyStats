@@ -72,6 +72,114 @@ def _load_reliable_album_release_dates(conn: sqlite3.Connection) -> pd.DataFrame
         return pd.DataFrame(columns=columns)
 
 
+def _canonical_records_track_frame(frame: pd.DataFrame, groups: pd.DataFrame) -> pd.DataFrame:
+    """Return one owned frame; a successful merge already copies its input."""
+    if frame.empty:
+        return frame.copy()
+    if not groups.empty:
+        result = frame.merge(groups, on="track_id", how="left")
+        result["canonical_track_id"] = result["track_agg_id"].fillna(result["track_id"])
+        result["canonical_track_name"] = result["track_agg_name"].fillna(result["track_name"])
+    else:
+        result = frame.copy()
+        result["canonical_track_id"] = result["track_id"]
+        result["canonical_track_name"] = result["track_name"]
+    return result
+
+
+def _build_records_track_frame(
+    event_frame: pd.DataFrame,
+    duration_frame: pd.DataFrame,
+    conn: sqlite3.Connection,
+    merge_level: int,
+) -> pd.DataFrame:
+    tg = pd.DataFrame()
+    if (not event_frame.empty or not duration_frame.empty) and merge_level >= 2:
+        tg = load_track_group_keys(conn, merge_level)
+        # Keep the played version's representative key for artist credits;
+        # group representatives determine only the aggregation identity.
+        if not tg.empty:
+            tg = tg[["track_id", "track_agg_id", "track_agg_name"]]
+    # Complete the event result before allocating the duration result. The
+    # source frames stay read-only; copying before merge would duplicate the
+    # wide buffers once more at its peak.
+    track_frame = _canonical_records_track_frame(event_frame, tg)
+    track_duration = _canonical_records_track_frame(duration_frame, tg)
+    attach_listening_duration_frame(track_frame, track_duration)
+    return track_frame
+
+
+def _build_records_album_frame(
+    frame: pd.DataFrame,
+    conn: sqlite3.Connection,
+    merge_level: int,
+    include_compilations: bool,
+    membership: pd.DataFrame | None,
+    *,
+    duration: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    """Build one owned projection; release join intermediates before the next one.
+
+    The input remains read-only, including on a failed membership lookup/join.
+    Successful canonicalization already makes its own copy, so no full-width
+    copy is needed before entering it.
+    """
+    fallback_frame = frame
+    if not frame.empty and merge_level >= 2:
+        try:
+            from backend.domains.playback.album_projects import (
+                apply_canonical_song_keys,
+                load_album_project_membership,
+            )
+
+            with_keys = apply_canonical_song_keys(frame, conn, merge_level)
+            if membership is None:
+                membership = load_album_project_membership(conn, merge_level, include_compilations)
+            if not membership.empty and "canonical_song_key" in with_keys.columns:
+                membership_join = membership[
+                    [
+                        "canonical_song_key",
+                        "project_id",
+                        "album_project_name",
+                        "release_date",
+                        "release_date_precision",
+                    ]
+                ].rename(
+                    columns={
+                        "project_id": "album_project_id",
+                        "release_date": "album_project_release_date",
+                        "release_date_precision": "album_project_release_date_precision",
+                    }
+                )
+                result = with_keys.merge(membership_join, on="canonical_song_key", how="left")
+                if duration:
+                    # The previous duration path retained an already-expanded
+                    # join if a subsequent fill failed; preserve that fallback.
+                    fallback_frame = result
+                result["album_project_id"] = result["album_project_id"].fillna(
+                    result["album_name"].astype(str)
+                )
+                result["album_project_name"] = result["album_project_name"].fillna(
+                    result["album_name"]
+                )
+                return result, membership
+        except Exception as exc:
+            if duration:
+                logger.warning(
+                    "Album duration project membership join failed, falling back to album_name: %s",
+                    exc,
+                )
+            else:
+                logger.warning(
+                    "Album project membership join failed, falling back to album_name: %s", exc
+                )
+    result = fallback_frame.copy()
+    if not result.empty:
+        result["album_project_id"] = result["album_name"].astype(str)
+        result["album_project_name"] = result["album_name"]
+    return result, membership
+
+
 def _build_entity_frames(
     event_frame: pd.DataFrame,
     conn: sqlite3.Connection,
@@ -95,196 +203,11 @@ def _build_entity_frames(
     """
     # Establish logical identity before track/album membership expands rows.
     # Yearly Review also calls this builder directly on its history frame.
-    event_frame = assign_logical_event_id(event_frame)
-    duration_frame = records_duration_frame(event_frame, copy=False)
-    track_frame = event_frame.copy()
-    track_duration = duration_frame.copy()
-    album_frame = event_frame.copy()
-    album_duration = duration_frame.copy()
-
-    # ── Track canonicalization ──
-    tg = pd.DataFrame()
-    if (not track_frame.empty or not track_duration.empty) and merge_level >= 2:
-        tg = load_track_group_keys(conn, merge_level)
-        # Keep the played version's representative key for artist credits;
-        # group representatives determine only the aggregation identity.
-        if not tg.empty:
-            tg = tg[["track_id", "track_agg_id", "track_agg_name"]]
-    if not track_frame.empty and merge_level >= 2:
-        if not tg.empty:
-            track_frame = track_frame.merge(tg, on="track_id", how="left")
-            track_frame["canonical_track_id"] = track_frame["track_agg_id"].fillna(
-                track_frame["track_id"]
-            )
-            track_frame["canonical_track_name"] = track_frame["track_agg_name"].fillna(
-                track_frame["track_name"]
-            )
-        else:
-            track_frame["canonical_track_id"] = track_frame["track_id"]
-            track_frame["canonical_track_name"] = track_frame["track_name"]
-    elif not track_frame.empty:
-        track_frame["canonical_track_id"] = track_frame["track_id"]
-        track_frame["canonical_track_name"] = track_frame["track_name"]
-
-    if not track_duration.empty and merge_level >= 2:
-        if not tg.empty:
-            track_duration = track_duration.merge(tg, on="track_id", how="left")
-            track_duration["canonical_track_id"] = track_duration["track_agg_id"].fillna(
-                track_duration["track_id"]
-            )
-            track_duration["canonical_track_name"] = track_duration["track_agg_name"].fillna(
-                track_duration["track_name"]
-            )
-        else:
-            track_duration["canonical_track_id"] = track_duration["track_id"]
-            track_duration["canonical_track_name"] = track_duration["track_name"]
-    elif not track_duration.empty:
-        track_duration["canonical_track_id"] = track_duration["track_id"]
-        track_duration["canonical_track_name"] = track_duration["track_name"]
-    attach_listening_duration_frame(track_frame, track_duration)
-
-    # One read-only membership projection for the event and duration tracks.
-    membership = None
-    # ── Album canonicalization via album project membership ──
-    if not album_frame.empty and merge_level >= 2:
-        try:
-            from backend.domains.playback.album_projects import (
-                apply_canonical_song_keys,
-                load_album_project_membership,
-            )
-
-            # Apply canonical song keys first (required for membership join)
-            events_with_keys = apply_canonical_song_keys(album_frame, conn, merge_level)
-            membership = load_album_project_membership(conn, merge_level, include_compilations)
-
-            if not membership.empty and "canonical_song_key" in events_with_keys.columns:
-                membership_join = membership[
-                    [
-                        "canonical_song_key",
-                        "project_id",
-                        "album_project_name",
-                        "release_date",
-                        "release_date_precision",
-                    ]
-                ].rename(
-                    columns={
-                        "project_id": "album_project_id",
-                        "release_date": "album_project_release_date",
-                        "release_date_precision": "album_project_release_date_precision",
-                    }
-                )
-                # Join each play event to its album project via canonical song key
-                merged = events_with_keys.merge(
-                    membership_join,
-                    on="canonical_song_key",
-                    how="left",
-                )
-                # Fall back to album_name for tracks not in any project
-                merged["album_project_id"] = merged["album_project_id"].fillna(
-                    merged["album_name"].astype(str)
-                )
-                merged["album_project_name"] = merged["album_project_name"].fillna(
-                    merged["album_name"]
-                )
-                album_frame = merged
-            else:
-                album_frame["album_project_id"] = album_frame["album_name"].astype(str)
-                album_frame["album_project_name"] = album_frame["album_name"]
-        except Exception as e:
-            logger.warning(
-                "Album project membership join failed, falling back to album_name: %s", e
-            )
-            album_frame["album_project_id"] = album_frame["album_name"].astype(str)
-            album_frame["album_project_name"] = album_frame["album_name"]
-    elif not album_frame.empty:
-        album_frame["album_project_id"] = album_frame["album_name"].astype(str)
-        album_frame["album_project_name"] = album_frame["album_name"]
-
-    if not album_duration.empty and merge_level >= 2:
-        try:
-            from backend.domains.playback.album_projects import (
-                apply_canonical_song_keys,
-                load_album_project_membership,
-            )
-
-            duration_with_keys = apply_canonical_song_keys(album_duration, conn, merge_level)
-            if membership is None:
-                membership = load_album_project_membership(conn, merge_level, include_compilations)
-            if not membership.empty and "canonical_song_key" in duration_with_keys.columns:
-                membership_join = membership[
-                    [
-                        "canonical_song_key",
-                        "project_id",
-                        "album_project_name",
-                        "release_date",
-                        "release_date_precision",
-                    ]
-                ].rename(
-                    columns={
-                        "project_id": "album_project_id",
-                        "release_date": "album_project_release_date",
-                        "release_date_precision": "album_project_release_date_precision",
-                    }
-                )
-                album_duration = duration_with_keys.merge(
-                    membership_join,
-                    on="canonical_song_key",
-                    how="left",
-                )
-                album_duration["album_project_id"] = album_duration["album_project_id"].fillna(
-                    album_duration["album_name"].astype(str)
-                )
-                album_duration["album_project_name"] = album_duration["album_project_name"].fillna(
-                    album_duration["album_name"]
-                )
-            else:
-                album_duration["album_project_id"] = album_duration["album_name"].astype(str)
-                album_duration["album_project_name"] = album_duration["album_name"]
-        except Exception as e:
-            logger.warning(
-                "Album duration project membership join failed, falling back to album_name: %s",
-                e,
-            )
-            album_duration["album_project_id"] = album_duration["album_name"].astype(str)
-            album_duration["album_project_name"] = album_duration["album_name"]
-    elif not album_duration.empty:
-        album_duration["album_project_id"] = album_duration["album_name"].astype(str)
-        album_duration["album_project_name"] = album_duration["album_name"]
-    attach_listening_duration_frame(album_frame, album_duration)
-
-    # Fastest album milestones use a trustworthy formal release date to discard
-    # prerelease plays. Prefer the canonical album-project date; only use a
-    # source-album fallback when one high-confidence Spotify date is unambiguous.
-    if not album_frame.empty:
-        if "album_project_release_date" not in album_frame.columns:
-            album_frame["album_project_release_date"] = None
-        from backend.domains.metadata.release_dates import parse_release_date
-
-        precision = album_frame.get(
-            "album_project_release_date_precision", pd.Series(None, index=album_frame.index)
-        )
-        album_frame["album_project_release_day"] = [
-            evidence.exact_day.isoformat() if evidence.exact_day else None
-            for evidence in (
-                parse_release_date(raw, prec)
-                for raw, prec in zip(album_frame["album_project_release_date"], precision)
-            )
-        ]
-        release_dates = _load_reliable_album_release_dates(conn)
-        if not release_dates.empty:
-            album_frame = album_frame.merge(
-                release_dates,
-                on=["album_name", "artist_name"],
-                how="left",
-            )
-            album_frame["album_release_date"] = album_frame["album_project_release_day"].fillna(
-                album_frame["source_album_release_date"]
-            )
-            album_frame = album_frame.drop(columns=["source_album_release_date"])
-        else:
-            album_frame["album_release_date"] = album_frame["album_project_release_day"]
-
-    # ── Artist fan-out with same filtering as event_frame ──
+    # Existing identities can be read directly; entity projections own results.
+    if "_logical_event_id" not in event_frame.columns:
+        event_frame = assign_logical_event_id(event_frame)
+    # Build artist history before allocating track/album projections so their
+    # wide result frames do not overlap the artist reconstruction peak.
     try:
         artist_frame = load_plays_for_artists(
             conn,
@@ -315,6 +238,68 @@ def _build_entity_frames(
         logger.warning("Artist fan-out failed, falling back to primary artist: %s", e)
         artist_frame = event_frame.copy()
 
+    duration_frame = records_duration_frame(event_frame, copy=False)
+    # Complete each album projection before allocating the track pair. Keep
+    # full output columns for Records and Yearly Review, but let each join's
+    # temporary wide frames die before constructing the next entity frame.
+    album_frame, membership = _build_records_album_frame(
+        event_frame, conn, merge_level, include_compilations, None
+    )
+    album_duration, _ = _build_records_album_frame(
+        duration_frame, conn, merge_level, include_compilations, membership, duration=True
+    )
+    attach_listening_duration_frame(album_frame, album_duration)
+    # The result owns these slices until its metadata contract releases them.
+    del album_duration
+
+    # Fastest album milestones use a trustworthy formal release date to discard
+    # prerelease plays. Prefer the canonical album-project date; only use a
+    # source-album fallback when one high-confidence Spotify date is unambiguous.
+    if not album_frame.empty:
+        if "album_project_release_date" not in album_frame.columns:
+            album_frame["album_project_release_date"] = None
+        from backend.domains.metadata.release_dates import parse_release_date
+
+        precision = album_frame.get(
+            "album_project_release_date_precision", pd.Series(None, index=album_frame.index)
+        )
+        album_frame["album_project_release_day"] = [
+            evidence.exact_day.isoformat() if evidence.exact_day else None
+            for evidence in (
+                parse_release_date(raw, prec)
+                for raw, prec in zip(album_frame["album_project_release_date"], precision)
+            )
+        ]
+        # A derived Series also carries duration attrs; its last use is above.
+        del precision
+        release_dates = _load_reliable_album_release_dates(conn)
+        if not release_dates.empty:
+            # The loader emits one fallback per key; the album projection is
+            # already owned, so only join keys need to enter this lookup.
+            release_lookup = album_frame[["album_name", "artist_name"]].merge(
+                release_dates,
+                on=["album_name", "artist_name"],
+                how="left",
+                validate="many_to_one",
+            )
+            # Preserve the previous merge's index and metadata contract: its
+            # cleared duration attrs determine subsequent Records consumption.
+            album_frame.index = release_lookup.index
+            album_frame.columns.name = release_lookup.columns.name
+            album_frame.attrs.clear()
+            # Preserve fillna's existing dtype inference explicitly. Its silent
+            # object downcast warns on all-missing dates and caches this entire
+            # source file through linecache during a high-memory Records build.
+            release_day = album_frame["album_project_release_day"]
+            album_frame["album_release_date"] = release_day.where(
+                release_day.notna(), release_lookup["source_album_release_date"]
+            ).infer_objects(copy=False)
+            del release_day
+            del release_lookup
+        else:
+            album_frame["album_release_date"] = album_frame["album_project_release_day"]
+
+    track_frame = _build_records_track_frame(event_frame, duration_frame, conn, merge_level)
     return track_frame, album_frame, artist_frame
 
 
@@ -386,6 +371,7 @@ def _get_analysis_records_uncached(
         range_source = event_frame if not event_frame.empty else duration_frame
         p_start = str(range_source["ts_date"].min()) if not range_source.empty else None
         p_end = str(range_source["ts_date"].max()) if not range_source.empty else None
+        del range_source
     else:
         p_start = period_start
         p_end = period_end
@@ -467,6 +453,11 @@ def _get_analysis_records_uncached(
         conn=conn,
         milestone_event_frame=lifetime_event_frame,
     )
+
+    # Calculation has consumed the history and entity projections. Keep only
+    # record results while presentation resolves covers and serializes them.
+    del event_frame, lifetime_event_frame, scoped_duration, duration_frame
+    del track_frame, album_frame, artist_frame
 
     # Add cover URLs
     _add_cover_urls_to_records(raw_records)

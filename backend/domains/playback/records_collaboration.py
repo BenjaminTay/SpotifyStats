@@ -24,17 +24,21 @@ class CollaborationFacts:
     artist_duration: pd.DataFrame
 
 
+def _credit_track_ids(frame: pd.DataFrame, *, legacy_raw: bool) -> pd.Series:
+    if "representative_track_id" in frame.columns:
+        key = frame["representative_track_id"]
+    elif legacy_raw and "l1_id" not in frame.columns and "track_id" in frame.columns:
+        # Only isolated legacy databases have track_id == raw tracks.track_id.
+        key = frame["track_id"]
+    else:
+        key = pd.Series(None, index=frame.index, dtype=object)
+    return pd.to_numeric(key, errors="coerce")
+
+
 def _credit_key(frame: pd.DataFrame, *, legacy_raw: bool) -> pd.DataFrame:
     result = frame.copy()
     result.attrs = {}
-    if "representative_track_id" in result.columns:
-        key = result["representative_track_id"]
-    elif legacy_raw and "l1_id" not in result.columns and "track_id" in result.columns:
-        # Only isolated legacy databases have track_id == raw tracks.track_id.
-        key = result["track_id"]
-    else:
-        key = pd.Series(None, index=result.index, dtype=object)
-    result["_credit_track_id"] = pd.to_numeric(key, errors="coerce")
+    result["_credit_track_id"] = _credit_track_ids(result, legacy_raw=legacy_raw)
     return result
 
 
@@ -59,25 +63,72 @@ def _event_projection(frame: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame
     return frame.merge(events[[*keys, "_logical_event_id"]].drop_duplicates(), on=keys)
 
 
+_DURATION_DEDUPE_COLUMNS = (
+    "_credit_track_id",
+    "_logical_event_id",
+    "play_id",
+    "ts",
+    "slice_start_at",
+    "slice_end_at",
+    "interval_start_at",
+    "interval_end_at",
+    "ms_played",
+)
+
+
 def _duration_dedupe(frame: pd.DataFrame, entity_key: str) -> pd.DataFrame:
     # Membership fan-out may repeat one interval within a single project.
     # Separate listening slices remain separate, including slices of a shared
     # source play_id. Never use play_id alone as the duration identity.
     keys = [entity_key]
-    for column in (
-        "_credit_track_id",
-        "_logical_event_id",
-        "play_id",
-        "ts",
-        "slice_start_at",
-        "slice_end_at",
-        "interval_start_at",
-        "interval_end_at",
-        "ms_played",
-    ):
+    for column in _DURATION_DEDUPE_COLUMNS:
         if column in frame.columns:
             keys.append(column)
     return frame.drop_duplicates(keys)
+
+
+def _expand_artist_credits(frame, credits, *, deduplicate_events):
+    """Fan out keys before taking one owned, full-schema payload result."""
+    replaced = ("artist_id", "artist_name", "role")
+    overlapping = set(frame.columns).intersection(credits.columns) - {
+        "_credit_track_id",
+        *replaced,
+    }
+    if overlapping:
+        # Preserve pandas' suffix/error contract for extra caller metadata.
+        result = frame.drop(columns=list(replaced), errors="ignore").merge(
+            credits, on="_credit_track_id", how="inner"
+        )
+        return (
+            result.drop_duplicates(["_logical_event_id", "artist_id"])
+            if deduplicate_events
+            else result
+        )
+
+    columns = ["_credit_track_id"]
+    if deduplicate_events:
+        columns.append("_logical_event_id")
+    keys = frame[columns].copy()
+    position = "_collaboration_row"
+    while position in frame.columns or position in credits.columns:
+        position += "_"
+    keys[position] = range(len(frame))
+    matched = keys.merge(credits, on="_credit_track_id", how="inner")
+    if deduplicate_events:
+        matched = matched.drop_duplicates(["_logical_event_id", "artist_id"])
+    result = frame.take(matched[position].to_numpy())
+    result.index = matched.index
+    result.columns = result.columns.rename(matched.columns.name)
+    result.attrs = {}
+    # Empty joins can take the right key's dtype rather than the source's.
+    result["_credit_track_id"] = matched["_credit_track_id"].array
+    for column in replaced:
+        if column in result.columns:
+            del result[column]
+    for column in credits.columns:
+        if column != "_credit_track_id":
+            result[column] = matched[column].array
+    return result
 
 
 def build_collaboration_facts(event_frame, track_frame, album_frame, artist_frame, conn=None):
@@ -100,8 +151,13 @@ def build_collaboration_facts(event_frame, track_frame, album_frame, artist_fram
     durations = [records_duration_frame(frame, copy=False) for frame in frames]
     requested = set()
     for frame in [*frames, *durations]:
-        keyed = _credit_key(frame, legacy_raw=legacy_raw)
-        requested.update(int(value) for value in keyed["_credit_track_id"].dropna().unique())
+        # Only the credit IDs are consumed here; keep the wide event/duration
+        # copies confined to the later collaboration projections.
+        requested.update(
+            int(value)
+            for value in _credit_track_ids(frame, legacy_raw=legacy_raw).dropna().unique()
+        )
+    del frames, frame
     if conn is not None and requested:
         credits = get_effective_track_credit_frame(conn, sorted(requested)).rename(
             columns={"track_id": "_credit_track_id"}
@@ -133,17 +189,22 @@ def build_collaboration_facts(event_frame, track_frame, album_frame, artist_fram
     cooperating = set(counts[counts >= 2].index)
 
     def select(frame):
-        keyed = _credit_key(frame, legacy_raw=legacy_raw)
-        return keyed[keyed["_credit_track_id"].isin(cooperating)].copy()
+        keys = _credit_track_ids(frame, legacy_raw=legacy_raw)
+        mask = keys.isin(cooperating)
+        selected = frame.loc[mask].copy()
+        selected.attrs = {}
+        # Keep the dtype inferred from the complete source, including rows
+        # excluded by this mask, as in the former full-frame key projection.
+        selected["_credit_track_id"] = keys.loc[mask]
+        return selected
 
     selected = select(events)
     tracks = _event_projection(select(track_frame), events)
     albums = _event_projection(select(album_frame), events)
-    artists = (
-        selected.drop(columns=["artist_id", "artist_name", "role"], errors="ignore")
-        .merge(credits, on="_credit_track_id", how="inner")
-        .drop_duplicates(["_logical_event_id", "artist_id"])
-    )
+    total_events = len(events)
+    # The wide identity projection is no longer needed by credit fan-out.
+    del events
+    artists = _expand_artist_credits(selected, credits, deduplicate_events=True)
     track_duration = (
         select(durations[1])
         if get_listening_duration_frame(track_frame) is not None
@@ -157,9 +218,12 @@ def build_collaboration_facts(event_frame, track_frame, album_frame, artist_fram
     artist_duration_source = (
         select(durations[0]) if get_listening_duration_frame(event_frame) is not None else selected
     )
-    artist_duration = artist_duration_source.drop(
-        columns=["artist_id", "artist_name", "role"], errors="ignore"
-    ).merge(credits, on="_credit_track_id", how="inner")
+    # Newly exploded hourly tables have no remaining consumer after selection.
+    del durations
+    artist_duration = _expand_artist_credits(
+        artist_duration_source, credits, deduplicate_events=False
+    )
+    del artist_duration_source
 
     # The full effective names are attached only to observed collaboration
     # versions. A solo member of an L3 group contributes neither counts nor
@@ -168,7 +232,7 @@ def build_collaboration_facts(event_frame, track_frame, album_frame, artist_fram
     tracks["artist_names"] = tracks["_credit_track_id"].map(names)
     tracks["artist_name"] = tracks["artist_names"].map(lambda value: value[0] if value else "")
     return CollaborationFacts(
-        total_events=len(events),
+        total_events=total_events,
         events=selected,
         tracks=tracks,
         albums=albums,
@@ -183,7 +247,16 @@ def aggregate_collaboration(frame, duration, identity_col, name_col, entity_type
     """Count each common logical event once per entity and use exact duration."""
     if frame.empty or identity_col not in frame.columns or name_col not in frame.columns:
         return pd.DataFrame()
-    frame = frame.copy()
+    columns = {
+        identity_col,
+        name_col,
+        "_logical_event_id",
+        "artist_name",
+        "artist_names",
+        "_credit_track_id",
+        "ms_played",
+    }
+    frame = frame[[column for column in frame.columns if column in columns]].copy()
     frame["entity_id"] = frame[identity_col].map(entity_id_string)
     frame = frame[frame["entity_id"].notna()]
     events = frame.drop_duplicates(["_logical_event_id", "entity_id"])
@@ -209,7 +282,10 @@ def aggregate_collaboration(frame, duration, identity_col, name_col, entity_type
             list
         )
     if not duration.empty and identity_col in duration.columns:
-        duration = duration.copy()
+        duration_columns = {identity_col, *_DURATION_DEDUPE_COLUMNS}
+        duration = duration[
+            [column for column in duration.columns if column in duration_columns]
+        ].copy()
         duration["entity_id"] = duration[identity_col].map(entity_id_string)
         duration = _duration_dedupe(duration, "entity_id")
         duration_totals = duration.groupby("entity_id")["ms_played"].sum()

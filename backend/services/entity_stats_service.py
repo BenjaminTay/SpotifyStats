@@ -789,6 +789,7 @@ def _published_album_top250_counts(conn, context, filters, album_names, artist_n
     )
     check_read_cancelled()
     from backend.domains.playback.logical_timeline import (
+        LISTENING_INTERVALS_COLUMN,
         attach_listening_duration_frame,
         get_listening_duration_frame,
     )
@@ -804,7 +805,19 @@ def _published_album_top250_counts(conn, context, filters, album_names, artist_n
     # Slice the unfiltered listening source once. Filtering event dates first
     # would lose duration crossing a window boundary; each window still gets
     # its independently filtered counts and duration rows.
-    duration = build_duration_frame(frame)
+    duration = build_duration_frame(
+        frame,
+        source_columns=(
+            "track_id",
+            "track_name",
+            "artist_name",
+            "album_name",
+            "ts",
+            "ts_date",
+            "ms_played",
+            LISTENING_INTERVALS_COLUMN,
+        ),
+    )
     check_read_cancelled()
     return {
         period: _top250_count(
@@ -1257,6 +1270,81 @@ def _filter_artist_owned_album_events(
     return keyed[keyed["canonical_song_key"].isin(owned_song_keys)].copy()
 
 
+def _artist_album_chart_input(frame: pd.DataFrame, *, with_intervals: bool = False) -> pd.DataFrame:
+    """Project artist-owned album facts before filtering, slicing and weighting."""
+    columns = ["track_id", "track_name", "artist_name", "album_name", "ts", "ts_date", "ms_played"]
+    if with_intervals:
+        from backend.domains.playback.logical_timeline import LISTENING_INTERVALS_COLUMN
+
+        columns.append(LISTENING_INTERVALS_COLUMN)
+    projected = frame.loc[:, [column for column in columns if column in frame.columns]]
+    projected.attrs = {}
+    return projected
+
+
+def _artist_top_albums(
+    conn: sqlite3.Connection,
+    entity_df: pd.DataFrame,
+    duration_source: pd.DataFrame,
+    resolved: dict,
+    artist_name: str,
+) -> list[dict]:
+    """Keep album-only temporary frames out of the remaining artist response."""
+    from backend.domains.playback.album_projects import load_album_project_membership
+
+    membership = load_album_project_membership(conn)
+    owned_keys = (
+        set(membership.loc[membership["artist_name"] == artist_name, "canonical_song_key"].dropna())
+        if not membership.empty
+        else set()
+    )
+    owned_events = _filter_artist_owned_album_events(
+        conn, _artist_album_chart_input(entity_df), artist_name, owned_song_keys=owned_keys
+    )
+    owned_duration_source = _filter_artist_owned_album_events(
+        conn,
+        _artist_album_chart_input(duration_source, with_intervals=True),
+        artist_name,
+        owned_song_keys=owned_keys,
+    )
+    # An explicit duration source makes a second all-history event copy
+    # unnecessary. Preserve unfiltered intervals until period slicing finishes.
+    owned_duration = build_duration_frame(
+        owned_events, resolved, duration_source=owned_duration_source
+    )
+    _, rows = chart_rows(conn, owned_events, "album", "plays", 20, 0, duration_frame=owned_duration)
+    return rows
+
+
+# Published artist detail needs recent-play presentation as well as both
+# statistical tracks. Project at SQL load, before interval reconstruction and
+# credit fan-out copy the source rows. Keep ordering, source ownership and
+# provider identity inputs; the loader adds the resolved L1 identities.
+_ARTIST_STATS_PLAY_COLUMNS = ", ".join(
+    (
+        "p.play_id",
+        "p.ts",
+        "p.ts_year",
+        "p.ts_month",
+        "p.ts_week",
+        "p.ts_dow",
+        "p.ts_hour",
+        "p.ts_date",
+        "p.platform",
+        "p.ms_played",
+        "p.track_id",
+        "p.source_album_id",
+        "p.spotify_track_id_at_play",
+        "p.source_fingerprint",
+        "t.track_name",
+        "t.spotify_track_uri",
+        "a.artist_name",
+        "al.album_name",
+        "stm.duration_ms",
+    )
+)
+
+
 def _build_artist_stats(
     conn: sqlite3.Connection,
     artist_name: str,
@@ -1308,7 +1396,11 @@ def _build_artist_stats(
             conn,
             track_ids,
             music_only=music_only,
-            loader=load_plays_for_artists if published_context is not None else None,
+            loader=(
+                partial(load_plays_for_artists, columns=_ARTIST_STATS_PLAY_COLUMNS)
+                if published_context is not None
+                else None
+            ),
         )
     else:
         loader = load_plays_for_artists
@@ -1376,40 +1468,8 @@ def _build_artist_stats(
             0,
             duration_frame=entity_duration,
         )
-        from backend.domains.playback.album_projects import load_album_project_membership
-
-        membership = load_album_project_membership(conn)
-        owned_keys = (
-            set(
-                membership.loc[
-                    membership["artist_name"] == artist_name, "canonical_song_key"
-                ].dropna()
-            )
-            if not membership.empty
-            else set()
-        )
-        owned_album_all = _filter_artist_owned_album_events(
-            conn, entity_all, artist_name, owned_song_keys=owned_keys
-        )
-        owned_album_df = _filter_artist_owned_album_events(
-            conn, entity_df, artist_name, owned_song_keys=owned_keys
-        )
-        owned_album_duration_source = _filter_artist_owned_album_events(
-            conn, entity_duration_source, artist_name, owned_song_keys=owned_keys
-        )
-        owned_album_duration = build_duration_frame(
-            owned_album_all,
-            resolved,
-            duration_source=owned_album_duration_source,
-        )
-        _, top_albums = chart_rows(
-            conn,
-            owned_album_df,
-            "album",
-            "plays",
-            20,
-            0,
-            duration_frame=owned_album_duration,
+        top_albums = _artist_top_albums(
+            conn, entity_df, entity_duration_source, resolved, artist_name
         )
     else:
         top_tracks, top_albums = [], []

@@ -720,6 +720,14 @@ def _build_analysis_stats(
     }
 
 
+def _track_chart_input(frame: pd.DataFrame) -> pd.DataFrame:
+    """Keep only track aggregation facts, without attached full-history frames."""
+    columns = ("track_id", "track_name", "artist_name", "album_name", "ts", "ms_played")
+    projected = frame.loc[:, [column for column in columns if column in frame.columns]]
+    projected.attrs = {}
+    return projected
+
+
 def _chart_agg(
     df: pd.DataFrame,
     entity: str,
@@ -728,7 +736,19 @@ def _chart_agg(
     include_compilations: bool = False,
     duration_frame: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    weighted = _analysis_weighted_frame(df, duration_frame=duration_frame)
+    if entity == "track":
+        # Resolve the explicit listening track before dropping interval/attrs
+        # payloads. Weighting and canonicalization do not consume those fields.
+        duration_frame = (
+            duration_frame
+            if duration_frame is not None
+            else _duration_frame(df, granularity="hour")
+        )
+        weighted = _analysis_weighted_frame(
+            _track_chart_input(df), duration_frame=_track_chart_input(duration_frame)
+        )
+    else:
+        weighted = _analysis_weighted_frame(df, duration_frame=duration_frame)
     if entity == "track":
         df_agg = weighted
         group_cols = ["track_id", "track_name", "artist_name", "album_name"]

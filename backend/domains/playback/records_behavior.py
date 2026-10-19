@@ -9,6 +9,7 @@ import pandas as pd
 from backend.domains.playback.records_helpers import (
     safe_groupby_cols,
     safe_rename,
+    unique_cols,
 )
 from backend.domains.playback.records_sorting import sort_and_limit
 
@@ -36,7 +37,8 @@ def _skip_storm(frame, group_col, name_col, artist_col, entity_type):
         return pd.DataFrame()
     gb_cols = safe_groupby_cols([], group_col, name_col, artist_col)
     agg = (
-        frame.assign(_forward=frame["reason_end"].eq("fwdbtn"))
+        frame[unique_cols(*gb_cols, "play_id", "ms_played")]
+        .assign(_forward=frame["reason_end"].eq("fwdbtn"))
         .groupby(gb_cols)
         .agg(
             total_plays=("play_id", "count"),
