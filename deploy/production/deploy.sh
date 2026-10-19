@@ -638,6 +638,16 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
     fi
   fi
 
+  # Close stopped source WALs before any immutable publication export. Keep
+  # the original inode available for the same joint rollback used below.
+  if ! preserve_live_database_inode "$(backend_image_for_tag "$current_tag")"; then
+    if [[ "$backend_was_running" == "true" ]]; then
+      activate_mode "$current_mode" "$rollback_image_source" || true
+    fi
+    echo "无法保留原数据库 inode 或旧榜单精确成品；拒绝发布。" >&2
+    exit 1
+  fi
+
   if ! prepare_music_detail_release "$target_backend_image" "$staged_database" || \
       ! prepare_billboard_release "$target_backend_image" "$staged_database"; then
     if [[ "$backend_was_running" == "true" ]]; then
@@ -655,13 +665,6 @@ if [[ "$current_tag" != "$NEW_TAG" ]]; then
     exit 1
   fi
 
-  if ! preserve_live_database_inode "$(backend_image_for_tag "$current_tag")"; then
-    if [[ "$backend_was_running" == "true" ]]; then
-      activate_mode "$current_mode" "$rollback_image_source" || true
-    fi
-    echo "无法保留原数据库 inode 或旧榜单精确成品；拒绝发布。" >&2
-    exit 1
-  fi
   if ! backup_versus_rank_release "$target_backend_image"; then
     if [[ "$backend_was_running" == "true" ]]; then
       activate_mode "$current_mode" "$rollback_image_source" || true

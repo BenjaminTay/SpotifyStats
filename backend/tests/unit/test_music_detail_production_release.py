@@ -698,6 +698,76 @@ def _release_checkpoint_adapter(owned):
     return path
 
 
+def test_release_exports_billboard_after_committed_wal_is_closed(tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    main = data / "spotify_stats.db"
+    for name in ("spotify_stats.db", "analysis_cache.db", "billboard_cache.db"):
+        with closing(sqlite3.connect(data / name)) as conn:
+            conn.execute("CREATE TABLE committed_fact(value INTEGER)")
+            conn.commit()
+    crash = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import os, sqlite3, sys
+conn = sqlite3.connect(sys.argv[1])
+conn.execute("PRAGMA journal_mode=WAL")
+conn.execute("INSERT INTO committed_fact VALUES (37)")
+conn.commit()
+os._exit(0)
+""",
+            str(main),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert crash.returncode == 0, crash.stderr
+    assert Path(str(main) + "-wal").stat().st_size > 0
+    inode = main.stat().st_ino
+    checkpoint = _release_checkpoint_adapter(tmp_path)
+    deploy = (ROOT / "deploy/production/deploy.sh").read_text()
+    start = min(
+        deploy.index("  if ! prepare_music_detail_release"),
+        deploy.index("  if ! preserve_live_database_inode"),
+    )
+    preparation = deploy[start : deploy.index("  if ! backup_versus_rank_release")]
+    result = run_helper(
+        tmp_path,
+        f"""
+release_stage_dir="$DEPLOY_DIR/stage"
+mkdir -p "$release_stage_dir"
+release_stamp=stamp
+target_backend_image=fixture-image
+staged_database="$DEPLOY_DIR/staged.db"
+backend_was_running=true
+current_mode=dual
+current_tag=old-tag
+rollback_image_source=registry
+rollback_live_inode_dir=""
+rollback_live_inode_path=""
+release_completed=false
+music_detail_image_supported() {{ return 0; }}
+prepare_music_detail_release() {{ return 0; }}
+prepare_versus_rank_release() {{ return 0; }}
+backend_image_for_tag() {{ printf '%s' fixture-image; }}
+activate_mode() {{ return 0; }}
+checkpoint_live_database() {{ {shlex.quote(sys.executable)} {shlex.quote(str(checkpoint))} "$DEPLOY_DIR/data/spotify_stats.db"; }}
+verify_stopped_billboard_exact() {{ return 0; }}
+create_offline_backup() {{ cp "$DEPLOY_DIR/data/$3" "$2"; }}
+docker() {{ return 0; }}
+{preparation}
+cleanup_live_database_inode
+""",
+    )
+    assert result.returncode == 0, result.stderr
+    assert main.stat().st_ino == inode
+    assert not list(data.glob("*-wal")) and not list(data.glob("*-shm"))
+    with closing(sqlite3.connect(main.as_uri() + "?mode=ro&immutable=1", uri=True)) as conn:
+        assert conn.execute("SELECT value FROM committed_fact").fetchone() == (37,)
+
+
 @pytest.mark.parametrize("name", ["billboard_cache.db", "analysis_cache.db"])
 @pytest.mark.parametrize("pending", [False, True])
 def test_preservation_checkpoints_sidecar_wal_before_real_exact_rank_gate(
