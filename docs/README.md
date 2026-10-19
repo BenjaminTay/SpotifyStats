@@ -1,11 +1,12 @@
 # SpotifyStats 文档地图
 
-- [当前：加载结项与内存精简收口](plans/2026-10-19-performance-scope-and-memory-closeout.md)：两个加载体验任务已交付；内存独立跟踪，以当前归因、实际生产容量、最小补丁和受影响验证收口。取消默认补齐114窗口及组合资源指标；以下旧报告保留历史结果，旧规划后续执行以此为准。
+- [当前：加载结项与内存精简收口](plans/2026-10-19-performance-scope-and-memory-closeout.md)：本轮开发和发布已正式收口，两个加载体验任务已结项；OOM仅保留正常使用观察，不再追加优化或实验。以下旧报告保留历史结果，其中旧“下一步”和资源门槛不代表当前待办。
 
-- [五文件内存修复生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)：f1280ac1的main CI和Release成功，三容器healthy，三实体正文与原生旧版/候选一致；两次部署恢复和专辑旧暖指纹差异保留，OOM待自然使用观察。
+- [五文件内存修复生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)：开发与发布CLOSED / RELEASED，f1280ac1已交付，main、Release和交付文档CI成功；OOM为OPEN / OBSERVING。记录正常读取、既有22:37快照、失败与差异边界、工作树处置及观察退出条件。
 - [五业务文件精简整合与原生对照](reports/2026-10-19-oom-minimal-five-file-integration.md)：保存6805精简提交、337项与既有对账/full8复用及原生单组资源证据；后续已正式发布，详情见生产交付报告，OOM继续OPEN。
+- [三类结果缓存与分配器有界归因](reports/2026-10-19-result-cache-allocator-attribution.md)：已完成的隔离诊断，记录结果可达大小、清理/GC/trim及arena保留；未采用新增LRU预算或分配器调参，后续五文件修复已交付。原归档路径当前未核实可恢复。
 
-- [原生LRU基线与单候选诊断](reports/2026-10-19-lru-budget-native-acceptance.md)：候选786全200/事实与实际限额有效，但RSS增长69.43MiB，峰/末驻留仅低12.28%/18.64%，未达原8MiB/50%，有效FAIL。完整恢复、学校精确清理及16/29保全完成；下一先准备结果深层对象/分配器归因，资源HOLD。
+- [原生LRU基线与单候选诊断](reports/2026-10-19-lru-budget-native-acceptance.md)：候选786全200/事实与实际限额有效，但RSS增长69.43MiB，峰/末驻留仅低12.28%/18.64%，未达原8MiB/50%，历史有效FAIL保留。完整恢复、学校精确清理及16/29保全完成；不恢复旧资源矩阵或归因排期。
 
 - [目标歌曲署名事实发布候选](reports/2026-10-18-track-presentation-publication-candidate.md)：10-18准备检查点：prep-only47纯测/实际包/独审与原boundary-2两窗通过，四HTTP200/正文、复用和守恒核合，仅2/114；该批学校资源已清理、原16/29保全。后续LRU授权与实测见10-19报告，完整资源仍HOLD。
 
