@@ -2,7 +2,8 @@
 
 - [当前：加载结项与内存精简收口](plans/2026-10-19-performance-scope-and-memory-closeout.md)：两个加载体验任务已交付；内存独立跟踪，以当前归因、实际生产容量、最小补丁和受影响验证收口。取消默认补齐114窗口及组合资源指标；以下旧报告保留历史结果，旧规划后续执行以此为准。
 
-- [五业务文件精简整合与原生对照](reports/2026-10-19-oom-minimal-five-file-integration.md)：21路径形成精简本地提交，337项通过并复用既有对账/full8；默认分配器原生单组24请求及守恒通过，峰值低17.6%、空闲低69.1MiB。学校本次资源已清，离线源码交付准备完成，待推送CI与后续发布，OOM继续OPEN。
+- [五文件内存修复生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)：f1280ac1的main CI和Release成功，三容器healthy，三实体正文与原生旧版/候选一致；两次部署恢复和专辑旧暖指纹差异保留，OOM待自然使用观察。
+- [五业务文件精简整合与原生对照](reports/2026-10-19-oom-minimal-five-file-integration.md)：保存6805精简提交、337项与既有对账/full8复用及原生单组资源证据；后续已正式发布，详情见生产交付报告，OOM继续OPEN。
 
 - [原生LRU基线与单候选诊断](reports/2026-10-19-lru-budget-native-acceptance.md)：候选786全200/事实与实际限额有效，但RSS增长69.43MiB，峰/末驻留仅低12.28%/18.64%，未达原8MiB/50%，有效FAIL。完整恢复、学校精确清理及16/29保全完成；下一先准备结果深层对象/分配器归因，资源HOLD。
 
