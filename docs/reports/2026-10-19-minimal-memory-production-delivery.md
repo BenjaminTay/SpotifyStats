@@ -53,6 +53,8 @@
 
 ## 证据、工作树与剩余观察
 
+2026-10-20后续清理：原研发及整合分支、本轮6个历史远端分支均已删除，整合工作树已移除，仅保留main。源码恢复引用、历史stash和运行证据缺失边界见[清理报告](2026-10-20-development-branch-worktree-closeout.md)；以下归档、冻结分支和暂留工作树描述保留发布当时语境。
+
 本次发布日志、两次失败、修复前后回归、CI、运行身份、响应指纹和差异核验存于独立归档 `~/.codex/archives/spotifystats-delivery/oom-minimal-release-20261019/`。原本地6805源码包/bundle与原生证据继续保留在 `oom-minimal-integration-20261019/`，不覆盖历史回执。
 
 原研发bfecef52工作树已通过Codex可恢复归档；完整ignored output经同文件系统rename保全至 `~/.codex/archives/spotifystats-delivery/oom-source-closeout-20261019/ignored-output/`，目录inode保持，没有复制或删除其中数据库、日志和失败证据。恢复该工作树后，把output链接回该目录即可复用原路径；内部历史绝对symlink原样保留，不自动重跑旧实验。学校本次资源清理及16服务/29镜像保全证据直接复用，未再次占用学校或启动本机Docker。

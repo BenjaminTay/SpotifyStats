@@ -1,6 +1,6 @@
 # SpotifyStats 开发状态总表
 
-> 本轮开发与发布正式收口（2026-10-19，CLOSED / RELEASED）：精简业务6805fe4c及必要发布补修f1280ac1已交付，main CI、Release与交付文档CI成功。既有回归、full8/对账和原生单组证据复用；线上正常读取及历史失败边界见[生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)。SS-2026-10-08-001保持OPEN / OBSERVING；收口前22:37快照三容器healthy，RSS约530MiB，与16:11快照近持平，仅属短期信号。当前无活跃优化或实验，只保留约1–3天实际正常使用观察。源研发树已可恢复归档，统一整合树仅供观察文档与证据同步暂留。
+> 本轮开发与发布正式收口（2026-10-19，CLOSED / RELEASED）：精简业务6805fe4c及必要发布补修f1280ac1已交付，main CI、Release与交付文档CI成功。既有回归、full8/对账和原生单组证据复用；线上正常读取及历史失败边界见[生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)。SS-2026-10-08-001保持OPEN / OBSERVING；收口前22:37快照三容器healthy，RSS约530MiB，与16:11快照近持平，仅属短期信号。当前无活跃优化或实验，只保留约1–3天实际正常使用观察。2026-10-20已清理结束分支与多余工作树，仅保留main；源码恢复引用、历史stash及旧运行证据缺失边界见[清理报告](reports/2026-10-20-development-branch-worktree-closeout.md)。
 
 > 当前范围（2026-10-19正式收口）：榜单对决、详情首次加载体验以及本轮内存修复的开发和发布均已结束；OOM观察独立跟踪。按[精简收口计划](plans/2026-10-19-performance-scope-and-memory-closeout.md)不再追加优化或实验，不恢复114窗口及50%/64MiB/100ms组合门槛。观察复用既有日志及正常使用、自然发生的相关维护；有具体新失败时再记录并决定是否重开。本次仅更新文档，没有新增生产采样或流量。
 
@@ -102,13 +102,14 @@
 
 | 状态 | 分支 / 候选 | 负责人及下一步 |
 | --- | --- | --- |
-| ARCHIVED：采用范围已发布 | `codex/album-rank-cost`；SS-2026-10-08-001 | bfecef52已可恢复归档，完整ignored output独立保全；5业务/16回归精简为6805并随f128发布，未采用schema91等不作欠账。后续只做正常使用观察，见[生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)。 |
-| INTEGRATED；无活跃开发，观察消费者暂留 | `codex/versus-detail-integration` | 五文件与必要发布补修已进入main并正式发布，工作树同步main；本轮开发和发布已收口，仅供观察文档与证据同步暂留，OOM结项后归档，独立证据不依赖该树。 |
-| ARCHIVED | 前端设置加载、JSON名称传输、艺人范围身份三个候选 | 收益或总体资源准入未证明，保存补丁/证据，不进入main业务代码 |
-| ARCHIVED | 历史OOM混合补丁 | 已覆盖内容关闭；未采用的串行锁/窄输入等保留归档，只有当前定位证明需要时才提取 |
-| CLOSED（本地） | CI挂起诊断分支 | 主要修复已有主线对应，历史提交与差异已保存；远端未删除 |
+| 唯一保留分支与工作树 | `main` | 清理基线f284d7d0的CI已通过；本轮7份清理文档随本次提交保存，推送及CI结果按该提交的实际Git/GitHub记录核对。OOM观察继续在主线维护，不再保留独立整合树。 |
+| CLOSED / 源码归档；采用范围已发布 | 原 `codex/album-rank-cost` | 5业务/16回归与main完全一致；本地及远端分支已删除，bfecef52由 `refs/codex-archive/20261020-closeout/album-rank-cost` 保留。未采用schema91等不作欠账；旧ignored运行材料的现位置未核实。 |
+| CLOSED / 已合入 | 原 `codex/versus-detail-integration` | 本地/远端分支及整合工作树已删除；原66ad5e60全部在main历史，无独有待合入提交。 |
+| CLOSED / 已合入 | 原专辑生产交付、详情性能、署名解析远端分支 | 六条历史远端分支均已清理；逐项原SHA及合入判定见10-20清理报告。 |
+| ARCHIVED / 未采用 | 前端设置加载、JSON名称传输、艺人范围身份及历史OOM混合补丁 | 原恢复引用保留；不整体合入。旧归档目录当前不存在，dirty补丁与运行证据的可恢复性未核实。 |
+| CLOSED / 修复已吸收 | 原CI挂起诊断分支 | 本地早已关闭，本轮删除远端；5个独有提交有既有 `refs/codex-archive/20261012T082400Z/ci` 保留，相关修复已核对由主线吸收。 |
 
-实现、提交、推送和发布分别记录；[逐项处置与恢复入口](reports/2026-10-12-development-worktree-closeout.md)。
+2026-10-20清理后：仅main、1个实际工作树、6个本地源码恢复引用、2个历史stash。实现、提交、推送和发布分别记录；当前[逐项处置与恢复入口](reports/2026-10-20-development-branch-worktree-closeout.md)，[10-12记录](reports/2026-10-12-development-worktree-closeout.md)保留历史语境。
 
 ## 当前概况
 

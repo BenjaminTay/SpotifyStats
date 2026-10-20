@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [开发分支与工作树清理收口](reports/2026-10-20-development-branch-worktree-closeout.md)：本地/远端仅main、1个工作树；保留6个源码恢复引用与2个历史stash，记录采用/未采用范围及旧运行证据缺失边界。
+
 - [当前：加载结项与内存精简收口](plans/2026-10-19-performance-scope-and-memory-closeout.md)：本轮开发和发布已正式收口，两个加载体验任务已结项；OOM仅保留正常使用观察，不再追加优化或实验。以下旧报告保留历史结果，其中旧“下一步”和资源门槛不代表当前待办。
 
 - [五文件内存修复生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)：开发与发布CLOSED / RELEASED，f1280ac1已交付，main、Release和交付文档CI成功；OOM为OPEN / OBSERVING。记录正常读取、既有22:37快照、失败与差异边界、工作树处置及观察退出条件。
