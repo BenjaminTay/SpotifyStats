@@ -239,6 +239,16 @@ def compute_power_scores(weekly, top_n):
     ]
 
 
+def published_power_order(frame):
+    """Keep the builder's tie-break rank in detail/list/versus projections."""
+    if "power_rank" in frame:
+        return frame.sort_values("power_rank", kind="stable").reset_index(drop=True)
+    # Compatibility for legacy payloads/compact fixtures without rank facts.
+    ranked = frame.sort_values("power_score", ascending=False, kind="stable").reset_index(drop=True)
+    ranked["power_rank"] = ranked.index + 1
+    return ranked
+
+
 def compute_album_power_scores(weekly_album, top_n):
     """Compute power scores for albums (no Top 5/10 bonuses, uses #1 bonus)."""
     weekly_album = _stable_power_input(
@@ -248,6 +258,8 @@ def compute_album_power_scores(weekly_album, top_n):
     )
     wa = _score_ranked_rows(weekly_album)
     group_cols = ["album_name", "artist_name"]
+    if "album_project_id" in weekly_album:
+        group_cols.insert(0, "album_project_id")
     weekly_scores = _aggregate_scored_rows(wa, group_cols)
 
     weekly_scores["longevity_bonus"] = (
@@ -274,9 +286,8 @@ def compute_album_power_scores(weekly_album, top_n):
         text_columns=("artist_name", "album_name"),
     )
     return result[
-        [
-            "album_name",
-            "artist_name",
+        group_cols
+        + [
             "power_score",
             "power_rank",
             "peak_position",

@@ -25,7 +25,7 @@ from backend.core.db import enforce_sqlite_foreign_keys
 logger = logging.getLogger(__name__)
 
 CACHE_FORMAT_VERSION = 1
-BILLBOARD_CACHE_BUILDER_VERSION = "billboard_persistent_snapshot_v4_l3_release_precision"
+BILLBOARD_CACHE_BUILDER_VERSION = "billboard_persistent_snapshot_v5_project_song_ownership"
 MAX_UNCOMPRESSED_BYTES = 128 * 1024 * 1024
 DEFAULT_MAX_ENTRIES = 256
 

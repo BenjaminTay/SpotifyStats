@@ -135,7 +135,9 @@ export function TrackDetailHero({
             <p className="mt-1 break-words font-sans text-[14px] text-muted-foreground">
               {(data.album_attribution?.display_album_name ?? data.meta.spotify_album_name) && (
                 <Link
-                  to={`/music/albums/${encodeURIComponent(data.album_attribution?.display_album_name ?? data.meta.spotify_album_name ?? '')}?artist=${encodeURIComponent(data.primary_artist_name ?? artists[0] ?? data.artist_name)}`}
+                  to={data.album_attribution?.album_project_id != null
+                    ? `/music/album-projects/${data.album_attribution.album_project_id}`
+                    : `/music/albums/${encodeURIComponent(data.album_attribution?.display_album_name ?? data.meta.spotify_album_name ?? '')}?artist=${encodeURIComponent(data.primary_artist_name ?? artists[0] ?? data.artist_name)}`}
                   className="transition-colors hover:text-accent-foreground"
                 >
                   {displayName(data.album_attribution?.display_album_name ?? data.meta.spotify_album_name ?? '')}

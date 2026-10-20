@@ -140,6 +140,9 @@ def test_seed_full_payload_parity_with_independent_builders(
         with sqlite3.connect(database) as target:
             source_db.backup(target)
     monkeypatch.setattr(db, "DB_PATH", str(database))
+    from backend.core.migrations import run_migrations
+
+    run_migrations()
     invalidate_all()
     request.addfinalizer(invalidate_all)
     if overrides.get("merge_level") == 3:
@@ -183,10 +186,12 @@ def test_raw_fallback_owned_once_without_lru_retention(monkeypatch, fail):
     import weakref
 
     from backend.core.cache_manager import invalidate_all
+    from backend.core.migrations import run_migrations
     from backend.domains.billboard import chart_load_rank
     from backend.domains.playback.logical_timeline import get_billboard_weighted_frame
     from backend.services.billboard_snapshot_service import configured_billboard_filters
 
+    run_migrations()
     invalidate_all()
     calls, owned = [], []
     monkeypatch.setattr(chart_load_rank, "_try_load_from_agg", lambda *a, **kw: (None,) * 3)

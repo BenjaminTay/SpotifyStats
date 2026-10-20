@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from backend.domains.billboard.album_membership import album_identity_columns
+
 
 def _rank_positive(frame: pd.DataFrame, value_col: str, rank_col: str) -> pd.DataFrame:
     result = frame.copy()
@@ -29,7 +31,7 @@ def compute_album_track_power_metrics(
     track_power_scores: pd.DataFrame,
 ) -> pd.DataFrame:
     """Return child-track power totals/ranks for every current album entity."""
-    keys = ["album_name", "artist_name"]
+    keys = album_identity_columns(album_entities)
     universe = album_entities[keys].drop_duplicates().copy()
     if universe.empty:
         return universe.assign(
@@ -117,7 +119,7 @@ def attach_cross_level_power_metrics(
     """Attach all cross-level metrics to album and artist power frames."""
     albums = album_power_scores.merge(
         compute_album_track_power_metrics(album_power_scores, track_per_album, track_power_scores),
-        on=["album_name", "artist_name"],
+        on=album_identity_columns(album_power_scores),
         how="left",
     )
     artists = artist_power_scores.merge(

@@ -48,15 +48,16 @@ def get_billboard_entity_lists(
         for r in track_rows
     ]
 
-    detail_album_keys = {
-        (row["album_name"], row["artist_name"]) for row in data["album_track_counts"]
-    }
+    def album_key(row):
+        return (
+            row["album_project_id"]
+            if "album_project_id" in row
+            else (row["album_name"], row["artist_name"])
+        )
+
+    detail_album_keys = {album_key(row) for row in data["album_track_counts"]}
     album_rows = sorted(
-        [
-            row
-            for row in data["album_power_scores"]
-            if (row["album_name"], row["artist_name"]) in detail_album_keys
-        ],
+        [row for row in data["album_power_scores"] if album_key(row) in detail_album_keys],
         key=lambda r: r.get("power_score") or 0,
         reverse=True,
     )

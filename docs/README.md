@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [专辑旗下单曲成绩归属修复](reports/2026-10-21-album-song-performance-attribution.md)：统一项目归属、详情投影与正式点数排名；72首/41项目逐项对账，已本地提交，未推送/部署。
+
 - [专辑曲目内容归并修复](reports/2026-10-20-album-content-merge-repair.md)：任意名称扩展版、共用判定、已有组接纳及Encore本地应用证据。
 - [本地串流增量导入](reports/2026-10-20-local-streaming-incremental-import.md)：追加2,121条、旧事实保全；汇总导入恢复、L2独唱/合唱分离、33首身份歧义治理、发行署名保留、零毫秒详情及后续刷新防覆盖证据。
 

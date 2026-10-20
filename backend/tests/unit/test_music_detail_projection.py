@@ -473,3 +473,37 @@ def test_explicit_empty_artist_history_is_valid():
 
     conn, _, _, _ = fixture()
     assert validate_detail_entity_ledger(conn, "exact", "artist", "artist:1")
+
+
+def test_track_detail_owner_uses_published_statistics_but_keeps_release_artwork():
+    from backend.domains.billboard.detail_summary import _document_track_attribution
+
+    conn, context, rows, entities = fixture()
+    entities.append(
+        (
+            "track_album_owner",
+            11,
+            json.dumps({"album_project_id": 31, "album_project_name": "Formal Project"}),
+        )
+    )
+    publish_detail_projection(conn, context, rows, entities)
+    document = dict(
+        track_id=11,
+        album_project_id=999,
+        album_id=21,
+        album_name="Actual Release",
+        membership_role="deluxe",
+        cover_album_id=21,
+        cover_url="/release.jpg",
+        cover_source="display_album",
+        presentation_status="resolved",
+    )
+    result = _document_track_attribution(conn, document, "exact")
+    assert result["album_project_id"] == 31
+    assert result["album_project_name"] == "Formal Project"
+    assert result["display_album_id"] == 21
+    assert result["display_album_name"] == "Actual Release"
+    assert result["cover_url"] == "/release.jpg"
+    conn.execute("DELETE FROM music_search_detail_entity_projection WHERE kind='track_album_owner'")
+    assert _document_track_attribution(conn, document, "exact") is None
+    conn.close()

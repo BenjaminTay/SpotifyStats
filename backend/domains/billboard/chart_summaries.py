@@ -218,19 +218,36 @@ def compute_album_track_counts(
     album_chart_no1_weeks.
     """
     ts_for_album = track_summary.drop(columns=["album_name"])
-    track_albums_expanded = ts_for_album.merge(album_map, on="track_id", how="left")
-    track_albums_expanded["album_list"] = [
-        value if isinstance(value, list) else [] for value in track_albums_expanded["album_list"]
-    ]
-    track_per_album = track_albums_expanded.explode("album_list")
-    track_per_album = track_per_album.dropna(subset=["album_list"])
-    track_per_album = track_per_album.rename(columns={"album_list": "album_name"})
-    track_per_album = _normalize_album_column(
-        track_per_album, dedup_cols=["track_id", "album_name", "artist_name"]
-    )
+    project_aware = "album_project_id" in album_map
+    if project_aware:
+        track_per_album = ts_for_album.merge(
+            album_map, on="track_id", how="inner", validate="one_to_one"
+        )
+        track_per_album = track_per_album.drop_duplicates(
+            ["album_project_id", "canonical_song_key"]
+        )
+        # Preserve the actual track credit in the list. Album aggregation uses
+        # project identity and the project's own artist, including soundtracks.
+        count_frame = track_per_album.drop(columns=["artist_name"]).rename(
+            columns={"album_artist_name": "artist_name"}
+        )
+        keys = ["album_project_id"]
+    else:
+        track_albums_expanded = ts_for_album.merge(album_map, on="track_id", how="left")
+        track_albums_expanded["album_list"] = [
+            value if isinstance(value, list) else []
+            for value in track_albums_expanded["album_list"]
+        ]
+        track_per_album = track_albums_expanded.explode("album_list").dropna(subset=["album_list"])
+        track_per_album = track_per_album.rename(columns={"album_list": "album_name"})
+        track_per_album = _normalize_album_column(
+            track_per_album, dedup_cols=["track_id", "album_name", "artist_name"]
+        )
+        count_frame = track_per_album
+        keys = ["album_name", "artist_name"]
 
     album_track_counts = (
-        track_per_album.groupby(["album_name", "artist_name"])
+        count_frame.groupby(keys)
         .agg(
             total_tracks=("track_id", "nunique"),
             best_peak=("peak_position", "min"),
@@ -239,42 +256,28 @@ def compute_album_track_counts(
             top1=("peak_position", lambda x: (x == 1).sum()),
             top5=("peak_position", lambda x: (x <= 5).sum()),
             top10=("peak_position", lambda x: (x <= 10).sum()),
+            weeks_at_no1=("weeks_at_no1", "sum"),
         )
         .reset_index()
         .sort_values("total_tracks", ascending=False)
     )
     best_album_tracks = (
-        track_per_album.sort_values(
-            ["album_name", "artist_name", "peak_position"],
-            kind="stable",
-        )
-        .drop_duplicates(["album_name", "artist_name"])[["album_name", "artist_name", "track_name"]]
+        count_frame.sort_values([*keys, "peak_position", "track_id"], kind="stable")
+        .drop_duplicates(keys)[[*keys, "track_name"]]
         .rename(columns={"track_name": "best_peak_track"})
     )
-    album_track_counts = album_track_counts.merge(
-        best_album_tracks,
-        on=["album_name", "artist_name"],
-        how="left",
-    )
-
-    album_weeks_no1 = (
-        track_per_album.groupby(["album_name", "artist_name"])["weeks_at_no1"].sum().reset_index()
-    )
-    album_track_counts = album_track_counts.merge(
-        album_weeks_no1, on=["album_name", "artist_name"], how="left"
-    )
-
+    album_track_counts = album_track_counts.merge(best_album_tracks, on=keys, how="left")
+    if project_aware:
+        labels = count_frame[[*keys, "album_name", "artist_name"]].drop_duplicates(keys)
+        album_track_counts = album_track_counts.merge(labels, on=keys, how="left")
     album_no1 = (
         weekly_album[weekly_album["rank"] == 1]
-        .groupby(["album_name", "artist_name"])
+        .groupby(keys)
         .agg(album_chart_no1_weeks=("billboard_week", "nunique"))
         .reset_index()
     )
-    album_track_counts = album_track_counts.merge(
-        album_no1, on=["album_name", "artist_name"], how="left"
-    )
+    album_track_counts = album_track_counts.merge(album_no1, on=keys, how="left")
     album_track_counts["album_chart_no1_weeks"] = (
         album_track_counts["album_chart_no1_weeks"].fillna(0).astype(int)
     )
-
     return album_track_counts, track_per_album

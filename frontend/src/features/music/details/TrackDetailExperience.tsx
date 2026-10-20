@@ -158,7 +158,9 @@ function TrackDetailContent() {
                       </span>
                     ))}<ReleaseArtistCredit data={data} /></>}
                     meta={(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name) ? (
-                      <Link to={`/music/albums/${encodeURIComponent(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name ?? '')}?artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}`}>
+                      <Link to={data.album_attribution?.album_project_id != null
+                        ? `/music/album-projects/${data.album_attribution.album_project_id}`
+                        : `/music/albums/${encodeURIComponent(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name ?? '')}?artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}`}>
                         {displayName(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name ?? '')}
                       </Link>
                     ) : undefined}

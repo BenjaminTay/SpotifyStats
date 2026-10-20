@@ -6,6 +6,7 @@ from functools import lru_cache
 
 from backend.core.db import enrich_track_artist_names
 from backend.core.json_helpers import df_to_json as _df_to_json
+from backend.domains.billboard.album_membership import load_chart_album_membership
 from backend.domains.billboard.build_context import shared_fact
 from backend.domains.billboard.chart_load_rank import (
     _copy_load_and_rank_result,
@@ -27,7 +28,6 @@ from backend.domains.billboard.cross_level_power import attach_cross_level_power
 from backend.domains.billboard.data_loader import (
     DOW_NAMES,
     DOW_SHORT,
-    load_track_album_map,
 )
 from backend.domains.billboard.latest_snapshot_cache import store_latest_snapshot_for_locals
 
@@ -186,7 +186,11 @@ def _compute_power_scores_cached(
     _album_counts, track_per_album = shared_fact(
         _facts,
         "album_counts",
-        lambda: compute_album_track_counts(track_summary, load_track_album_map(), weekly_album),
+        lambda: compute_album_track_counts(
+            track_summary,
+            load_chart_album_membership(track_summary, merge_level, include_compilations),
+            weekly_album,
+        ),
     )
 
     weekly = enrich_track_artist_names(weekly)
@@ -256,7 +260,6 @@ def _compute_summaries_cached(
         _facts=_facts,
     )
 
-    album_map = load_track_album_map()
     date_cols_week = ["billboard_week", "first_week", "last_week", "first_peak_week"]
 
     track_summary = shared_fact(
@@ -273,7 +276,11 @@ def _compute_summaries_cached(
     album_track_counts, _track_per_album = shared_fact(
         _facts,
         "album_counts",
-        lambda: compute_album_track_counts(track_summary, album_map, weekly_album),
+        lambda: compute_album_track_counts(
+            track_summary,
+            load_chart_album_membership(track_summary, merge_level, include_compilations),
+            weekly_album,
+        ),
     )
 
     track_summary = enrich_track_artist_names(track_summary)

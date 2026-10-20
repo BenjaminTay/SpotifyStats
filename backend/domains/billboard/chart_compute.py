@@ -3,6 +3,7 @@
 from functools import lru_cache
 
 from backend.core.json_helpers import df_to_json as _df_to_json
+from backend.domains.billboard.album_membership import load_chart_album_membership
 from backend.domains.billboard.build_context import shared_fact
 from backend.domains.billboard.chart_power_score import (  # noqa: F401
     compute_album_power_scores,
@@ -41,7 +42,6 @@ from backend.domains.billboard.cross_level_power import attach_cross_level_power
 from backend.domains.billboard.data_loader import (
     DOW_NAMES,
     DOW_SHORT,
-    load_track_album_map,
 )
 from backend.domains.billboard.latest_snapshot_cache import store_latest_snapshot_for_locals
 from backend.domains.billboard.persistent_cache import get_or_build_billboard_snapshot
@@ -73,8 +73,6 @@ def _compute_billboard_data_cached(
         _load_and_rank(**rank_params)
     )
 
-    album_map = load_track_album_map()
-
     # ── Summaries ──────────────────────────────────────────────────────
     track_summary = shared_fact(
         _facts, "track_summary", lambda: compute_track_summary(weekly, df_filtered)
@@ -90,7 +88,11 @@ def _compute_billboard_data_cached(
     album_track_counts, track_per_album = shared_fact(
         _facts,
         "album_counts",
-        lambda: compute_album_track_counts(track_summary, album_map, weekly_album),
+        lambda: compute_album_track_counts(
+            track_summary,
+            load_chart_album_membership(track_summary, merge_level, include_compilations),
+            weekly_album,
+        ),
     )
 
     # ── Enrich record inputs before track Power Scores ───────────────────

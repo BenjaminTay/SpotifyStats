@@ -15,6 +15,7 @@ from backend.core.db import (
 )
 from backend.core.json_helpers import df_to_json
 from backend.domains.billboard.chart_compute import compute_billboard_data
+from backend.domains.billboard.chart_power_score import published_power_order
 from backend.domains.metadata.album_detail_meta import resolve_album_detail_meta
 from backend.domains.metadata.artist_genres import resolve_artist_genres
 from backend.domains.metadata.artist_spotify_meta import resolve_artist_spotify_meta
@@ -1573,12 +1574,10 @@ def get_artist_chart_detail(
         }
 
     # Artist power score/rank
-    aps_sorted = artist_power_scores.sort_values("power_score", ascending=False).reset_index(
-        drop=True
-    )
+    aps_sorted = published_power_order(artist_power_scores)
     ap_row = aps_sorted[aps_sorted["artist_name"] == artist_name]
     artist_power_score = int(ap_row.iloc[0]["power_score"]) if not ap_row.empty else 0
-    artist_power_rank = int(ap_row.iloc[0].name) + 1 if not ap_row.empty else None
+    artist_power_rank = int(ap_row.iloc[0]["power_rank"]) if not ap_row.empty else None
     artist_power_metrics = ap_row.iloc[0] if not ap_row.empty else None
 
     def _optional_int(row, column):
@@ -1588,15 +1587,11 @@ def get_artist_chart_detail(
 
     # Track power scores for this artist — match by track_id from fanned summary
     artist_track_ids = set(artist_summary[artist_summary["artist_name"] == artist_name]["track_id"])
-    track_power = power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
-    track_power["power_rank"] = track_power.index + 1
+    track_power = published_power_order(power_scores)
     artist_track_power = track_power[track_power["track_id"].isin(artist_track_ids)]
 
     # Album power scores for this artist
-    album_power = album_power_scores.sort_values("power_score", ascending=False).reset_index(
-        drop=True
-    )
-    album_power["power_rank"] = album_power.index + 1
+    album_power = published_power_order(album_power_scores)
     artist_album_power = album_power[album_power["artist_name"] == artist_name]
 
     # Charting tracks with power scores
@@ -2011,9 +2006,27 @@ def get_album_chart_detail(
         resolved_album = str(album_name)
         resolved_artist = str(artist_name)
 
-    mask = album_track_counts["album_name"] == resolved_album
-    if resolved_artist:
-        mask &= album_track_counts["artist_name"] == resolved_artist
+    from backend.domains.billboard.album_membership import album_rows_mask
+
+    project_ids = set()
+    if "album_project_id" in album_track_counts:
+        conn = get_db(readonly=True)
+        try:
+            from backend.domains.playback.album_project_identity import (
+                resolve_album_project_identity,
+            )
+
+            project_identity = resolve_album_project_identity(
+                conn,
+                album_name=resolved_album,
+                artist_name=resolved_artist or None,
+                merge_level=merge_level,
+            )
+            if project_identity is not None:
+                project_ids = {project_identity.project_id}
+        finally:
+            conn.close()
+    mask = album_rows_mask(album_track_counts, resolved_album, resolved_artist, project_ids)
     alb_rows = album_track_counts[mask]
     alb_row = (
         alb_rows.sort_values("total_tracks", ascending=False).iloc[0]
@@ -2022,31 +2035,23 @@ def get_album_chart_detail(
     )
 
     # Album power score/rank
-    aps_sorted = album_power_scores.sort_values("power_score", ascending=False).reset_index(
-        drop=True
-    )
-    ap_row = aps_sorted[
-        (aps_sorted["album_name"] == resolved_album)
-        & (aps_sorted["artist_name"] == resolved_artist)
-    ]
+    aps_sorted = published_power_order(album_power_scores)
+    ap_row = aps_sorted[album_rows_mask(aps_sorted, resolved_album, resolved_artist, project_ids)]
     album_power_score = int(ap_row.iloc[0]["power_score"]) if not ap_row.empty else 0
-    album_power_rank = int(ap_row.iloc[0].name) + 1 if not ap_row.empty else None
+    album_power_rank = int(ap_row.iloc[0]["power_rank"]) if not ap_row.empty else None
     album_power_metrics = ap_row.iloc[0] if not ap_row.empty else None
 
     # Album's charting tracks
     alb_track_ids = set(
         track_per_album[
-            (track_per_album["album_name"] == resolved_album)
-            & (track_per_album["artist_name"] == resolved_artist)
+            album_rows_mask(track_per_album, resolved_album, resolved_artist, project_ids)
         ]["track_id"].tolist()
     )
-    track_power = power_scores.sort_values("power_score", ascending=False).reset_index(drop=True)
-    track_power["power_rank"] = track_power.index + 1
+    track_power = published_power_order(power_scores)
     album_track_power = track_power[track_power["track_id"].isin(alb_track_ids)]
 
     alb_tracks = track_per_album[
-        (track_per_album["album_name"] == resolved_album)
-        & (track_per_album["artist_name"] == resolved_artist)
+        album_rows_mask(track_per_album, resolved_album, resolved_artist, project_ids)
     ].copy()
     alb_tracks = alb_tracks.merge(
         album_track_power[["track_id", "power_score", "power_rank"]], on="track_id", how="left"
@@ -2059,6 +2064,11 @@ def get_album_chart_detail(
         primary_ascending=(True, False),
     )
 
+    # Keep each song's effective performers in soundtrack/Various Artist lists.
+    track_credit_map = {
+        int(row["track_id"]): row.get("artist_names") or [row["artist_name"]]
+        for row in data["track_summary"]
+    }
     # Track cover_url lookup
     album_track_cover_map = {}
     if "cover_url" in weekly.columns:
@@ -2231,6 +2241,7 @@ def get_album_chart_detail(
             {
                 "track_id": r["track_id"],
                 "track_name": r["track_name"],
+                "artist_names": track_credit_map.get(int(r["track_id"]), [r["artist_name"]]),
                 "peak_position": int(r["peak_position"]),
                 "weeks_on_chart": int(r["weeks_on_chart"]),
                 "weeks_at_peak": int(r["weeks_at_peak"]),

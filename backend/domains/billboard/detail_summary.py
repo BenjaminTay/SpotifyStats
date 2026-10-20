@@ -230,17 +230,28 @@ def _track_meta(conn: sqlite3.Connection, track_id: int) -> dict | None:
     return meta or None
 
 
-def _document_track_attribution(conn: sqlite3.Connection, document: sqlite3.Row) -> dict[str, Any]:
-    project_name = None
-    if document["album_project_id"] is not None:
+def _document_track_attribution(
+    conn: sqlite3.Connection, document: sqlite3.Row, snapshot_key: str
+) -> dict[str, Any] | None:
+    from backend.domains.music_search.detail_projection import load_detail_track_album_owner
+
+    owner = load_detail_track_album_owner(conn, snapshot_key, int(document["track_id"]))
+    if owner is None:
+        return None
+    project_id = owner["album_project_id"]
+    project_name = owner["album_project_name"]
+    # Releases excluded from chart ownership still retain their display link.
+    if project_id is None:
+        project_id = document["album_project_id"]
+    if project_name is None and project_id is not None:
         row = conn.execute(
             "SELECT canonical_name FROM album_projects WHERE project_id=?",
-            (document["album_project_id"],),
+            (project_id,),
         ).fetchone()
         project_name = str(row[0]) if row is not None else None
     return {
         "canonical_track_id": document["track_id"],
-        "album_project_id": document["album_project_id"],
+        "album_project_id": project_id,
         "album_project_name": project_name,
         "display_album_id": document["album_id"],
         "display_album_name": document["album_name"],
@@ -567,6 +578,9 @@ def build_track_detail_summary(
                 "power_score": chart["power_score"],
                 "power_rank": chart["power_rank"],
             }
+        attribution = _document_track_attribution(conn, document, snapshot_key)
+        if attribution is None:
+            return None
         return {
             "found": True,
             "chart_status": "charted" if chart else "not_charted",
@@ -579,7 +593,7 @@ def build_track_detail_summary(
             "artist_names": artist_names,
             "primary_artist_name": primary,
             "cover_url": document["cover_url"],
-            "album_attribution": _document_track_attribution(conn, document),
+            "album_attribution": attribution,
             "meta": _track_meta(conn, track_id),
             "summary": summary,
             "history": history,

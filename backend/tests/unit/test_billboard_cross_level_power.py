@@ -95,3 +95,25 @@ def test_attach_cross_level_power_keeps_zero_contributors_unranked():
     assert pd.isna(artist_result.loc["B", "track_power_rank"])
     assert artist_result.loc["A", "album_power_sum"] == 90
     assert artist_result.loc["A", "album_power_rank"] == 1
+
+
+def test_project_power_ignores_performer_and_same_named_project_collisions():
+    albums = pd.DataFrame(
+        [
+            {"album_project_id": 10, "album_name": "Same", "artist_name": "Various Artists"},
+            {"album_project_id": 20, "album_name": "Same", "artist_name": "Various Artists"},
+        ]
+    )
+    membership = pd.DataFrame(
+        [
+            {"album_project_id": 10, "track_id": 1, "artist_name": "Singer"},
+            {"album_project_id": 10, "track_id": 1, "artist_name": "Singer"},
+            {"album_project_id": 20, "track_id": 2, "artist_name": "Corrected Singer"},
+        ]
+    )
+    scores = pd.DataFrame([{"track_id": 1, "power_score": 60}, {"track_id": 2, "power_score": 40}])
+    result = compute_album_track_power_metrics(albums, membership, scores).set_index(
+        "album_project_id"
+    )
+    assert result.loc[10, "track_power_sum"] == 60
+    assert result.loc[20, "track_power_sum"] == 40

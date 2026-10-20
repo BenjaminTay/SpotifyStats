@@ -14,7 +14,7 @@ from collections import defaultdict
 
 import pandas as pd
 
-DETAIL_PROJECTION_VERSION = "music_detail_v1"
+DETAIL_PROJECTION_VERSION = "music_detail_v2_project_song_ownership"
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS music_search_detail_projection_state (
  snapshot_key TEXT PRIMARY KEY REFERENCES music_search_snapshot_meta(snapshot_key) ON DELETE CASCADE,
@@ -125,7 +125,9 @@ def build_entity_projections(conn, context):
         load_album_project_membership,
     )
 
-    membership = load_album_project_membership(conn, context.merge_level, include_compilations=True)
+    membership = load_album_project_membership(
+        conn, context.merge_level, include_compilations=context.include_compilations
+    )
     identities = conn.execute("""SELECT li.l1_id, li.representative_track_id, t.track_name, a.artist_name
         FROM track_l1_identities li JOIN tracks t ON t.track_id=li.representative_track_id
         JOIN artists a ON a.artist_id=t.artist_id""").fetchall()
@@ -149,6 +151,17 @@ def build_entity_projections(conn, context):
             membership_by_project[int(project_id)] = rows.to_json(
                 orient="records", date_format="iso"
             )
+    owners_by_song = {
+        str(row["canonical_song_key"]): {
+            "album_project_id": int(row["project_id"]),
+            "album_project_name": str(row["album_project_name"]),
+        }
+        for row in membership.to_dict("records")
+    }
+    for song_key, l1_ids in ids_by_song.items():
+        owner = owners_by_song.get(song_key, {"album_project_id": None, "album_project_name": None})
+        for l1_id in l1_ids:
+            payloads.append(("track_album_owner", int(l1_id), json.dumps(owner)))
     credits = canonical_artist_names_for_effective_tracks(
         conn, [int(row["representative_track_id"]) for row in identities]
     )
@@ -179,39 +192,14 @@ def build_entity_projections(conn, context):
         payloads.append(
             ("artist_album_keys", artist_id, json.dumps(sorted(artist_album_keys[artist_id])))
         )
-    # Legacy album overlays use representative L1/provider album membership,
-    # with release-group canonical names, independent of album-chart ownership.
-    album_map = defaultdict(set)
-    for row in conn.execute("""SELECT links.l1_id,al.album_name FROM track_l1_source_links links
-        JOIN tracks t ON t.track_id=links.track_id JOIN albums al ON al.album_id=t.album_id
-        UNION SELECT links.l1_id,al.album_name FROM track_l1_source_links links
-        JOIN track_albums ta ON ta.track_id=links.track_id JOIN albums al ON al.album_id=ta.album_id"""):
-        album_map[int(row[0])].add(str(row[1]))
-    canonical = {
-        (str(row[0]), str(row[1])): str(row[2])
-        for row in conn.execute("""SELECT al.album_name,a.artist_name,rg.canonical_name
-        FROM release_group_members rgm JOIN release_groups rg USING(group_id)
-        JOIN albums al ON al.album_id=rgm.album_id JOIN artists a ON a.artist_id=al.artist_id""")
-    }
-    album_tracks = defaultdict(set)
-    for row in identities:
-        primary_name = credits.get(int(row["representative_track_id"]), [str(row["artist_name"])])[
-            0
-        ]
-        for name in album_map[int(row["l1_id"])]:
-            album_tracks[(canonical.get((name, primary_name), name), primary_name)].add(
-                int(row["l1_id"])
-            )
-    for row in conn.execute("""SELECT project_id,canonical_name,a.artist_name FROM album_projects ap
-        JOIN artists a ON a.artist_id=ap.artist_id"""):
-        payloads.append(
-            (
-                "album_track_keys",
-                int(row[0]),
-                json.dumps(sorted(album_tracks[(str(row[1]), str(row[2]))])),
-            )
-        )
-        payloads.append(("membership", int(row[0]), membership_by_project.get(int(row[0]), "[]")))
+    # Statistical overlays follow the same unique project owner as album
+    # playback and song performances. Provider releases remain source facts.
+    for row in conn.execute("SELECT project_id FROM album_projects"):
+        project_id = int(row[0])
+        members = json.loads(membership_by_project.get(project_id, "[]"))
+        l1_ids = sorted({int(l1_id) for member in members for l1_id in member["l1_ids"]})
+        payloads.append(("album_track_keys", project_id, json.dumps(l1_ids)))
+        payloads.append(("membership", project_id, membership_by_project.get(project_id, "[]")))
     return payloads
 
 
@@ -495,6 +483,17 @@ def _target_ledger(conn, key, family, entity_keys):
         if expected is None or expected != ledger_check(grouped[entity_key]):
             return None
     return rows
+
+
+def load_detail_track_album_owner(conn, snapshot_key, track_id):
+    owner = _entity_payload(conn, snapshot_key, "track_album_owner", int(track_id))
+    if (
+        not isinstance(owner, dict)
+        or "album_project_id" not in owner
+        or "album_project_name" not in owner
+    ):
+        return None
+    return owner
 
 
 def load_detail_overlays(conn, snapshot_key, *, entity, document, values):

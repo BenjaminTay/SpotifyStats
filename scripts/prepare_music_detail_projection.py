@@ -81,6 +81,7 @@ def verify_payload_rows(conn, source, entities):
     by_key = {}
     allowed = {
         "membership",
+        "track_album_owner",
         "artist_track_keys",
         "album_track_keys",
         "artist_album_keys",
@@ -113,7 +114,8 @@ def verify_payload_rows(conn, source, entities):
         if not isinstance(
             payload,
             dict
-            if row[0].startswith(("source_check_", "ledger_check_", "context_check_"))
+            if row[0] == "track_album_owner"
+            or row[0].startswith(("source_check_", "ledger_check_", "context_check_"))
             else list,
         ):
             raise RuntimeError("detail entity payload type mismatch")

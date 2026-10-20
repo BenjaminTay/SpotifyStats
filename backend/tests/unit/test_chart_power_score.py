@@ -120,3 +120,18 @@ def test_album_and_artist_power_scores_preserve_no1_bonus():
     assert artist_result.loc["Artist A", "power_score"] >= _TOP1_BONUS
     assert album_result.loc[("Album A", "Artist A"), "weeks_at_peak"] == 1
     assert artist_result.loc["Artist A", "weeks_on_chart"] == 2
+
+
+def test_detail_and_versus_keep_published_rank_for_equal_power_scores():
+    from backend.domains.billboard.chart_power_score import published_power_order
+    from backend.domains.billboard.versus import _get_ps_rank
+
+    frame = pd.DataFrame(
+        [
+            {"track_id": 2, "power_score": 582, "power_rank": 356},
+            {"track_id": 1, "power_score": 582, "power_rank": 355},
+        ]
+    )
+    assert published_power_order(frame)["track_id"].tolist() == [1, 2]
+    assert _get_ps_rank(frame, "track_id", 2) == (582, 356)
+    assert frame["track_id"].tolist() == [2, 1]

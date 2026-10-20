@@ -3,7 +3,9 @@
 import pandas as pd
 
 from backend.core.db import fan_out_weekly_for_artists, get_db
+from backend.domains.billboard.album_membership import album_identity_columns, album_rows_mask
 from backend.domains.billboard.chart_compute import compute_billboard_data
+from backend.domains.billboard.chart_power_score import published_power_order
 from backend.domains.billboard.cross_level_power import (
     compute_album_track_power_metrics,
     compute_artist_album_power_metrics,
@@ -77,7 +79,7 @@ def _get_ps_rank(power_scores_df, key_col, key_val, artist_val=None):
     """Look up power score and rank for an entity in a power_scores DataFrame."""
     if power_scores_df is None or len(power_scores_df) == 0:
         return None, None
-    ps = power_scores_df.sort_values("power_score", ascending=False).reset_index(drop=True)
+    ps = published_power_order(power_scores_df)
     if artist_val is not None:
         mask = (ps[key_col] == key_val) & (ps["artist_name"] == artist_val)
     else:
@@ -85,8 +87,7 @@ def _get_ps_rank(power_scores_df, key_col, key_val, artist_val=None):
     match = ps[mask]
     if len(match) == 0:
         return None, None
-    idx = int(match.index[0])
-    return int(match.iloc[0]["power_score"]), idx + 1
+    return int(match.iloc[0]["power_score"]), int(match.iloc[0]["power_rank"])
 
 
 def get_versus_track(
@@ -489,11 +490,12 @@ def get_versus_artist(
 
 def _compute_album_track_ranks(track_per_album, power_scores):
     """Compute project-aware track aggregates for every album identity."""
-    track_album = track_per_album[["track_id", "album_name", "artist_name"]].drop_duplicates()
+    keys = album_identity_columns(track_per_album)
+    track_album = track_per_album[["track_id", *keys]].drop_duplicates()
     ps = power_scores[["track_id", "power_score", "peak_position", "weeks_on_chart"]]
     merged = track_album.merge(ps, on="track_id", how="inner")
     detail = (
-        merged.groupby(["album_name", "artist_name"])
+        merged.groupby(keys)
         .agg(
             track_peak_position=("peak_position", "min"),
             total_track_weeks=("weeks_on_chart", "sum"),
@@ -501,7 +503,13 @@ def _compute_album_track_ranks(track_per_album, power_scores):
         .reset_index()
     )
     ranked = compute_album_track_power_metrics(track_album, track_album, power_scores)
-    return ranked.merge(detail, on=["album_name", "artist_name"], how="left")
+    result = ranked.merge(detail, on=keys, how="left")
+    if "album_project_id" in keys:
+        labels = track_per_album[
+            ["album_project_id", "album_name", "album_artist_name"]
+        ].drop_duplicates("album_project_id")
+        result = result.merge(labels.rename(columns={"album_artist_name": "artist_name"}), on=keys)
+    return result
 
 
 def _compute_artist_track_ranks(weekly_fanned, power_scores):
@@ -633,9 +641,11 @@ def _build_album_entity(
         return None
 
     counts = count_rows.sort_values("total_tracks", ascending=False).iloc[0]
+    project_ids = (
+        count_rows["album_project_id"].tolist() if "album_project_id" in count_rows else ()
+    )
     track_ids = track_per_album[
-        (track_per_album["album_name"] == album_name)
-        & (track_per_album["artist_name"] == artist_name)
+        album_rows_mask(track_per_album, album_name, artist_name, project_ids)
     ]["track_id"].drop_duplicates()
     track_scores = track_power_scores[track_power_scores["track_id"].isin(track_ids)]
     score, score_rank = _get_ps_rank(album_power_scores, "album_name", album_name, artist_name)

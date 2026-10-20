@@ -180,3 +180,29 @@ def test_entity_picker_excludes_entities_without_detail_contract(monkeypatch):
 
     assert [row["album_name"] for row in result["albums"]] == ["Valid"]
     assert [row["artist_name"] for row in result["artists"]] == ["A"]
+
+
+def test_album_versus_retains_performer_credit_but_selects_by_project(monkeypatch):
+    payload = _payload()
+    for name in ("weekly_album", "album_power_scores", "album_track_counts", "track_per_album"):
+        for row in payload[name]:
+            row["album_project_id"] = 42
+    for row in payload["track_per_album"]:
+        row["album_artist_name"] = row["artist_name"]
+        row["artist_name"] = "Different Performer, Guest"
+    monkeypatch.setattr(versus, "compute_billboard_data", lambda *a, **kw: payload)
+    monkeypatch.setattr(versus, "_vs_spotify_album_meta", lambda *a: None)
+    result = versus.get_versus_album_multi(
+        [{"album_name": "Original", "artist_name": "Artist"}] * 2,
+        30000,
+        True,
+        30,
+        20,
+        20,
+        4,
+        12,
+        None,
+        None,
+    )
+    assert result["entities"][0]["metrics"]["track_power_sum"] == 100
+    assert result["entities"][0]["metrics"]["num_tracks"] == 2

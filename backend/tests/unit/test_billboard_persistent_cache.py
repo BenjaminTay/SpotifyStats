@@ -186,6 +186,9 @@ def test_context_key_separates_request_parameters(monkeypatch):
 
 
 def test_code_only_credit_policy_change_preserves_lkg_but_not_exact(tmp_path, monkeypatch):
+    from backend.core.migrations import run_migrations
+
+    run_migrations()
     from backend.domains.metadata import track_credits
 
     path = tmp_path / "billboard.db"
