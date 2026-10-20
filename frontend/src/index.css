@@ -2252,6 +2252,36 @@
   padding-inline: 0 10px;
 }
 
+/* 歌曲主入口覆盖整行；艺人保留行内链接，与其他榜单共用正文行高。 */
+.mobile-weekly-track-row {
+  position: relative;
+}
+
+.mobile-weekly-track-link::after {
+  position: absolute;
+  inset: 0;
+  border-radius: 13px;
+  content: '';
+}
+
+.mobile-weekly-track-row .mobile-weekly-track-link:focus-visible {
+  outline: none;
+}
+
+.mobile-weekly-track-link:focus-visible::after {
+  outline: 2px solid var(--accent-foreground);
+  outline-offset: 2px;
+}
+
+.mobile-weekly-artist-links {
+  display: inline;
+}
+
+.mobile-weekly-artist-links a {
+  position: relative;
+  z-index: 1;
+}
+
 .mobile-weekly-rank-row .mobile-entity-rank-cluster {
   display: flex;
   width: 36px;

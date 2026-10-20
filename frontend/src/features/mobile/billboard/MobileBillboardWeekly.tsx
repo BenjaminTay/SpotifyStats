@@ -188,7 +188,7 @@ export function MobileBillboardWeekly({
             rank: entry.rank,
             rankAdornment: <ChangeCell change={change} />,
             title: track ? (
-              <Link to={detailLink} className="inline-flex min-h-[44px] items-center">
+              <Link to={detailLink} className="mobile-weekly-track-link">
                 {displayName(weeklyEntryName(entry, activeTab))}
               </Link>
             ) : displayName(weeklyEntryName(entry, activeTab)),
@@ -196,7 +196,7 @@ export function MobileBillboardWeekly({
               <ArtistLinks
                 artistName={track.artist_names?.[0] ?? track.artist_name}
                 artistNames={track.artist_names}
-                className="[&_a]:inline-flex [&_a]:min-h-[44px] [&_a]:min-w-[44px] [&_a]:items-center"
+                className="mobile-weekly-artist-links"
               />
             ) : displayName(weeklyEntrySubtitle(entry, activeTab)),
             coverUrl: entry.cover_url,
@@ -210,7 +210,9 @@ export function MobileBillboardWeekly({
             factsLimit: 3,
             // 独立艺人链接不能嵌套在整行的歌曲链接里。
             to: track ? undefined : detailLink,
-            className: 'mobile-weekly-rank-row',
+            className: track
+              ? 'mobile-weekly-rank-row mobile-weekly-track-row mobile-entity-row-interactive'
+              : 'mobile-weekly-rank-row',
           }
         })}
         emptyTitle="当前周次没有榜单数据"

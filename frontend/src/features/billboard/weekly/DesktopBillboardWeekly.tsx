@@ -172,7 +172,7 @@ export function DesktopBillboardWeekly({
                   <td className="pb-3.5 pt-3.5">
                     <CoverCell index={dataIndex} isNewOrRe={isNewOrRe} coverUrl={entry.cover_url} label={displayName(name)} />
                   </td>
-                  <td className="pb-3.5 pt-3.5">
+                  <td className="pb-3.5 pr-3 pt-3.5 [overflow-wrap:anywhere]">
                     <Link to={weeklyEntryDetailLink(entry, activeTab)} className="font-sans text-sm font-semibold transition-colors hover:text-accent-foreground">
                       {displayName(name)}
                     </Link>
@@ -194,12 +194,14 @@ export function DesktopBillboardWeekly({
                     )}
                   </td>
                   <td className="pb-3.5 pt-3.5 text-right font-sans text-[15px] font-semibold tabular-nums">
-                    {formatBillboardNumber(entry.play_count)}
-                    <span className="ml-2 inline-block h-[3px] w-[70px] rounded-[2px] bg-muted align-middle">
-                      <span
-                        className="block h-full rounded-[2px] bg-accent-foreground transition-[width] duration-300"
-                        style={{ width: `${Math.round((entry.play_count / (summary.maxPlays || 1)) * 100)}%` }}
-                      />
+                    <span className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+                      <span>{formatBillboardNumber(entry.play_count)}</span>
+                      <span className="h-[3px] w-[70px] shrink-0 rounded-[2px] bg-muted">
+                        <span
+                          className="block h-full rounded-[2px] bg-accent-foreground transition-[width] duration-300"
+                          style={{ width: `${Math.round((entry.play_count / (summary.maxPlays || 1)) * 100)}%` }}
+                        />
+                      </span>
                     </span>
                   </td>
                   <td className={cn(
