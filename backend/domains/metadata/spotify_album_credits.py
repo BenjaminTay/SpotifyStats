@@ -293,6 +293,32 @@ class AlbumArtistResolver:
     def read(self, album_id):
         return self.credits.get(str(album_id).removeprefix("spotify:album:"), [])
 
+    def canonical_key(self, album_id, legacy_text):
+        """Resolve a complete artist set; legacy names must each be unique."""
+        credits = self.read(album_id)
+        if credits:
+            if any(c["resolution_status"] != "resolved" for c in credits):
+                return None
+            ids = {c["canonical_artist_id"] for c in credits}
+        else:
+            text = str(legacy_text or "").strip()
+            if not text:
+                return None
+            if _norm(text) in self.by_name:
+                names = [text]
+            else:
+                try:
+                    names = json.loads(text)
+                except (ValueError, TypeError):
+                    names = text.split(",")
+            if not isinstance(names, list) or not names:
+                return None
+            choices = [self.by_name.get(_norm(name), set()) for name in names]
+            if any(len(options) != 1 for options in choices):
+                return None
+            ids = {next(iter(options)) for options in choices}
+        return "canonical:" + ",".join(map(str, sorted(ids)))
+
     def match(self, album_id, artist_id=None, artist_name=None, legacy_text=None):
         credits = self.read(album_id)
         if not credits:

@@ -405,6 +405,7 @@ def _refresh_version_merge_dependents(
     has_deletions: bool = False,
     commit: bool = True,
     notify: bool = True,
+    projects_already_rebuilt: bool = False,
 ) -> dict:
     """Rebuild the proven album closure and clear relation-dependent caches."""
     from backend.domains.playback.album_projects import (
@@ -420,7 +421,9 @@ def _refresh_version_merge_dependents(
     if owns_conn:
         conn = get_db(readonly=False)
     try:
-        if impact_scope_exact:
+        if projects_already_rebuilt:
+            rebuild_report = None
+        elif impact_scope_exact:
             rebuild_report = rebuild_album_projects_for_impact(
                 conn,
                 local_album_ids=local_album_ids,
@@ -858,6 +861,7 @@ def create_group(
             group_id = row[0] if row else None
 
         if group_id:
+            conn.execute("UPDATE release_groups SET is_manual=1 WHERE group_id=?", (group_id,))
             for aid in member_ids:
                 conn.execute(
                     "INSERT OR IGNORE INTO release_group_members(group_id, album_id) VALUES (?, ?)",
@@ -1594,6 +1598,15 @@ def update_group_members(group_id: int, add_ids=None, remove_ids=None) -> bool:
         }
         impacted_album_ids.update(int(value) for value in add_ids or [])
         impacted_album_ids.update(int(value) for value in remove_ids or [])
+        from backend.domains.playback.album_release_governance import preserve_separation
+
+        group = conn.execute(
+            "SELECT scope FROM release_groups WHERE group_id=?", (group_id,)
+        ).fetchone()
+        if group and group["scope"] == "release" and remove_ids:
+            remaining = impacted_album_ids - set(remove_ids)
+            preserve_separation(conn, remove_ids, remaining, reason="manual_member_removal")
+        conn.execute("UPDATE release_groups SET is_manual=1 WHERE group_id=?", (group_id,))
         if add_ids:
             for aid in add_ids:
                 conn.execute(
@@ -1633,7 +1646,7 @@ def set_primary(group_id: int, album_id: int) -> bool:
         }
         impacted_album_ids.add(int(album_id))
         conn.execute(
-            "UPDATE release_groups SET primary_album_id = ? WHERE group_id = ?",
+            "UPDATE release_groups SET primary_album_id = ?, is_manual=1 WHERE group_id = ?",
             (album_id, group_id),
         )
         conn.commit()
@@ -1653,6 +1666,19 @@ def delete_group(group_id: int) -> bool:
     """删除 release group 及其所有成员关系。"""
     conn = get_db(readonly=False)
     try:
+        from backend.domains.playback.album_release_governance import preserve_separation
+
+        group = conn.execute(
+            "SELECT scope FROM release_groups WHERE group_id=?", (group_id,)
+        ).fetchone()
+        if group and group["scope"] == "release":
+            members = [
+                int(row[0])
+                for row in conn.execute(
+                    "SELECT album_id FROM release_group_members WHERE group_id=?", (group_id,)
+                )
+            ]
+            preserve_separation(conn, members, reason="manual_group_deletion")
         conn.execute("DELETE FROM release_group_members WHERE group_id = ?", (group_id,))
         conn.execute("DELETE FROM release_groups WHERE group_id = ?", (group_id,))
         conn.commit()
@@ -2988,35 +3014,91 @@ def _detect_groups_for_type(conn, album_type_filter, overlap_threshold, superset
 def detect_release_groups(
     overlap_threshold: float = 0.4, superset_threshold: float = 0.8
 ) -> pd.DataFrame:
-    """三阶段自动检测可合并的专辑版本组（album 和 single 分别检测）。
+    """Album detection shares the import planner; Singles keep their own scope."""
+    from backend.domains.playback.album_project_auto_merge import (
+        album_merge_detection_rows,
+        plan_album_project_auto_merges,
+    )
 
-    Phase 1  — 名称归一化：normalize_album_name() 剥离版本后缀
-    Phase 1.5 — 前缀重合检测：名称前缀 + 曲目包含关系
-    Phase 2  — 纯超集检测：Union-find 连通分量
-
-    album 和 single 分别独立检测，避免跨类型合并。
-
-    Returns DataFrame with columns:
-      artist_name, artist_id, canonical_name, primary_album_name,
-      primary_album_id, member_count, confidence ('high'/'low'), members
-    """
-    conn = get_db()
-
-    # 分别检测 album 和 single，防止跨类型合并
-    album_results = _detect_groups_for_type(conn, "album", overlap_threshold, superset_threshold)
-    single_results = _detect_groups_for_type(conn, "single", overlap_threshold, superset_threshold)
-
-    conn.close()
-
-    results = album_results + single_results
-
-    if not results:
-        return pd.DataFrame()
-
-    return pd.DataFrame(results)
+    conn = get_db(readonly=True)
+    try:
+        rows = album_merge_detection_rows(
+            conn,
+            plan_album_project_auto_merges(conn, overlap_threshold=overlap_threshold),
+            overlap_threshold=overlap_threshold,
+        )
+        rows.extend(_detect_groups_for_type(conn, "single", overlap_threshold, superset_threshold))
+        return pd.DataFrame(rows)
+    finally:
+        conn.close()
 
 
-def apply_detected_groups(detection_df: pd.DataFrame, only_high_confidence: bool = True) -> int:
+def apply_detected_groups(detection_df, only_high_confidence=True):
+    """Revalidate selected album memberships using the same private import planner."""
+    from dataclasses import replace
+
+    from backend.domains.playback.album_project_auto_merge import (
+        apply_album_project_auto_merge_plan,
+        plan_album_project_auto_merges,
+    )
+
+    if detection_df.empty:
+        return 0
+    singles = (
+        detection_df[detection_df["group_type"] == "single"]
+        if "group_type" in detection_df
+        else detection_df.iloc[0:0]
+    )
+    albums = detection_df.drop(singles.index)
+    changed = 0
+    conn = get_db(readonly=False)
+    try:
+        plan = plan_album_project_auto_merges(conn)
+        chosen = []
+        for row in albums.to_dict("records"):
+            if only_high_confidence and row.get("confidence") != "high":
+                continue
+            revision = row.get("source_revision")
+            if isinstance(revision, str) and revision and revision != plan.source_revision:
+                raise ValueError("stale Album Project detection; run detection again")
+            ids = tuple(sorted(int(member["album_id"]) for member in row.get("members", [])))
+            candidates = [
+                item
+                for item in plan.candidates
+                if item.album_ids == ids and item.primary_album_id == int(row["primary_album_id"])
+            ]
+            if len(candidates) != 1:
+                raise ValueError("album detection no longer has a unique accepted plan")
+            if candidates[0] not in chosen:
+                chosen.append(candidates[0])
+        if chosen:
+            apply_album_project_auto_merge_plan(
+                conn, replace(plan, candidates=tuple(chosen)), commit=False
+            )
+            _refresh_version_merge_dependents(
+                conn,
+                local_album_ids={aid for c in chosen for aid in c.album_ids},
+                impact_scope_exact=True,
+                projects_already_rebuilt=True,
+                commit=False,
+                notify=False,
+            )
+            conn.commit()
+            _notify_version_merge_dependents()
+            changed = len(chosen)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return changed + (
+        _apply_detected_single_groups(singles, only_high_confidence) if not singles.empty else 0
+    )
+
+
+def _apply_detected_single_groups(
+    detection_df: pd.DataFrame, only_high_confidence: bool = True
+) -> int:
     """将自动检测结果写入 release_groups 表。
 
     Args:

@@ -36,6 +36,13 @@ function formatTrackDuration(ms: number): string {
   return `${Math.floor(totalSec / 60)}:${String(totalSec % 60).padStart(2, '0')}`
 }
 
+export function ReleaseArtistCredit({ data }: { data: TrackDetailResponse }) {
+  const names = data.meta?.release_artist_names
+  const canonical = data.artist_names?.length ? data.artist_names : [data.artist_name]
+  if (!names?.length || (names.length === canonical.length && names.every((name, i) => name === canonical[i]))) return null
+  return <p className="mt-1 break-words font-sans text-[12px] text-muted-foreground">发行署名：{names.map((name) => displayName(name)).join(' · ')}</p>
+}
+
 export function TrackDetailHero({
   data,
   trackId,
@@ -123,6 +130,7 @@ export function TrackDetailHero({
               </span>
             ))}
           </p>
+          <ReleaseArtistCredit data={data} />
           {data.meta && (
             <p className="mt-1 break-words font-sans text-[14px] text-muted-foreground">
               {(data.album_attribution?.display_album_name ?? data.meta.spotify_album_name) && (

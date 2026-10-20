@@ -2589,3 +2589,13 @@ def test_invocation_preserves_full_duration_only_context_rows(
             (context.filter_fingerprint,),
         ).fetchall()
         assert [tuple(row) for row in actual] == sorted(expected, key=lambda row: row[0])
+
+
+def test_context_rows_publish_explicit_zero_track_without_fabricating_chart_facts() -> None:
+    rows = _context_rows(
+        _conn(),
+        _context(),
+        metric_maps=({}, {}, {}),
+        chart_lookup={"track": {}, "album": {}, "artist": {}},
+    )
+    assert rows == [("track:1", 0, 0, None, None, None, None, None, None, None, None, None)]

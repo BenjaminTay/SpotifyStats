@@ -18,7 +18,7 @@ import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { useViewportMode } from '@/hooks/useViewportMode'
 import { MobileMusicDetailHero, MobileMusicDetailNav } from '@/features/mobile/music/MobileMusicDetail'
-import { TrackDetailHero } from './MusicDetailHeader'
+import { ReleaseArtistCredit, TrackDetailHero } from './MusicDetailHeader'
 import { displayName, useChineseTextVersion } from '@/lib/chinese'
 import { CapabilityGate } from '@/components/capabilities/CapabilityGate'
 
@@ -151,12 +151,12 @@ function TrackDetailContent() {
                     kind="track"
                     title={displayName(data.track_name)}
                     coverUrl={data.cover_url}
-                    subtitle={(data.artist_names?.length ? data.artist_names : [data.artist_name]).map((name, index, artists) => (
+                    subtitle={<>{(data.artist_names?.length ? data.artist_names : [data.artist_name]).map((name, index, artists) => (
                       <span key={name}>
                         <Link to={`/music/artists/${encodeURIComponent(name)}`}>{displayName(name)}</Link>
                         {index < artists.length - 1 ? ' · ' : ''}
                       </span>
-                    ))}
+                    ))}<ReleaseArtistCredit data={data} /></>}
                     meta={(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name) ? (
                       <Link to={`/music/albums/${encodeURIComponent(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name ?? '')}?artist=${encodeURIComponent(data.primary_artist_name ?? data.artist_names?.[0] ?? data.artist_name)}`}>
                         {displayName(data.album_attribution?.display_album_name ?? data.meta?.spotify_album_name ?? '')}

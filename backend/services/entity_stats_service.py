@@ -412,8 +412,6 @@ def _build_track_stats(
     entity_all = all_df[all_df["track_id"].isin(member_track_ids)]
     entity_df = current_df[current_df["track_id"].isin(member_track_ids)]
     entity_duration_source = _track_duration_source(all_df, member_track_ids)
-    if entity_all.empty and entity_duration_source.empty:
-        return {"found": False}
     primary_track_id = aggregation_scope.primary_track_id
     info = conn.execute(
         """SELECT t.track_name, a.artist_name, al.album_name,
@@ -458,8 +456,12 @@ def _build_track_stats(
                 "cover_url": presentation.cover_url,
                 "album_attribution": presentation.payload(),
             },
-            "first_played": str(entity_time_source["ts"].min()),
-            "last_played": str(entity_time_source["ts"].max()),
+            "first_played": None
+            if entity_time_source.empty
+            else str(entity_time_source["ts"].min()),
+            "last_played": None
+            if entity_time_source.empty
+            else str(entity_time_source["ts"].max()),
             "ranks": (
                 {
                     **{

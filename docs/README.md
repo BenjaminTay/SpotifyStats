@@ -1,5 +1,8 @@
 # SpotifyStats 文档地图
 
+- [专辑曲目内容归并修复](reports/2026-10-20-album-content-merge-repair.md)：任意名称扩展版、共用判定、已有组接纳及Encore本地应用证据。
+- [本地串流增量导入](reports/2026-10-20-local-streaming-incremental-import.md)：追加2,121条、旧事实保全；汇总导入恢复、L2独唱/合唱分离、33首身份歧义治理、发行署名保留、零毫秒详情及后续刷新防覆盖证据。
+
 - [开发分支与工作树清理收口](reports/2026-10-20-development-branch-worktree-closeout.md)：本地/远端仅main、1个工作树；保留6个源码恢复引用与2个历史stash，记录采用/未采用范围及旧运行证据缺失边界。
 
 - [当前：加载结项与内存精简收口](plans/2026-10-19-performance-scope-and-memory-closeout.md)：本轮开发和发布已正式收口，两个加载体验任务已结项；OOM仅保留正常使用观察，不再追加优化或实验。以下旧报告保留历史结果，其中旧“下一步”和资源门槛不代表当前待办。

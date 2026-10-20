@@ -1920,6 +1920,20 @@ def _upsert_project(
            WHERE canonical_name = ? AND artist_id = ? AND scope = ?""",
         (canonical_name, artist_id, scope),
     ).fetchone()
+    if row is None and is_manual == 0:
+        # Provider credits and canonical names can change while the source
+        # release stays the same. Keep its unique catalog-backed identity so
+        # aliases and downstream references do not point at a retired project.
+        source_owners = conn.execute(
+            """SELECT p.project_id, p.is_manual FROM album_projects p
+               WHERE p.primary_album_id = ? AND p.scope = ? AND p.is_manual = 0
+                 AND EXISTS (SELECT 1 FROM album_project_external_ids e
+                             WHERE e.project_id=p.project_id)
+               ORDER BY p.project_id LIMIT 2""",
+            (primary_album_id, scope),
+        ).fetchall()
+        if len(source_owners) == 1:
+            row = source_owners[0]
     if row is None:
         conn.execute(
             """INSERT INTO album_projects
@@ -1950,10 +1964,13 @@ def _upsert_project(
         return None
     conn.execute(
         """UPDATE album_projects
-           SET primary_album_id = ?, release_date = ?, project_type = ?,
+           SET canonical_name = ?, artist_id = ?,
+               primary_album_id = ?, release_date = ?, project_type = ?,
                include_in_charts = ?, is_manual = ?
            WHERE project_id = ?""",
         (
+            canonical_name,
+            artist_id,
             primary_album_id,
             release_date,
             project_type,
@@ -2088,6 +2105,18 @@ def _source_bucket_for_album(
 ) -> str:
     if album_id is None:
         return "inferred"
+    if (
+        primary_album_id is not None
+        and album_id != primary_album_id
+        and conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='album_release_content_relations'"
+        ).fetchone()
+    ):
+        if conn.execute(
+            "SELECT 1 FROM album_release_content_relations WHERE base_album_id=? AND member_album_id=?",
+            (primary_album_id, album_id),
+        ).fetchone():
+            return "deluxe"
     row = conn.execute(
         """SELECT al.album_name, sam.album_type
            FROM albums al
@@ -2161,6 +2190,19 @@ def _attach_source_album_bucket(df: pd.DataFrame, conn: sqlite3.Connection) -> p
             )
             for row in rows
         }
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='album_release_content_relations'"
+        ).fetchone():
+            expanded = conn.execute(
+                f"""SELECT DISTINCT apa.album_id
+                FROM album_project_albums apa JOIN album_projects ap ON ap.project_id=apa.project_id
+                JOIN album_release_content_relations rel ON rel.base_album_id=ap.primary_album_id
+                                                       AND rel.member_album_id=apa.album_id
+                WHERE ap.scope='release' AND apa.album_id IN ({placeholders})""",
+                tuple(source_ids),
+            )
+            for row in expanded:
+                bucket_map[int(row[0])] = "deluxe"
     else:
         name_map = {}
         bucket_map = {}

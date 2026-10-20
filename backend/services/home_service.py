@@ -21,6 +21,7 @@ from backend.core.cache import singleflight
 from backend.core.db import DB_PATH, get_db
 from backend.domains.billboard.persistent_cache import (
     build_cache_context,
+    load_persisted_snapshot,
     published_content_revision,
 )
 from backend.domains.home.overview import build_home_overview
@@ -33,6 +34,37 @@ _HOME_FACTS_VERSION = "home-facts-v4"
 logger = logging.getLogger(__name__)
 _rebuild_guard = threading.Lock()
 _rebuild_paths: set[Path] = set()
+
+
+def _restore_billboard_preview(context: YearlyReviewFilterContext) -> bool:
+    """Private maintenance only: restore an exact weekly publication, never build."""
+    if public_readonly_db_guard_active():
+        return False
+    from backend.domains.billboard.latest_snapshot_cache import snapshot_key, store_latest_snapshot
+
+    params = {
+        name: getattr(context, name)
+        for name in (
+            "min_ms",
+            "music_only",
+            "merge_enabled",
+            "bb_top_n",
+            "bb_album_top_n",
+            "bb_artist_top_n",
+            "bb_week_start_dow",
+            "bb_week_start_hour",
+            "dynamic_threshold",
+            "max_merge_gap_minutes",
+            "merge_level",
+            "include_compilations",
+        )
+    }
+    params.update(year_start=None, year_end=None)
+    payload = load_persisted_snapshot(build_cache_context("weekly", params), allow_lkg=False)
+    if payload is None:
+        return False
+    store_latest_snapshot(snapshot_key(**params), payload)
+    return True
 
 
 def _snapshot_path(parts: tuple[str, ...]) -> Path:
@@ -106,6 +138,7 @@ def _start_snapshot_rebuild(
     def rebuild() -> None:
         conn = get_db(readonly=True)
         try:
+            _restore_billboard_preview(context)
             payload = build_home_overview(conn, context)
             payload["cache_state"] = "fresh"
             payload["snapshot"] = _publication_state(exact_path)
@@ -298,7 +331,20 @@ def prewarm_default_home_overview() -> HomeOverviewResponse:
     context = build_default_yearly_review_context()
     conn = get_db(readonly=True)
     try:
-        return get_home_overview(conn, context)
+        if public_readonly_db_guard_active():
+            return get_home_overview(conn, context)
+        _restore_billboard_preview(context)
+        # A previous exact home file can contain an unavailable preview. Rebuild
+        # the lightweight composition during maintenance instead of restoring it.
+        payload = build_home_overview(conn, context)
+        if _is_primary_connection(conn):
+            path = _snapshot_path(tuple(str(part) for part in _cache_parts(context)))
+            payload["cache_state"] = "fresh"
+            payload["snapshot"] = _publication_state(path)
+            _write_snapshot(path, payload)
+            _write_snapshot(_lkg_snapshot_path(context), payload)
+            _get_home_overview_cached.cache_clear()
+        return HomeOverviewResponse.model_validate(_present_home_payload(payload))
     finally:
         conn.close()
 

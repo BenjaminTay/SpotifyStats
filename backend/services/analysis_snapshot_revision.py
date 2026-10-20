@@ -70,6 +70,7 @@ IGNORED = {
     "removed_at",
     "deactivated_at",
     "image_url",
+    "image_path",
     "cover_url",
     "display_name",
     "display_source",
@@ -85,6 +86,18 @@ IGNORED = {
     "followers",
 }
 
+# Publication bookkeeping does not change the active playback facts. Keep the
+# generation, digest, record count and playback revision in the fact fence.
+TABLE_IGNORED = {
+    "playback_import_state": {
+        "active_publication_id",
+        "active_source_version_id",
+        "last_relation",
+        "last_strategy",
+        "publication_state",
+    },
+}
+
 
 def database_identity(conn) -> dict:
     path = Path(conn.execute("PRAGMA database_list").fetchone()[2]).resolve()
@@ -97,14 +110,18 @@ def database_identity(conn) -> dict:
 def _table_digest(conn, table, *, batch=False):
     """Historical full-content oracle retained for equivalence tests only."""
     info = list(conn.execute(f'PRAGMA table_info("{table}")'))
-    ignored = IGNORED | {
-        "revision",
-        "current_revision",
-        "active_aggregate_revision",
-        "track_identity_revision",
-        "album_project_revision",
-        "rebuild_status",
-    }
+    ignored = (
+        IGNORED
+        | TABLE_IGNORED.get(table, set())
+        | {
+            "revision",
+            "current_revision",
+            "active_aggregate_revision",
+            "track_identity_revision",
+            "album_project_revision",
+            "rebuild_status",
+        }
+    )
     # These administrative counters also advance on display-only edits.
     # Identity/project revisions here hash the actual complete membership
     # projection instead. playback_revision is retained explicitly.
@@ -151,7 +168,9 @@ def _trigger_contract(conn):
     triggers = {}
     for table in dict.fromkeys(COMMON + RECORDS + TASTE):
         columns = [
-            r[1] for r in conn.execute(f'PRAGMA table_info("{table}")') if r[1] not in ignored
+            r[1]
+            for r in conn.execute(f'PRAGMA table_info("{table}")')
+            if r[1] not in ignored | TABLE_IGNORED.get(table, set())
         ]
         if not columns:
             raise ValueError(f"Missing analysis dependency: {table}")

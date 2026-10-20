@@ -84,6 +84,7 @@ def run_post_streaming_import_maintenance(
             access_token=token,
             progress_callback=lambda message, _pct: _progress(progress_callback, message, 0.76),
             scope=metadata_scope,
+            defer_credit_rebuild=True,
         )
         metadata_seconds = time.perf_counter() - metadata_started
 
@@ -442,6 +443,7 @@ def run_import_maintenance_stage(
                 conn,
                 provider=provider,
                 access_token=provider.get_cc_token(),
+                defer_credit_rebuild=True,
                 scope=(
                     MetadataRefreshScope(
                         generation_id=change_set.generation_id,
@@ -463,6 +465,9 @@ def run_import_maintenance_stage(
                     else "ready"
                 ),
                 "provider_available": metadata_report.provider_available,
+                "track_credit_application_pending": metadata_report.credit_application_pending,
+                "track_credit_application_blocked": metadata_report.credit_application_blocked,
+                "track_credit_application_revision": metadata_report.credit_application_revision,
                 "errors": list(metadata_report.errors),
                 "tracks_updated": metadata_report.tracks_updated,
                 "track_credit_evidence_requested": getattr(
@@ -656,7 +661,8 @@ def run_import_maintenance_stage(
 
             prewarm_import_critical_caches()
             return {
-                "status": health["status"],
+                "status": "ready",
+                "health_status": health["status"],
                 "warning_count": len(health["warnings"]),
                 "blocker_count": 0,
             }

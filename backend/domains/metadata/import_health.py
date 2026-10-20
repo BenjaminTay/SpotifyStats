@@ -541,6 +541,10 @@ def _build_derived_health(conn: sqlite3.Connection) -> dict[str, Any]:
     derived["rebuild_pending"] = _setting_bool(conn, "rebuild_pending")
     derived["artist_identity"] = _state_snapshot(conn, "artist_identity_state")
     derived["track_credits"] = _state_snapshot(conn, "track_credit_state")
+    from backend.domains.metadata.spotify_track_credits import credit_application_coverage
+
+    application = credit_application_coverage(conn)
+    derived["credit_application"] = {key: application[key] for key in ("pending", "blocked")}
     from backend.domains.playback.l3_album_attribution import (
         L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
         build_l3_album_attribution_scope_health,
@@ -1019,6 +1023,23 @@ def _build_health_issues(
             impact="Billboard 页面可能显示空结果或与播放记录不一致。",
             recommended_action="先确认导入维护 Job 状态，再执行受控聚合重建。",
         )
+
+    application = derived.get("credit_application", {})
+    for key, severity, title in (
+        ("pending", "high", "Spotify 署名证据尚未完成应用"),
+        ("blocked", "medium", "Spotify 署名存在身份歧义，保留待核"),
+    ):
+        if application.get(key):
+            add(
+                code=f"spotify_credit_application_{key}",
+                category="metadata",
+                severity=severity,
+                title=title,
+                count=application[key],
+                impact="保留当前有效署名；证据未确定的曲目不参与新的 L2 自动归并。",
+                recommended_action="pending 从缓存重试应用；blocked 按原因核对艺人身份或人工覆盖。",
+                evidence=application,
+            )
 
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     return sorted(issues, key=lambda issue: (severity_order[issue["severity"]], issue["code"]))

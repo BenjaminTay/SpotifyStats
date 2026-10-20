@@ -74,3 +74,39 @@ def test_missing_or_drifted_track_rank_publication_fails_without_building(isolat
         assert drift.value.status_code == 503
     finally:
         conn.close()
+
+
+def test_existing_track_with_zero_millisecond_rows_has_empty_stats(isolated, monkeypatch):
+    with sqlite3.connect(isolated[0]) as writer:
+        writer.execute("UPDATE plays SET ms_played=0")
+    monkeypatch.setattr(stats, "_is_primary_connection", lambda _: False)
+    conn = db.get_db(readonly=True)
+    try:
+        track_id = conn.execute(
+            "SELECT l1_id FROM track_l1_identities ORDER BY l1_id LIMIT 1"
+        ).fetchone()[0]
+        result = stats._build_track_stats(
+            conn,
+            track_id,
+            30000,
+            True,
+            True,
+            merge_level=2,
+            dynamic_threshold=True,
+            include_rank_context=False,
+        )
+        assert result["found"] is True
+        assert result["summary"]["total_plays"] == 0
+        assert result["summary"]["total_hours"] == 0
+        assert result["first_played"] is None and result["last_played"] is None
+        assert result["recent_plays"] == []
+        assert not stats._build_track_stats(
+            conn,
+            999999,
+            30000,
+            True,
+            True,
+            include_rank_context=False,
+        )["found"]
+    finally:
+        conn.close()

@@ -254,3 +254,78 @@ def test_rebuild_rolls_back_membership_clear_when_population_fails(monkeypatch) 
         assert _snapshot(conn) == before
     finally:
         conn.close()
+
+
+def test_rebuild_preserves_catalog_alias_when_release_name_and_artist_change() -> None:
+    conn = _connection(foreign_keys=True)
+    try:
+        _add_release(conn, album_id=1, track_id=101, group_id=11, name="Alpha")
+        conn.commit()
+        album_projects.rebuild_album_projects(conn)
+        project_id = conn.execute("SELECT project_id FROM album_projects").fetchone()[0]
+        conn.execute(
+            """INSERT INTO album_project_external_ids(provider,external_album_id,project_id)
+               VALUES ('spotify', 'release-1', ?)""",
+            (project_id,),
+        )
+        conn.execute("INSERT INTO artists VALUES (2, 'Corrected Artist')")
+        conn.execute(
+            "UPDATE release_groups SET canonical_name='Corrected Alpha', artist_id=2 WHERE group_id=11"
+        )
+        conn.commit()
+
+        album_projects.rebuild_album_projects(conn)
+
+        assert tuple(
+            conn.execute(
+                "SELECT project_id, canonical_name, artist_id FROM album_projects"
+            ).fetchone()
+        ) == (project_id, "Corrected Alpha", 2)
+        assert (
+            conn.execute("SELECT project_id FROM album_project_external_ids").fetchone()[0]
+            == project_id
+        )
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        before = _snapshot(conn)
+        album_projects.rebuild_album_projects(conn)
+        assert _snapshot(conn) == before
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("manual, ambiguous", [(True, False), (False, True)])
+def test_upsert_does_not_reuse_manual_or_ambiguous_source_owner(manual, ambiguous) -> None:
+    conn = _connection(foreign_keys=True)
+    try:
+        _add_release(conn, album_id=1, track_id=101, group_id=11, name="Alpha")
+        conn.execute(
+            """INSERT INTO album_projects(
+                   project_id,canonical_name,artist_id,primary_album_id,scope,is_manual
+               ) VALUES (1, 'Existing', 1, 1, 'release', ?)""",
+            (int(manual),),
+        )
+        if ambiguous:
+            conn.execute(
+                """INSERT INTO album_projects(
+                       project_id,canonical_name,artist_id,primary_album_id,scope,is_manual
+                   ) VALUES (2, 'Other Existing', 1, 1, 'release', 0)"""
+            )
+        for row in conn.execute("SELECT project_id FROM album_projects").fetchall():
+            conn.execute(
+                """INSERT INTO album_project_external_ids(provider,external_album_id,project_id)
+                   VALUES ('spotify', ?, ?)""",
+                (f"release-{row[0]}", row[0]),
+            )
+        before = [tuple(row) for row in conn.execute("SELECT * FROM album_projects")]
+        project_id = album_projects._upsert_project(
+            conn, "New", 1, 1, None, "release", "album", 1, 0
+        )
+        assert project_id not in {row[0] for row in before}
+        assert [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT * FROM album_projects WHERE project_id != ?", (project_id,)
+            )
+        ] == before
+    finally:
+        conn.close()

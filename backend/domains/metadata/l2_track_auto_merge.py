@@ -22,7 +22,9 @@ from backend.domains.metadata.track_title_identity import (
     normalize_l2_track_title,
 )
 
-L2_AUTO_MERGE_POLICY_VERSION = f"canonical_artist_title_v3:{L2_TITLE_IDENTITY_POLICY_VERSION}"
+L2_AUTO_MERGE_POLICY_VERSION = (
+    f"canonical_artist_participants_v4:{L2_TITLE_IDENTITY_POLICY_VERSION}"
+)
 
 _STRUCTURAL_TITLE_PATTERN = re.compile(
     r"^(?:(?:the)\s+)?(?:intro|outro|interlude|overture|ouverture|prelude|"
@@ -46,6 +48,8 @@ class _TrackNode:
     representative_track_id: int
     track_name: str
     artist_ids: tuple[int, ...]
+    participant_ids: tuple[int, ...]
+    participant_evidence_pending: bool
     normalized_title: str
     semantic_version_tags: tuple[str, ...]
     source_context_tags: tuple[str, ...]
@@ -93,13 +97,14 @@ class _DisjointSets:
 
 def _canonical_artist_signatures(
     conn: sqlite3.Connection, representative_track_ids: list[int]
-) -> dict[int, tuple[int, ...]]:
+) -> tuple[dict[int, tuple[int, ...]], dict[int, tuple[int, ...]]]:
     from backend.domains.metadata.track_credits import get_effective_track_credits
 
     grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for row in get_effective_track_credits(conn, representative_track_ids):
         grouped[int(row["track_id"])].append(row)
     result: dict[int, tuple[int, ...]] = {}
+    participants: dict[int, tuple[int, ...]] = {}
     for track_id, rows in grouped.items():
         primary = sorted(
             {int(row["artist_id"]) for row in rows if str(row.get("role")) == "primary"}
@@ -108,7 +113,8 @@ def _canonical_artist_signatures(
             primary = sorted({int(row["artist_id"]) for row in rows})
         if primary:
             result[track_id] = tuple(primary)
-    return result
+        participants[track_id] = tuple(sorted({int(row["artist_id"]) for row in rows}))
+    return result, participants
 
 
 def _load_noncanonical_l1_ids(conn: sqlite3.Connection) -> set[int]:
@@ -158,7 +164,15 @@ def _load_nodes(
             ORDER BY li.l1_id"""
     ).fetchall()
     representative_ids = [int(row["representative_track_id"]) for row in rows]
-    artist_signatures = _canonical_artist_signatures(conn, representative_ids)
+    artist_signatures, participant_signatures = _canonical_artist_signatures(
+        conn, representative_ids
+    )
+    from backend.domains.metadata.spotify_track_credits import credit_application_coverage
+
+    application = credit_application_coverage(conn)
+    unresolved = set(application.get("pending_track_ids", [])) | set(
+        application.get("blocked_track_ids", [])
+    )
     metadata: dict[int, list[tuple[str, int | None]]] = defaultdict(list)
     external_id_counts: dict[int, int] = {}
     if _table_exists(conn, "track_l1_external_ids"):
@@ -200,6 +214,8 @@ def _load_nodes(
             representative_track_id=representative_track_id,
             track_name=str(row["track_name"]),
             artist_ids=artist_ids,
+            participant_ids=participant_signatures[representative_track_id],
+            participant_evidence_pending=representative_track_id in unresolved,
             normalized_title=title.base_title,
             semantic_version_tags=title.semantic_version_tags,
             source_context_tags=title.source_context_tags,
@@ -312,6 +328,9 @@ def _durations_compatible(left: int | None, right: int | None) -> bool:
 def _shared_isrc_evidence(left: _TrackNode, right: _TrackNode) -> list[str]:
     if (
         left.artist_ids != right.artist_ids
+        or left.participant_ids != right.participant_ids
+        or left.participant_evidence_pending
+        or right.participant_evidence_pending
         or left.semantic_version_tags != right.semantic_version_tags
     ):
         return []
@@ -386,6 +405,10 @@ def _automatic_pair_decision(left: _TrackNode, right: _TrackNode) -> tuple[str, 
         return None
     if left.is_noncanonical_alias or right.is_noncanonical_alias:
         return "rejected", "noncanonical_identity_requires_owner_repair"
+    if left.participant_evidence_pending or right.participant_evidence_pending:
+        return "pending", "participant_evidence_unapplied"
+    if left.participant_ids != right.participant_ids:
+        return "rejected", "participant_conflict"
     if _is_structural_title(left) or _is_structural_title(right):
         return "rejected", "structural_title_requires_explicit_merge"
     if left.semantic_version_tags != right.semantic_version_tags:
@@ -412,6 +435,8 @@ def _state_digest(
                 "representative_track_id": node.representative_track_id,
                 "track_name": node.track_name,
                 "artist_ids": node.artist_ids,
+                "participant_ids": node.participant_ids,
+                "participant_evidence_pending": node.participant_evidence_pending,
                 "normalized_title": node.normalized_title,
                 "semantic_version_tags": node.semantic_version_tags,
                 "source_context_tags": node.source_context_tags,

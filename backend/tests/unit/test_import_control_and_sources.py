@@ -8,6 +8,85 @@ from pathlib import Path
 import pytest
 
 
+@pytest.mark.parametrize(
+    "kind,retryable,code",
+    [
+        ("ProviderNetworkError", True, "provider_network_unavailable"),
+        ("ProviderRateLimitError", True, "provider_rate_limit"),
+        ("ProviderServerError", True, "provider_unavailable"),
+        ("ProviderAuthError", False, "metadata_failed"),
+        ("ProviderParseError", False, "metadata_failed"),
+    ],
+)
+def test_provider_stage_failure_classification(kind, retryable, code):
+    from backend.providers import base
+    from backend.services import import_stage_service as service
+
+    exc = getattr(base, kind)("spotify", "transport failed")
+    assert service._retryable_stage_error(exc) is retryable
+    assert service._stage_error_code(exc, "metadata", retryable) == code
+
+
+@pytest.mark.parametrize("state", ["ready", "failed"])
+def test_repeated_readiness_recheck_is_durable_and_idempotent(monkeypatch, state):
+    from backend.services import import_stage_service as service
+
+    run = {"new_generation_id": "g", "new_dataset_digest": "d"}
+    attempts = [
+        {
+            "stage": "candidate_index",
+            "attempt": 1,
+            "status": "warming",
+            "output_evidence": {"search_job_id": "job"},
+        }
+    ]
+    starts, finishes, updates, fences = [], [], [], []
+    monkeypatch.setattr(service, "get_run", lambda _: dict(run))
+    monkeypatch.setattr(service, "_fact_fence", lambda *args: fences.append(args))
+    monkeypatch.setattr(service, "_publish_main_state", lambda *args: None)
+    monkeypatch.setattr(service, "_stage_dependency_revision", lambda stage: {"stage": stage})
+    monkeypatch.setattr(
+        service,
+        "inspect_import_readiness",
+        lambda _: {
+            "status": state,
+            "search_ready_count": 4,
+            "year_end_ready_count": 4,
+            "billboard_ready": state == "ready",
+        },
+    )
+    monkeypatch.setattr(service, "latest_stage_attempts", lambda _: attempts)
+
+    def start(*args, **kwargs):
+        starts.append(args)
+        return 2
+
+    def finish(_, stage, attempt, **fields):
+        finishes.append(stage)
+        attempts[:] = [a for a in attempts if a["stage"] != stage]
+        attempts.append(
+            {
+                "stage": stage,
+                "attempt": attempt,
+                "status": fields["status"],
+                "output_evidence": fields.get("output"),
+            }
+        )
+
+    def update(_, **fields):
+        updates.append(fields)
+        run.update(fields)
+
+    monkeypatch.setattr(service, "start_stage_attempt", start)
+    monkeypatch.setattr(service, "finish_stage_attempt", finish)
+    monkeypatch.setattr(service, "update_run", update)
+    service.reconcile_import_readiness("run")
+    service.reconcile_import_readiness("run")
+    assert len(starts) == len(updates) == 1
+    assert len(fences) == 2
+    assert finishes.count("candidate_index") == (1 if state == "ready" else 0)
+
+
 def _packet(root: Path, name: str, records: list[dict]) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / f"Streaming_History_Audio_{name}.json").write_text(
@@ -588,6 +667,9 @@ def test_reconcile_keeps_unavailable_active_build_running(monkeypatch):
             "publication_state": "core_ready",
             "progress_pct": 0.95,
             "completed_at": None,
+            "error_code": None,
+            "error_detail": None,
+            "retryable": 0,
             "message": "核心数据可用，精确快照正在后台构建",
         }
     ]
@@ -1282,7 +1364,8 @@ def test_stage_success_is_replayed_when_declared_dependency_revision_changes(mon
     assert calls == ["identity_merge"]
 
 
-def test_partial_metadata_stage_remains_retryable_without_reimport(monkeypatch):
+@pytest.mark.parametrize("network_failure", [False, True])
+def test_partial_metadata_stage_remains_retryable_without_reimport(monkeypatch, network_failure):
     from backend.services import import_stage_service as service
 
     updates = []
@@ -1316,12 +1399,30 @@ def test_partial_metadata_stage_remains_retryable_without_reimport(monkeypatch):
         },
     )
     monkeypatch.setattr(service, "update_run", lambda run_id, **kwargs: updates.append(kwargs))
+    if network_failure:
+        from backend.providers.base import ProviderNetworkError
+
+        def unavailable(*args, **kwargs):
+            raise ProviderNetworkError("spotify", "connection reset")
+
+        monkeypatch.setattr(service, "_run_stage", unavailable)
 
     result = service.run_import_stages("run-1", _change_set_fixture(), stages=("metadata",))
     assert result["status"] == "retryable_failed"
     assert finished[-1]["status"] == "retryable_failed"
     assert updates[-1]["retryable"] == 1
     assert updates[-1]["publication_state"] == "sources_published"
+    if network_failure:
+        assert result["error_code"] == "provider_network_unavailable"
+        calls = []
+        monkeypatch.setattr(
+            service,
+            "_run_stage",
+            lambda stage, **kwargs: calls.append(stage) or {"status": "ready"},
+        )
+        service.run_import_stages("run-1", _change_set_fixture(), stages=("metadata",))
+        assert calls == ["metadata"]
+        assert finished[-1]["status"] == "succeeded"
 
 
 def test_source_pointer_is_restored_if_main_provenance_update_fails(tmp_path, monkeypatch):

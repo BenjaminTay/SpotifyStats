@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 90
+LATEST_SCHEMA_VERSION = 93
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4326,6 +4326,28 @@ def migrate_090(conn: sqlite3.Connection):
     from backend.domains.music_search.detail_projection import SCHEMA as DETAIL_SCHEMA
 
     conn.executescript(DETAIL_SCHEMA)
+
+
+@migration(91, "analysis_operational_write_boundaries")
+def migrate_091(conn: sqlite3.Connection):
+    """Reinstall fact triggers without cover paths or publication bookkeeping."""
+    from backend.services.analysis_snapshot_revision import install_revision_tracking
+
+    install_revision_tracking(conn)
+
+
+@migration(92, "album_content_merge_governance")
+def migrate_092(conn: sqlite3.Connection):
+    from backend.domains.playback.album_release_governance import create_schema
+
+    create_schema(conn)
+
+
+@migration(93, "spotify_credit_application_recovery")
+def migrate_093(conn: sqlite3.Connection):
+    from backend.domains.metadata.spotify_track_credits import APPLICATION_SCHEMA
+
+    conn.execute(APPLICATION_SCHEMA)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

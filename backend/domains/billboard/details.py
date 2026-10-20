@@ -52,9 +52,12 @@ def _track_primary_artist_name(track_id: int, fallback: str) -> str:
         ).fetchone()
         if row is None:
             return fallback
-        from backend.domains.metadata.artist_identity import resolve_artist_id
+        from backend.domains.metadata.track_credits import (
+            canonical_artist_names_for_effective_tracks,
+        )
 
-        return resolve_artist_id(conn, int(row[0])).display_name
+        names = canonical_artist_names_for_effective_tracks(conn, [representative_track_id])
+        return (names.get(representative_track_id) or [fallback])[0]
     finally:
         conn.close()
 

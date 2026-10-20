@@ -349,7 +349,15 @@ def rebuild_context_rows_from_weekly_ledger(
     charts = _chart_values(frames)
 
     result: list[ContextRow] = []
-    entity_keys = set(metrics) | set(charts)
+    entity_keys = (
+        set(metrics)
+        | set(charts)
+        | {
+            key
+            for key in validated_candidates
+            if parse_music_search_entity_key(key).kind == "track"
+        }
+    )
     for entity_key in sorted(
         entity_keys,
         key=lambda value: (
@@ -359,7 +367,12 @@ def rebuild_context_rows_from_weekly_ledger(
     ):
         play_events, total_ms = metrics.get(entity_key, (0, 0))
         chart = charts.get(entity_key)
-        if play_events <= 0 and total_ms <= 0 and chart is None:
+        if (
+            parse_music_search_entity_key(entity_key).kind != "track"
+            and play_events <= 0
+            and total_ms <= 0
+            and chart is None
+        ):
             continue
         if chart is None:
             result.append(

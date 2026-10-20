@@ -11,6 +11,127 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+APPLICATION_POLICY_VERSION = "spotify_owner_credits_v5_reviewed_members"
+APPLICATION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS spotify_credit_application_state (
+    track_id INTEGER PRIMARY KEY REFERENCES tracks(track_id),
+    input_digest TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('applied', 'blocked')),
+    reason TEXT,
+    credit_revision INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
+def _application_inputs(conn: sqlite3.Connection) -> dict[int, str]:
+    """Maintenance-only fingerprints include ownership and artist resolution inputs."""
+    from backend.domains.metadata.artist_identity import get_artist_identity_map
+
+    identity = get_artist_identity_map(conn)
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(artists)")}
+    artist_rows = [
+        tuple(r)
+        for r in conn.execute(
+            "SELECT artist_id, artist_name, spotify_artist_id FROM artists ORDER BY artist_id"
+            if "spotify_artist_id" in columns
+            else "SELECT artist_id, artist_name, NULL FROM artists ORDER BY artist_id"
+        )
+    ]
+    external = [
+        tuple(r)
+        for r in conn.execute(
+            "SELECT artist_id,external_id FROM artist_identity_external_ids "
+            "WHERE provider='spotify' ORDER BY artist_id,external_id"
+        )
+    ]
+    resolution = hashlib.sha256(
+        json.dumps(
+            [
+                artist_rows,
+                external,
+                sorted((key, value.canonical_artist_id) for key, value in identity.items()),
+            ],
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+    inputs: dict[int, list] = {}
+    automatic: dict[int, list] = {}
+    manual: dict[int, list] = {}
+    for row in conn.execute(
+        "SELECT track_id,artist_id,action,role FROM track_credit_overrides "
+        "WHERE active=1 ORDER BY override_id"
+    ):
+        manual.setdefault(int(row[0]), []).append(tuple(row))
+    for row in conn.execute(
+        "SELECT track_id,artist_id,spotify_track_id,spotify_artist_id,"
+        "credited_name,credit_order FROM spotify_auto_track_credits "
+        "ORDER BY track_id,credit_order"
+    ):
+        automatic.setdefault(int(row[0]), []).append(tuple(row))
+    for row in conn.execute("""SELECT o.track_id,t.artist_id,t.spotify_track_id,
+                   o.spotify_track_id,s.credit_signature
+              FROM spotify_track_owners o JOIN tracks t ON t.track_id=o.track_id
+              LEFT JOIN spotify_track_credit_sets s ON s.spotify_track_id=o.spotify_track_id
+             ORDER BY o.track_id,o.spotify_track_id"""):
+        inputs.setdefault(int(row[0]), []).append(tuple(row))
+    return {
+        key: hashlib.sha256(
+            json.dumps(
+                [
+                    APPLICATION_POLICY_VERSION,
+                    resolution,
+                    rows,
+                    automatic.get(key, []),
+                    manual.get(key, []),
+                ],
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
+        for key, rows in inputs.items()
+        if any(row[4] is not None for row in rows)
+    }
+
+
+def credit_application_coverage(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Cached evidence and effective application are separate readiness facts."""
+    if not evidence_schema_available(conn):
+        return {"pending": 0, "blocked": 0, "pending_spotify_ids": []}
+    inputs = _application_inputs(conn)
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='spotify_credit_application_state'"
+    ).fetchone()
+    states = (
+        {
+            int(r[0]): (str(r[1]), str(r[2]))
+            for r in conn.execute(
+                "SELECT track_id,input_digest,status FROM spotify_credit_application_state"
+            )
+        }
+        if exists
+        else {}
+    )
+    pending = {
+        key for key, digest in inputs.items() if key not in states or states[key][0] != digest
+    }
+    blocked = {key for key in inputs if key not in pending and states[key][1] == "blocked"}
+    ids = [
+        str(r[1])
+        for r in conn.execute(
+            "SELECT o.track_id,o.spotify_track_id FROM spotify_track_owners o "
+            "JOIN spotify_track_credit_sets s ON s.spotify_track_id=o.spotify_track_id "
+            "ORDER BY o.track_id,o.spotify_track_id"
+        )
+        if int(r[0]) in pending
+    ]
+    return {
+        "pending": len(pending),
+        "blocked": len(blocked),
+        "pending_spotify_ids": ids,
+        "pending_track_ids": sorted(pending),
+        "blocked_track_ids": sorted(blocked),
+    }
+
 
 class InvalidSpotifyCreditsError(ValueError):
     """A Track response cannot replace the last known good artist array."""
@@ -234,10 +355,15 @@ def sync_automatic_spotify_credits(
         artist_external.setdefault(int(row[1]), set()).add(str(row[0]))
     identity = get_artist_identity_map(conn)
     report = {"processed": 0, "changed": 0, "skipped": 0, "created_artists": 0, "revision": 0}
+    ledger_exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='spotify_credit_application_state'"
+    ).fetchone()
+    outcomes: dict[int, tuple[str, str | None]] = {}
     conn.execute("SAVEPOINT spotify_auto_credits")
     try:
         for owner in owners:
             track_id = int(owner[0])
+            outcomes[track_id] = ("blocked", "owner_missing")
             report["processed"] += 1
             track = conn.execute(
                 """SELECT t.artist_id, t.spotify_track_id, a.artist_name
@@ -259,12 +385,22 @@ def sync_automatic_spotify_credits(
                 )
             ]
             raw_spotify_id = str(track[1] or "")
+            signatures = {
+                str(row[0])
+                for row in conn.execute(
+                    """SELECT DISTINCT s.credit_signature FROM spotify_track_owners o
+                       JOIN spotify_track_credit_sets s USING(spotify_track_id)
+                       WHERE o.track_id=?""",
+                    (track_id,),
+                )
+            }
             chosen = (
                 raw_spotify_id
                 if raw_spotify_id in choices
-                else (choices[0] if len(choices) == 1 else None)
+                else (choices[0] if len(choices) == 1 or len(signatures) == 1 else None)
             )
             if not chosen:
+                outcomes[track_id] = ("blocked", "owner_evidence_ambiguous")
                 report["skipped"] += 1
                 continue
             provider = conn.execute(
@@ -274,6 +410,7 @@ def sync_automatic_spotify_credits(
                 (chosen,),
             ).fetchall()
             if not provider:
+                outcomes[track_id] = ("blocked", "credit_evidence_missing")
                 report["skipped"] += 1
                 continue
             primary_id = int(track[0])
@@ -319,11 +456,61 @@ def sync_automatic_spotify_credits(
                 elif _name_key(credited_name) == _name_key(str(track[2])):
                     primary_found = True
                 planned.append((spotify_artist_id, credited_name, int(order_raw), artist_id))
+            # A complete release review must not silently gain or lose members
+            # merely because the provider still includes the raw primary.
+            release_reviewed = conn.execute(
+                "SELECT 1 FROM track_credit_overrides WHERE track_id=? AND active=1 "
+                "AND evidence_type='spotify_track_review' LIMIT 1",
+                (track_id,),
+            ).fetchone()
+            if release_reviewed and not conflict:
+                from backend.domains.metadata.track_credits import get_effective_track_credits
+
+                effective = get_effective_track_credits(conn, [track_id])
+                provider_members = {
+                    identity[item[3]].canonical_artist_id if item[3] in identity else item[3]
+                    for item in planned
+                }
+                if (
+                    None in provider_members
+                    or provider_members != {row["artist_id"] for row in effective}
+                    or not any(row["role"] == "primary" for row in effective)
+                ):
+                    outcomes[track_id] = ("blocked", "reviewed_track_credits_changed")
+                    report["skipped"] += 1
+                    continue
+            # A reviewed, complete per-track correction may intentionally replace
+            # the raw primary. It does not establish a global artist alias.
+            if not conflict and not primary_found and all(item[3] is not None for item in planned):
+                from backend.domains.metadata.track_credits import get_effective_track_credits
+
+                reviewed = conn.execute(
+                    "SELECT 1 FROM track_credit_overrides WHERE track_id=? AND active=1 LIMIT 1",
+                    (track_id,),
+                ).fetchone()
+                effective = get_effective_track_credits(conn, [track_id]) if reviewed else []
+                provider_members = {
+                    identity[item[3]].canonical_artist_id if item[3] in identity else item[3]
+                    for item in planned
+                }
+                primary_found = (
+                    bool(effective)
+                    and any(row["role"] == "primary" for row in effective)
+                    and {row["artist_id"] for row in effective} == provider_members
+                )
             planned_members = [
                 str(item[3]) if item[3] is not None else f"new:{_name_key(item[1])}"
                 for item in planned
             ]
             if conflict or not primary_found or len(set(planned_members)) != len(planned_members):
+                outcomes[track_id] = (
+                    "blocked",
+                    "artist_identity_ambiguous"
+                    if conflict
+                    else "primary_artist_not_resolved"
+                    if not primary_found
+                    else "duplicate_participant_identity",
+                )
                 report["skipped"] += 1
                 continue
 
@@ -371,6 +558,7 @@ def sync_automatic_spotify_credits(
                     (track_id,),
                 )
             ]
+            outcomes[track_id] = ("applied", None)
             if existing == desired:
                 continue
             conn.execute("DELETE FROM spotify_auto_track_credits WHERE track_id=?", (track_id,))
@@ -389,6 +577,20 @@ def sync_automatic_spotify_credits(
                           last_error=NULL, updated_at=datetime('now') WHERE state_id=1"""
             )
             report["revision"] = get_track_credit_revision(conn)
+        if ledger_exists:
+            inputs = _application_inputs(conn)
+            revision = get_track_credit_revision(conn)
+            for track_id, (status, reason) in outcomes.items():
+                conn.execute(
+                    """INSERT INTO spotify_credit_application_state
+                       (track_id,input_digest,status,reason,credit_revision)
+                       VALUES (?,?,?,?,?) ON CONFLICT(track_id) DO UPDATE SET
+                       input_digest=excluded.input_digest,status=excluded.status,
+                       reason=excluded.reason,credit_revision=excluded.credit_revision,
+                       updated_at=CURRENT_TIMESTAMP
+                       WHERE input_digest!=excluded.input_digest OR status!=excluded.status""",
+                    (track_id, inputs[track_id], status, reason, revision),
+                )
         conn.execute("RELEASE SAVEPOINT spotify_auto_credits")
     except Exception:
         conn.execute("ROLLBACK TO SAVEPOINT spotify_auto_credits")

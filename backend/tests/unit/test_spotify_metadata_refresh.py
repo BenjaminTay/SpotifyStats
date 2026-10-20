@@ -1080,3 +1080,83 @@ def test_scoped_refresh_retries_global_missing_metadata_and_artist_cover_backlog
     assert conn.execute("SELECT image_url FROM albums WHERE album_id=20").fetchone()[0]
     assert conn.execute("SELECT image_url FROM artists WHERE artist_id=2").fetchone()[0]
     assert conn.execute("SELECT image_url FROM artists WHERE artist_id=3").fetchone()[0]
+
+
+@pytest.mark.parametrize("binding", ["direct", "verified", "canonical_alias"])
+def test_cover_search_cannot_replace_an_established_artist_identity(binding):
+    from backend.domains.metadata.spotify_refresh import refresh_missing_spotify_metadata
+
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO artists(artist_id,artist_name,spotify_artist_id) VALUES (7,'Same Name',?)",
+        ("approved-id" if binding == "direct" else None,),
+    )
+    conn.execute("INSERT INTO tracks(track_id,artist_id) VALUES (1,7)")
+    conn.execute("INSERT INTO track_artists VALUES (1,7,'primary')")
+    conn.execute("INSERT INTO plays(play_id,track_id) VALUES (1,1)")
+    if binding == "canonical_alias":
+        conn.execute(
+            "INSERT INTO artists(artist_id,artist_name,spotify_artist_id) VALUES (8,'Approved Alias','approved-id')"
+        )
+        conn.execute(
+            "CREATE TABLE artist_identity_aliases(alias_artist_id INTEGER,canonical_artist_id INTEGER)"
+        )
+        conn.execute("INSERT INTO artist_identity_aliases VALUES (7,8)")
+    elif binding == "verified":
+        conn.execute("""INSERT INTO artist_identity_external_ids(
+            artist_id,provider,external_id,evidence_type,evidence_source,verified)
+            VALUES (7,'spotify','approved-id','user_confirmed','reviewed',1)""")
+    before = [tuple(r) for r in conn.execute("SELECT * FROM artist_identity_external_ids")]
+
+    class Provider:
+        def get_tracks(self, ids, token):
+            return {"tracks": []}
+
+        def get_albums(self, ids, token):
+            return {"albums": []}
+
+        def get_artists_by_ids(self, ids, token):
+            return {"artists": []}  # Missing cover must not authorize identity replacement.
+
+        def search_artist(self, name, token):
+            return {"id": "unrelated-id", "name": name, "images": [{"url": "wrong.jpg"}]}
+
+    result = refresh_missing_spotify_metadata(conn, Provider(), "fixture-token")
+    assert conn.execute("SELECT spotify_artist_id FROM artists WHERE artist_id=7").fetchone()[
+        0
+    ] == ("approved-id" if binding == "direct" else None)
+    assert [tuple(r) for r in conn.execute("SELECT * FROM artist_identity_external_ids")] == before
+    assert conn.execute("SELECT image_url FROM artists WHERE artist_id=7").fetchone()[0] is None
+    assert "artist_identity_conflict:7" in result.errors
+    assert result.artist_searches_updated == 0
+    conn.close()
+
+
+def test_track_name_linkage_cannot_override_verified_identity_when_direct_id_is_missing():
+    from backend.domains.metadata.spotify_refresh import upsert_track_batch
+
+    conn = _conn()
+    conn.execute("INSERT INTO artists(artist_id,artist_name) VALUES (7,'Same Name')")
+    conn.execute("INSERT INTO tracks(track_id,artist_id,spotify_track_id) VALUES (1,7,'track-a')")
+    conn.execute("""INSERT INTO artist_identity_external_ids(
+        artist_id,provider,external_id,evidence_type,evidence_source,verified)
+        VALUES (7,'spotify','approved-id','user_confirmed','reviewed',1)""")
+    upsert_track_batch(
+        conn, [{"id": "track-a", "artists": [{"id": "unrelated-id", "name": "Same Name"}]}]
+    )
+    assert (
+        conn.execute("SELECT spotify_artist_id FROM artists WHERE artist_id=7").fetchone()[0]
+        is None
+    )
+    assert [r[0] for r in conn.execute("SELECT external_id FROM artist_identity_external_ids")] == [
+        "approved-id"
+    ]
+    # The approved provider ID can still fill the missing convenience projection.
+    upsert_track_batch(
+        conn, [{"id": "track-a", "artists": [{"id": "approved-id", "name": "Same Name"}]}]
+    )
+    assert (
+        conn.execute("SELECT spotify_artist_id FROM artists WHERE artist_id=7").fetchone()[0]
+        == "approved-id"
+    )
+    conn.close()

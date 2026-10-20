@@ -194,7 +194,7 @@ def test_case_only_duplicate_is_planned_and_applied_once() -> None:
         assert tuple(project_identity) == (
             "bad boy",
             "a-mei",
-            "spotify_complete_release_v5_legacy_year",
+            "spotify_content_release_v6",
         )
         assert not plan_album_project_auto_merges(conn).candidates
     finally:
@@ -428,7 +428,7 @@ def test_sun_yanzi_original_and_remaster_merge_but_2004_namesake_stays_separate(
             for index, track_id in enumerate(original_ids, start=1)
         ]
         remaster_tracks = [
-            (track_id, f"Debut Song {index} - 2024 Remastered", f"SGR24{index:03d}")
+            (track_id, f"Debut Song {index} - 2024 Remastered", f"SGA00{index:03d}")
             for index, track_id in enumerate(remaster_ids, start=1)
         ]
         namesake_tracks = [
@@ -535,7 +535,7 @@ def test_deluxe_superset_merges_only_with_complete_ordered_base_tracklist() -> N
             for index, track_id in enumerate(base_ids, start=1)
         ]
         deluxe_tracks = [
-            (track_id, f"Track {index}", f"DELUXE{index:04d}")
+            (track_id, f"Track {index}", f"BASE{index:04d}")
             for index, track_id in enumerate(deluxe_ids, start=1)
         ]
         _add_release_track_metadata(conn, spotify_album_id="deluxe-base", tracks=base_tracks)

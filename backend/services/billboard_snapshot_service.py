@@ -218,6 +218,11 @@ def rebuild_default_billboard_snapshots() -> dict[str, object]:
 def handle_billboard_snapshot_rebuild(job: Job) -> None:
     """JobQueue handler; stale LKG rows remain available if this fails."""
     result = rebuild_default_billboard_snapshots()
+    # A startup warmup can finish before this background publication. Refresh
+    # the small home composition now that its exact weekly facts are available.
+    from backend.services.home_service import prewarm_default_home_overview
+
+    prewarm_default_home_overview()
     logger.info(
         "Billboard snapshots rebuilt: reason=%s years=%s",
         job.payload.get("reason", "unknown"),

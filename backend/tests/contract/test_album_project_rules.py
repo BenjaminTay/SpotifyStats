@@ -504,8 +504,12 @@ def test_album_full_replays_excludes_single_release(seed_conn):
 
 
 def test_album_detail_includes_album_project_payload(use_seed_db):
+    from backend.core.migrations import run_migrations
     from backend.services.billboard_service import get_album_chart_detail
 
+    # The immutable seed keeps its historical revision triggers. Prepare the
+    # current private migration before exercising current Billboard reads.
+    run_migrations()
     detail = get_album_chart_detail(
         album_name="Fixture Future LP",
         artist_name="Fixture Artist Alpha",

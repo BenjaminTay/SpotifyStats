@@ -1404,6 +1404,7 @@ export interface TrackSpotifyMeta {
   track_number?: number
   disc_number?: number
   spotify_album_name?: string
+  release_artist_names?: string[]
   version_group?: TrackVersionGroup
 }
 

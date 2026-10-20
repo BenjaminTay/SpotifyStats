@@ -483,3 +483,19 @@ describe('未入榜实体详情', () => {
     expect(screen.queryByText('暂无专辑进入专辑榜')).not.toBeInTheDocument()
   })
 })
+
+it.each(['desktop', 'phone'] as const)('统一统计身份后保留发行署名（%s）', async (mode) => {
+  vi.spyOn(viewport, 'useViewportMode').mockReturnValue(mode)
+  vi.spyOn(api, 'get').mockResolvedValue({
+    found: true, chart_status: 'not_charted', effective_play_count: 8,
+    track_id: 5368, track_name: '你的存在就是愛我',
+    artist_name: 'A-Mei Chang', artist_names: ['A-Mei Chang'], primary_artist_name: 'A-Mei Chang',
+    cover_url: null, meta: { release_artist_names: ['阿密特'], spotify_album_name: 'AMIT2' },
+    album_attribution: { album_project_id: 123, display_album_name: 'AMIT2' },
+    summary: null, history: [], chart_data: {},
+  })
+  render(<TrackDetailExperience />, { wrapper: detailWrapper('/music/tracks/5368') })
+  expect(await screen.findByText('发行署名：阿密特')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'AMIT2' })).toHaveAttribute('href', '/music/albums/AMIT2?artist=A-Mei%20Chang')
+  expect(screen.getByRole('link', { name: 'A-Mei Chang' })).toHaveAttribute('href', '/music/artists/A-Mei%20Chang')
+})

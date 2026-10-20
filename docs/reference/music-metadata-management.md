@@ -25,7 +25,10 @@ tracks.album_id)` 展示实际来源专辑和封面。
 L1 不作为设置项或人工合并层级，原“高级：基础身份纠错”入口关闭。底层只执行 Spotify ID 单一归属不变量；需要修正 owner 时必须走单独的受审计数据治理流程，不能通过 L2/L3 或公开 canonical merge/split API 生成新歌曲身份。
 
 L2 默认由机器维护。canonical primary artist 相同且 L2 语义规范化歌名相同的 L1 identities 默认自动
-进入同一活动 `recording` group；规范化会移除大小写、简繁、Unicode/空白/等价标点以及 Explicit、
+进入同一活动 `recording` group，但完整生效 canonical 参与艺人集合（含 featured）也必须一致；已缓存
+Spotify 署名尚未应用或身份有歧义时，候选保持 pending，不能把缺少有效合作署名当作确认独唱。
+这些 cannot-link 门禁同样约束传递连接和 ISRC fallback，人工覆盖优先级保持不变。
+规范化会移除大小写、简繁、Unicode/空白/等价标点以及 Explicit、
 Clean、Bonus、Remaster 和 Soundtrack/source context 等发行说明，但保留 Acoustic、Live、Remix、
 Radio Edit、Demo、Instrumental、Taylor's Version/重录、Original/Single/Album Version、Extended、
 Sped Up/Slowed 和参与艺人变化。普通同艺人同语义标题直接 accepted，不以 ISRC、时长、来源专辑或
@@ -45,17 +48,32 @@ mashup、parody、sample、reprise、结构性标题、艺人不相容和歧义�
 可在 Settings 清除；`force_separate` 始终优先，所有机器与人工决定都记录 scope、policy version、
 evidence 和 before/after 审计。
 
-Album Project 同样优先机器归并同名大小写差异和 catalog 证据完整的标准/豪华/expanded 发行。
-共享 `album_spotify_links` 不是充分条件，必须同时核对 canonical album artist、发行日期/类型与完整
-track list。一个项目可以包含不同 recording key 的 Acoustic、Long Pond 或 rehearsal 额外曲目；
+Album Project 的设置检测与导入维护共用 `spotify_content_release_v6` 判定核心。同一完整 canonical
+album artist 集合下，以完整发行曲目身份发现等价或扩展关系；不同专辑名、缺少版本后缀、重新编排曲序
+均不独立阻断。共享 `album_spotify_links` 不是充分条件，来源链接须先消歧到具体发行，不能把一个
+容器的所有 provider 曲目表做并集。曲目按 Spotify ID、稳定 owner/活动 recording group 或 ISRC
+进行一对一匹配，重复发行位置不能重复使用同一个匹配项；相同歌名本身不构成自动接受证据。
+一个项目可以包含不同 recording key 的 Acoustic、Long Pond 或 rehearsal 额外曲目；
 这只改变专辑项目 membership，不会把这些歌曲在 L2 曲目榜合成原版录音。精选集策略未定期间，
 自动任务不得改变 compilation project 的现有 membership 或榜单资格。
 
-Album Project 的同家族发现允许移除发行标题中真实出现的艺人名前缀/后缀，以及中文专辑名中的
-`同名專輯` / `同名专辑` 标记，但这只用于扩大候选召回，不能单独构成合并证据。机器合并仍必须
-满足相同 canonical album artist、完整有序曲目表等价和受控 Remaster/Deluxe/catalog 关系；移除
-标记后标题为空、曲目不完整或存在多个可行目标时必须 fail closed。艺人规范名与发行标题语言不同
-时，也不得因为无法按规范艺人名剥离前缀而漏掉完整曲目表一致的同名专辑。
+自动扩展要求基础发行至少5个位置、主体录音100%覆盖、扩展版年份不早于基础发行，以及唯一、
+直接可证的基础关系。曲目重排可以接受，不设固定新增曲数上限。低重叠阈值只用于发现候选，
+不能用80%覆盖代替自动接受门槛。缺目录、冲突证据、较短EP或多个基础目标保留候选/跳过原因。
+图连通只用于发现比较集合，每个成员必须直接证明与最小主体发行的关系；不得通过中间合集串联
+两张独立专辑。Live、Acoustic、Remix、重录及 compilation 的既有自动排除边界继续保持。
+
+已有机器发行组以 primary source 的主体曲目参与比较，不能用 Acoustic 等全部成员的并集作为
+基础目录。接受新版本时保留已有组、项目ID和成员；原始来源与日期仍可分开查看。扩展角色由内容
+关系持久记录，不依赖名称里的 Deluxe。被吸收项目的外部映射在重建删除前迁移，旧项目ID通过
+`album_project_redirects` 读取保留项目。人工组优先，移出成员/删除release组会写入独立的
+`album_release_separations`，防止下次机器检测重新合并，不借用歌曲级覆盖表。
+
+旧名称艺人证据仅在每个名字都唯一映射到当前 canonical 身份时兼容新结构化证据；完整名字优先于
+逗号分词，未解析或有歧义不自动接受。计划绑定policy、事实/语义revision、原版目录和成员关系，
+应用时在事务内复验；设置页客户端提交的分组不能绕过服务端当前判定。逐曲匹配、外部映射、目标和
+source revision写入合并事件，重复检测/空计划不写事件或推进revision。schema92仅新增治理表，
+不改写原始播放、曲目或署名。专辑名规范化继续用于来源目录消歧、展示和别名，不能决定跨发行归并。
 
 L3 Album composition parent 只用于原专辑与 Taylor's Version/其他明确重录专辑的完整作品
 lineage；标准版/Deluxe 继续由 L2 处理。重录 parent 的曲目采用 child 并集，Vault/重录独有歌曲
@@ -116,6 +134,10 @@ Spotify Track API 返回的完整 `artists[]` 以原始顺序保存到 `spotify_
 
 日常 Spotify 元数据刷新会优先补本次导入关联曲目的证据缺口，并有界重试历史缺口；成功获取后自动同步有效署名，并通过同一 track-credit revision 触发统计与搜索维护。全库历史补采使用 `scripts/backfill_spotify_track_artist_credits.py --apply`；已有证据可用 `--sync-existing` 离线同步。默认只预览；写正式应用数据库必须显式给出 `--allow-primary --backup-path`，脚本先做 SQLite Online Backup。失败或中断后可再次运行，已保存的证据不会重复拉取。`scripts/audit_spotify_track_credits.py` 仍是只读差异诊断，不是人工审批队列；历史报告中的待核对状态不能当作当前有效署名状态。
 
+当具体发行的主艺人与原始主艺人不一致时，完整、active的逐曲人工纠正可以作为该曲的应用依据：provider各成员必须唯一解析，有效canonical参与集合须与完整provider集合完全相等，并存在有效primary。部分补充、身份冲突或缺少primary仍阻塞；这不建立全局艺人别名。应用策略`spotify_owner_credits_v5_reviewed_members`的输入指纹包含有序active人工覆盖，撤销或证据变动须重新应用。对于active `spotify_track_review`完整发行审核，后续provider成员集合必须与当前已审核有效canonical集合一致；即使原始主艺人仍在，新增、移除或未解析成员也只能记录新证据并标记`reviewed_track_credits_changed`，不得静默改变有效署名。普通局部覆盖不等同于完整发行审核。
+
+统一统计身份与发行署名分别保存。曲目详情primary读取有效署名；`meta.release_artist_names`保留provider顺序及原名，前端在与统计身份不同的情况下单列“发行署名”。获用户确认共用统计的艺名（如阿密特/张惠妹）可归同一canonical，同时保留其发行署名。已确认的新旧名称应登记为可解析别名入口，不能只绑定外部ID；未确认的同名档案或组合/成员关系按逐曲覆盖处理，不扩展全局合并。
+
 ## 3. 直接编辑、预览与撤销
 
 - `preview` 返回变更前后署名、受影响曲目/艺人/专辑/播放范围、canonical 重复风险和全局消费者范围。
@@ -150,6 +172,7 @@ Spotify Track API 返回的完整 `artists[]` 以原始顺序保存到 `spotify_
 - `artists.spotify_artist_id` 是本地实体的便捷投影；稳定 provider 身份事实必须同时写入 `artist_identity_external_ids`，不能只留在 `artists` 或 `spotify_artist_meta`。
 - 曲目元数据精确同名关联或艺人精确搜索写入本地 Spotify artist ID 时，同一事务补写 `provider=spotify` 的 verified 外部 ID。重复刷新不得降低已有人工作证的 `evidence_type`、`evidence_source`、`confidence` 或 `verified`。
 - 艺人身份创建和更新都可携带成员级 external IDs。已核对的不同 provider ID 必须全部保留为冲突事实，再由 `provider_metadata_artist_id` 明确选择展示元数据来源；禁止为了消除冲突删除未被选中的稳定 ID。
+- Track同名关联与补封面名称搜索不得覆盖已建立的Spotify身份：同时检查本地便捷ID与已批准canonical成员的verified外部ID；存在既有ID时候选必须在其集合内，搜索不能替换非空便捷ID。冲突保留旧身份/封面，不追加错误外部ID，刷新报告明确返回身份冲突。
 - 身份事件的 before/after 快照包含活动成员的 external IDs；undo 恢复对应成员当时的外部 ID 状态，并继续以新事件和新 revision 留痕。
 - 候选页发现的 provider ID 会随确认写入治理层。名称只能用于寻找候选，最终关联仍绑定本地 `artist_id + provider + external_id`。
 
@@ -256,3 +279,6 @@ SS-2026-09-24-002 的本地实现（migration 88）独立于 Track evidence；�
 ## 发行日期精度
 
 日期原文、来源精度、legacy、范围比较与不可计算状态按[发行日期证据与精度](release-date-precision.md)执行（schema89，SS-2026-09-24-003）。缺失来源 day 不参与发行日/七日对齐，日期兼容不单独构成自动归并强证据。
+
+
+自动署名应用在一个Track owner拥有多个缓存Spotify ID、raw Track ID已不属于该owner时，可在有序artists证据签名完全相同的来源中稳定选择；签名不同仍保留owner_evidence_ambiguous，不能据此重写owner。相同Spotify艺人ID及经核验别名通过身份治理/外部ID层修复；不同ID、组合与成员、独立艺名统计选择保留审核边界。

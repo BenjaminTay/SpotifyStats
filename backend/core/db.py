@@ -17,6 +17,10 @@ from backend.core.config import SPOTIFY_STATS_DB_PATH
 from backend.core.frame_cache import playback_frame_budget
 from backend.domains.metadata.release_dates import SCHEMA as RELEASE_DATE_SCHEMA
 from backend.domains.metadata.spotify_album_credits import SCHEMA as ALBUM_CREDIT_SCHEMA
+from backend.domains.metadata.spotify_track_credits import APPLICATION_SCHEMA
+from backend.domains.playback.album_release_governance import (
+    SCHEMA as ALBUM_RELEASE_GOVERNANCE_SCHEMA,
+)
 from backend.domains.playback.logical_timeline import reconstruct_logical_plays
 
 logger = logging.getLogger(__name__)
@@ -1248,7 +1252,9 @@ CREATE TABLE IF NOT EXISTS wikipedia_cache (
 """
 
 
-SCHEMA += ALBUM_CREDIT_SCHEMA + RELEASE_DATE_SCHEMA
+SCHEMA += (
+    ALBUM_CREDIT_SCHEMA + RELEASE_DATE_SCHEMA + ALBUM_RELEASE_GOVERNANCE_SCHEMA + APPLICATION_SCHEMA
+)
 
 
 def enforce_sqlite_foreign_keys(conn: sqlite3.Connection) -> sqlite3.Connection:

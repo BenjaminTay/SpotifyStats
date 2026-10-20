@@ -251,7 +251,10 @@ L3 是宽松口径。
 ### R10. L2 同歌曲基础版本判断
 
 L2 自动归并以 canonical primary artist 与语义规范化歌名为主键：二者相同，默认视为同一首歌并
-机器归并，不要求人工审核。规范化只消除 Unicode、简繁、大小写、首尾/重复空白、等价标点，以及
+机器归并，不要求人工审核，但完整生效 canonical 参与艺人集合（包含 featured）必须一致。
+已有 Spotify 署名证据未应用或身份歧义待核时，不自动跨越该证据差异归并；不能通过第三首歌
+或同 ISRC fallback 绕过此门禁。人工 force_merge / force_separate 的优先级保持不变。
+规范化只消除 Unicode、简繁、大小写、首尾/重复空白、等价标点，以及
 Explicit、Clean、Bonus、Remaster/Remastered（含年份）等不改变歌曲身份的发行标签；Acoustic、
 Live、Remix、Radio Edit、Instrumental、Demo、Taylor's Version/重录、Original/Single/Album
 Version、Extended、Sped Up/Slowed 和参与艺人变化等语义标签必须保留在 key 中，因此不会被标题

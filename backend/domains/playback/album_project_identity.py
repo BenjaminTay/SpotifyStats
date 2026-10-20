@@ -160,13 +160,23 @@ def resolve_album_project_identity(
     merge_level: int = 2,
 ) -> AlbumProjectIdentity | None:
     """Resolve one project with the same name and scope rules as batch lookup."""
-    return _resolve_project_rows(
+    requested_project_id = project_id
+    if project_id is not None:
+        from backend.domains.playback.album_release_governance import resolve_project_redirect
+
+        project_id = resolve_project_redirect(conn, project_id)
+    identity = _resolve_project_rows(
         _project_rows(conn, project_id=project_id),
         album_name=album_name,
         artist_name=artist_name,
         project_id=project_id,
         merge_level=merge_level,
     )
+    if identity is not None and requested_project_id is not None:
+        from dataclasses import replace
+
+        identity = replace(identity, requested_project_id=requested_project_id)
+    return identity
 
 
 def resolve_album_project_identities(

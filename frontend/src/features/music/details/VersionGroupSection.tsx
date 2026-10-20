@@ -59,6 +59,7 @@ export function VersionGroupSection({ kind, data, sourceBreakdown, collapsible =
   interface Row {
     key: string
     name: string | null
+    sourceAlbum: string | null
     artist: string | null
     cover: string | null
     plays: number
@@ -81,6 +82,7 @@ export function VersionGroupSection({ kind, data, sourceBreakdown, collapsible =
         return {
           key: `${item.source_bucket}-${item.source_album_id ?? 'none'}`,
           name: item.source_album_name,
+          sourceAlbum: null,
           artist: v?.artist_name ?? null,
           cover: item.album_cover_url ?? v?.album_cover_url ?? null,
           plays: item.play_count,
@@ -97,7 +99,8 @@ export function VersionGroupSection({ kind, data, sourceBreakdown, collapsible =
     // Track mode or no sourceBreakdown: use raw versions
     return data.versions.map((v) => ({
       key: String(v.album_id ?? v.track_id ?? ''),
-      name: v.album_name ?? v.track_name ?? '',
+      name: isAlbum ? v.album_name ?? '' : v.track_name ?? v.album_name ?? '',
+      sourceAlbum: isAlbum ? null : v.album_name ?? null,
       artist: v.artist_name ?? null,
       cover: v.album_cover_url ?? null,
       plays: v.plays,
@@ -166,6 +169,11 @@ export function VersionGroupSection({ kind, data, sourceBreakdown, collapsible =
                           </Link>
                         ) : (
                           <span className="text-muted-foreground truncate block">{displayName(row.name ?? '—')}</span>
+                        )}
+                        {row.sourceAlbum && (
+                          <span className="block text-[11px] text-muted-foreground">
+                            来源发行：{displayName(row.sourceAlbum)}
+                          </span>
                         )}
                         {!isAlbum && row.recordingKind && (
                           <span className="inline-block mt-0.5 text-[10px] text-muted-foreground bg-muted/40 rounded px-1 py-px">

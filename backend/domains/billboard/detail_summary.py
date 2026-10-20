@@ -191,7 +191,8 @@ def _track_meta(conn: sqlite3.Connection, track_id: int) -> dict | None:
     row = conn.execute(
         """SELECT stm.duration_ms, stm.popularity, stm.explicit,
                   stm.track_number, stm.disc_number,
-                  sam.album_name AS spotify_album_name
+                  sam.album_name AS spotify_album_name,
+                  COALESCE(external.external_track_id, t.spotify_track_id) AS source_spotify_id
            FROM track_l1_identities li
            JOIN tracks t ON t.track_id=li.representative_track_id
            LEFT JOIN track_l1_external_ids external
@@ -219,6 +220,13 @@ def _track_meta(conn: sqlite3.Connection, track_id: int) -> dict | None:
     }
     if row["explicit"] is not None:
         meta["explicit"] = bool(row["explicit"])
+    release_credits = conn.execute(
+        "SELECT credited_name FROM spotify_track_artist_credits "
+        "WHERE spotify_track_id=? ORDER BY credit_order",
+        (row["source_spotify_id"],),
+    ).fetchall()
+    if release_credits:
+        meta["release_artist_names"] = [str(credit[0]) for credit in release_credits]
     return meta or None
 
 
@@ -527,7 +535,9 @@ def build_track_detail_summary(
         credits = canonical_artist_names_for_effective_tracks(conn, [representative_track_id]).get(
             representative_track_id, []
         )
-        primary = resolve_artist_id(conn, int(raw["artist_id"])).display_name
+        primary = (
+            credits[0] if credits else resolve_artist_id(conn, int(raw["artist_id"])).display_name
+        )
         artist_names = credits or [primary]
         chart = _chart_summary(context)
         history, chart_data = _track_history(

@@ -1,5 +1,11 @@
 # 数据导入与健康检查
 
+Spotify 曲目署名的“证据已缓存”和“已应用生效”分别核验。schema93 的逐 owner 应用状态绑定
+证据签名、Spotify ID 归属、艺人身份解析、策略和自动覆盖内容；续跑从缓存补应用 pending，
+不依赖曲目是否重新抓取。署名覆盖、应用状态与 revision 在同一事务发布；导入期间由串行维护
+链统一处理 L2/L3 和聚合，不并发触发独立署名重建。pending 阻止精确 ready；已记录 blocked
+属于明确的身份待核结果，健康报告保留说明、旧生效署名保持，相关 L2 自动候选不能跨越待核证据。
+
 ## 目标
 
 数据导入区只负责两件事：在导入前确认本地 Spotify 数据包可读，在导入后说明数据库、关系、元数据和派生统计是否可继续使用。健康检查是只读的，不会修复、删除或覆盖原始播放事实。
@@ -24,6 +30,8 @@
 - `POST /api/import/batches/{id}/finalize` 在批次锁内重新核对临时文件并原子冻结；同一 manifest 可复用既有不可变版本。执行只读取冻结 packet 或已发布 resolved 全量视图。
 - `GET /api/import/batches/{id}/preflight` 返回绑定该批次与当前活动基线的计划及确认标识；`POST /api/import/batches/{id}/runs` 创建持久运行。相同逻辑请求以 batch、manifest、模式、确认和活动事实栅栏去重。
 - `GET /api/import/runs`、`/latest`、`/{id}` 与 `/{id}/report` 提供分页历史、当前状态、阶段证据和 JSON/Markdown 报告；`retry` 只重跑失败/未完成阶段，`recheck` 重新核对当前 readiness。
+- Provider网络中断、限流与服务端错误进入可重试阶段，认证和解析错误不自动视为可重试；重试复用已发布事实与ChangeSet，不重放播放ETL。readiness复查在事实栅栏下进行，相同依赖及就绪证据不重复新增attempt，原warming阶段完成后收敛为成功，失败历史保留。
+- 封面本地路径与导入publication运维字段不推进分析事实revision；generation、digest、播放及成员变化仍使快照失效。迁移91更新旧库触发器。首页私有维护从exact持久周榜恢复轻量预览，冷启动及Billboard后台发布后自动更新；公开首页读取不构建完整榜单，也不把旧LKG标为ready。
 - 普通响应不返回服务端绝对路径、用户名、原始记录或未脱敏异常；报告保留 error code、阶段、作用域、分母和受影响计数。
 
 ## 导入前检查
@@ -71,7 +79,7 @@
 - 两条搜索 delta 路径执行前后都会复核基础 snapshot、活动事实代际、候选与统计依赖，报告策略为 `incremental_snapshot_delta`，且不扫描完整 lifetime 播放事实。多周跳跃、存在删除/历史修正、缺少兼容 lineage/账本、依赖变化、合并关闭、闭包超过 100,000 行或其他成本门禁失败时安全回退 D1 `shared_full_snapshot_rebuild`。
 - schema 60–63 分别保存 candidate maintenance、四变体 active/target pointer、曲目署名 before/after change set 与即时 deny overlay。升级只新增表和索引；旧代码可忽略新表，回滚不得删除仍承担 LKG 或即时撤销展示职责的数据。
 - migration 46 从精确周账本派生独立版本的详情年榜投影。shared-full、delta 和 ready snapshot 复用都会在后台维护四套公开投影；核心 context snapshot 一经发布即可使用，Year-End 的后续失败只记录独立维护状态，不得把 candidate 或核心 context 降级。旧库已有 ready snapshot 但缺少账本/投影时，会幂等排入后台任务，账本只可在维护任务内补建，详情 GET 不得承担补建；同 fingerprint 重发与旧 snapshot pruning 必须同步清理过期年榜行。
-- Album Project 在无删除、实际元数据影响闭包精确且规模未超门限时定向重建；存在删除、闭包不精确、依赖不兼容或成本过高时自动全量回退。自动推断项目按稳定语义键复用 ID 并精确替换 membership，manual 与未受影响项目不变。持久曲目、专辑和艺人维表可为人工治理与审计保留历史行，但自动 Album Project 与搜索候选只消费当前播放事实可达闭包，历史 reconcile 或完整替换淘汰的旧实体不会继续作为活动候选。
+- Album Project 在无删除、实际元数据影响闭包精确且规模未超门限时定向重建；存在删除、闭包不精确、依赖不兼容或成本过高时自动全量回退。自动推断项目优先按稳定语义键复用 ID；名称或艺人事实变化时，仅对同一主来源专辑、同 scope、带目录映射且唯一的自动项目沿用 ID，人工、无目录证据与歧义 owner 不走此复用。重建精确替换 membership，manual 与未受影响项目不变。持久曲目、专辑和艺人维表可为人工治理与审计保留历史行，但自动 Album Project 与搜索候选只消费当前播放事实可达闭包，历史 reconcile 或完整替换淘汰的旧实体不会继续作为活动候选。
 - 正式 L1/L2/L3 联合治理统一通过 `scripts/apply_version_governance.py` 执行。主库运行前必须停止写入者，至少在两份独立 Online Backup 副本完成同版本全量 `--apply` 和第二次 dry-run 幂等演练；随后为主库创建新的 Online Backup，并检查原始 `plays` / `tracks` / `track_artists` 行数与 hash、L2 关系 digest、候选三态、外键、完整性和审计 payload。一次运行只发布一次 track revision 和一次 album revision，并要求 L2/L3 × dynamic/fixed 四套精确搜索快照及详情年榜投影全部 ready、指纹一致后才成功。关系已提交但派生重建失败时不得继续写入或宣布成功；保留旧 LKG，对当前 revision 幂等重跑，无法恢复时从本次停机备份回滚。`--skip-derived-rebuild` 只用于诊断，不能作为正式完成路径。
 
 检查不会把文件导入数据库，也不会启动后台 Job。确认文件后，用户仍需显式点击已有的「导入串流数据」或「导入账号数据」。
@@ -194,3 +202,8 @@ schema 59 起，普通应用、后台作业、导入快照和年度缓存的持�
 ## 治理健康持久读取
 
 阶段 6C 的共享主艺人时长、精确 revision、持久结果与实时状态拆分见 [治理 Coverage / Health 合同](governance-snapshots.md)。GET 不承担冷建；用户显式 preflight 保持原文件检查行为。
+
+
+## 零贡献曲目的可用性
+
+维护期完成统计扫描后，已索引曲目即使仅有0毫秒来源，也发布明确的0次/0时长context；完整构建和增量ledger重建使用相同规则。实体存在与有有效收听是不同事实：详情正常打开，首次/最近有效收听为null，榜单未入榜。缺失或损坏的exact-ready事实仍返回snapshot_unavailable，不允许GET补建或用临时零值掩盖未准备数据；原始0毫秒记录保留。

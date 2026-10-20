@@ -12,6 +12,47 @@ from backend.services import home_service
 pytestmark = pytest.mark.unit
 
 
+def test_maintenance_restores_only_exact_weekly_preview(monkeypatch):
+    from backend.domains.billboard import latest_snapshot_cache as preview
+    from backend.services.billboard_snapshot_service import configured_billboard_filters
+
+    context = SimpleNamespace(**configured_billboard_filters())
+    calls = []
+    monkeypatch.setattr(
+        home_service,
+        "build_cache_context",
+        lambda family, params: {"family": family, "params": params},
+    )
+    payload = {
+        "meta": {"all_weeks_desc": ["2026-10-09"]},
+        "weekly": [],
+        "weekly_album": [],
+        "weekly_artist": [],
+    }
+    monkeypatch.setattr(
+        home_service,
+        "load_persisted_snapshot",
+        lambda key, **kw: calls.append((key, kw)) or payload,
+    )
+    preview.clear_latest_snapshots()
+    assert home_service._restore_billboard_preview(context)
+    assert calls[0][0]["family"] == "weekly"
+    assert calls[0][1] == {"allow_lkg": False}
+    key = preview.snapshot_key(**calls[0][0]["params"])
+    assert preview.get_latest_snapshot_if_cached(key)["meta"] == payload["meta"]
+    preview.clear_latest_snapshots()
+    monkeypatch.setattr(home_service, "load_persisted_snapshot", lambda *a, **k: None)
+    assert not home_service._restore_billboard_preview(context)
+    assert preview.get_latest_snapshot_if_cached(key) is None
+    monkeypatch.setattr(home_service, "public_readonly_db_guard_active", lambda: True)
+    monkeypatch.setattr(
+        home_service,
+        "load_persisted_snapshot",
+        lambda *a, **k: pytest.fail("public maintenance read"),
+    )
+    assert not home_service._restore_billboard_preview(context)
+
+
 def test_composite_cache_refreshes_when_preview_readiness_changes(monkeypatch):
     calls = []
     context = SimpleNamespace(
@@ -47,7 +88,40 @@ def test_composite_cache_refreshes_when_preview_readiness_changes(monkeypatch):
     assert yearly_ready == {"generation": 3}
 
 
+def test_private_prewarm_replaces_an_old_unavailable_home_file(monkeypatch, tmp_path):
+    from backend.services import yearly_review_service
+
+    context = SimpleNamespace()
+    monkeypatch.setattr(
+        yearly_review_service, "build_default_yearly_review_context", lambda: context
+    )
+    monkeypatch.setattr(home_service, "get_db", lambda **kw: sqlite3.connect(":memory:"))
+    monkeypatch.setattr(home_service, "_is_primary_connection", lambda conn: True)
+    monkeypatch.setattr(home_service, "_HOME_SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setattr(
+        home_service, "_cache_parts", lambda ctx: ("context", "rev", "v", "bb", "yr")
+    )
+    monkeypatch.setattr(home_service, "_lkg_snapshot_path", lambda ctx: tmp_path / "lkg.json")
+    monkeypatch.setattr(home_service, "_present_home_payload", lambda payload: payload)
+    monkeypatch.setattr(
+        home_service, "HomeOverviewResponse", SimpleNamespace(model_validate=lambda p: p)
+    )
+    restored = []
+    monkeypatch.setattr(
+        home_service, "_restore_billboard_preview", lambda ctx: restored.append(ctx)
+    )
+    monkeypatch.setattr(
+        home_service, "build_home_overview", lambda conn, ctx: {"billboard": {"state": "ready"}}
+    )
+    path = home_service._snapshot_path(home_service._cache_parts(context))
+    home_service._write_snapshot(path, {"billboard": {"state": "unavailable"}})
+    assert home_service.prewarm_default_home_overview()["billboard"]["state"] == "ready"
+    assert restored == [context]
+    assert home_service._read_snapshot(path)["billboard"]["state"] == "ready"
+
+
 def test_revision_miss_serves_last_good_while_exact_snapshot_rebuilds(monkeypatch, tmp_path):
+    monkeypatch.setattr(home_service, "_restore_billboard_preview", lambda context: False)
     context = SimpleNamespace(
         min_ms=30000,
         music_only=True,

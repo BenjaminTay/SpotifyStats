@@ -72,6 +72,32 @@ def forbid(*args, **kwargs):
     pytest.fail("GET crossed publication boundary")
 
 
+def test_cover_and_publication_writes_preserve_revisions_but_fact_writes_invalidate(isolated):
+    from backend.services import analysis_snapshot_revision as revision
+
+    with sqlite3.connect(isolated[0]) as conn:
+        families = ("analysis_stats", "analysis_records")
+        before = [revision.source_revision(conn, family) for family in families]
+        oracle = revision._table_digest(conn, "playback_import_state")
+        conn.execute("UPDATE artists SET image_path='covers/test.jpg'")
+        conn.execute("UPDATE albums SET image_path='covers/test.jpg'")
+        conn.execute("""UPDATE playback_import_state SET publication_state='ready',
+                     active_publication_id='publication', active_source_version_id='source',
+                     last_relation='same', last_strategy='incremental'""")
+        conn.commit()
+        assert [revision.source_revision(conn, family) for family in families] == before
+        assert revision._table_digest(conn, "playback_import_state") == oracle
+        conn.execute("UPDATE playback_import_state SET dataset_digest='changed'")
+        conn.commit()
+        assert all(revision.source_revision(conn, f) != r for f, r in zip(families, before))
+        changed = revision.source_revision(conn, "analysis_records")
+        conn.execute(
+            "UPDATE plays SET ms_played=ms_played+1 WHERE play_id=(SELECT MIN(play_id) FROM plays)"
+        )
+        conn.commit()
+        assert revision.source_revision(conn, "analysis_records") != changed
+
+
 @pytest.mark.parametrize("family", service.VERSIONS)
 def test_code_only_credit_policy_change_serves_old_facts_as_warming_without_public_write(
     isolated, monkeypatch, family

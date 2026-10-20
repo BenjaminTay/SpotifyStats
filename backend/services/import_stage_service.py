@@ -16,6 +16,7 @@ import traceback
 from collections.abc import Iterable
 from typing import Any
 
+from backend.core.cache import singleflight
 from backend.core.db import get_db
 from backend.domains.imports.change_set import PlaybackChangeSet
 from backend.domains.imports.control_store import (
@@ -29,6 +30,7 @@ from backend.domains.imports.control_store import (
     utc_now,
 )
 from backend.domains.imports.state import summarise_current_playback_dataset
+from backend.providers.base import ProviderNetworkError, ProviderRateLimitError, ProviderServerError
 from backend.services.import_maintenance_service import run_import_maintenance_stage
 
 IMPORT_STAGES = (
@@ -51,7 +53,7 @@ class ImportStageFenceError(RuntimeError):
 
 _STAGE_DEPENDENCY_TABLES = {
     "metadata": (),
-    "identity_merge": ("analysis_source_revisions",),
+    "identity_merge": ("analysis_source_revisions", "track_credit_state"),
     "album_project_l3": (
         "track_identity_state",
         "analysis_source_revisions",
@@ -193,7 +195,16 @@ def _classify_readiness(
 
 
 def _retryable_stage_error(exc: Exception) -> bool:
-    if isinstance(exc, (ConnectionError, TimeoutError)):
+    if isinstance(
+        exc,
+        (
+            ConnectionError,
+            TimeoutError,
+            ProviderNetworkError,
+            ProviderRateLimitError,
+            ProviderServerError,
+        ),
+    ):
         return True
     if isinstance(exc, sqlite3.OperationalError) and any(
         marker in str(exc).lower() for marker in ("locked", "busy")
@@ -209,6 +220,21 @@ def _retryable_stage_error(exc: Exception) -> bool:
             "rate_limit",
             "resource_busy",
         )
+    )
+
+
+def _stage_error_code(exc: Exception, stage: str, retryable: bool) -> str:
+    for error_type, code in (
+        (ProviderNetworkError, "provider_network_unavailable"),
+        (ProviderRateLimitError, "provider_rate_limit"),
+        (ProviderServerError, "provider_unavailable"),
+        (TimeoutError, "stage_timeout"),
+        (ConnectionError, "stage_connection_unavailable"),
+    ):
+        if isinstance(exc, error_type):
+            return code
+    return str(
+        getattr(exc, "error_code", "stage_resource_busy" if retryable else f"{stage}_failed")
     )
 
 
@@ -316,6 +342,9 @@ def inspect_import_readiness(run_id: str | None = None) -> dict[str, Any]:
 
     conn = get_db(readonly=True)
     try:
+        from backend.domains.metadata.spotify_track_credits import credit_application_coverage
+
+        application = credit_application_coverage(conn)
         contexts = build_music_search_variant_contexts(conn, _current_filter_values(conn))
         search = _revalidated_snapshot_set_report(conn, contexts)
         year_end = year_end_projection_set_status(conn, contexts)
@@ -380,8 +409,12 @@ def inspect_import_readiness(run_id: str | None = None) -> dict[str, Any]:
         billboard_failed=billboard_failed,
         billboard_warming=billboard_warming,
     )
+    if application["pending"]:
+        status = "failed"
     return {
         "status": status,
+        "track_credit_application_pending": application["pending"],
+        "track_credit_application_blocked": application["blocked"],
         "search_ready_count": int(search.get("ready_count") or 0) if search else 0,
         "search_expected_count": 4,
         "year_end_ready_count": int(year_end.get("ready_count") or 0),
@@ -394,6 +427,67 @@ def inspect_import_readiness(run_id: str | None = None) -> dict[str, Any]:
     }
 
 
+def _update_reconciled_run(run: dict, run_id: str, **fields) -> None:
+    if any(run.get(key) != value for key, value in fields.items()):
+        update_run(run_id, **fields)
+
+
+def _record_readiness_attempt(
+    run_id, generation_id, dataset_digest, readiness, dependency_revision, **fields
+):
+    evidence = {
+        **readiness,
+        "input_dependency_revision": dependency_revision,
+        "validation_dependency_revision": dependency_revision,
+    }
+    latest = next(
+        (item for item in latest_stage_attempts(run_id) if item["stage"] == "exact_snapshots"), None
+    )
+    if (
+        latest
+        and latest["status"] == fields["status"]
+        and latest.get("output_evidence") == evidence
+    ):
+        return
+    # Complete a pending observation; failed attempts remain immutable history.
+    attempt = (
+        latest["attempt"]
+        if latest and latest["status"] == "warming"
+        else start_stage_attempt(
+            run_id,
+            "exact_snapshots",
+            generation_id,
+            dataset_digest,
+            dependency_revision=dependency_revision,
+        )
+    )
+    fields.pop("output", None)
+    finish_stage_attempt(run_id, "exact_snapshots", attempt, output=evidence, **fields)
+
+
+def _complete_candidate_attempt(run_id: str, readiness: dict) -> None:
+    if readiness.get("search_ready_count") != 4:
+        return
+    latest = next(
+        (item for item in latest_stage_attempts(run_id) if item["stage"] == "candidate_index"), None
+    )
+    if latest and latest["status"] == "warming":
+        evidence = {
+            **(latest.get("output_evidence") or {}),
+            "status": "ready",
+            "validation_dependency_revision": _stage_dependency_revision("candidate_index"),
+        }
+        finish_stage_attempt(
+            run_id,
+            "candidate_index",
+            latest["attempt"],
+            status="succeeded",
+            output=evidence,
+            strategy="revalidated",
+        )
+
+
+@singleflight
 def reconcile_import_readiness(run_id: str) -> dict[str, Any]:
     run = get_run(run_id)
     if run is None:
@@ -404,24 +498,19 @@ def reconcile_import_readiness(run_id: str) -> dict[str, Any]:
     readiness = inspect_import_readiness(run_id)
     if readiness["status"] == "ready":
         dependency_revision = _stage_dependency_revision("exact_snapshots")
-        attempt = start_stage_attempt(
+        _record_readiness_attempt(
             run_id,
-            "exact_snapshots",
             generation_id,
             dataset_digest,
-            dependency_revision=dependency_revision,
-        )
-        readiness["input_dependency_revision"] = dependency_revision
-        readiness["validation_dependency_revision"] = _stage_dependency_revision("exact_snapshots")
-        finish_stage_attempt(
-            run_id,
-            "exact_snapshots",
-            attempt,
+            readiness,
+            dependency_revision,
             status="succeeded",
             output=readiness,
             strategy="revalidated",
         )
-        _publish_main_state(generation_id, dataset_digest, "ready")
+        _complete_candidate_attempt(run_id, readiness)
+        if run.get("publication_state") != "ready":
+            _publish_main_state(generation_id, dataset_digest, "ready")
         pending_retry = next(
             (
                 item
@@ -432,12 +521,13 @@ def reconcile_import_readiness(run_id: str) -> dict[str, Any]:
             ),
             None,
         )
-        update_run(
+        _update_reconciled_run(
+            run,
             run_id,
             status="retryable_failed" if pending_retry else "succeeded",
             publication_state="ready",
             progress_pct=1.0,
-            completed_at=utc_now(),
+            completed_at=run.get("completed_at") or utc_now(),
             error_code=(str(pending_retry.get("error_code")) if pending_retry else None),
             error_detail=(
                 "核心数据与精确快照已发布，但补充阶段仍可重试" if pending_retry else None
@@ -453,19 +543,12 @@ def reconcile_import_readiness(run_id: str) -> dict[str, Any]:
         readiness["status"] == "unavailable" and not readiness.get("build_in_progress")
     ):
         dependency_revision = _stage_dependency_revision("exact_snapshots")
-        attempt = start_stage_attempt(
+        _record_readiness_attempt(
             run_id,
-            "exact_snapshots",
             generation_id,
             dataset_digest,
-            dependency_revision=dependency_revision,
-        )
-        readiness["input_dependency_revision"] = dependency_revision
-        readiness["validation_dependency_revision"] = _stage_dependency_revision("exact_snapshots")
-        finish_stage_attempt(
-            run_id,
-            "exact_snapshots",
-            attempt,
+            readiness,
+            dependency_revision,
             status="failed",
             output=readiness,
             strategy="revalidated",
@@ -476,7 +559,8 @@ def reconcile_import_readiness(run_id: str) -> dict[str, Any]:
             ),
             retryable=True,
         )
-        update_run(
+        _update_reconciled_run(
+            run,
             run_id,
             status="retryable_failed",
             publication_state="core_ready",
@@ -487,16 +571,20 @@ def reconcile_import_readiness(run_id: str) -> dict[str, Any]:
             ),
             error_detail="Search、Year-End 或 Billboard 精确快照未能进入可恢复构建态",
             retryable=1,
-            completed_at=utc_now(),
+            completed_at=run.get("completed_at") or utc_now(),
             message="核心数据可用，但精确快照构建失败",
         )
     else:
-        update_run(
+        _update_reconciled_run(
+            run,
             run_id,
             status="running",
             publication_state="core_ready",
             progress_pct=0.95,
             completed_at=None,
+            error_code=None,
+            error_detail=None,
+            retryable=0,
             message="核心数据可用，精确快照正在后台构建",
         )
     return readiness
@@ -607,11 +695,7 @@ def run_import_stages(
                 if retryable
                 else "failed"
             )
-            error_code = getattr(
-                exc,
-                "error_code",
-                "stage_resource_busy" if retryable else f"{stage}_failed",
-            )
+            error_code = _stage_error_code(exc, stage, retryable)
             finish_stage_attempt(
                 run_id,
                 stage,
@@ -727,6 +811,7 @@ def run_import_stages(
     core_ready = "critical_prewarm" in prior_outputs
     publication_state = "ready" if ready else "core_ready" if core_ready else "sources_published"
     if ready:
+        _complete_candidate_attempt(run_id, exact)
         _publish_main_state(generation_id, dataset_digest, "ready")
     task_status = "retryable_failed" if degraded else "succeeded" if ready else "running"
     update_run(

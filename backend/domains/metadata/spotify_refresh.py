@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from backend.domains.metadata.spotify_track_credits import (
     InvalidSpotifyCreditsError,
+    credit_application_coverage,
     credit_evidence_coverage,
     evidence_schema_available,
     save_track_credit_evidence,
@@ -52,6 +53,9 @@ class MetadataRefreshReport:
     credit_evidence_failed: int = 0
     credit_evidence_lkg: int = 0
     credit_evidence_missing: int = 0
+    credit_application_pending: int = 0
+    credit_application_blocked: int = 0
+    credit_application_revision: int = 0
 
 
 @dataclass(frozen=True)
@@ -95,12 +99,48 @@ def _normalized_name(value: str | None) -> str:
     return "".join(char for char in normalized if char.isalnum())
 
 
+def _known_spotify_artist_ids(conn: sqlite3.Connection) -> dict[int, set[str]]:
+    """Name matching may fill a missing link, never contradict an established identity."""
+    from backend.domains.metadata.artist_identity import get_artist_identity_map
+
+    identity = get_artist_identity_map(conn)
+    columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(artists)")}
+    links = (
+        list(
+            conn.execute(
+                "SELECT artist_id,spotify_artist_id FROM artists WHERE spotify_artist_id!=''"
+            )
+        )
+        if "spotify_artist_id" in columns
+        else []
+    )
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artist_identity_external_ids'"
+    ).fetchone():
+        links.extend(
+            conn.execute(
+                "SELECT artist_id,external_id FROM artist_identity_external_ids "
+                "WHERE provider='spotify' AND verified=1"
+            )
+        )
+    by_canonical: dict[int, set[str]] = {}
+    for artist_id, spotify_id in links:
+        resolved = identity.get(int(artist_id))
+        canonical_id = resolved.canonical_artist_id if resolved else int(artist_id)
+        by_canonical.setdefault(canonical_id, set()).add(str(spotify_id))
+    return {
+        artist_id: by_canonical.setdefault(resolved.canonical_artist_id, set())
+        for artist_id, resolved in identity.items()
+    }
+
+
 def _link_local_artist_from_track(
     conn: sqlite3.Connection,
     track: dict,
     *,
     scope: MetadataRefreshScope | None = None,
     local_artist_ids_relinked: set[int] | None = None,
+    known_artist_ids: dict[int, set[str]] | None = None,
 ) -> int:
     spotify_artists = track.get("artists") or []
     if not spotify_artists:
@@ -138,6 +178,8 @@ def _link_local_artist_from_track(
             (track_id, scope.generation_id, track_id),
         ).fetchall()
     linked = 0
+    if known_artist_ids is None:
+        known_artist_ids = _known_spotify_artist_ids(conn)
     for local in local_rows:
         local_name = _normalized_name(local["artist_name"])
         match = next(
@@ -149,6 +191,9 @@ def _link_local_artist_from_track(
             None,
         )
         if match and match.get("id"):
+            known = known_artist_ids.get(int(local["artist_id"]), set())
+            if known and str(match["id"]) not in known:
+                continue
             existing_spotify_artist_id = str(local["spotify_artist_id"] or "")
             cursor = conn.execute(
                 """UPDATE artists SET spotify_artist_id=?
@@ -170,6 +215,8 @@ def _link_local_artist_from_track(
                 )
             if cursor.rowcount > 0 and local_artist_ids_relinked is not None:
                 local_artist_ids_relinked.add(int(local["artist_id"]))
+            if cursor.rowcount > 0:
+                known_artist_ids.setdefault(int(local["artist_id"]), set()).add(str(match["id"]))
     return linked
 
 
@@ -201,6 +248,7 @@ def upsert_track_batch(
     source_run_id: str | None = None,
 ) -> int:
     updated = 0
+    known_artist_ids = _known_spotify_artist_ids(conn)
     try:
         for track in tracks:
             if not track:
@@ -279,6 +327,7 @@ def upsert_track_batch(
                 track,
                 scope=scope,
                 local_artist_ids_relinked=local_artist_ids_relinked,
+                known_artist_ids=known_artist_ids,
             )
             updated += 1
         conn.commit()
@@ -841,6 +890,7 @@ def refresh_missing_spotify_metadata(
     *,
     scope: MetadataRefreshScope | None = None,
     source_run_id: str | None = None,
+    defer_credit_rebuild: bool = False,
 ) -> MetadataRefreshReport:
     spotify_track_ids_updated: set[str] = set()
     spotify_album_ids_updated: set[str] = set()
@@ -852,6 +902,12 @@ def refresh_missing_spotify_metadata(
         scope=scope,
         local_album_ids_relinked=local_album_ids_relinked,
     )
+    # Resume local application independently of network fetch eligibility.
+    application = credit_application_coverage(conn)
+    recovered = sync_automatic_spotify_credits(conn, application["pending_spotify_ids"])
+    conn.commit()
+    if recovered["changed"] and not defer_credit_rebuild:
+        schedule_automatic_credit_rebuild(conn, recovered["revision"])
     if not access_token:
         coverage = credit_evidence_coverage(conn)
         return MetadataRefreshReport(
@@ -1054,6 +1110,7 @@ def refresh_missing_spotify_metadata(
     artist_searches_updated = 0
     search_artist = getattr(provider, "search_artist", None)
     if callable(search_artist):
+        known_artist_ids = _known_spotify_artist_ids(conn)
         for index, (local_artist_id, artist_name) in enumerate(search_candidates, start=1):
             if progress_callback:
                 progress_callback(
@@ -1063,10 +1120,19 @@ def refresh_missing_spotify_metadata(
             artist = search_artist(artist_name, access_token)
             if not artist or not artist.get("id"):
                 continue
-            conn.execute(
-                "UPDATE artists SET spotify_artist_id=? WHERE artist_id=?",
-                (artist["id"], local_artist_id),
+            known = known_artist_ids.get(local_artist_id, set())
+            if known and str(artist["id"]) not in known:
+                errors.append(f"artist_identity_conflict:{local_artist_id}")
+                continue
+            cursor = conn.execute(
+                "UPDATE artists SET spotify_artist_id=? WHERE artist_id=? "
+                "AND (spotify_artist_id IS NULL OR spotify_artist_id='' OR spotify_artist_id=?)",
+                (artist["id"], local_artist_id, artist["id"]),
             )
+            if not cursor.rowcount:
+                errors.append(f"artist_identity_conflict:{local_artist_id}")
+                continue
+            known_artist_ids.setdefault(local_artist_id, set()).add(str(artist["id"]))
             from backend.domains.metadata.artist_identity import (
                 sync_artist_spotify_external_id,
             )
@@ -1091,12 +1157,24 @@ def refresh_missing_spotify_metadata(
     automatic_report = sync_automatic_spotify_credits(
         conn, [item[0] for item in credit_outcomes if item[1] != "failed"]
     )
-    if automatic_report["changed"]:
-        conn.commit()
-        schedule_automatic_credit_rebuild(conn, automatic_report["revision"])
+    remaining = credit_application_coverage(conn)
+    reconciled = sync_automatic_spotify_credits(conn, remaining["pending_spotify_ids"])
+    conn.commit()
+    publication_revision = (
+        reconciled["revision"] or automatic_report["revision"] or recovered["revision"]
+    )
+    if publication_revision and not defer_credit_rebuild:
+        schedule_automatic_credit_rebuild(conn, publication_revision)
+
+    application = credit_application_coverage(conn)
+    if application["pending"]:
+        errors.append("track_credit_application_incomplete")
 
     return MetadataRefreshReport(
         tracks_requested=len(track_ids),
+        credit_application_pending=application["pending"],
+        credit_application_blocked=application["blocked"],
+        credit_application_revision=publication_revision,
         tracks_updated=tracks_updated,
         albums_requested=len(album_ids),
         albums_updated=albums_updated,
@@ -1112,7 +1190,7 @@ def refresh_missing_spotify_metadata(
         local_album_ids_relinked=frozenset(local_album_ids_relinked),
         local_album_ids_updated=frozenset(local_album_ids_updated),
         local_artist_ids_updated=frozenset(local_artist_ids_updated),
-        impact_scope_exact=not errors,
+        impact_scope_exact=not errors and not recovered["changed"],
         credit_evidence_requested=len(track_ids) if credit_schema else 0,
         credit_evidence_observed=sum(item[1] == "observed" for item in credit_outcomes),
         credit_evidence_changed=sum(item[1] == "changed" for item in credit_outcomes),

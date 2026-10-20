@@ -1141,7 +1141,9 @@ def _context_rows(
             entity_id = int(document["artist_id"])
             play_events, total_ms = artist_metrics.get(entity_id, (0, 0))
             chart = chart_lookup["artist"].get(str(document["artist_name"]))
-        if play_events <= 0 and total_ms <= 0 and not _chart_has_fact(chart):
+        # A completed metric scan proves an indexed track's zero contribution.
+        # Publish that fact so details do not confuse empty with unavailable.
+        if kind != "track" and play_events <= 0 and total_ms <= 0 and not _chart_has_fact(chart):
             continue
         result.append(
             (

@@ -94,3 +94,53 @@ def test_import_maintenance_blocks_on_played_l3_issue(monkeypatch) -> None:
 
     assert observed == {"include_unplayed": False}
     conn.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize("health_status", ["healthy", "partial"])
+def test_critical_prewarm_keeps_health_warnings_without_failing_stage(monkeypatch, health_status):
+    from backend.core import warmup
+    from backend.services import import_maintenance_service as maintenance
+
+    conn = Mock()
+    prewarm = Mock()
+    monkeypatch.setattr(maintenance, "get_db", lambda **kwargs: conn)
+    monkeypatch.setattr(
+        maintenance,
+        "build_import_health_report",
+        lambda _conn: {"status": health_status, "warnings": ["historical gap"], "blockers": []},
+    )
+    monkeypatch.setattr(warmup, "prewarm_import_critical_caches", prewarm)
+
+    result = maintenance.run_import_maintenance_stage(
+        "critical_prewarm", SimpleNamespace(strategy="incremental"), {}
+    )
+
+    assert result == {
+        "status": "ready",
+        "health_status": health_status,
+        "warning_count": 1,
+        "blocker_count": 0,
+    }
+    prewarm.assert_called_once_with()
+    conn.close.assert_called_once_with()
+
+
+def test_critical_prewarm_still_blocks_on_hard_health_failure(monkeypatch):
+    from backend.core import warmup
+    from backend.services import import_maintenance_service as maintenance
+
+    conn = Mock()
+    prewarm = Mock()
+    monkeypatch.setattr(maintenance, "get_db", lambda **kwargs: conn)
+    monkeypatch.setattr(
+        maintenance,
+        "build_import_health_report",
+        lambda _conn: {"status": "blocked", "warnings": [], "blockers": ["orphan play"]},
+    )
+    monkeypatch.setattr(warmup, "prewarm_import_critical_caches", prewarm)
+    with pytest.raises(RuntimeError, match="post-import core health blocked"):
+        maintenance.run_import_maintenance_stage(
+            "critical_prewarm", SimpleNamespace(strategy="incremental"), {}
+        )
+    prewarm.assert_not_called()
+    conn.close.assert_called_once_with()

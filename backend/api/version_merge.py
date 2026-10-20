@@ -244,6 +244,8 @@ class OverlapDetailResponse(BaseModel):
 
 
 class DetectionResultResponse(BaseModel):
+    candidate_key: Optional[str] = None
+    source_revision: Optional[str] = None
     artist_name: str
     artist_id: int
     canonical_name: str
@@ -1120,7 +1122,10 @@ def apply_detection(detection_result: dict, auth: None = Depends(require_auth)):
     if df.empty:
         return {"status": "ok", "created_count": 0}
 
-    created_count = apply_detected_groups(df)
+    try:
+        created_count = apply_detected_groups(df)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if created_count:
         _refresh_music_search_derived_data("detected release groups applied")
     # Convert numpy types

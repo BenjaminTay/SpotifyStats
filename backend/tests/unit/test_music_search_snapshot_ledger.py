@@ -449,3 +449,10 @@ def test_non_candidate_metric_or_ledger_entity_fails_closed() -> None:
         rebuild_context_rows_from_weekly_ledger([row], {}, {"artist:1"})
     with pytest.raises(WeeklyLedgerValidationError, match="not an active candidate"):
         rebuild_context_rows_from_weekly_ledger([], {"artist:2": (1, 1000)}, {"artist:1"})
+
+
+def test_ledger_rebuild_keeps_confirmed_zero_track_and_no_chart_entry():
+    rows = rebuild_context_rows_from_weekly_ledger(
+        [], {}, {"track:50145", "album_project:1", "artist:76"}
+    )
+    assert rows == [("track:50145", 0, 0, None, None, None, None, None, None, None, None, None)]
