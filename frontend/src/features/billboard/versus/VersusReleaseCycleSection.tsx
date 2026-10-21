@@ -19,6 +19,7 @@ interface VersusReleaseCycleSectionProps {
 
 const unavailableMessages: Record<string, string> = {
   release_day_unconfirmed: '缺少已确认的发行日，需补充发行证据。',
+  release_source_unconfirmed: '发行版本来源尚未确认。',
   release_date_coarse: '来源日期仅精确到年或月，无法按发行日对齐。',
   release_date_invalid: '发行日期无效，需核对来源。',
   release_date_conflict: '发行日期存在冲突，需核对目标版本。',

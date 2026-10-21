@@ -286,6 +286,30 @@ def project_date_precision(conn, album_id, release_date, *, project_id=None):
     return precision
 
 
+def project_release_date_pair(
+    conn, album_id, release_date, release_date_precision=None, *, project_id=None
+):
+    """One rebuild/maintenance decision for a derived project's date anchor.
+
+    Confirmed published pairs retain their evidence and remain reviewable when
+    sources conflict. Unconfirmed legacy month/day can be corrected only by
+    unanimous confirmed primary-source pairs compatible with its proven year.
+    """
+    current = parse_release_date(release_date, release_date_precision)
+    if current.status == "confirmed":
+        return current.raw, current.precision
+    sources = release_anchor_sources(conn, album_id, project_id=project_id)
+    values = [
+        parse_release_date(row["release_date"], row["release_date_precision"]) for row in sources
+    ]
+    pairs = {(value.raw, value.precision) for value in values}
+    if values and all(value.status == "confirmed" for value in values) and len(pairs) == 1:
+        candidate = values[0]
+        if current.status == "missing" or compare_release_dates(current, candidate) == "compatible":
+            release_date = candidate.raw
+    return release_date, project_date_precision(conn, album_id, release_date, project_id=project_id)
+
+
 def sync_project_release_precisions(conn, spotify_album_ids):
     """Bounded maintenance of date evidence only; manual dates/memberships stay intact."""
     ids = tuple(sorted(set(spotify_album_ids)))
@@ -314,24 +338,9 @@ def sync_project_release_precisions(conn, spotify_album_ids):
     ).fetchall()
     changed = 0
     for project in projects:
-        raw = project[2]
-        # Multiple independent established sources can confirm the same pair;
-        # differing source pairs never establish a correction by majority.
-        sources = release_anchor_sources(conn, project[1], project_id=project[0])
-        values = [
-            parse_release_date(r["release_date"], r["release_date_precision"]) for r in sources
-        ]
-        pairs = {(value.raw, value.precision) for value in values}
-        if (
-            project[3] is None
-            and values
-            and all(value.status == "confirmed" for value in values)
-            and len(pairs) == 1
-        ):
-            old, new = parse_release_date(raw), values[0]
-            if old.status == "missing" or compare_release_dates(old, new) == "compatible":
-                raw = new.raw
-        precision = project_date_precision(conn, project[1], raw, project_id=project[0])
+        raw, precision = project_release_date_pair(
+            conn, project[1], project[2], project[3], project_id=project[0]
+        )
         changed += conn.execute(
             """UPDATE album_projects SET release_date=?,release_date_precision=?
             WHERE project_id=? AND (release_date IS NOT ? OR release_date_precision IS NOT ?)""",

@@ -106,7 +106,7 @@ def resolve_release_targets(conn, items: list[dict], merge_level: int = 2) -> li
             explicit_edition=identity.matched_album_id is not None,
         )
         if not rows:
-            result.append(ReleaseTarget(**values, reason="release_day_unconfirmed"))
+            result.append(ReleaseTarget(**values, reason="release_source_unconfirmed"))
             continue
         verified = [
             row

@@ -130,6 +130,45 @@ def _selection(filters, weekly_album, level):
     return items, params, selections, events
 
 
+@pytest.mark.parametrize("reason", ["entity_not_found", "release_ambiguous"])
+def test_unresolvable_item_does_not_block_verified_release(isolated, monkeypatch, reason):
+    from types import SimpleNamespace
+
+    from backend.api.billboard import release_cycle as api
+    from backend.domains.playback.album_project_identity import resolve_album_project_identities
+    from backend.services.release_cycle_resolution import ReleaseTarget
+
+    filters = comparison._filters()
+    _, _, weekly_album = comparison._publish_oracle(filters)
+    items, _, selections, events = _selection(filters, weekly_album, 2)
+    ready = items[0]
+    unknown = {"artist_name": ready["artist_name"], "album_name": "Unresolved release"}
+    anchor = str(
+        events.loc[events["canonical_song_key"].isin(selections[0].song_keys), "ts_date"].min()
+    )
+
+    def installed_targets(conn, requested, level):
+        identity = resolve_album_project_identities(conn, [ready], merge_level=level)[0]
+        return [
+            ReleaseTarget(
+                **ready,
+                identity=identity,
+                artist_display_name=identity.artist_name,
+                release_date=anchor,
+                source_album_id="installed",
+            ),
+            ReleaseTarget(**unknown, reason=reason),
+        ]
+
+    monkeypatch.setattr(api, "resolve_release_targets", installed_targets)
+    result = api.compare_releases(
+        api.CompareRequest(items=[ready, unknown]), filters, SimpleNamespace(merge_level=2), False
+    )
+    assert [row["album_name"] for row in result["comparisons"]] == [ready["album_name"]]
+    assert result["comparisons"][0]["metrics"]["release_week_plays"] > 0
+    assert result["unavailable"] == [{**unknown, "status": "unavailable", "reason": reason}]
+
+
 @pytest.mark.parametrize("level", [2, 3])
 def test_project_events_match_personal_membership_despite_source_presentation(
     isolated, monkeypatch, level

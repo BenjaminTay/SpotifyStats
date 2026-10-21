@@ -200,6 +200,42 @@ def test_date_and_artist_rejections_are_separate_and_whole_batch_rolls_back(conn
     )
 
 
+def test_evidence_only_rejections_preserve_evidence_and_do_not_mask_primary_outcome(
+    conn, monkeypatch
+):
+    import backend.providers.spotify.album_tracks as tracks
+    from backend.domains.metadata.spotify_album_credits import persist_album_artists
+    from backend.domains.metadata.spotify_refresh import upsert_album_batch
+
+    seed(conn, raw="2024-02-29", precision="day")
+    persist_album_artists(conn, album())
+    conn.commit()
+    monkeypatch.setattr(
+        tracks, "fetch_complete_album_tracks", lambda *_: pytest.fail("no catalogue fetch")
+    )
+    outcomes = []
+    upsert_album_batch(
+        conn,
+        [album(raw="invalid", precision="day", artists=[])],
+        evidence_only=True,
+        outcomes=outcomes,
+    )
+    assert outcomes == [
+        ("s", "complete", None),
+        ("s", "date_invalid", "release_date_evidence"),
+        ("s", "artist_rejected", "album_artist_evidence"),
+    ]
+    assert conn.execute(
+        "SELECT release_date,release_date_precision FROM spotify_album_meta WHERE spotify_album_id='s'"
+    ).fetchone() == ("2024-02-29", "day")
+    assert conn.execute(
+        "SELECT spotify_artist_id FROM spotify_album_artist_credits WHERE spotify_album_id='s'"
+    ).fetchone() == ("a",)
+    assert conn.execute(
+        "SELECT event_type FROM spotify_album_credit_events WHERE spotify_album_id='s' ORDER BY event_id DESC LIMIT 1"
+    ).fetchone() == ("rejected",)
+
+
 def test_manifest_batches_and_drift_fence(conn):
     for index in range(201):
         seed(conn, f"s{index:03}")
@@ -401,3 +437,51 @@ def test_project_binding_changes_are_included_in_replay_fence(conn):
         apply_observations(
             conn, [album("official")], album_ids=["official"], expected_fingerprint=before
         )
+
+
+@pytest.mark.parametrize(
+    "name,bootstrap_date,source_date",
+    [
+        ("ATTENTION: MILEY LIVE", "2022-04-29", "2022-04-01"),
+        ("因你 而在", "2013-03-13", "2013-03-12"),
+        ("C,XOXO", "2024-09-06", "2024-06-28"),
+        ("MAÑANA SERÁ BONITO (BICHOTA SEASON)", "2023-08-10", "2023-08-11"),
+        ("Everything I Thought It Was", "2024-03-15", "2024-03-14"),
+        ("Space Cowboy", "2018-02-23", "2018-04-30"),
+        ("Coco", "2017-11-10", "2017-10-27"),
+        ("positions", "2020-10-30", "2020-10-23"),
+    ],
+)
+def test_rebuild_and_maintenance_share_anchor_fixed_point(conn, name, bootstrap_date, source_date):
+    from backend.domains.playback.album_projects import _upsert_project
+
+    seed(conn, raw=source_date, precision="day")
+    project(conn, raw=bootstrap_date)
+    conn.execute("UPDATE albums SET album_name=? WHERE album_id=1", (name,))
+    conn.execute("UPDATE spotify_album_meta SET album_name=? WHERE spotify_album_id='s'", (name,))
+    conn.execute("UPDATE album_projects SET canonical_name=? WHERE project_id=1", (name,))
+    conn.row_factory = sqlite3.Row
+    for _ in range(2):
+        assert _upsert_project(conn, name, 1, 1, bootstrap_date, "release", "album", 1, 0) == 1
+        assert sync_project_release_precisions(conn, ["s"]) == 0
+        assert tuple(
+            conn.execute(
+                "SELECT release_date,release_date_precision FROM album_projects"
+            ).fetchone()
+        ) == (source_date, "day")
+
+
+def test_confirmed_project_conflict_is_preserved_across_repeated_sync_and_rebuild(conn):
+    from backend.domains.playback.album_projects import _upsert_project
+
+    seed(conn, raw="2024-02-29", precision="day")
+    project(conn, raw="2024-01-01", precision="day")
+    conn.row_factory = sqlite3.Row
+    for _ in range(3):
+        assert sync_project_release_precisions(conn, ["s"]) == 0
+        _upsert_project(conn, "Synthetic", 1, 1, "2024-02-29", "release", "album", 1, 0)
+        assert tuple(
+            conn.execute(
+                "SELECT release_date,release_date_precision FROM album_projects"
+            ).fetchone()
+        ) == ("2024-01-01", "day")

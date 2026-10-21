@@ -45,9 +45,17 @@ legacy 的完整 ISO 字符串（包括 01-01、每月首日）不能证明真�
 - 发行周期、按发行日的七日窗口、排行对齐、提前单曲及日级 Records 里程碑只消费来源确认的 day。证据不足返回 `unavailable / release_day_unconfirmed`，发行对比逐项返回 `unavailable` 列表，或空的不可计算派生项；不使用首次播放日或父版本日期填补发行日。
 - Billboard 对来源确认的日期使用来源范围上界作保守过滤。legacy 保留既有字符串形式范围上界的兼容 cutoff，明确属于格式推断，不声称该日是确定发行日或播放已被来源证明位于发行之后；比较范围改为年份不能悄悄改变这条历史统计过滤。日/周对齐仍禁止 legacy，非榜单播放不应用发行后过滤，不新增播放贡献。legacy cutoff 的来源不确定性须在正式副本补证和结果差异中继续审阅。
 - 专辑项目只通过明确维护或已有重建同步非人工项目的日期精度；人工日期与 membership 不随补证改变。
+- 对决周期复用 L2/L3 project 身份和正式成员计次；主项目使用既有确认的主发行来源，明确成员版本保留自己的日期。主来源优先既有高置信 Spotify project 绑定；无明确绑定时仍须满足对应版本及艺人证据，不以同名、最早日期或播放最多代选。
+- 项目重建与维护使用同一日期 pair 决策。已确认的项目日期与精度不被较弱名称匹配覆盖；新来源不一致时保留锚点和审核原因。legacy 仅在主来源全部确认且 pair 一致、比较范围兼容时纠正；人工日期保持。重复同步和重建必须稳定。
+- 周期对比逐项区分 `release_source_unconfirmed`（对应发行来源尚未确认）、`release_day_unconfirmed`（来源缺确认日）、`release_date_coarse`、`release_date_invalid`、`release_date_conflict`、`artist_identity_unconfirmed`、`release_ambiguous` 和 `entity_not_found`。缺快照属于请求级不可用，不能伪装空指标；真实零、未上榜、无窗口播放与缺证各自表达。
+- 私有和公开周期对比均只消费已安装证据和 exact-ready 成品，不在读取时联网补证、写库、排队或冷建。部分不可用保留请求列和原因，其余目标继续计算。
 - 日期和精度进入 Analysis、Archive、治理、Billboard、Yearly 现有 revision/cache 合同；规则 builder/version 一并升级，旧结果不能作为新规则的精确结果或跨规则 LKG。
 - 公开 GET 不补证、联网、写库、冷建或排队。当前隐藏的歌词、发行档案、发行周期、艺人生涯页签保持隐藏。
 
 ## 有界维护
 
-`scripts/backfill_spotify_release_dates.py` 必须指定隔离数据库副本和 1–200 个 Album ID；不自动发现/重抓全库，不改目录、身份或播放。默认仅在内存副本预览，`--apply` 才安装日期观测及非人工项目精度。可通过 `--observations-json` 重放已经取得的来源响应；联网使用现有 Spotify Provider。调用前先完成迁移，在共享验证锁下操作；数据库、响应和截图留在 ignored 输出中。
+`scripts/backfill_spotify_release_dates.py` 必须指定隔离数据库副本。`--manifest-only` 只读枚举已播放、曲目元数据、容器关联、项目绑定及本地 Album 引用，孤立缓存单列；每个显式批次为 1–200 个 Album ID。按语义缺证选择，确认到年/月与待审冲突不因缺 day 无限重抓。
+
+同一个官方 Album 响应安装日期 pair 和 Album 艺人证据，纯证据维护不抓曲目分页，不改目录、身份批准或播放。默认仅在内存副本预览，`--apply` 才安装；manifest 和每批输入 fingerprint 检查来源漂移。`--observations-json` 离线重放，`--fetch-only` 保存响应，失败恢复只请求缺失/失败 ID。联网使用既有 Provider，终局同步还须覆盖未进入本次 fetch 的已知确认来源，不能只同步新抓取的 ID。
+
+调用前先完成迁移，在共享验证锁下操作；数据库、响应和截图留在 ignored 输出中。正式应用先 Online Backup 与副本演练，保护原始事实、人工决定和成员关系，并准备受影响派生成品；输入漂移时停止，不能用旧整库覆盖新增用户数据。完整执行和验收见[发行周期修复规划](../plans/2026-10-21-versus-release-cycle-repair-plan.md)。

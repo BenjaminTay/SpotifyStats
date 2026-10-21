@@ -128,6 +128,9 @@ def test_bad_pages_never_publish_half_result_and_preserve_complete_cache(fault):
     ).fetchone()
     assert tuple(evidence) == (2, "incomplete", 121)
     assert outcome[0][1] == "incomplete"
+    # Missing Album artist evidence is independently rejected; that diagnostic
+    # must remain visible without replacing the directory-maintenance result.
+    assert any(status == "artist_rejected" for _, status, _ in outcome[1:])
 
 
 def test_old_partial_legacy_cache_identification_and_idempotent_repair():

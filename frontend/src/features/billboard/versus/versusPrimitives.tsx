@@ -205,7 +205,7 @@ export function EntityQueue({
                 onClick={() => onMoveUp(i)}
                 disabled={i === 0}
                 title="上移"
-                className="px-1.5 py-0.5 text-[10px] rounded transition-colors hover:bg-muted disabled:opacity-25 disabled:cursor-not-allowed"
+                className="max-md:min-h-11 max-md:min-w-11 px-1.5 py-0.5 text-[10px] rounded transition-colors hover:bg-muted disabled:opacity-25 disabled:cursor-not-allowed"
               >
                 ↑
               </button>
@@ -214,7 +214,7 @@ export function EntityQueue({
                 onClick={() => onMoveDown(i)}
                 disabled={i === items.length - 1}
                 title="下移"
-                className="px-1.5 py-0.5 text-[10px] rounded transition-colors hover:bg-muted disabled:opacity-25 disabled:cursor-not-allowed"
+                className="max-md:min-h-11 max-md:min-w-11 px-1.5 py-0.5 text-[10px] rounded transition-colors hover:bg-muted disabled:opacity-25 disabled:cursor-not-allowed"
               >
                 ↓
               </button>
@@ -222,7 +222,7 @@ export function EntityQueue({
                 type="button"
                 onClick={() => onRemove(i)}
                 title="移除"
-                className="ml-1 px-1.5 py-0.5 text-[10px] rounded text-red-400 transition-colors hover:bg-red-50 dark:hover:bg-red-950"
+                className="max-md:min-h-11 max-md:min-w-11 ml-1 px-1.5 py-0.5 text-[10px] rounded text-red-400 transition-colors hover:bg-red-50 dark:hover:bg-red-950"
               >
                 ✕
               </button>

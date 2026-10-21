@@ -81,6 +81,13 @@ def test_date_only_maintenance_does_not_bypass_artist_evidence(source):
     assert resolve(source).reason == "artist_identity_unconfirmed"
 
 
+def test_known_day_from_unconfirmed_edition_is_a_source_failure(source):
+    source.execute("DELETE FROM album_spotify_links WHERE spotify_album_id='original'")
+    # The remaining Deluxe has a confirmed day, but cannot establish the
+    # canonical edition's release anchor.
+    assert resolve(source).reason == "release_source_unconfirmed"
+
+
 def test_conflicting_same_edition_sources_are_not_chosen_by_order(source):
     source.execute("INSERT INTO spotify_album_meta VALUES('regional','Album','2026-01-01','day')")
     source.execute("INSERT INTO album_spotify_links VALUES(10,'regional',1)")

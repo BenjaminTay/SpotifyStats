@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { VersusReleaseCycleSection } from '@/features/billboard/versus/VersusReleaseCycleSection'
-import { SearchableAddSelect } from '@/features/billboard/versus/versusPrimitives'
+import { EntityQueue, SearchableAddSelect } from '@/features/billboard/versus/versusPrimitives'
 
 const useReleaseCycleCompareMock = vi.hoisted(() => vi.fn())
 
@@ -45,6 +45,12 @@ describe('Billboard versus context', () => {
 })
 
 describe('versus searchable picker', () => {
+  it('gives queue reordering and removal controls a 44 by 44 phone touch target', () => {
+    render(<EntityQueue items={[{ display: 'One' }, { display: 'Two' }]} onRemove={vi.fn()} onMoveUp={vi.fn()} onMoveDown={vi.fn()} />)
+    for (const button of screen.getAllByRole('button')) {
+      expect(button).toHaveClass('max-md:min-h-11', 'max-md:min-w-11')
+    }
+  })
   it('keeps the query and result list open after adding an item', async () => {
     const user = userEvent.setup()
     const onAdd = vi.fn()
@@ -135,6 +141,7 @@ describe('versus release cycle comparison', () => {
   })
 
   it.each([
+    ['release_source_unconfirmed', '发行版本来源尚未确认。'],
     ['release_date_invalid', '发行日期无效，需核对来源。'],
     ['release_date_conflict', '发行日期存在冲突，需核对目标版本。'],
     ['entity_not_found', '未找到对应的专辑项目或发行版本。'],

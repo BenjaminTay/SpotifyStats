@@ -1916,7 +1916,7 @@ def _upsert_project(
     is_manual: int,
 ) -> int | None:
     row = conn.execute(
-        """SELECT project_id, is_manual FROM album_projects
+        """SELECT project_id, is_manual, release_date, release_date_precision FROM album_projects
            WHERE canonical_name = ? AND artist_id = ? AND scope = ?""",
         (canonical_name, artist_id, scope),
     ).fetchone()
@@ -1925,7 +1925,7 @@ def _upsert_project(
         # release stays the same. Keep its unique catalog-backed identity so
         # aliases and downstream references do not point at a retired project.
         source_owners = conn.execute(
-            """SELECT p.project_id, p.is_manual FROM album_projects p
+            """SELECT p.project_id, p.is_manual, p.release_date, p.release_date_precision FROM album_projects p
                WHERE p.primary_album_id = ? AND p.scope = ? AND p.is_manual = 0
                  AND EXISTS (SELECT 1 FROM album_project_external_ids e
                              WHERE e.project_id=p.project_id)
@@ -1952,7 +1952,7 @@ def _upsert_project(
             ),
         )
         row = conn.execute(
-            """SELECT project_id, is_manual FROM album_projects
+            """SELECT project_id, is_manual, release_date, release_date_precision FROM album_projects
                WHERE canonical_name = ? AND artist_id = ? AND scope = ?""",
             (canonical_name, artist_id, scope),
         ).fetchone()
@@ -1962,6 +1962,19 @@ def _upsert_project(
         # A manual project owns this semantic key. Do not let inferred rebuilds
         # mutate either its metadata or its hand-maintained memberships.
         return None
+    from backend.domains.metadata.release_dates import project_release_date_pair
+
+    # Rebuild candidates may come from broad name matches. They cannot replace
+    # an installed confirmed anchor or bypass the primary-source evidence used
+    # by explicit maintenance. Missing legacy pairs still retain the historical
+    # fallback date without manufacturing precision.
+    release_date, release_date_precision = project_release_date_pair(
+        conn,
+        primary_album_id,
+        row["release_date"] if row["release_date"] else release_date,
+        row["release_date_precision"],
+        project_id=row["project_id"],
+    )
     conn.execute(
         """UPDATE album_projects
            SET canonical_name = ?, artist_id = ?,
@@ -1979,16 +1992,9 @@ def _upsert_project(
             row["project_id"],
         ),
     )
-    from backend.domains.metadata.release_dates import project_date_precision
-
     conn.execute(
         "UPDATE album_projects SET release_date_precision=? WHERE project_id=?",
-        (
-            project_date_precision(
-                conn, primary_album_id, release_date, project_id=row["project_id"]
-            ),
-            row["project_id"],
-        ),
+        (release_date_precision, row["project_id"]),
     )
     return int(row["project_id"])
 

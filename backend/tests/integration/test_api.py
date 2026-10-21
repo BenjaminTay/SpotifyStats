@@ -757,6 +757,7 @@ class TestReleaseCycle:
             assert item["status"] == "unavailable"
             assert item["reason"] in {
                 "release_day_unconfirmed",
+                "release_source_unconfirmed",
                 "release_date_coarse",
                 "release_date_invalid",
                 "release_date_conflict",

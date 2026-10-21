@@ -611,14 +611,10 @@ def upsert_album_batch(
             date_status = persist_release_date(
                 conn, album, source=source, source_run_id=source_run_id
             )
-            if date_status not in {"accepted", "unchanged"} and outcomes is not None:
-                outcomes.append((str(album["id"]), "date_" + date_status, "release_date_evidence"))
             artist_state = persist_album_artists(
                 conn, album, source=source, source_run_id=source_run_id
             )
             evidence_changed |= artist_state in {"observed", "changed"} or date_status == "accepted"
-            if artist_state == "rejected" and outcomes is not None:
-                outcomes.append((str(album["id"]), "artist_rejected", "album_artist_evidence"))
             if has_evidence and not evidence_only:
                 conn.execute(
                     """INSERT INTO spotify_album_tracklist_evidence
@@ -665,6 +661,9 @@ def upsert_album_batch(
                     ],
                 )
             if outcomes is not None:
+                # Directory-maintenance callers consume the primary result
+                # first. Date/artist observations remain separate diagnostics
+                # and must not replace a pagination failure or success.
                 outcomes.append(
                     (
                         album["id"],
@@ -672,6 +671,12 @@ def upsert_album_batch(
                         error,
                     )
                 )
+                if date_status not in {"accepted", "unchanged"}:
+                    outcomes.append(
+                        (str(album["id"]), "date_" + date_status, "release_date_evidence")
+                    )
+                if artist_state == "rejected":
+                    outcomes.append((str(album["id"]), "artist_rejected", "album_artist_evidence"))
             updated += 1
         from backend.domains.metadata.release_dates import sync_project_release_precisions
 
