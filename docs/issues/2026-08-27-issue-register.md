@@ -1,16 +1,16 @@
 # SpotifyStats 问题台账
 
-## 2026-10-21 详情全历史时区边界
+## 2026-10-21 发布后维护与时区边界
 
-- `SS-2026-10-21-003`（`FIXED / LOCAL`，待发布）：逐曲署名增量缺少四快照目标登记，现有发布fence因此拒绝当前目标；恢复旧生产My Heart决定时真实复现。补用完整构建共用prepare，保留旧服务键及后续目标改写拒绝；16项定向通过。维护处置与正式发布见[报告](../reports/2026-10-21-album-song-performance-attribution.md#署名决定保全及增量目标登记)。2026-10-21。
+- `SS-2026-10-21-003`（`FIXED / RELEASED`）：逐曲署名增量缺少四快照目标登记，现有发布fence因此拒绝当前目标；恢复旧生产My Heart决定时真实复现。补用完整构建共用prepare，保留旧服务键及后续目标改写拒绝；16项定向通过，15d96469正式CI及Release attempt3成功。生产revision99、四搜索/年榜及榜单ready，最终137项署名核对通过。见[报告](../reports/2026-10-21-album-song-performance-attribution.md#最终发布与生产验收)。2026-10-21。
 
 - `SS-2026-10-21-002`（`FIXED / RELEASED`）：UTC生产的有界详情用SQLite `date(ts,'localtime')`裁出UTC日期，再按北京时间过滤逻辑事件，遗漏末日凌晨播放。24e2ccf7固定UTC+8；8项回归、正式CI/Release及生产5项通过，expectations恢复23次/20活跃日，专辑与艺人统计一致。见[报告](../reports/2026-10-21-album-song-performance-attribution.md#生产日期边界补修)。2026-10-21。
 
 ## 2026-10-21 专辑旗下单曲成绩归属
 
-- 发布跟进：原候选五提交已同SHA快进main至bc6a7a97；候选两条CI及首轮Release质量/三模式/镜像构建通过。生产升级副本演练发现独立Analysis epoch导致成品依赖不一致；Release 39547691039在传输阶段取消，未停服。现补同源完整fence下的revision传递，双方触发器必须有效，目标文件身份独立；22项回归及真实副本48榜单/四排名验证通过。正式部署和数据同步仍进行中，最终见[交付记录](../reports/2026-10-21-album-song-performance-attribution.md#正式部署与生产核对)。2026-10-21。
+- 发布跟进已完成：五个候选提交原SHA合入main，同源epoch传递、UTC日期边界和署名增量目标登记补修已正式发布，最终运行15d96469。取消、两次容量拒绝及旧失败保留，未弱化发布门禁；最终CI/Release及372项生产核对成功。见[交付记录](../reports/2026-10-21-album-song-performance-attribution.md#最终发布与生产验收)。以下CI补修段落为发布前历史检查点。2026-10-21。
 
-- `SS-2026-10-21-001`（`FIXED / LOCAL`，本地提交，未推送/部署）：代表来源及专辑/演唱艺人名称连接导致72首遗漏于41个项目；已统一正式album project membership、详情owner投影、列表/汇总/对比，并修复独立重排点数排名和两端专辑链接。四变体与年份筛选、230次本地HTTP逐项核验通过，23原始/治理表保全；副本发布包已校验并本地导入，重启直接复用。证据见[修复报告](../reports/2026-10-21-album-song-performance-attribution.md)。2026-10-21。
+- `SS-2026-10-21-001`（`FIXED / RELEASED`）：代表来源及专辑/演唱艺人名称连接导致72首遗漏于41个项目；已统一正式album project membership、详情owner投影、列表/汇总/对比，并修复独立重排点数排名和两端专辑链接。四变体、年份筛选及原始/治理事实保全已验；最终15d96469生产230次HTTP逐项核对72首/41项目及三榜全部事实一致，Patient Zero列表到详情跳转通过。见[修复报告](../reports/2026-10-21-album-song-performance-attribution.md#最终发布与生产验收)。2026-10-21。
 
   - CI补修：三提交已推送`codex/local-fixes-20261021`；首轮[39462787415](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39462787415)在unit阶段13失败（mock3、revision夹具2、宿主预检版本8）。本地已修复，35项专项通过；旧v12报告及数据库继续拒绝。远端最终验收绑定候选分支最新SHA，见[补修证据](../reports/2026-10-21-album-song-performance-attribution.md#github-ci补修)。不合并main或部署。2026-10-21。
 

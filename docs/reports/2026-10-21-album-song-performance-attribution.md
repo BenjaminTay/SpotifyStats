@@ -99,3 +99,19 @@
 通过现有apply覆盖层、原证据及新幂等键恢复5585/7727 remove，本地和生产各新增审计；不直接拼接冲突的override/event ID。生产event94、override64、revision99；Online Backup为`spotify-stats-pre-restore-credit-20261021.db`，原始plays/tracks/track_artists摘要逐项不变。仅缓存重放该目标Spotify证据，自动成员变化0，application pending/blocked均0。
 
 正式重试维护暴露独立SS-2026-10-21-003：增量在提交时复用完整构建所有权fence，但入口未登记新四目标，旧目标被置空后发布被拒绝。错误和有界重试保留，原成品未被覆盖。修复在完整旧成品证明之后调用共用`prepare_music_search_snapshot_set`，随后才计算增量；不放宽源、候选代、revision或并发目标检查。入口回归使用真实SQLite四目标和真实发布fence，覆盖旧服务键保留、正确目标通过及计算中目标替换仍拒绝；旧代码先失败，补修与既有署名维护共16项通过。生产先通过既有私有prepare登记当前目标，再走正式HTTP重试入口恢复；此为本轮维护处置，永久补修另走CI/正式Release。最终状态在完成后追加。
+
+### 最终发布与生产验收
+
+最终代码15d96469b9a97c9497c0deaff59d0024a102ce3c的[质量CI 39565916955](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39565916955)通过；[正式Release 39565916890 attempt3](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39565916890/attempts/3)的质量、full/showcase/dual、镜像及部署全部success。运行三容器均为该SHA且healthy，正式HTTPS能力接口SHA相同，Patient Zero的HTTPS摘要归属41476/582点也通过。dual/public、私有/公开网关及外部入口未改变。
+
+该Release attempt1、attempt2分别在停服前被容量门禁拒绝：可用3383/4148 MiB，要求4456 MiB。首次预留未充分计入重试新增Online Backup和暂存副本占用；补齐预算、仅压缩并校验已关闭Online Backup后可用8706 MiB，再只重跑失败部署任务，复用已验证镜像与CI。未下调容量、源漂移、快照、排名或安全门禁。恢复后全矩阵48份榜单及四排名在独立Online Backup副本准备并绑定此SHA，正式流程再次验证和导入；根权限成品清单首次复制拒绝保留，按精确路径完成复制后校验通过。
+
+最终版本重新完成全部372项API核对：72首/41项目230次、40首三视图/11别名及L2/L3/零值/旧署名控制137次、跨时区歌曲/专辑/艺人及全局排名5次，均200且事实一致。三榜全量6742/4449/4453周行与已验事实相同；曲目在对应项目唯一出现，汇总、叠加、历史、点数及正式排名一致。137项包含恢复后的5585仅Backstreet Boys。生产96881 plays、10480 tracks、10964 track_artists，credit=(99,99,ready)、application pending/blocked=0、readiness=ready，健康safe_to_use=true；239条无曲目音频仍为既有说明，不删除或伪补。
+
+最终浏览器从41476的19首成绩实际点击Patient Zero进入50143，发行名Encore链接41476；峰值3、3周、582点/排名356、18次上榜播放和19次有效播放一致。另已验证独唱23次、合唱独立页5次、5368统一艺人链接但发行署名阿密特、50145零值统计及未入榜空态。Desktop三榜70行数字/播放条证据与Phone同源码证据复用，未扩大为全站或真机矩阵。浏览器用SSH映射正式公开网关，HTTPS能力和摘要另行直接核验；此前工具直开正式域名超时保留。最终截图`production-patient-zero-final.png`、372项回执、失败及重试日志均保存在本报告私有证据目录，不提交数据库、导出或密钥。
+
+数据库实例切换后的2022–2026确定性年度总结与首页按既有入口逐项准备，独立限额进程、网络禁用且主库只读挂载，未调用AI。最终再从实际backend进程环境走cache-only读取，五年均命中；readiness=ready、署名pending/blocked=0、待运行任务0。最终回执为`production-state-closed.json`，先前初始年度未命中/治理任务仍运行的检查点另存保留。
+
+本地源分支codex/local-fixes-20261021已用merge-base证明完全合入main并删除，本地仅main且无新增工作树；远端源分支保留为已整合历史。五个原候选SHA未重写，三次发布补修分别是a1241fdf、24e2ccf7、15d96469。后续交付文档单独提交，不触发业务部署；README、AGENTS/CLAUDE和文档地图无新增入口，保持不变。独立OOM事项仍OPEN/OBSERVING，不以本轮健康状态代替长期正常使用观察。
+
+恢复资料仍在`backups/import-release-20261021/originals-20261021T062142Z/`及各Online Backup。为满足容量，报告上文部分`.db`路径现对应同名`.db.gz`，包括pre-import、pre/post-latest-sync、pre-restore-credit及已关闭pre-release/定时备份；均gzip校验通过，恢复时先解压到独立路径。在线DB、原文件身份恢复目录和旧失败resume未因此压缩或替换。跨库同步的人工治理保全和全过程容量预算已补入[导入规则](../reference/data-import-and-health.md#第二轮导入安全边界)，明确为维护要求，未宣称新增自动合库能力。
