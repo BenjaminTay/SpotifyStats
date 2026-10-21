@@ -362,7 +362,7 @@ python scripts/versus_rank_publication.py build \
 
 `export` 模式只导出已有 exact 发布；`validate` 只核对源、版本、family、规范化过滤条件、payload 校验与形状；`install`（或 `import`）在目标只读源上重算文件 lineage key，四配置单事务写入 Analysis sidecar。部署使用 `--require-defaults`，拒绝不完整集合；`verify` 独立读取全部四默认配置。
 
-源连接始终使用 SQLite URI `mode=ro`。`--closed-source` 仅用于已停服主库或静态副本，并要求不存在 WAL 文件；此时以 `immutable=1` 读取闭库备份的 WAL header，无需改写源库的 journal mode 或生成 WAL/SHM。部署 helper 只在停服或静态预检阶段、确认无 WAL 时传此参数；运行中验证使用普通只读连接。闭库模式另核对文件身份、大小和修改时间，安装提交前源文件变化会回滚整批 sidecar 发布。
+源连接始终使用 SQLite URI `mode=ro`。`--closed-source` 仅用于已停服主库或静态副本，并要求不存在 WAL 文件；此时以 `immutable=1` 读取闭库备份的 WAL header，无需改写源库的 journal mode 或生成 WAL/SHM。部署 helper 只在停服或静态预检阶段、确认无 WAL 时传此参数；运行中验证使用普通只读连接。闭库模式另核对文件身份、大小和修改时间，安装提交前源文件变化会回滚整批 sidecar 发布。 回归使用的旧seed必须在owned副本的私有准备阶段完成当前revision迁移和checkpoint，再封存读取基线；读取期仍禁止补迁移、修改源字节或创建新的WAL/SHM。
 
 首版将 manifest 通过已有 SSH/SCP 访问上传为服务器 `/opt/spotify-stats/backups/versus-ranks-<完整目标SHA>.json`，权限 `600`。生产 workflow 使用现有部署 SSH 凭证检查这一私密服务器文件，不新增 GitHub Secret，也不从 Git 或公开 artifact 获取数据。`deploy.sh` 自动发现此精确 SHA 路径，亦可显式传 `--versus-rank-manifest <path>` 或 `VERSUS_RANK_MANIFEST`。没有 manifest 时，只允许从当前 live DB 的目标 builder exact-ready 发布导出并重绑到替换后的 lineage；源发生变化即失败。
 

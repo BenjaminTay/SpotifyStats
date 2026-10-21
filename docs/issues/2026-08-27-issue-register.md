@@ -6,6 +6,8 @@
 
   - CI补修：三提交已推送`codex/local-fixes-20261021`；首轮[39462787415](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39462787415)在unit阶段13失败（mock3、revision夹具2、宿主预检版本8）。本地已修复，35项专项通过；旧v12报告及数据库继续拒绝。远端最终验收绑定候选分支最新SHA，见[补修证据](../reports/2026-10-21-album-song-performance-attribution.md#github-ci补修)。不合并main或部署。2026-10-21。
 
+  - 合同阶段跟进：ef4b4633全量unit已通过；后续contract首次执行暴露68项旧seed未迁移触发器，现仅修复共用夹具的私有准备顺序。三文件102项、完整contract578项、前端805项/4跳过及构建、后端lint通过；完整contract及最新SHA的远端结论见同一报告。2026-10-21。
+
 
 > 2026-10-20提交状态：导入与元数据提交bba7cd78包含001/002/003/006/007/008的修复与证据；004/005周榜排版由本次后续独立提交保存。以下逐阶段“未提交”保留历史语境，当前以[提交收口](../reports/2026-10-20-local-streaming-incremental-import.md#本地git提交收口)为准；未推送、CI或生产部署。
 

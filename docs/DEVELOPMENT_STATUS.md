@@ -1,5 +1,7 @@
 # SpotifyStats 开发状态总表
 
+> 2026-10-21 CI合同阶段跟进（SS-2026-10-21-001）：ef4b4633完整unit已通过，原13项失败清零；两条CI随后首次执行contract，暴露68项共用旧seed缺revision触发器（510通过）。已在函数独占测试副本的私有准备期迁移，再准备L3，不改变服务读取或503门禁。受影响三文件102项、完整contract578项、前端805项/4跳过、正式构建与后端lint通过；共用夹具的完整contract验证及远端最新SHA结论见[报告](reports/2026-10-21-album-song-performance-attribution.md#后续合同阶段修复)与该分支Actions。仍只推送候选分支，不合并main、不部署。
+
 > 2026-10-21 CI补修（SS-2026-10-21-001跟进）：原三提交已推送`codex/local-fixes-20261021`，首轮[CI 39462787415](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39462787415)为3113通过/13失败/2跳过，合同及前端阶段未执行。已适配3项详情mock参数、2项封库前revision迁移准备，并同步宿主预检v13以修复8项版本阻塞；三文件35项本地回归通过，保留旧报告/库拒绝及源只读门禁。补修仅在该候选分支提交推送，远端最终结论以该分支最新SHA的[Actions](https://github.com/BenjaminTay/SpotifyStats/actions?query=branch%3Acodex%2Flocal-fixes-20261021)和报告归档为准；不合并main、不部署、不重建真实数据，OOM观察范围不变。下方“未推送/CI”为历史检查点。
 
 > 2026-10-21专辑单曲成绩归属修复（SS-2026-10-21-001，FIXED / LOCAL，本地提交）：基线7c4f0660，统一canonical song/project ID、完整/分阶段汇总、详情投影和正式点数排名；默认L2的72首/41项目均恢复，230次本地HTTP核对详情summary/overview、专辑列表/汇总/叠加及周榜历史与点数排名一致。四变体和2026筛选归属无缺失/多余/重复，周榜及歌曲/艺人基础成绩不变，23源事实/治理表逐行保全。已导入48个Billboard发布项及四套详情投影，本地重启复用；两端专辑链接改用稳定ID，22前端回归及正式构建通过。最终回归、浏览器和发布边界见[修复报告](reports/2026-10-21-album-song-performance-attribution.md)。本次仅本地提交，未推送、CI或部署；提交前补验与范围见报告，OOM仅原正常使用观察。

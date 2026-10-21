@@ -55,3 +55,11 @@
 原失败所在三个文件共35项本地回归通过。首轮补修验证中，一项断言仍使用旧错误文本、另一项未考虑私有迁移提前创建的控制目录，已纠正断言与准备基线，日志保留；不改写为首轮全绿。文档同步生产预检说明、开发状态、台账及变更日志；没有新增或移动文档，README、AGENTS/CLAUDE和文档地图无需调整。
 
 本轮只改测试、宿主预检常量和文档；不重建96,881条播放或任何正式统计，不改变已核验的72首事实、不运行本地全量套件。完整unit/contract、前端和部署合同检查交由GitHub既有CI完成。最终远端结论以候选分支最新提交SHA的[Actions](https://github.com/BenjaminTay/SpotifyStats/actions?query=branch%3Acodex%2Flocal-fixes-20261021)为准；逐次run结果、日志和SHA写入忽略目录`data/import_backups/album-performance-20261021/ci-repair/`，与旧失败证据分别保留。
+
+### 后续合同阶段修复
+
+补修提交ef4b4633的完整unit阶段已通过，原13项失败解除；[常规CI 39537380427](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39537380427)和[无部署合同CI 39537380421](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39537380421)随后首次执行完整contract，得到510通过、68失败。此前未执行的阶段暴露共同seed准备缺口，不能把unit通过记作完整CI成功。
+
+68项分布在Billboard归属3项、播放不变量1项、对比个人统计64项。共同夹具只复制旧seed并准备L3，未安装当前revision触发器；前4项直接报revision追踪缺失，对比接口将其按既有安全合同转换为503。现仅在`use_seed_db`切换到函数独占副本后执行当前私有迁移，再按原流程发布L3；不修改读取路径、503门禁或全库扫描边界。受影响三文件102项定向通过。
+
+共用夹具影响整个contract套件，因此再执行一次完整本地contract验证原先通过的用例；此前远端未到达的后端lint、前端全量测试和构建也在本地补查。完整contract578项通过，前端805通过/4跳过及正式构建、后端lint通过；完整contract日志与后继远端CI结果均存于`ci-repair/`。后继提交仍只推送原候选分支，不合并main或部署。

@@ -34,6 +34,12 @@ def use_seed_db():
     original = db_mod.DB_PATH
     db_mod.DB_PATH = test_db_path
 
+    # The portable seed predates current revision triggers. Prepare its owned
+    # copy before read-only services collect exact dependency fingerprints.
+    from backend.core.migrations import run_migrations
+
+    run_migrations()
+
     # Contract tests exercise the current public L3 surface.  Migration 68 is
     # additive, but its derived attribution is intentionally published by the
     # governance pipeline rather than by schema migration itself.
