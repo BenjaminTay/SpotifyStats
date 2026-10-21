@@ -14,7 +14,7 @@ from typing import Any
 # This validator is also shipped as a standalone host-side file, so it cannot
 # import the backend package in production.  Keep this release contract in
 # lockstep with the backend snapshot and aggregation builder versions.
-EXPECTED_BUILDER_VERSION = "music_search_snapshot_v12_logical_event_count"
+EXPECTED_BUILDER_VERSION = "music_search_snapshot_v13_zero_track_context"
 EXPECTED_AGGREGATION_BUILDER_VERSION = "billboard_aggregation_v6_legacy_year"
 EXPECTED_DURATION_POLICY_VERSION = "all_music_intervals_v1"
 EXPECTED_TRACK_CREDIT_POLICY_VERSION = "effective_track_credits_v2_title_evidence"

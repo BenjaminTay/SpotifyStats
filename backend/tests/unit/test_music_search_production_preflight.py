@@ -30,16 +30,30 @@ AGGREGATION_BUILDER_VERSION = _BILLBOARD_AGGREGATION_BUILDER_VERSION
 VARIANTS = ((2, True), (3, True), (2, False), (3, False))
 
 
-def test_preflight_aggregation_contract_matches_backend_and_rejects_previous_builder(tmp_path):
+def test_preflight_builder_contracts_match_backend_and_reject_previous_versions(tmp_path):
     database, rebuild_report, _ = _build_preflight_fixture(tmp_path)
     spec = importlib.util.spec_from_file_location(
         "aggregation_policy_preflight", PRODUCTION / "validate-music-search-preflight.py"
     )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    assert module.EXPECTED_BUILDER_VERSION == MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION
     assert module.EXPECTED_AGGREGATION_BUILDER_VERSION == AGGREGATION_BUILDER_VERSION
-    semantic, variants = module.validate_rebuild_report(json.loads(rebuild_report.read_text()))
+    payload = json.loads(rebuild_report.read_text())
+    semantic, variants = module.validate_rebuild_report(payload)
     module.validate_database(database, semantic, variants)
+    payload["builder"]["snapshot_builder_version"] = "music_search_snapshot_v12_logical_event_count"
+    with pytest.raises(SystemExit, match="snapshot report builder version is not current"):
+        module.validate_rebuild_report(payload)
+    with sqlite3.connect(database) as conn:
+        conn.execute(
+            "UPDATE music_search_snapshot_meta SET builder_version=?",
+            ("music_search_snapshot_v12_logical_event_count",),
+        )
+    with pytest.raises(SystemExit, match="database has a non-current snapshot builder"):
+        module.validate_database(database, semantic, variants)
+    with sqlite3.connect(database) as conn:
+        conn.execute("UPDATE music_search_snapshot_meta SET builder_version=?", (BUILDER_VERSION,))
     with sqlite3.connect(database) as conn:
         conn.execute(
             "UPDATE agg_config SET value='billboard_aggregation_v4_all_duration' WHERE key='builder_version'"

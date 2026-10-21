@@ -41,3 +41,17 @@
 已检查README、AGENTS/CLAUDE与文档地图：产品定位和公共操作约定不变，README及两份一致的工作约定无需修改；元数据规则、变更日志、状态、问题台账、文档地图及报告入口已同步。原72首/41项目的230次HTTP、四变体与年份归属对账、23表守恒和正式构建证据复用，不再次重建真实数据。提交前补跑归属/详情读取22项、两份前端回归22项均通过；文档审计和差异检查通过，并执行项目hooks；结果保留于恢复点下`git-submission/`。
 
 当前工作树复用main，没有新增研发分支或工作树；本次提交不涉及远端、生产部署，也不扩大OOM观察范围。
+
+## GitHub CI补修
+
+用户授权修复原13项失败并提交推送到`codex/local-fixes-20261021`，不合并main或部署。本轮起点为b627c5bf，工作区干净；切换到同SHA的同名跟踪分支开发，原本地main和远端main均不前移。
+
+三笔原修复提交已推送到候选分支。[首轮CI 39462787415](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39462787415)在unit阶段得到3113通过、13失败、2跳过；合同、lint和前端阶段未执行，不能记作全套通过。
+
+- 3项详情测试：mock只接受两个参数，正式归属读取新增snapshot key后抛TypeError；仅更新模拟签名，正式读取逻辑不变。
+- 2项封闭/在线只读源测试：旧seed没有当前revision触发器；私有准备先迁移并checkpoint，再封存基线。迁移可以生成已有import-control目录，读取后仍逐字节保持主库且目录条目无新增（包括WAL/SHM）；不在读取期修复或写库。
+- 8项预检：运行时builder已为v13，宿主独立脚本仍固定v12。同步到v13，并显式验证旧v12报告和数据库继续被拒绝；四变体、fingerprint、旧聚合、署名policy和孤儿检查保持原门禁，不通过接受旧快照绕过。
+
+原失败所在三个文件共35项本地回归通过。首轮补修验证中，一项断言仍使用旧错误文本、另一项未考虑私有迁移提前创建的控制目录，已纠正断言与准备基线，日志保留；不改写为首轮全绿。文档同步生产预检说明、开发状态、台账及变更日志；没有新增或移动文档，README、AGENTS/CLAUDE和文档地图无需调整。
+
+本轮只改测试、宿主预检常量和文档；不重建96,881条播放或任何正式统计，不改变已核验的72首事实、不运行本地全量套件。完整unit/contract、前端和部署合同检查交由GitHub既有CI完成。最终远端结论以候选分支最新提交SHA的[Actions](https://github.com/BenjaminTay/SpotifyStats/actions?query=branch%3Acodex%2Flocal-fixes-20261021)为准；逐次run结果、日志和SHA写入忽略目录`data/import_backups/album-performance-20261021/ci-repair/`，与旧失败证据分别保留。

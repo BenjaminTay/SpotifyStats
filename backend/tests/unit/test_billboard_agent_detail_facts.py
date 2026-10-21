@@ -228,7 +228,7 @@ def published_detail_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
     monkeypatch.setattr(
         detail_summary,
         "_document_track_attribution",
-        lambda _conn, document: {"canonical_track_id": int(document["track_id"])},
+        lambda _conn, document, _snapshot_key: {"canonical_track_id": int(document["track_id"])},
     )
     return database
 

@@ -92,13 +92,21 @@ def test_publication_reader_preserves_real_billboard_revision_context(
     target = sqlite3.connect(path)
     try:
         source.backup(target)
+    finally:
+        source.close()
+        target.close()
+    # Prepare the current revision contract privately before sealing the copy.
+    # The reader below must still remain read-only and preserve the file bytes.
+    monkeypatch.setattr(db, "DB_PATH", str(path))
+    from backend.core.migrations import run_migrations
+
+    run_migrations()
+    with sqlite3.connect(path) as target:
         target.execute("PRAGMA journal_mode=WAL").close()
         cursor = target.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         assert cursor.fetchone() == (0, 0, 0)
         cursor.close()
-    finally:
-        source.close()
-        target.close()
+    target.close()
     # A prior connection policy may retain empty sidefiles after close. This
     # newly owned copy has no readers yet; only sealed mode requires removal.
     if closed:
@@ -107,12 +115,14 @@ def test_publication_reader_preserves_real_billboard_revision_context(
             assert wal.stat().st_size == 0
             wal.unlink()
         Path(str(path) + "-shm").unlink(missing_ok=True)
-    monkeypatch.setattr(db, "DB_PATH", str(path))
     writer = None
     if not closed:
         writer = sqlite3.connect(path)
         writer.execute("SELECT 1 FROM plays LIMIT 1").fetchone()
     before = hashlib.sha256(path.read_bytes()).hexdigest()
+    # Private migration can create its import-control directory. Reading the
+    # sealed source must preserve this baseline and create no WAL/SHM files.
+    before_files = set(tmp_path.iterdir())
     try:
         with publication_reads(path, closed=closed):
             conn = db.get_db(readonly=True)
@@ -133,7 +143,7 @@ def test_publication_reader_preserves_real_billboard_revision_context(
             writer.close()
     assert hashlib.sha256(path.read_bytes()).hexdigest() == before
     if closed:
-        assert set(tmp_path.iterdir()) == {path}
+        assert set(tmp_path.iterdir()) == before_files
 
 
 def test_closed_source_rejects_replacement_and_restores_connection_factory(tmp_path):

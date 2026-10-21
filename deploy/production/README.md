@@ -326,9 +326,11 @@ VERIFY_EXTERNAL_INGRESS=1 ./verify.sh  # 仅在确实配置了外部入口时使
 - 能力响应分别为 `private-admin` / `public-readonly`；
 - 简化版设置写操作返回 403；
 - SQLite `PRAGMA integrity_check` 返回 `ok`。
-- 当前服务端 Settings 推导出的四个搜索 fingerprint 精确存在且全部 `ready + builder v12`；
+- 当前服务端 Settings 推导出的四个搜索 fingerprint 精确存在且全部 `ready + builder v13`；
 - `agg_config` 为目标镜像当前 `billboard_aggregation_v6_legacy_year`，且时长策略为 `all_music_intervals_v1`；
 - `music_search_entity_context` 不存在指向已删除 snapshot meta 的孤儿。
+
+宿主独立预检当前要求 `music_search_snapshot_v13_zero_track_context`，与后端当前 builder 同步；旧v12报告或数据库即使标记ready也必须拒绝。升级只改变校验合同，不自动迁移源库、不冷建快照，也不放宽四变体、fingerprint及孤儿检查。
 
 静态发布门禁可在开发机或 CI 执行：
 

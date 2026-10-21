@@ -4,6 +4,9 @@
 
 - `SS-2026-10-21-001`（`FIXED / LOCAL`，本地提交，未推送/部署）：代表来源及专辑/演唱艺人名称连接导致72首遗漏于41个项目；已统一正式album project membership、详情owner投影、列表/汇总/对比，并修复独立重排点数排名和两端专辑链接。四变体与年份筛选、230次本地HTTP逐项核验通过，23原始/治理表保全；副本发布包已校验并本地导入，重启直接复用。证据见[修复报告](../reports/2026-10-21-album-song-performance-attribution.md)。2026-10-21。
 
+  - CI补修：三提交已推送`codex/local-fixes-20261021`；首轮[39462787415](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39462787415)在unit阶段13失败（mock3、revision夹具2、宿主预检版本8）。本地已修复，35项专项通过；旧v12报告及数据库继续拒绝。远端最终验收绑定候选分支最新SHA，见[补修证据](../reports/2026-10-21-album-song-performance-attribution.md#github-ci补修)。不合并main或部署。2026-10-21。
+
+
 > 2026-10-20提交状态：导入与元数据提交bba7cd78包含001/002/003/006/007/008的修复与证据；004/005周榜排版由本次后续独立提交保存。以下逐阶段“未提交”保留历史语境，当前以[提交收口](../reports/2026-10-20-local-streaming-incremental-import.md#本地git提交收口)为准；未推送、CI或生产部署。
 
 
