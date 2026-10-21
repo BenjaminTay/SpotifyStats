@@ -59,4 +59,4 @@ legacy 的完整 ISO 字符串（包括 01-01、每月首日）不能证明真�
 
 同一个官方 Album 响应安装日期 pair 和 Album 艺人证据，纯证据维护不抓曲目分页，不改目录、身份批准或播放。默认仅在内存副本预览，`--apply` 才安装；manifest 和每批输入 fingerprint 检查来源漂移。`--observations-json` 离线重放，`--fetch-only` 保存响应，失败恢复只请求缺失/失败 ID。联网使用既有 Provider，终局同步还须覆盖未进入本次 fetch 的已知确认来源，不能只同步新抓取的 ID。
 
-调用前先完成迁移，在共享验证锁下操作；数据库、响应和截图留在 ignored 输出中。正式应用先 Online Backup 与副本演练，保护原始事实、人工决定和成员关系，并准备受影响派生成品；输入漂移时停止，不能用旧整库覆盖新增用户数据。完整执行和验收见[发行周期修复规划](../plans/2026-10-21-versus-release-cycle-repair-plan.md)。
+调用前先完成迁移，在共享验证锁下操作；数据库、响应和截图留在 ignored 输出中。正式应用先 Online Backup 与副本演练，保护原始事实、人工决定和成员关系，并准备受影响派生成品；输入漂移时停止，不能用旧整库覆盖新增用户数据。完整执行和验收见[发行周期修复规划](../archive/06-productization-closeout/2026-10-21-versus-release-cycle-repair-plan.md)。

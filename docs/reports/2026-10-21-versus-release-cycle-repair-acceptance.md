@@ -2,7 +2,7 @@
 
 事项：`SS-2026-10-21-004`。2026-10-21。基线 `4e70af2d`，研发分支 `codex/versus-release-cycle-repair-20261021`。
 
-**当前检查点：代码、隔离副本和正式本地应用及真实页面验收通过；生产正式发布、生产自身补证与验收仍在执行，尚未整项结项。** 用户已授权完整执行[修复规划](../plans/2026-10-21-versus-release-cycle-repair-plan.md)并按大阶段提交。
+**最终状态：CLOSED / RELEASED。P0–P6 全部完成；正式本地和生产自身补证、受控应用及真实桌面/手机视口验收通过。** 用户已授权完整执行[修复规划](../archive/06-productization-closeout/2026-10-21-versus-release-cycle-repair-plan.md)并按大阶段提交。最终生产业务代码为 `c741a96fd3ed6a8f091918e607fb06a8c70a80dc`。本报告下方先前阶段的待办、失败与取消按发生时状态保留，最终结果以“最终生产交付与验收”为准。
 
 ## 实现与语义
 
@@ -42,13 +42,13 @@
 
 这不是全两两组合请求。每一项均已执行发行资格检查并保存来源/日期/原因；动态阈值分别枚举，没有用一个上下文代替另一个。来源补证后的日期和署名证据会影响榜单派生事实，默认 L2 选择器较基线增加 1 项，不宣称所有派生成绩完全不变。
 
-剩余来源关联未确认包括仅关联其他发行版本的情况，例如 Flicker 的已知容器为 Deluxe；不同地区来源的已确认日期相差一天以及其他多来源冲突保持审核，不能为了消除空值取最小/最大日期。原声带来源中不具备项目绑定或有效身份的情况同样单列。完整逐项清单在下述私有证据中，正式验收仍需检查这些分类和页面表达。
+剩余来源关联未确认包括仅关联其他发行版本的情况，例如 Flicker 的已知容器为 Deluxe；不同地区来源的已确认日期相差一天以及其他多来源冲突保持审核，不能为了消除空值取最小/最大日期。原声带来源中不具备项目绑定或有效身份的情况同样单列。完整逐项清单在下述私有证据中；最终本地和生产已复核分类及代表页面表达。
 
 剩余清单独立复解析涵盖八上下文的 728 次出现、98 个独立项，全部有直接来源证据：36 个来源日期冲突、33 个来源关联未确认、21 个真实粗日期、3 个项目身份歧义、5 个来源艺人身份待审，没有混入未解释项。33 个关联未确认项可能已经有候选来源的 confirmed/day，不能表述成没有发行日；API 与页面另用 `release_source_unconfirmed` 表达版别来源未确认。上述表格按正式本地最终 `final/coverage.json` 的原因分类登记。
 
 独立指标对账从成员逻辑事件、每日总计和已发布排名构造对照，覆盖 TTPD 主项目、Showgirl、明确 Anthology 版本、Barbie 原声带、PRIMA 与 Day and Night。八上下文共 48 次专辑结果、288 个指标一致。主项目 TTPD 的已绑定来源日为 2024-04-18；明确 Anthology 的来源日为 2024-04-19，发行七日窗口分别为 276 和 310 次，保留版本语义。
 
-隔离真实浏览器在桌面 1440×1000、手机 390×844 验证主项目六指标、重排、增删、冲突/粗日期部分成功及一次 503 后读取重试。手机表格通过实际触控横滑，容器宽 349、内容宽 856、横滑 249，整页宽仍为 390。验收发现并修复队列按钮宽度不足；修复后上移/下移/移除实际均为 44×44px，重试按钮为 78×44px。Anthology 不在选择器单列，其明确版本通过真实浏览器 API 单独验证。证据见私有 `browser-acceptance.json` 与 PNG；最终正式地址仍须复验。
+隔离真实浏览器在桌面 1440×1000、手机 390×844 验证主项目六指标、重排、增删、冲突/粗日期部分成功及一次 503 后读取重试。手机表格通过实际触控横滑，容器宽 349、内容宽 856、横滑 249，整页宽仍为 390。验收发现并修复队列按钮宽度不足；修复后上移/下移/移除实际均为 44×44px，重试按钮为 78×44px。Anthology 不在选择器单列，其明确版本通过真实浏览器 API 单独验证。证据见私有 `browser-acceptance.json` 与 PNG；当时正式地址尚未复验，后续正式本地及生产结果见下文。
 
 ## 代码验证
 
@@ -78,7 +78,7 @@
 
 代码阶段提交为 `25700cb3`；集中验收补修为 `3160dd91`，均按大阶段提交。隔离候选 CI [39582547678](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39582547678) success：3195 项单元通过、2 skipped；578 项合同通过；819 项前端通过、4 skipped；lint 与正式构建通过。首次失败 CI 保留，不覆盖其结论。
 
-`3160dd91` 已按原 SHA 快进 main，main CI `39584781778` 随后 success；正式 Release `39584781812` 因下述先行单曲来源缺口在部署前主动取消。其 build/deploy 均未执行，生产三容器仍为 `15d96469` 且 healthy；本轮服务器仅上传私有脚本与官方响应，未创建生产候选或安装数据。primary 上 `3160dd91` 的等价 cherry-pick 为 `79d96e8f`，保留此前另一事项 `555195c2`；该混合本地分支不用于生产发布。后续从隔离交付分支发布包含补修的新 SHA。先行单曲来源补修已提交 `2b69292d` 并推 main；质量 CI [39587722235](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39587722235) / [39587724035](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39587724035) 均 success：3209 项单元通过、2 skipped，578 项合同通过，819 项前端通过、4 skipped，lint 与构建通过。正式 Release [39587722103](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39587722103) 全部 success，包括共享质量门禁、三部署模式、镜像与正式部署。生产代码现为 `2b69292d`；数据补证切换及实际生产验收另记下文。
+`3160dd91` 已按原 SHA 快进 main，main CI `39584781778` 随后 success；正式 Release `39584781812` 因下述先行单曲来源缺口在部署前主动取消。其 build/deploy 均未执行，当时生产三容器仍为 `15d96469` 且 healthy；该检查点服务器仅上传私有脚本与官方响应，尚未创建生产候选或安装数据。primary 上 `3160dd91` 的等价 cherry-pick 为 `79d96e8f`，保留此前另一事项 `555195c2`；该混合本地分支不用于生产发布。后续从隔离交付分支发布包含补修的新 SHA。先行单曲来源补修已提交 `2b69292d` 并推 main；质量 CI [39587722235](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39587722235) / [39587724035](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39587724035) 均 success：3209 项单元通过、2 skipped，578 项合同通过，819 项前端通过、4 skipped，lint 与构建通过。正式 Release [39587722103](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39587722103) 全部 success，包括共享质量门禁、三部署模式、镜像与正式部署。当时生产代码为 `2b69292d`；最终 `c741a96f` 及生产数据应用结果另记下文。
 
 ## P5 补充：先行单曲的来源合同
 
@@ -96,8 +96,47 @@
 
 维护导入器现只保留 digest/scope，在第二次完整校验前释放第一套解析树、最终读取验证前释放第二套；不改校验、事实、原子事务或资源限制。25 项定向回归通过，包括逐棵树 weakref 生命周期，以及 checksum、整体 manifest 和 source 漂移的真实拒绝与回滚。原导出在相同资源限额下成功恢复导入并验证全部 96 项，digest 保持 `ee37a0a26587b4aeba408dc82064bc8314ec320c8eaafa44d669d7bd8847222c`，未重建或重签 manifest。该必要修复进入正式代码并再次执行必需 CI/Release；已有失败材料保留，独立 OOM 观察范围不变。
 
-## 证据与后续阶段
+## 最终生产交付与验收
+
+最终代码 `c741a96f` 的质量 CI [39594901788](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39594901788) success：3213 项单元通过、2 skipped，578 项合同通过，819 项前端通过、4 skipped，lint 与构建通过。正式 Release [39594901718](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39594901718) 全部 success，包含共享质量、三部署模式、镜像与正式部署。后续文档提交不改变业务镜像，无需再次发布生产。
+
+原 `2b69292d` 候选尝试复用到新代码时被完整来源门禁正确拒绝：新发布备份已新增播客事实，live 另有任务与身份维护状态变化。旧 candidate、封存摘要及恢复点保持；没有重绑旧 manifest、改 revision 或放宽校验。改从正在运行 `c741a96f` 的生产 live 新建 Online Backup，重放固定来源响应并重新完成全部准备，保护最新播客及生产独有内容。完整证据为 `production/adoption-c741a96f-rejected.json`。
+
+新候选四套搜索精确复用、八上下文 96 个 Billboard 发布项、四详情投影（283,472 行）和四排名 ready；分析六范围、社区、档案、治理、艺人排名、年度 2022–2026、首页及公开只读消费全部 ready。111 个保护投影在准备与激活后均相同，包括原始播放、曲目署名、人工治理、membership、AI/聊天、设置和最新播客记录。
+
+2026-10-21 12:58:21 UTC（北京时间 20:58:21）受控切换：应用前 Online Backup 后短停后端，live 和候选完整 fence 再次通过；主库及六旁库以同文件系统 rename 提升，首页 JSON 目录配套提升，旧 inode 与原目录一并保留。失败恢复同样覆盖七库及首页，三种目录存在组合的真实 shell 片段演练通过。启动后内置生产 verify、96 项榜单、四详情/四排名和全部默认消费者读取通过；三容器同 `c741a96f` 且 healthy，dual/public 及外部身份边界保持。
+
+生产实际验收分别保留以下证据：
+
+- 17 个真实公共 API 请求通过；八上下文全部选择器事实与 TTPD/Showgirl 六指标与正式本地 golden 精确一致。生产完整选择器逐项目解析再次核对来源、版本、日期、原因及数量，八上下文均一致，ready 仍为 427/433/410/413。此为全项目资格检查，未扩展为所有专辑两两完整计算。
+- 公开 HTTPS `https://stats.benjaminlei.site/billboard/versus` 的实际能力接口精确匹配 `c741a96f` / public-readonly；桌面 1440×1000 和手机 390×844 浏览器视口通过，无 mock。TTPD/Showgirl 首发与最高均 #1，发行周播放 276/297，艺人影响力 1.4x/1.9x，市场影响力均 1.6x，半数播放距 20/7 周；Witness 正确显示“发行版本来源尚未确认。”；1989 窗口播放真实 0，独立半数播放距保留 436 周。
+- 四对象普通对决、个人统计、个人排名与周期请求最终均 HTTP 200，console 无错误或警告。手机整页宽 390，表格 349/856 可局部横滚，12 个队列按钮均 44×44px。浏览器已正常关闭；这是真实浏览器的手机视口，未声称物理手机验收。
+- 生产证据为 `production/production-api-acceptance.json`、`production-full-selector-coverage.json`、`protected-full-post-activate-c741a96f.json`、`activation-c741a96f.log`、`release-c741-success.json`，以及浏览器目录中的 `production-browser-acceptance.json` 和五张 PNG。
+
+## 恢复点与容量处置
+
+生产 stage 为 `/opt/spotify-stats/backups/versus-release-cycle-c741a96fd3ed/`；fresh 基线为 `/opt/spotify-stats/backups/spotify-stats-release-cycle-c741a96fd3ed-20261021.db`。应用前后备份分别为 `spotify-stats-pre-cycle-activation-c741a96fd3ed-20261021T125821Z.db` 与 `spotify-stats-post-cycle-activation-c741a96fd3ed-20261021T125821Z.db`（均在 `/opt/spotify-stats/backups/`）。旧七库及首页目录位于 stage 的 `originals-20261021T125821Z/`，可按私有 `activate-candidate.sh` 的联合恢复逻辑配套恢复；存在应用后新增数据时先核对，不直接覆盖 live。
+
+为容纳新的生产副本，三份已完成且无消费者的离线 Online Backup 按现有 `.db.gz` 合同无损归档：`spotify-stats-pre-release-15d96469b9a9-20261021T083123Z.db`、`spotify-stats-pre-release-2b69292d1e4e-20261021T111842Z.db` 和 `spotify-stats-release-cycle-2b69292d1e4e-20261021.db` 各自增加 `.gz` 后缀。每份均通过 gzip 完整性与解压流 SHA256 等值验证，权限 600，原路径→归档路径、原摘要及精确恢复命令保存在 `production/archive-proof-*.json`。需要恢复时先解压到独立恢复卷并核对原 SHA256，再按现有 restore 合同执行。旧候选与原 inode、失败记录均保留；另只清理可再生成的未使用 Docker build cache 和 apt archives，未清理镜像、卷或恢复点。
+
+## 逐阶段完成审计与剩余边界
+
+| 阶段 | 完成证据 |
+| --- | --- |
+| P0 基线 | 3394 缓存精度、全部选择器与阻塞原因已固定；精选集缺快照已恢复准备，不当空结果处理 |
+| P1 统一解析 | 稳定 project/有效 membership、主来源与明确版本锚点、先行 single 来源合同及六指标对账通过 |
+| P2 证据维护 | 3125 官方响应、成对日期与艺人证据、3394 来源终局同步、重复为 0、两轮重建日期变化为 0 |
+| P3 API/UI | 原因、部分成功、请求错误、取消重排及 44px 操作可见；私有/公开读取无补证或写库 |
+| P4 全范围恢复 | 全部补证批次有结果，四类上下文各两动态取值逐项目通过；111 类保护事实保全 |
+| P5 集中验收 | 定向回归、288 指标独立对账、本地与生产实际接口及双视口验收通过；最后代码必需 CI success |
+| P6 应用与发布 | 正式本地受控应用、最终 SHA 正式 Release、生产自身 fresh 补证、七库/首页联合激活、备份与生产验收完成 |
+
+98 个独立项继续保留为有证据的数据边界：36 个日期冲突、33 个版本来源关联未确认、21 个真实粗日期、3 个身份歧义、5 个艺人身份待审，未解释项 0。自动修复完成不等于批准这些人工判断；不猜 day、改版本或自动关联身份。没有运行默认完整全栈、全站浏览器矩阵或生产压力实验，不称为 Fullstack Pass；`SS-2026-10-08-001` 仍 OPEN / OBSERVING。
+
+交付分支的原 SHA 链 `25700cb3 → 3160dd91 → 2b69292d → c741a96f` 已进入 main。primary 对应 `25700cb3 → 79d96e8f → 84d68753 → a4160614`，其中另有独立移动端提交 `555195c2`，只在 primary 保留，未混入本次发布。源码业务 diff 与独立事项分别核对；临时交付工作树在文档同步后由 managed-worktree 归档，私有长期证据一直位于 primary 的 output，不依赖该临时目录。primary 混合分支因日常服务和移动端未发布事项保留，待该独立事项整合并切换日常消费者后再移除；远端候选分支留作恢复引用，不删除。
+
+## 证据位置
 
 私有证据根目录为 `output/versus-release-cycle-20261021/`，包括 `baseline.db`、初期 `candidate.db`、最终 `prepared.db`、清单、16 份批次响应、安装报告、保护摘要、八上下文实际 API 响应、完整选择器资格清单和代码验证日志。浏览器证据保存在 `output/playwright/versus-release-cycle-20261021/`。原始数据、响应和截图均不提交 Git。
 
-待完成：main CI 与正式 Release、生产自身基线备份及隔离补证/消费者准备、受控激活和生产验收、逐项完成审计及分支收尾。正式本地交付已完成；整项未完成事项不以本地结果替代。
+本规划全部阶段已完成，后续仅在新证据或人工审核决定出现时按现有维护合同处理对应数据项，不保留新的修复或资源实验待办。正式本地、生产、CI 与浏览器证据分别以上述记录为准。
