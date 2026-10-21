@@ -39,7 +39,12 @@ from backend.domains.music_search.snapshot import (  # noqa: E402
 from backend.domains.music_search.variants import (  # noqa: E402
     build_music_search_variant_contexts,
 )
-from backend.services.analysis_snapshot_revision import COMMON, RECORDS, TASTE  # noqa: E402
+from backend.services.analysis_snapshot_revision import (  # noqa: E402
+    COMMON,
+    RECORDS,
+    TASTE,
+    _revision_vector,
+)
 from backend.services.music_search_maintenance_service import (  # noqa: E402
     _current_filter_values,
 )
@@ -281,6 +286,16 @@ def _copy_derived_tables(quiescent: Path, staged: Path) -> None:
         aggregate_ready = current_aggregates_ready(staged)
         if not aggregate_ready:
             raise ValueError("candidate aggregate policy is not exact-ready")
+        revision_table = "analysis_source_revisions"
+        copy_analysis_lineage = revision_table in available or revision_table in source_available
+        if copy_analysis_lineage:
+            if revision_table not in available or revision_table not in source_available:
+                raise ValueError("Analysis revision inventory mismatch")
+            # Private migrations independently mint epochs. Only this complete
+            # source-content proof may carry the prepared publication lineage
+            # across them; the target retains its own file identity and triggers.
+            _revision_vector(conn, COMMON + RECORDS + TASTE)
+            _revision_vector(candidate_lock, COMMON + RECORDS + TASTE)
         for table in tables:
             main_columns = _quoted_columns(conn, "main", table)
             staged_columns = _quoted_columns(conn, "staged", table)
@@ -339,6 +354,12 @@ def _copy_derived_tables(quiescent: Path, staged: Path) -> None:
                         conn.execute(
                             f"UPDATE {state} SET active_aggregate_revision=current_revision,rebuild_status='ready',last_error=NULL,updated_at=datetime('now') WHERE state_id=1"
                         )
+            if copy_analysis_lineage:
+                conn.execute("DELETE FROM main.analysis_source_revisions")
+                conn.execute(
+                    "INSERT INTO main.analysis_source_revisions(source_table,epoch,revision) "
+                    "SELECT source_table,epoch,revision FROM staged.analysis_source_revisions"
+                )
             if source_marker(staged) != expected_source:
                 raise ValueError("search source changed during derived installation")
         conn.execute("DETACH DATABASE staged")

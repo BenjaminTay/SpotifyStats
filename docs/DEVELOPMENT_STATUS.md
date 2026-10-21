@@ -1,5 +1,7 @@
 # SpotifyStats 开发状态总表
 
+> 2026-10-21正式发布进行中：用户已授权合并main、正式部署及受影响页面验收；原候选五提交按同SHA快进main至bc6a7a97，两条候选CI通过。生产仍为f1280ac1/94,760条，本机96,881条；生产Online Backup及原始播放逐项对账完成，最新数据与线上独有AI任务/加密模型凭据在私有暂存中准备。独立升级副本的Analysis epoch不一致在发布前演练中被成品校验拒绝，首个Release 39547691039在镜像传输阶段取消，未停服；现补同源完整证明下的revision向量传递，不放宽源漂移、触发器或成品门禁。最终发布与生产验收另记于[报告](reports/2026-10-21-album-song-performance-attribution.md#正式部署与生产核对)，OOM观察范围不变。
+
 > 2026-10-21 CI合同阶段跟进（SS-2026-10-21-001）：ef4b4633完整unit已通过，原13项失败清零；两条CI随后首次执行contract，暴露68项共用旧seed缺revision触发器（510通过）。已在函数独占测试副本的私有准备期迁移，再准备L3，不改变服务读取或503门禁。受影响三文件102项、完整contract578项、前端805项/4跳过、正式构建与后端lint通过；共用夹具的完整contract验证及远端最新SHA结论见[报告](reports/2026-10-21-album-song-performance-attribution.md#后续合同阶段修复)与该分支Actions。仍只推送候选分支，不合并main、不部署。
 
 > 2026-10-21 CI补修（SS-2026-10-21-001跟进）：原三提交已推送`codex/local-fixes-20261021`，首轮[CI 39462787415](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39462787415)为3113通过/13失败/2跳过，合同及前端阶段未执行。已适配3项详情mock参数、2项封库前revision迁移准备，并同步宿主预检v13以修复8项版本阻塞；三文件35项本地回归通过，保留旧报告/库拒绝及源只读门禁。补修仅在该候选分支提交推送，远端最终结论以该分支最新SHA的[Actions](https://github.com/BenjaminTay/SpotifyStats/actions?query=branch%3Acodex%2Flocal-fixes-20261021)和报告归档为准；不合并main、不部署、不重建真实数据，OOM观察范围不变。下方“未推送/CI”为历史检查点。

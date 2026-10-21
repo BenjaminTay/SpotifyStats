@@ -133,6 +133,54 @@ def test_resume_artifact_is_reused_only_for_the_same_search_source(tmp_path: Pat
     assert fourth_payload["validation"]["context_orphan_count"] == 0
 
 
+def test_resume_preserves_verified_analysis_lineage_across_private_migrations(
+    tmp_path: Path,
+) -> None:
+    baseline, resume = tmp_path / "baseline.db", tmp_path / "resume.db"
+    shutil.copy2(SEED, baseline)
+    first = _run(baseline, resume, tmp_path / "first.json")
+    assert first.returncode == 0, first.stderr
+    _seed_exact_statistics(resume)
+    with sqlite3.connect(resume) as conn:
+        prepared = conn.execute(
+            "SELECT source_table,epoch,revision FROM analysis_source_revisions ORDER BY source_table"
+        ).fetchall()
+    original_inode = resume.stat().st_ino
+
+    report = tmp_path / "resumed.json"
+    second = _run(baseline, resume, report)
+    assert second.returncode == 0, second.stderr
+    assert json.loads(report.read_text())["resume_reused"] is True
+    with sqlite3.connect(resume) as conn:
+        assert (
+            conn.execute(
+                "SELECT source_table,epoch,revision FROM analysis_source_revisions ORDER BY source_table"
+            ).fetchall()
+            == prepared
+        )
+    # Carrying the proven revision vector does not borrow another file's LKG namespace.
+    assert resume.stat().st_ino != original_inode
+
+
+def test_resume_rejects_prepared_analysis_lineage_with_broken_tracking(tmp_path: Path) -> None:
+    baseline, resume = tmp_path / "baseline.db", tmp_path / "resume.db"
+    shutil.copy2(SEED, baseline)
+    assert _run(baseline, resume, tmp_path / "first.json").returncode == 0
+    _seed_exact_statistics(resume)
+    with sqlite3.connect(resume) as conn:
+        trigger = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'analysis_rev_*' LIMIT 1"
+        ).fetchone()[0]
+        conn.execute(f'DROP TRIGGER "{trigger}"')
+    report = tmp_path / "rejected.json"
+    result = _run(baseline, resume, report)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(report.read_text())
+    assert payload["resume_reused"] is False
+    assert payload["reason"] == "resume_artifact_incompatible"
+    assert payload["validation"]["ready_snapshot_rows"] == 0
+
+
 def test_bootstrap_resume_preserves_source_equivalent_partial_statistics(tmp_path: Path) -> None:
     baseline = tmp_path / "baseline.db"
     resume = tmp_path / "resume.db"
