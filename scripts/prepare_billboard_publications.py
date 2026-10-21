@@ -300,37 +300,47 @@ def validate_manifest(conn, path):
     return manifest, entries
 
 
+def _insert_manifest_entries(sidecar, entries):
+    for entry in entries:
+        context = cache.build_cache_context(entry["family"], entry["params"])
+        compressed, size, checksum = cache._encode_payload(entry["payload"])
+        sidecar.execute(
+            """INSERT OR REPLACE INTO billboard_snapshots(
+                   cache_key,request_key,family,source_revision,builder_version,
+                   payload,uncompressed_bytes,payload_sha256,created_at,updated_at
+               ) VALUES (?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))""",
+            (
+                context["cache_key"],
+                context["request_key"],
+                context["family"],
+                context["source_revision"],
+                context["builder_version"],
+                compressed,
+                size,
+                checksum,
+            ),
+        )
+
+
 def import_manifest(conn, path):
     """Rebind exact contexts and atomically publish only the target sidecar."""
     _assert_private()
     manifest, entries = validate_manifest(conn, path)
+    manifest_digest = manifest["digest"]
+    scope = _manifest_scope(manifest["payload"])
     captured = source_fence(conn)
     sidecar = cache._connect()
     try:
         sidecar.execute("BEGIN IMMEDIATE")
-        for entry in entries:
-            context = cache.build_cache_context(entry["family"], entry["params"])
-            compressed, size, checksum = cache._encode_payload(entry["payload"])
-            sidecar.execute(
-                """INSERT OR REPLACE INTO billboard_snapshots(
-                       cache_key,request_key,family,source_revision,builder_version,
-                       payload,uncompressed_bytes,payload_sha256,created_at,updated_at
-                   ) VALUES (?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))""",
-                (
-                    context["cache_key"],
-                    context["request_key"],
-                    context["family"],
-                    context["source_revision"],
-                    context["builder_version"],
-                    compressed,
-                    size,
-                    checksum,
-                ),
-            )
+        _insert_manifest_entries(sidecar, entries)
+        # Release the first decoded payloads before fully validating again.
+        # Eight-context manifests are large; retaining both copies doubles RSS.
+        del manifest, entries
         # Every dependency is checked again before the one publication commit.
-        confirmed, _ = validate_manifest(conn, path)
-        if confirmed["digest"] != manifest["digest"]:
+        confirmed, confirmed_entries = validate_manifest(conn, path)
+        if confirmed["digest"] != manifest_digest:
             raise RuntimeError("Billboard manifest changed during import")
+        del confirmed, confirmed_entries
         if captured != source_fence(conn):
             raise RuntimeError("Billboard source changed during import")
         sidecar.commit()
@@ -339,8 +349,8 @@ def import_manifest(conn, path):
         raise
     finally:
         sidecar.close()
-    result = verify_publications(conn, **_manifest_scope(manifest["payload"]))
-    return {**result, "status": "imported", "manifest_digest": manifest["digest"]}
+    result = verify_publications(conn, **scope)
+    return {**result, "status": "imported", "manifest_digest": manifest_digest}
 
 
 def main():

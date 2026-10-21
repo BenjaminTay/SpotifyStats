@@ -332,3 +332,127 @@ def test_manifest_scope_cannot_hide_extra_or_missing_compilation_targets(
     with pytest.raises(RuntimeError, match="target|variant scope"):
         maintenance.import_manifest(None, path)
     assert not maintenance.Path(maintenance.cache.BILLBOARD_CACHE_PATH).exists()
+
+
+def test_import_releases_parsed_payloads_before_revalidation_and_final_verification(
+    publication, monkeypatch
+):
+    import gc
+    import weakref
+
+    path, _ = publication
+    validate = maintenance.validate_manifest
+    verify = maintenance.verify_publications
+    parsed_references = []
+
+    class ParsedDict(dict):
+        pass
+
+    class ParsedEntries(list):
+        pass
+
+    def assert_released(references):
+        gc.collect()
+        assert all(reference() is None for reference in references), (
+            "an earlier complete manifest or payload tree is still retained"
+        )
+
+    def observed_validation(conn, manifest_path):
+        if parsed_references:
+            # Check before parsing the second complete manifest. In particular,
+            # the final loop entry must not retain its potentially large payload.
+            assert_released(parsed_references[-1])
+        raw_manifest, raw_entries = validate(conn, manifest_path)
+        references = []
+        for entry in raw_entries:
+            entry["payload"] = ParsedDict(entry["payload"])
+            references.append(weakref.ref(entry["payload"]))
+        entries = ParsedEntries(raw_entries)
+        payload = ParsedDict(raw_manifest["payload"])
+        payload["entries"] = entries
+        manifest = ParsedDict(raw_manifest)
+        manifest["payload"] = payload
+        parsed_references.append(
+            [weakref.ref(manifest), weakref.ref(payload), weakref.ref(entries), *references]
+        )
+        return manifest, entries
+
+    def observed_verification(conn, **scope):
+        assert len(parsed_references) == 2
+        for references in parsed_references:
+            assert_released(references)
+        return verify(conn, **scope)
+
+    monkeypatch.setattr(maintenance, "validate_manifest", observed_validation)
+    monkeypatch.setattr(maintenance, "verify_publications", observed_verification)
+    monkeypatch.setattr(
+        maintenance,
+        "_read_exact",
+        lambda family, params: maintenance.cache.load_persisted_snapshot(
+            maintenance.cache.build_cache_context(family, params), allow_lkg=False
+        ),
+    )
+
+    result = maintenance.import_manifest(None, path)
+
+    assert result["status"] == "imported" and result["targets"] == 36
+    assert len(parsed_references) == 2
+
+
+@pytest.mark.parametrize(
+    "change,expected_error",
+    [
+        ("payload_checksum", "payload checksum"),
+        ("valid_replacement", "manifest changed during import"),
+        ("source", "source/governance"),
+    ],
+)
+def test_revalidation_drift_rolls_back_new_publications_and_preserves_existing_snapshot(
+    publication, monkeypatch, change, expected_error
+):
+    path, fence = publication
+    prior = maintenance.cache.build_cache_context("full_data", {"unrelated": True})
+    maintenance.cache.store_persisted_snapshot(prior, {"prior": "must remain unchanged"})
+    conn = maintenance.cache._connect()
+    try:
+        before = [
+            tuple(row)
+            for row in conn.execute("SELECT * FROM billboard_snapshots ORDER BY cache_key")
+        ]
+    finally:
+        conn.close()
+    validate = maintenance.validate_manifest
+    validations = []
+
+    def changed_during_import(conn, manifest_path):
+        validations.append(True)
+        if len(validations) == 2:
+            if change == "source":
+                fence["lineage"] = "source-changed-before-commit"
+            else:
+                manifest = json.loads(path.read_text())
+                entry = manifest["payload"]["entries"][0]
+                entry["payload"]["changed_during_import"] = True
+                if change == "valid_replacement":
+                    # Both checksums validate, but a different valid manifest
+                    # still cannot replace the one whose entries were installed.
+                    entry["payload_digest"] = maintenance._digest(entry["payload"])
+                manifest["digest"] = maintenance._digest(manifest["payload"])
+                path.write_text(json.dumps(manifest))
+        return validate(conn, manifest_path)
+
+    monkeypatch.setattr(maintenance, "validate_manifest", changed_during_import)
+
+    with pytest.raises(RuntimeError, match=expected_error):
+        maintenance.import_manifest(None, path)
+
+    assert len(validations) == 2
+    conn = maintenance.cache._connect()
+    try:
+        after = [
+            tuple(row)
+            for row in conn.execute("SELECT * FROM billboard_snapshots ORDER BY cache_key")
+        ]
+        assert after == before
+    finally:
+        conn.close()
