@@ -490,7 +490,9 @@ def select_incomplete_album_ids(conn: sqlite3.Connection, limit: int = 200) -> l
     return selected
 
 
-def select_missing_album_ids(conn: sqlite3.Connection, limit: int = 5000) -> list[str]:
+def select_missing_album_ids(
+    conn: sqlite3.Connection, limit: int = 5000, *, include_release_evidence: bool = True
+) -> list[str]:
     rows = conn.execute(
         """SELECT DISTINCT candidate.spotify_album_id FROM (
         SELECT spotify_album_id_at_play AS spotify_album_id FROM plays
@@ -504,8 +506,15 @@ def select_missing_album_ids(conn: sqlite3.Connection, limit: int = 5000) -> lis
         ORDER BY candidate.spotify_album_id LIMIT ?""",
         (limit,),
     ).fetchall()
+    from backend.domains.metadata.release_dates import select_missing_release_evidence_ids
+
+    evidence_ids = (
+        select_missing_release_evidence_ids(conn, limit) if include_release_evidence else []
+    )
     return list(
-        dict.fromkeys([*(row[0] for row in rows), *select_incomplete_album_ids(conn, limit)])
+        dict.fromkeys(
+            [*(row[0] for row in rows), *select_incomplete_album_ids(conn, limit), *evidence_ids]
+        )
     )[:limit]
 
 
@@ -518,6 +527,7 @@ def upsert_album_batch(
     outcomes=None,
     source_run_id=None,
     source="spotify_refresh",
+    evidence_only=False,
 ) -> int:
     """Publish only validated releases. Failed refreshes preserve the last complete pair.
 
@@ -530,9 +540,12 @@ def upsert_album_batch(
         fetch_complete_album_tracks,
     )
 
-    prepared = []
+    prepared: list[tuple[dict, list[dict] | None, str | None]] = []
     for album in albums:
         if not album:
+            continue
+        if evidence_only:
+            prepared.append((album, None, None))
             continue
         try:
             tracks = fetch_complete_album_tracks(provider, album, access_token)
@@ -559,39 +572,40 @@ def upsert_album_batch(
                 if album.get("genres")
                 else None
             )
-            conn.execute(
-                """INSERT INTO spotify_album_meta(
-                       spotify_album_id, album_name, album_type, release_date,
-                       popularity, label, genres, image_url, album_artists,
-                       total_tracks, track_list)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(spotify_album_id) DO UPDATE SET
-                       album_name = excluded.album_name,
-                       album_type = excluded.album_type,
+            if not evidence_only:
+                conn.execute(
+                    """INSERT INTO spotify_album_meta(
+                           spotify_album_id, album_name, album_type, release_date,
+                           popularity, label, genres, image_url, album_artists,
+                           total_tracks, track_list)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(spotify_album_id) DO UPDATE SET
+                           album_name = excluded.album_name,
+                           album_type = excluded.album_type,
 
-                       popularity = excluded.popularity,
-                       label = excluded.label,
-                       genres = COALESCE(excluded.genres, spotify_album_meta.genres),
-                       image_url = COALESCE(excluded.image_url, spotify_album_meta.image_url),
-                       album_artists = COALESCE(excluded.album_artists, spotify_album_meta.album_artists),
-                       total_tracks = CASE WHEN excluded.track_list IS NOT NULL OR spotify_album_meta.track_list IS NULL
-                           THEN COALESCE(excluded.total_tracks, spotify_album_meta.total_tracks)
-                           ELSE spotify_album_meta.total_tracks END,
-                       track_list = COALESCE(excluded.track_list, spotify_album_meta.track_list)""",
-                (
-                    album["id"],
-                    album.get("name"),
-                    album.get("album_type"),
-                    None,
-                    album.get("popularity"),
-                    album.get("label"),
-                    genres,
-                    images[0].get("url") if images else None,
-                    None,
-                    album.get("total_tracks"),
-                    json.dumps(track_ids, ensure_ascii=False) if track_ids else None,
-                ),
-            )
+                           popularity = excluded.popularity,
+                           label = excluded.label,
+                           genres = COALESCE(excluded.genres, spotify_album_meta.genres),
+                           image_url = COALESCE(excluded.image_url, spotify_album_meta.image_url),
+                           album_artists = COALESCE(excluded.album_artists, spotify_album_meta.album_artists),
+                           total_tracks = CASE WHEN excluded.track_list IS NOT NULL OR spotify_album_meta.track_list IS NULL
+                               THEN COALESCE(excluded.total_tracks, spotify_album_meta.total_tracks)
+                               ELSE spotify_album_meta.total_tracks END,
+                           track_list = COALESCE(excluded.track_list, spotify_album_meta.track_list)""",
+                    (
+                        album["id"],
+                        album.get("name"),
+                        album.get("album_type"),
+                        None,
+                        album.get("popularity"),
+                        album.get("label"),
+                        genres,
+                        images[0].get("url") if images else None,
+                        None,
+                        album.get("total_tracks"),
+                        json.dumps(track_ids, ensure_ascii=False) if track_ids else None,
+                    ),
+                )
             from backend.domains.metadata.release_dates import persist_release_date
 
             date_status = persist_release_date(
@@ -602,8 +616,10 @@ def upsert_album_batch(
             artist_state = persist_album_artists(
                 conn, album, source=source, source_run_id=source_run_id
             )
-            evidence_changed |= artist_state in {"observed", "changed"}
-            if has_evidence:
+            evidence_changed |= artist_state in {"observed", "changed"} or date_status == "accepted"
+            if artist_state == "rejected" and outcomes is not None:
+                outcomes.append((str(album["id"]), "artist_rejected", "album_artist_evidence"))
+            if has_evidence and not evidence_only:
                 conn.execute(
                     """INSERT INTO spotify_album_tracklist_evidence
                     (spotify_album_id, tracks_json, validated_total, last_status, attempted_total, last_error)
@@ -650,9 +666,18 @@ def upsert_album_batch(
                 )
             if outcomes is not None:
                 outcomes.append(
-                    (album["id"], "complete" if tracks is not None else "incomplete", error)
+                    (
+                        album["id"],
+                        "complete" if evidence_only or tracks is not None else "incomplete",
+                        error,
+                    )
                 )
             updated += 1
+        from backend.domains.metadata.release_dates import sync_project_release_precisions
+
+        evidence_changed |= bool(
+            sync_project_release_precisions(conn, [a["id"] for a, _, _ in prepared])
+        )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -660,7 +685,16 @@ def upsert_album_batch(
     if evidence_changed or any(tracks is not None for _, tracks, _ in prepared):
         from backend.core.cache_manager import invalidate_many
 
-        invalidate_many("billboard", "analysis", "yearly_review")
+        invalidate_many(
+            "db",
+            "billboard",
+            "analysis",
+            "yearly_review",
+            "profile",
+            "library",
+            "search",
+            "wrapped",
+        )
     return updated
 
 
@@ -991,6 +1025,15 @@ def refresh_missing_spotify_metadata(
             if album_id:
                 album_ids_seen.add(str(album_id))
 
+    from backend.domains.metadata.release_dates import select_missing_release_evidence_ids
+
+    # Evidence-only repair uses the same Album response without requesting a
+    # complete track catalogue. New/structurally incomplete albums keep the
+    # established full metadata path.
+    structural_album_ids = set(select_missing_album_ids(conn, include_release_evidence=False))
+    evidence_only_album_ids = (
+        set(select_missing_release_evidence_ids(conn, 5000)) - structural_album_ids
+    )
     if scope is None:
         album_ids = list(dict.fromkeys([*album_ids_seen, *select_missing_album_ids(conn)]))
     else:
@@ -1017,16 +1060,24 @@ def refresh_missing_spotify_metadata(
             continue
         albums = data.get("albums", [])
         album_outcomes: list[tuple[str, str, str | None]] = []
-        albums_updated += upsert_album_batch(
-            conn,
-            albums,
-            provider=provider,
-            access_token=access_token,
-            outcomes=album_outcomes,
-            source_run_id=source_run_id,
-        )
+        for evidence_only in (False, True):
+            selected = [
+                a
+                for a in albums
+                if a and (str(a["id"]) in evidence_only_album_ids) == evidence_only
+            ]
+            if selected:
+                albums_updated += upsert_album_batch(
+                    conn,
+                    selected,
+                    provider=provider,
+                    access_token=access_token,
+                    outcomes=album_outcomes,
+                    source_run_id=source_run_id,
+                    evidence_only=evidence_only,
+                )
         errors.extend(
-            f"{'album_date_unconfirmed' if status.startswith('date_') else 'album_tracks_incomplete'}:{sid}:{error}"
+            f"{'album_date_unconfirmed' if status.startswith('date_') else 'album_artist_unconfirmed' if status == 'artist_rejected' else 'album_tracks_incomplete'}:{sid}:{error}"
             for sid, status, error in album_outcomes
             if status != "complete"
         )
@@ -1045,6 +1096,24 @@ def refresh_missing_spotify_metadata(
     local_album_ids_updated.update(
         _local_album_ids_for_spotify_ids(conn, spotify_album_ids_updated)
     )
+    from backend.domains.metadata.release_dates import sync_project_release_precisions
+
+    # Deferred new links above can make a previously unavailable primary source
+    # provable. Synchronize after linking as well as during ordinary updates.
+    if sync_project_release_precisions(conn, spotify_album_ids_updated):
+        conn.commit()
+        from backend.core.cache_manager import invalidate_many
+
+        invalidate_many(
+            "db",
+            "billboard",
+            "analysis",
+            "yearly_review",
+            "profile",
+            "library",
+            "search",
+            "wrapped",
+        )
 
     artist_ids = (
         select_missing_artist_ids(conn)
@@ -1190,7 +1259,13 @@ def refresh_missing_spotify_metadata(
         local_album_ids_relinked=frozenset(local_album_ids_relinked),
         local_album_ids_updated=frozenset(local_album_ids_updated),
         local_artist_ids_updated=frozenset(local_artist_ids_updated),
-        impact_scope_exact=not errors and not recovered["changed"],
+        # Rejected source evidence preserves LKG and does not make the exact
+        # set of requested/updated IDs uncertain.
+        impact_scope_exact=not any(
+            not error.startswith(("album_date_unconfirmed:", "album_artist_unconfirmed:"))
+            for error in errors
+        )
+        and not recovered["changed"],
         credit_evidence_requested=len(track_ids) if credit_schema else 0,
         credit_evidence_observed=sum(item[1] == "observed" for item in credit_outcomes),
         credit_evidence_changed=sum(item[1] == "changed" for item in credit_outcomes),

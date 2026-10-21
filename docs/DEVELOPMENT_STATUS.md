@@ -1,5 +1,7 @@
 # SpotifyStats 开发状态总表
 
+> 当前进行中（2026-10-21，ACTIVE / 副本通过）：SS-2026-10-21-004 已完成项目发行解析、正式成员计数、证据维护和页面状态修复；222项后端、19项前端、构建及hooks通过。3125来源副本补证、八上下文96发布项及四详情投影ready，八上下文16个实际请求全部200；正式本地应用、真实浏览器完整验收及生产发布继续执行。见[规划](plans/2026-10-21-versus-release-cycle-repair-plan.md)与[阶段验收](reports/2026-10-21-versus-release-cycle-repair-acceptance.md)。加载旧任务和OOM观察范围不变，下方为此前发布结论。
+
 > 当前交付（2026-10-21，CLOSED / RELEASED）：原候选五提交按原SHA合入main，发布补修a1241fdf、24e2ccf7、15d96469依次完成；最终运行15d96469，质量CI 39565916955及正式Release 39565916890 attempt3全部success，三生产容器同SHA/healthy，dual/public与外部入口不变。96,881条播放已同步，署名revision99 ready、pending/blocked=0。最终72首/41项目230项、署名137项和时区5项生产核对共372项通过；三榜全量事实一致，Patient Zero及独唱/合唱、发行署名、零值详情浏览器代表核对通过。来源分支已证明合入并删除本地分支，远端源分支保留；没有新增工作树。容量拒绝、旧失败及恢复点均保留，正式恢复方式与边界见[最终验收](reports/2026-10-21-album-song-performance-attribution.md#最终发布与生产验收)。独立OOM事项仍仅正常使用观察。
 
 ## 历史检查点
@@ -205,6 +207,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
+| SS-2026-10-21-004 | 榜单对决发行周期恢复 | ACTIVE：代码、来源补证与八上下文隔离准备通过；正式本地及生产应用、真实交互和最终审计待完成 | P1：按固定候选完成实际应用、CI与正式发布及逐项验收 | [修复规划](plans/2026-10-21-versus-release-cycle-repair-plan.md)、[阶段验收](reports/2026-10-21-versus-release-cycle-repair-acceptance.md) | 2026-10-21（隔离代码/接口通过） |
 | SS-2026-10-08-001 | 后端内存稳定性 | OPEN / OBSERVING：本轮开发与发布CLOSED，f128已交付；历史OOM和旧失败保留 | P1：仅约1–3天实际正常使用及自然发生的相关维护观察；增长有界、容量足够、统计与体验正常且无本链新OOM/意外重启后再结项；不追加优化或实验 | [生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)、[精简计划](plans/2026-10-19-performance-scope-and-memory-closeout.md) | 2026-10-19（22:37既有快照healthy，非长期稳定证明） |
 | SS-2026-10-11-001 | 手机播放统计加载时弹层状态丢失 | OPEN/P2；未改动前端基线受控复现，加载中打开时间弹层后，数据到达导致控件重新挂载并关闭弹层；尚未产品修复 | P2：独立保持控件/编辑状态连续性；本轮门禁只等待初始页面就绪，保留原超时与应用后断言，不用门禁Pass关闭产品问题 | [台账](issues/2026-08-27-issue-register.md)、[受控复现](reports/2026-10-09-music-detail-chart-performance-acceptance.md)本地专辑候选节 | 2026-10-11 |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成：分阶段、preflight、排他锁与去重已做；25 分钟及三次低干扰稳定验收未闭环，安全证据续跑/分片未交付；本轮单次24分22秒 | P1：保存当前版本阶段计时与慢测试 profile，依新证据优化重复计算 | [门禁计划](plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)、[问题台账](issues/2026-08-27-issue-register.md) | 2026-10-07（单次计时，不代表三次稳定收口） |

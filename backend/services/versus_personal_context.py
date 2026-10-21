@@ -331,6 +331,7 @@ def resolve_selection(
     *,
     filters: dict | None = None,
     metadata: dict | None = None,
+    allow_shared_album_project: bool = False,
 ) -> list[SelectedEntity]:
     if not 2 <= len(items) <= 4:
         raise ValueError("请选择2至4个对象进行对决")
@@ -341,6 +342,16 @@ def resolve_selection(
     before = _selection_context(conn, params)
     if metadata is not None and metadata != before:
         raise snapshot_unavailable("versus_personal_context")
+    if allow_shared_album_project and kind == "album":
+        # Distinct release editions can share playback membership while using
+        # different release anchors. Ordinary personal comparisons keep their
+        # duplicate-entity rejection and existing cache contract.
+        result = _resolve_selection_uncached(
+            conn, kind, items, merge_level, allow_shared_album_project=True
+        )
+        if _selection_context(conn, params) != before:
+            raise snapshot_unavailable("versus_personal_context")
+        return result
     lineage = database_identity(conn)
     sorted_items = tuple(
         item for _, item in sorted(zip(requested, items), key=lambda pair: pair[0])
@@ -431,7 +442,12 @@ def _selected_artist_credits(conn: sqlite3.Connection, target_ids: set[int]) -> 
 
 
 def _resolve_selection_uncached(
-    conn: sqlite3.Connection, kind: str, items: list, merge_level: int = 2
+    conn: sqlite3.Connection,
+    kind: str,
+    items: list,
+    merge_level: int = 2,
+    *,
+    allow_shared_album_project: bool = False,
 ) -> list[SelectedEntity]:
     if not 2 <= len(items) <= 4:
         raise ValueError("请选择2至4个对象进行对决")
@@ -546,6 +562,6 @@ def _resolve_selection_uncached(
             )
         else:
             raise ValueError("Unknown comparison entity kind")
-    if len({row.entity_key for row in result}) != len(result):
+    if not allow_shared_album_project and len({row.entity_key for row in result}) != len(result):
         raise ValueError("选中的对象归并后重复，请选择不同对象")
     return result

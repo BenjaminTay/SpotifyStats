@@ -7656,6 +7656,24 @@ export interface components {
             album_ranks: {
                 [key: string]: unknown;
             }[];
+            /** Project Id */
+            project_id?: number | null;
+            /** Source Album Id */
+            source_album_id?: string | null;
+            /**
+             * Release Date Precision
+             * @default day
+             */
+            release_date_precision: string;
+            /**
+             * Status
+             * @default ready
+             */
+            status: string;
+            /** Metric Reasons */
+            metric_reasons?: {
+                [key: string]: string;
+            };
         };
         /** CompareReleasesResponse */
         CompareReleasesResponse: {
@@ -7807,6 +7825,10 @@ export interface components {
         };
         /** DetectionResultResponse */
         DetectionResultResponse: {
+            /** Candidate Key */
+            candidate_key?: string | null;
+            /** Source Revision */
+            source_revision?: string | null;
             /** Artist Name */
             artist_name: string;
             /** Artist Id */

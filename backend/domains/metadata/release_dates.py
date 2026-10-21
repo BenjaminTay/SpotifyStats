@@ -166,16 +166,112 @@ def persist_release_date(conn, album, *, source="spotify_refresh", source_run_id
     return status
 
 
-def project_date_precision(conn, album_id, release_date):
-    """Only unambiguous linked source evidence can confirm a derived project pair."""
-    if album_id is None or not release_date:
-        return None
+def release_anchor_sources(conn, album_id, *, project_id=None, explicit_edition=False):
+    """Read only already-established source associations for this target.
+
+    A project primary binding is stronger than playback-container links. An
+    explicit edition stays on the named member album and never borrows another
+    edition's primary source. No relationship or artist identity is approved here.
+    """
+    from backend.domains.playback.album_project_identity import normalize_album_project_lookup
+
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    album = conn.execute("SELECT album_name FROM albums WHERE album_id=?", (album_id,)).fetchone()
+    names = {normalize_album_project_lookup(str(album[0]))} if album else set()
+    if (
+        project_id is None
+        and not explicit_edition
+        and {"album_project_external_ids", "album_projects"}.issubset(tables)
+    ):
+        owners = conn.execute(
+            """SELECT DISTINCT ap.project_id FROM album_projects ap
+            JOIN album_project_external_ids e USING(project_id)
+            WHERE ap.primary_album_id=? AND e.provider='spotify' AND e.confidence>=0.9""",
+            (album_id,),
+        ).fetchall()
+        if len(owners) > 1:
+            return []
+        if owners:
+            project_id = owners[0][0]
+    if project_id is not None and "album_projects" in tables and not explicit_edition:
+        project = conn.execute(
+            "SELECT canonical_name FROM album_projects WHERE project_id=?", (project_id,)
+        ).fetchone()
+        if project:
+            names.add(normalize_album_project_lookup(str(project[0])))
     expr = precision_expression(conn, "spotify_album_meta", "sam")
-    rows = conn.execute(
-        f"SELECT sam.release_date, {expr} FROM album_spotify_links asl JOIN spotify_album_meta sam USING(spotify_album_id) WHERE asl.album_id=? AND asl.confidence>=0.9",
-        (album_id,),
-    ).fetchall()
-    values = [parse_release_date(r[0], r[1]) for r in rows]
+    bound = []
+    if project_id is not None and "album_project_external_ids" in tables:
+        bound = [
+            dict(
+                zip(
+                    (
+                        "spotify_album_id",
+                        "album_name",
+                        "release_date",
+                        "release_date_precision",
+                        "confidence",
+                        "is_primary",
+                    ),
+                    row,
+                )
+            )
+            for row in conn.execute(
+                f"""SELECT e.external_album_id,sam.album_name,sam.release_date,{expr},e.confidence,e.is_primary
+            FROM album_project_external_ids e LEFT JOIN spotify_album_meta sam
+                ON sam.spotify_album_id=e.external_album_id
+            WHERE e.project_id=? AND e.provider='spotify' AND e.confidence>=0.9
+            ORDER BY e.external_album_id""",
+                (project_id,),
+            )
+        ]
+    if bound and not explicit_edition:
+        primaries = [row for row in bound if row["is_primary"]]
+        matching = [
+            row
+            for row in bound
+            if normalize_album_project_lookup(str(row["album_name"] or "")) in names
+        ]
+        selected = primaries or matching or (bound if len(bound) == 1 else [])
+        return [
+            {key: value for key, value in row.items() if key != "is_primary"}
+            | {"project_bound": True}
+            for row in selected
+        ]
+    if not album or "album_spotify_links" not in tables:
+        return []
+    bound_ids = {row["spotify_album_id"] for row in bound}
+    return [
+        dict(
+            zip(
+                (
+                    "spotify_album_id",
+                    "album_name",
+                    "release_date",
+                    "release_date_precision",
+                    "confidence",
+                ),
+                row,
+            )
+        )
+        | {"project_bound": row[0] in bound_ids}
+        for row in conn.execute(
+            f"""SELECT sam.spotify_album_id,sam.album_name,sam.release_date,{expr},MAX(asl.confidence)
+            FROM album_spotify_links asl JOIN spotify_album_meta sam USING(spotify_album_id)
+            WHERE asl.album_id=? AND asl.confidence>=0.9
+            GROUP BY sam.spotify_album_id ORDER BY sam.spotify_album_id""",
+            (album_id,),
+        )
+        if normalize_album_project_lookup(str(row[1] or "")) in names
+    ]
+
+
+def project_date_precision(conn, album_id, release_date, *, project_id=None):
+    """Only unambiguous linked source evidence can confirm a derived project pair."""
+    if (album_id is None and project_id is None) or not release_date:
+        return None
+    rows = release_anchor_sources(conn, album_id, project_id=project_id)
+    values = [parse_release_date(r["release_date"], r["release_date_precision"]) for r in rows]
     confirmed = {
         item.precision for item in values if item.status == "confirmed" and item.raw == release_date
     }
@@ -193,21 +289,177 @@ def project_date_precision(conn, album_id, release_date):
 def sync_project_release_precisions(conn, spotify_album_ids):
     """Bounded maintenance of date evidence only; manual dates/memberships stay intact."""
     ids = tuple(sorted(set(spotify_album_ids)))
+    if not {"album_projects", "album_spotify_links"}.issubset(
+        {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    ):
+        return 0
     if not ids:
         return 0
     placeholders = ",".join("?" for _ in ids)
+    external_clause = ""
+    parameters = ids
+    if "album_project_external_ids" in {
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }:
+        external_clause = f"""OR EXISTS (SELECT 1 FROM album_project_external_ids e
+            WHERE e.project_id=ap.project_id AND e.provider='spotify'
+            AND e.external_album_id IN ({placeholders}))"""
+        parameters += ids
     projects = conn.execute(
-        f"""SELECT DISTINCT ap.project_id,ap.primary_album_id,ap.release_date
-        FROM album_projects ap JOIN album_spotify_links asl ON asl.album_id=ap.primary_album_id
-        WHERE ap.is_manual=0 AND asl.spotify_album_id IN ({placeholders})""",
-        ids,
+        f"""SELECT ap.project_id,ap.primary_album_id,ap.release_date,ap.release_date_precision
+        FROM album_projects ap WHERE ap.is_manual=0 AND (
+            EXISTS (SELECT 1 FROM album_spotify_links asl WHERE asl.album_id=ap.primary_album_id
+                    AND asl.spotify_album_id IN ({placeholders})) {external_clause})""",
+        parameters,
     ).fetchall()
     changed = 0
     for project in projects:
-        precision = project_date_precision(conn, project[1], project[2])
+        raw = project[2]
+        # Multiple independent established sources can confirm the same pair;
+        # differing source pairs never establish a correction by majority.
+        sources = release_anchor_sources(conn, project[1], project_id=project[0])
+        values = [
+            parse_release_date(r["release_date"], r["release_date_precision"]) for r in sources
+        ]
+        pairs = {(value.raw, value.precision) for value in values}
+        if (
+            project[3] is None
+            and values
+            and all(value.status == "confirmed" for value in values)
+            and len(pairs) == 1
+        ):
+            old, new = parse_release_date(raw), values[0]
+            if old.status == "missing" or compare_release_dates(old, new) == "compatible":
+                raw = new.raw
+        precision = project_date_precision(conn, project[1], raw, project_id=project[0])
         changed += conn.execute(
-            """UPDATE album_projects SET release_date_precision=?
-            WHERE project_id=? AND release_date_precision IS NOT ?""",
-            (precision, project[0], precision),
+            """UPDATE album_projects SET release_date=?,release_date_precision=?
+            WHERE project_id=? AND (release_date IS NOT ? OR release_date_precision IS NOT ?)""",
+            (raw, precision, project[0], raw, precision),
         ).rowcount
     return changed
+
+
+def release_evidence_inventory(conn):
+    """Read-only inventory of known referenced IDs and retryable evidence gaps.
+
+    Confirmed coarse dates are final source facts. Rejected conflicts and
+    already observed incomplete artist IDs need review instead of repeated
+    automatic requests. Explicit maintenance can still re-observe these IDs.
+    Orphan cached albums are reported separately, never automatically fetched.
+    """
+    from backend.domains.metadata.spotify_album_credits import evidence_schema_available
+
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    references = {}
+    for table, column in (
+        ("plays", "spotify_album_id_at_play"),
+        ("spotify_track_meta", "spotify_album_id"),
+        ("album_spotify_links", "spotify_album_id"),
+        ("albums", "spotify_album_id"),
+        ("album_project_external_ids", "external_album_id"),
+    ):
+        if table not in tables:
+            continue
+        columns = {r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}
+        if column not in columns:
+            continue
+        provider_filter = " AND provider='spotify'" if table == "album_project_external_ids" else ""
+        for row in conn.execute(
+            f'SELECT DISTINCT "{column}" FROM "{table}" WHERE "{column}" IS NOT NULL AND "{column}"!=\'\''
+            + provider_filter
+        ):
+            references.setdefault(str(row[0]), []).append(table)
+    precision = precision_expression(conn, "spotify_album_meta")
+    cached = {
+        str(r[0]): (r[1], r[2])
+        for r in conn.execute(
+            f"SELECT spotify_album_id,release_date,{precision} FROM spotify_album_meta"
+        )
+    }
+    dates = {}
+    if "spotify_album_date_observations" in tables:
+        dates = {
+            r[0]: r[1]
+            for r in conn.execute(
+                """SELECT o.spotify_album_id,o.status FROM spotify_album_date_observations o
+            JOIN (SELECT spotify_album_id,MAX(observation_id) AS latest
+                  FROM spotify_album_date_observations GROUP BY spotify_album_id) x
+            ON o.observation_id=x.latest"""
+            )
+        }
+    credits = {}
+    rejected = set()
+    if evidence_schema_available(conn):
+        for row in conn.execute(
+            "SELECT spotify_album_id,spotify_artist_id FROM spotify_album_artist_credits"
+        ):
+            credits.setdefault(row[0], []).append(row[1])
+        rejected = {
+            r[0]
+            for r in conn.execute(
+                """SELECT e.spotify_album_id FROM spotify_album_credit_events e
+            JOIN (SELECT spotify_album_id,MAX(event_id) AS latest
+                  FROM spotify_album_credit_events GROUP BY spotify_album_id) x
+            ON e.event_id=x.latest WHERE e.event_type='rejected'"""
+            )
+        }
+    items = []
+    for sid in sorted(references):
+        raw, prec = cached.get(sid, (None, None))
+        value = parse_release_date(raw, prec)
+        reasons, pending = [], []
+        if sid not in cached:
+            reasons.append("cache_missing")
+            pending.append("cache_missing")
+        if dates.get(sid) in {"conflict", "precision_regression"}:
+            reasons.append("date_review_required")
+        elif value.status != "confirmed":
+            reasons.append("date_" + value.status)
+            pending.append("date_" + value.status)
+        elif value.precision != "day":
+            reasons.append("date_precision_" + value.precision)
+        if sid in rejected:
+            reasons.append("artist_review_required")
+        elif sid not in credits:
+            reasons.append("album_artists_missing")
+            pending.append("album_artists_missing")
+        elif not all(credits[sid]):
+            reasons.append("artist_ids_unconfirmed")
+        items.append(
+            {
+                "id": sid,
+                "references": references[sid],
+                "cached": sid in cached,
+                "release_date": raw,
+                "release_date_precision": prec,
+                "date_status": value.status,
+                "reasons": reasons,
+                "retryable_reasons": pending,
+                "needs_fetch": bool(pending),
+            }
+        )
+    return {"items": items, "orphan_cached_ids": sorted(set(cached) - set(references))}
+
+
+def select_missing_release_evidence_ids(conn, limit=200):
+    return [r["id"] for r in release_evidence_inventory(conn)["items"] if r["needs_fetch"]][:limit]
+
+
+def install_album_release_evidence(conn, albums, *, source="spotify_refresh", source_run_id=None):
+    """Caller-owned transaction, shared date/Album artist response, no track fetching."""
+    from backend.domains.metadata.spotify_album_credits import persist_album_artists
+
+    results = {}
+    for album in albums:
+        if not album:
+            continue
+        sid = album["id"]
+        results[sid] = {
+            "date": persist_release_date(conn, album, source=source, source_run_id=source_run_id),
+            "artists": persist_album_artists(
+                conn, album, source=source, source_run_id=source_run_id
+            ),
+        }
+    changed = sync_project_release_precisions(conn, results)
+    return {"evidence_outcomes": results, "project_precision_changes": changed}

@@ -396,12 +396,22 @@ export function useReleaseCycleCompare(
       ),
     enabled,
   })
+  // Keep success and unavailable results distinct while aligning both with the
+  // current queue. Reordering shares the query without assigning facts by index.
+  const results: import('@/types/billboard').ReleaseCycleCompareResult[] = query.data
+    ? (items ?? []).map((item) => {
+      const matches = (result: { artist_name: string; album_name: string }) => result.artist_name === item.artist_name && result.album_name === item.album_name
+      return query.data.comparisons.find(matches)
+        ?? query.data.unavailable?.find(matches)
+        ?? { ...item, status: 'unavailable' as const, reason: 'missing_result' }
+    })
+    : []
   return {
-    data: query.data ? { ...query.data, comparisons: (items ?? []).map((item) => query.data.comparisons.find((comparison) => comparison.artist_name === item.artist_name && comparison.album_name === item.album_name) ?? {
-      ...item, release_date: '', label: item.album_name, metrics: {}, album_timeline: [], album_ranks: [],
-    }) } : null,
+    data: query.data ? { ...query.data, comparisons: results.filter((item): item is import('@/types/billboard').ReleaseCycleCompareItem => item.status !== 'unavailable') } : null,
+    results,
     loading: query.isLoading,
-    error: errorMessage(query.error),
+    fetching: query.isFetching,
+    error: errorMessage(query.error) ?? query.data?.error ?? null,
     refetch: () => void query.refetch(),
   }
 }

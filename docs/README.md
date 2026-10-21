@@ -1,5 +1,7 @@
 # SpotifyStats 文档地图
 
+- [榜单对决发行周期完整修复规划](plans/2026-10-21-versus-release-cycle-repair-plan.md)与[阶段验收](reports/2026-10-21-versus-release-cycle-repair-acceptance.md)：SS-2026-10-21-004；代码、3125来源补证及八上下文副本准备完成，实际应用与最终验收进行中。
+
 - [专辑旗下单曲成绩归属修复](reports/2026-10-21-album-song-performance-attribution.md)：统一项目归属、详情投影与正式点数排名；72首/41项目逐项对账，已本地提交，未推送/部署。
 
 - [专辑曲目内容归并修复](reports/2026-10-20-album-content-merge-repair.md)：任意名称扩展版、共用判定、已有组接纳及Encore本地应用证据。

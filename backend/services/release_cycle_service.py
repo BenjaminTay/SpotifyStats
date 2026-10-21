@@ -785,6 +785,8 @@ def compute_release_cycle(
     artist_median=None,
     total_daily=None,
     release_date_precision=None,
+    album_df=None,
+    album_rank_frame=None,
 ):
     """Compute all data within a release cycle anchored to release date.
 
@@ -815,9 +817,15 @@ def compute_release_cycle(
             },
             "artist_all_time_median": 0,
         }
-    album_info = _resolve_album_group(artist_name, album_name)
-    canonical = album_info[1]
-    album_names = album_info[0]
+    # Downstream helpers receive only this validated anchor, never re-parse an
+    # unconfirmed string or infer its source precision from its shape.
+    release_date = release_dt
+    if album_df is None:
+        album_info = _resolve_album_group(artist_name, album_name)
+        canonical = album_info[1]
+        album_names = album_info[0]
+    else:
+        canonical, album_names = album_name, [album_name]
 
     result = {
         "release_date": release_dt,
@@ -853,7 +861,9 @@ def compute_release_cycle(
         )
 
     # Album timeline
-    album_all = artist_df[artist_df["album_name"].isin(album_names)]
+    album_all = (
+        album_df if album_df is not None else artist_df[artist_df["album_name"].isin(album_names)]
+    )
     if not album_all.empty:
         result["album_timeline"] = _group_by_release_week(
             album_all,
@@ -929,7 +939,15 @@ def compute_release_cycle(
             art_ranks, release_date, weeks_before, weeks_after
         )
 
-    if weekly_album is not None:
+    if album_rank_frame is not None:
+        result["album_ranks"] = align_to_release(
+            album_rank_frame,
+            release_date,
+            weeks_before,
+            weeks_after,
+            release_date_precision=release_date_precision,
+        )
+    elif weekly_album is not None:
         alb_ranks = weekly_album[
             (weekly_album["artist_name"] == artist_name) & (weekly_album["album_name"] == canonical)
         ][["billboard_week", "rank", "play_count"]].copy()
@@ -1142,21 +1160,21 @@ def compute_release_metrics(cycle_data, album_type="album"):
     }
 
     atl = cycle_data.get("album_timeline", pd.DataFrame())
-    if atl.empty:
-        return metrics
+    # Playback windows, published ranks and lifetime half-life have separate
+    # evidence. An empty window must not discard independently known facts.
+    if not atl.empty:
+        release_row = atl[atl["week_offset"] == 0]
+        if not release_row.empty:
+            metrics["release_week_plays"] = int(release_row["play_count"].iloc[0])
 
-    release_row = atl[atl["week_offset"] == 0]
-    if not release_row.empty:
-        metrics["release_week_plays"] = int(release_row["play_count"].iloc[0])
+        pre_rows = atl[(atl["week_offset"] >= -4) & (atl["week_offset"] <= -1)]
+        if not pre_rows.empty:
+            metrics["pre_release_avg"] = float(pre_rows["play_count"].mean())
 
-    pre_rows = atl[(atl["week_offset"] >= -4) & (atl["week_offset"] <= -1)]
-    if not pre_rows.empty:
-        metrics["pre_release_avg"] = float(pre_rows["play_count"].mean())
-
-    post_rows = atl[(atl["week_offset"] >= 0) & (atl["week_offset"] <= 24)]
-    if not post_rows.empty:
-        peak_row = post_rows.loc[post_rows["play_count"].idxmax()]
-        metrics["peak_play_count"] = int(peak_row["play_count"])
+        post_rows = atl[(atl["week_offset"] >= 0) & (atl["week_offset"] <= 24)]
+        if not post_rows.empty:
+            peak_row = post_rows.loc[post_rows["play_count"].idxmax()]
+            metrics["peak_play_count"] = int(peak_row["play_count"])
 
     metrics["artist_impact"], metrics["artist_impact_detail"] = _compute_artist_impact(cycle_data)
     metrics["market_impact"], metrics["market_impact_detail"] = _compute_market_impact(cycle_data)

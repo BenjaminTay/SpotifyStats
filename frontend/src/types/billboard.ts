@@ -1701,17 +1701,34 @@ export interface ReleaseCycleCompareItem {
   [key: string]: any
   artist_name: string
   album_name: string
+  status?: 'ready'
+  project_id?: number | string | null
+  source_album_id?: string | null
+  release_date_precision?: string | null
   release_date: string
   label: string
   metrics: Record<string, unknown>
+  metric_reasons?: Record<string, string>
   album_timeline: { week_offset: number; play_count: number }[]
   album_ranks: { billboard_week: string; week_offset: number; rank: number }[]
 }
+
+export interface ReleaseCycleCompareUnavailable {
+  artist_name: string
+  album_name: string
+  status: 'unavailable'
+  reason: string
+  project_id?: number | string | null
+  source_album_id?: string | null
+}
+
+export type ReleaseCycleCompareResult = ReleaseCycleCompareItem | ReleaseCycleCompareUnavailable
 
 export interface ReleaseCycleCompareResponse {
   [key: string]: any
   error?: string | null
   comparisons: ReleaseCycleCompareItem[]
+  unavailable?: ReleaseCycleCompareUnavailable[]
 }
 
 /** Page projections of existing published families (no additional snapshots). */

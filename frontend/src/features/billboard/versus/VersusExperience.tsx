@@ -218,17 +218,19 @@ export function VersusExperience() {
             names={entityNames}
           />
 
-          {kind === 'album' && queue.length >= 2 && (
-            <VersusReleaseCycleSection
-              albums={queue.map((q) => ({
-                albumName: q.album_name ?? '',
-                artistName: q.artist_name ?? '',
-                name: q.display,
-              }))}
-              billboardParams={billboardParams}
-              enabled={selectionReady && !filtersLoading && !personal.stats.isLoading && !personal.ranks.isLoading && !personal.stats.isFetching && !personal.ranks.isFetching}
-            />
-          )}
+        </div>
+      )}
+      {readyToCompare && kind === 'album' && (
+        <div className="mt-8">
+          <VersusReleaseCycleSection
+            albums={queue.map((q) => ({
+              albumName: q.album_name ?? '',
+              artistName: q.artist_name ?? '',
+              name: q.display,
+            }))}
+            billboardParams={billboardParams}
+            enabled={selectionReady && !filtersLoading && !personal.stats.isLoading && !personal.ranks.isLoading && !personal.stats.isFetching && !personal.ranks.isFetching}
+          />
         </div>
       )}
       {isPhone && readyToCompare && <button type="button" className="mobile-versus-adjust" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>调整对决对象</button>}

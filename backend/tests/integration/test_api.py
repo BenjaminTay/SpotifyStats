@@ -749,9 +749,21 @@ class TestReleaseCycle:
         d = r.json()
         assert "comparisons" in d
         assert len(d["comparisons"]) + len(d["unavailable"]) == 2
+        for item in d["comparisons"]:
+            assert item["status"] == "ready"
+            assert item["release_date_precision"] == "day"
+            assert item["project_id"] is not None and item["source_album_id"]
         for item in d["unavailable"]:
             assert item["status"] == "unavailable"
-            assert item["reason"] == "release_day_unconfirmed"
+            assert item["reason"] in {
+                "release_day_unconfirmed",
+                "release_date_coarse",
+                "release_date_invalid",
+                "release_date_conflict",
+                "artist_identity_unconfirmed",
+                "entity_not_found",
+                "release_ambiguous",
+            }
 
     def test_compare_requires_two_items(self, client, default_params):
         r = client.post(

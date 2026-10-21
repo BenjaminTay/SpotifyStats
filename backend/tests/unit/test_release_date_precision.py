@@ -216,7 +216,7 @@ def test_project_sync_checks_confirmed_target_not_legacy_year(conn):
     conn.execute("INSERT INTO artists(artist_id,artist_name) VALUES(1,'Synthetic')")
     conn.execute("INSERT INTO albums(album_id,album_name,artist_id) VALUES(1,'Synthetic',1)")
     conn.execute(
-        "INSERT INTO spotify_album_meta(spotify_album_id,album_name) VALUES('other','Synthetic Other')"
+        "INSERT INTO spotify_album_meta(spotify_album_id,album_name) VALUES('other','Synthetic')"
     )
     for sid in ["s", "other"]:
         conn.execute(
@@ -531,7 +531,29 @@ def test_unconfirmed_cycle_api_surfaces_do_not_build(monkeypatch):
             {"artist_name": "Synthetic", "album_name": "B"},
         ]
     )
-    compared = api.compare_releases(request, filters=None, merge_cfg=None)
+    from types import SimpleNamespace
+
+    from backend.services.release_cycle_resolution import ReleaseTarget
+
+    monkeypatch.setattr(api, "get_db", lambda **_: sqlite3.connect(":memory:"))
+    monkeypatch.setattr(
+        "backend.services.analysis_snapshot_revision.source_revision", lambda *_: "fixed"
+    )
+    monkeypatch.setattr(
+        api,
+        "resolve_release_targets",
+        lambda _conn, items, _level: [
+            ReleaseTarget(**item, reason="release_day_unconfirmed") for item in items
+        ],
+    )
+    monkeypatch.setattr(
+        api,
+        "prepare_project_comparison_data",
+        lambda *_args, **_kwargs: pytest.fail("unconfirmed day must not load project timelines"),
+    )
+    compared = api.compare_releases(
+        request, filters=None, merge_cfg=SimpleNamespace(merge_level=2), include_compilations=False
+    )
     assert compared["comparisons"] == []
     assert [item["album_name"] for item in compared["unavailable"]] == ["A", "B"]
     assert all(item["reason"] == "release_day_unconfirmed" for item in compared["unavailable"])

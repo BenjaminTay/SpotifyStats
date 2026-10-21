@@ -26,6 +26,7 @@ from backend.domains.playback.logical_timeline import billboard_week_for_timesta
 from backend.services.versus_personal_stats_service import _load_target_timeline
 
 RANK_COLUMNS = ("billboard_week", "artist_name", "album_name", "rank", "play_count")
+PUBLISHED_RANK_COLUMNS = (*RANK_COLUMNS, "album_project_id")
 PLAY_COLUMNS = (
     "artist_name",
     "album_name",
@@ -256,7 +257,7 @@ def _weekly_projection(context_json, publication_state):
         try:
             result.append(
                 tuple(
-                    tuple(row.get(column) for column in RANK_COLUMNS)
+                    tuple(row.get(column) for column in PUBLISHED_RANK_COLUMNS)
                     for row in rows
                     if isinstance(row, dict)
                 )
@@ -328,9 +329,80 @@ def prepare_comparison_data(filters, artist_names, merge_level=2, include_compil
     selected = frame.loc[frame["artist_name"].isin(names)].copy()
     ranked = []
     for rows in projection:
-        target = pd.DataFrame([row for row in rows if row[1] in names], columns=RANK_COLUMNS)
+        target = pd.DataFrame([row[:5] for row in rows if row[1] in names], columns=RANK_COLUMNS)
         target["billboard_week"] = pd.to_datetime(target["billboard_week"]).dt.date
         ranked.append(target)
     if persistent_cache.build_cache_context("weekly", params) != context:
         raise snapshot_unavailable("weekly")
     return selected, ranked[0], ranked[1], total_daily
+
+
+def prepare_project_comparison_data(filters, items, merge_level=2, include_compilations=False):
+    """Select project songs independently of the artist and source container.
+
+    Artist timelines keep their existing primary-artist contract. Project
+    timelines share the exact membership and logical-event reconstruction of
+    personal comparisons, including collaboration sources and predecessor rows.
+    """
+    from backend.services.versus_personal_context import resolve_selection
+    from backend.services.versus_personal_stats_service import _album_song_frames
+
+    _, params = _resolve(
+        (),
+        {**vars(filters), "merge_level": merge_level, "include_compilations": include_compilations},
+    )
+    context = persistent_cache.build_cache_context("weekly", params)
+    conn = get_db(readonly=True)
+    try:
+        selections = resolve_selection(
+            conn, "album", items, merge_level, filters=params, allow_shared_album_project=True
+        )
+        artists = get_artist_identity_map(conn)
+        names = [
+            artists[item.artist_id].display_name if item.artist_id in artists else item.artist_name
+            for item in selections
+            if item.artist_name
+        ]
+        artist_frame, artist_ranks, _, total_daily = prepare_comparison_data(
+            filters, names, merge_level, include_compilations
+        )
+        projection = _weekly_projection(json.dumps(context, sort_keys=True), _publication_state())
+        if any(row[5] is None for row in projection[1]):
+            raise snapshot_unavailable("weekly", context["source_revision"])
+        sources = tuple(
+            sorted({track for selection in selections for track in selection.track_ids})
+        )
+        events, _ = _load_target_timeline(conn, sources, params, include_duration=False)
+        events = events.loc[events["source_track_id"].isin(sources)].copy()
+        if not events.empty:
+            events, _ = _album_song_frames(
+                conn, events, pd.DataFrame(columns=["track_id", "track_name"]), merge_level
+            )
+            events["billboard_week"] = billboard_week_for_timestamps(
+                events["counted_at"] if "counted_at" in events else events["ts"],
+                week_start_dow=params["bb_week_start_dow"],
+                week_start_hour=params["bb_week_start_hour"],
+            )
+            events["ts_date_dt"] = pd.to_datetime(events["ts_date"])
+            years = pd.to_datetime(events["billboard_week"]).dt.year
+            if filters.year_start is not None:
+                events = events.loc[years >= filters.year_start]
+            if filters.year_end is not None:
+                events = events.loc[years <= filters.year_end]
+        project_frames = []
+        project_ranks = []
+        for selection in selections:
+            project_frames.append(
+                events.loc[events["canonical_song_key"].isin(selection.song_keys)].copy()
+                if not events.empty
+                else pd.DataFrame(columns=PLAY_COLUMNS)
+            )
+            rows = [row for row in projection[1] if row[5] == selection.project_id]
+            ranks = pd.DataFrame(rows, columns=PUBLISHED_RANK_COLUMNS)
+            ranks["billboard_week"] = pd.to_datetime(ranks["billboard_week"]).dt.date
+            project_ranks.append(ranks)
+    finally:
+        conn.close()
+    if persistent_cache.build_cache_context("weekly", params) != context:
+        raise snapshot_unavailable("weekly")
+    return artist_frame, artist_ranks, total_daily, project_frames, project_ranks

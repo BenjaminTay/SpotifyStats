@@ -1983,7 +1983,12 @@ def _upsert_project(
 
     conn.execute(
         "UPDATE album_projects SET release_date_precision=? WHERE project_id=?",
-        (project_date_precision(conn, primary_album_id, release_date), row["project_id"]),
+        (
+            project_date_precision(
+                conn, primary_album_id, release_date, project_id=row["project_id"]
+            ),
+            row["project_id"],
+        ),
     )
     return int(row["project_id"])
 

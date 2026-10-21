@@ -1,5 +1,9 @@
 # SpotifyStats 问题台账
 
+## 2026-10-21 榜单对决发行周期不可计算
+
+- `SS-2026-10-21-004`（`ACTIVE / 副本通过`）：旧日期/艺人证据缺失、维护遗漏及周期身份/前端状态断层已形成完整补丁。222后端/19前端、构建和hooks通过；3125来源补证及八上下文96发布项副本ready，TTPD/Showgirl八上下文16请求200。尚未整项结项：正式本地应用、完整交互及生产发布与最终验收继续执行。见[规划](../plans/2026-10-21-versus-release-cycle-repair-plan.md)与[阶段验收](../reports/2026-10-21-versus-release-cycle-repair-acceptance.md)。保留真实粗日期、冲突和身份审核，不重开既有加载/OOM实验。2026-10-21。
+
 ## 2026-10-21 发布后维护与时区边界
 
 - `SS-2026-10-21-003`（`FIXED / RELEASED`）：逐曲署名增量缺少四快照目标登记，现有发布fence因此拒绝当前目标；恢复旧生产My Heart决定时真实复现。补用完整构建共用prepare，保留旧服务键及后续目标改写拒绝；16项定向通过，15d96469正式CI及Release attempt3成功。生产revision99、四搜索/年榜及榜单ready，最终137项署名核对通过。见[报告](../reports/2026-10-21-album-song-performance-attribution.md#最终发布与生产验收)。2026-10-21。

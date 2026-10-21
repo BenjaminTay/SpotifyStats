@@ -9,6 +9,8 @@ import pandas as pd
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from backend.core.access_surface import reset_public_readonly_db_guard, set_public_readonly_db_guard
+from backend.core.db import get_db
 from backend.core.json_helpers import df_to_json, py_val
 from backend.dependencies import BillboardFilters, MergeConfig
 from backend.domains.metadata.release_dates import parse_release_date
@@ -20,7 +22,8 @@ from backend.services.billboard_service import (
     load_billboard_raw,
     load_billboard_raw_for_artists,
 )
-from backend.services.release_cycle_comparison_service import prepare_comparison_data
+from backend.services.release_cycle_comparison_service import prepare_project_comparison_data
+from backend.services.release_cycle_resolution import resolve_release_targets
 from backend.services.release_cycle_service import (
     _resolve_album_group,
     compute_artist_play_timeline,
@@ -617,9 +620,9 @@ class CompareItem(BaseModel):
 
 
 class CompareRequest(BaseModel):
-    items: list[CompareItem]
-    weeks_before: int = 12
-    weeks_after: int = 24
+    items: list[CompareItem] = Field(max_length=4)
+    weeks_before: int = Field(default=12, ge=0, le=104)
+    weeks_after: int = Field(default=24, ge=4, le=104)
 
 
 class CompareReleaseResult(BaseModel):
@@ -630,6 +633,11 @@ class CompareReleaseResult(BaseModel):
     metrics: dict[str, Any]
     album_timeline: list[dict[str, Any]]
     album_ranks: list[dict[str, Any]]
+    project_id: int | None = None
+    source_album_id: str | None = None
+    release_date_precision: str = "day"
+    status: str = "ready"
+    metric_reasons: dict[str, str] = Field(default_factory=dict)
 
 
 class CompareReleasesResponse(BaseModel):
@@ -654,54 +662,85 @@ def compare_releases(
     if len(body.items) < 2:
         return {"error": "至少需要 2 张发行进行对比"}
 
-    eligible = []
-    unavailable = []
-    for item in body.items:
-        releases = load_artist_releases(item.artist_name)
-        rel_row, cycle_album_name, release_date = _find_release_row(releases, item.album_name)
-        if rel_row is None:
-            unavailable.append(
-                {
-                    "artist_name": item.artist_name,
-                    "album_name": item.album_name,
-                    "status": "unavailable",
-                    "reason": "release_day_unconfirmed",
-                }
-            )
-            continue
-        eligible.append((item, cycle_album_name, release_date))
+    token = set_public_readonly_db_guard(True)
+    try:
+        return _compare_release_batch(body, filters, merge_cfg.merge_level, include_compilations)
+    finally:
+        reset_public_readonly_db_guard(token)
 
-    if not eligible:
+
+def _compare_release_batch(body, filters, merge_level, include_compilations):
+    from backend.core.access_surface import snapshot_unavailable
+    from backend.services.analysis_snapshot_revision import source_revision
+
+    items = [item.model_dump() for item in body.items]
+    conn = get_db(readonly=True)
+    try:
+        revision = source_revision(conn, "analysis_records")
+        targets = resolve_release_targets(conn, items, merge_level)
+        if source_revision(conn, "analysis_records") != revision:
+            raise snapshot_unavailable("weekly")
+    finally:
+        conn.close()
+    unavailable = [target.unavailable() for target in targets if target.reason]
+    if all(target.reason for target in targets):
         return {"comparisons": [], "unavailable": unavailable}
-    df_raw, weekly_artist, weekly_album, total_daily = prepare_comparison_data(
-        filters,
-        [item.artist_name for item, _, _ in eligible],
-        merge_level=merge_cfg.merge_level,
-        include_compilations=include_compilations,
+    resolved_items = [
+        {"album_name": target.album_name, "artist_name": target.identity.artist_name}
+        if target.identity is not None
+        else item
+        for target, item in zip(targets, items)
+    ]
+    artist_frame, artist_ranks, total_daily, album_frames, album_ranks = (
+        prepare_project_comparison_data(
+            filters,
+            resolved_items,
+            merge_level=merge_level,
+            include_compilations=include_compilations,
+        )
     )
     result = []
-    for item, cycle_album_name, release_date in eligible:
+    for index, target in enumerate(targets):
+        if target.reason:
+            continue
+        identity = target.identity
         cycle = compute_release_cycle(
-            df_raw,
-            item.artist_name,
-            cycle_album_name,
-            release_date,
-            weekly_artist=weekly_artist,
-            weekly_album=weekly_album,
+            artist_frame,
+            target.artist_display_name,
+            identity.canonical_name,
+            target.release_date,
+            release_date_precision="day",
+            weekly_artist=artist_ranks,
             weeks_before=body.weeks_before,
             weeks_after=body.weeks_after,
             total_daily=total_daily,
+            album_df=album_frames[index],
+            album_rank_frame=album_ranks[index],
         )
         metrics = compute_release_metrics(cycle, "album")
-
+        reasons = {}
+        for name in ("debut_rank", "peak_rank"):
+            if metrics[name] is None:
+                reasons[name] = "no_chart_entry"
+        for name, reason in (
+            ("artist_impact", "no_artist_baseline"),
+            ("market_impact", "no_market_baseline"),
+        ):
+            if metrics[name] is None:
+                reasons[name] = "no_plays_in_window" if cycle["album_timeline"].empty else reason
+        if metrics["half_life"] is None:
+            reasons["half_life"] = "no_playback"
         result.append(
             {
-                "artist_name": item.artist_name,
-                "album_name": item.album_name,
-                "release_date": release_date.isoformat()
-                if hasattr(release_date, "isoformat")
-                else str(release_date),
-                "label": f"{item.album_name} ({release_date.strftime('%Y') if hasattr(release_date, 'strftime') else ''})",
+                "artist_name": target.artist_name,
+                "album_name": target.album_name,
+                "release_date": target.release_date,
+                "release_date_precision": "day",
+                "source_album_id": target.source_album_id,
+                "project_id": identity.project_id,
+                "status": "ready",
+                "label": f"{target.album_name} ({target.release_date[:4]})",
+                "metric_reasons": reasons,
                 "metrics": {
                     **metrics,
                     "artist_impact_fmt": format_artist_impact(metrics["artist_impact"]),
@@ -711,5 +750,10 @@ def compare_releases(
                 "album_ranks": df_to_json(cycle.get("album_ranks")),
             }
         )
-
+    conn = get_db(readonly=True)
+    try:
+        if source_revision(conn, "analysis_records") != revision:
+            raise snapshot_unavailable("weekly")
+    finally:
+        conn.close()
     return {"comparisons": result, "unavailable": unavailable}

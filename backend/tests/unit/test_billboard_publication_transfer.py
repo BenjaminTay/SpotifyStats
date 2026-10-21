@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import nullcontext
 
 import pytest
 
@@ -63,7 +64,12 @@ def test_exact_verification_does_not_create_missing_sidecar_or_delete_corruption
 
 @pytest.fixture
 def publication(tmp_path, monkeypatch):
-    filters = {"merge_level": 2, "dynamic_threshold": True, "min_ms": 30000}
+    filters = {
+        "merge_level": 2,
+        "dynamic_threshold": True,
+        "min_ms": 30000,
+        "include_compilations": False,
+    }
     fence = {"lineage": "source-a", "governance": "g1"}
     monkeypatch.setattr(maintenance, "configured_billboard_filters", lambda _: dict(filters))
     monkeypatch.setattr(maintenance, "source_fence", lambda _: dict(fence))
@@ -197,3 +203,132 @@ def test_public_guard_rejects_maintenance_without_opening_files(monkeypatch):
                 operation()
     finally:
         reset_public_readonly_db_guard(token)
+
+
+def test_explicit_compilation_scope_builds_all_eight_contexts(publication, monkeypatch):
+    from backend.core import cache_manager
+    from backend.domains.billboard import build_context
+    from backend.services import billboard_service
+
+    calls = []
+
+    def builder(**params):
+        calls.append(params)
+        return {"meta": {"available_years": [2026, 2024]}}
+
+    monkeypatch.setattr(build_context, "BillboardBuildContext", lambda _: nullcontext("facts"))
+    monkeypatch.setattr(cache_manager, "invalidate", lambda _: None)
+    for name in (
+        "compute_all_time_staged",
+        "compute_billboard_data",
+        "compute_power_scores_staged",
+        "compute_records_staged",
+        "compute_summaries_staged",
+        "compute_weekly_data",
+        "compute_year_end_staged",
+    ):
+        monkeypatch.setattr(billboard_service, name, builder)
+
+    result = maintenance.prepare_publications(None, include_compilation_variants=True)
+
+    assert result["targets"] == 72
+    assert result["variant_scope"] == {"include_compilation_variants": True}
+    assert len(calls) == 72
+    assert {
+        (row["merge_level"], row["dynamic_threshold"], row["include_compilations"])
+        for row in result["prepared"]
+    } == {
+        (level, dynamic, compilation)
+        for level in (2, 3)
+        for dynamic in (False, True)
+        for compilation in (False, True)
+    }
+    assert all(call["force_rebuild"] and call["_build_context"] == "facts" for call in calls)
+
+
+@pytest.mark.parametrize("configured_compilations", [False, True])
+def test_default_scope_preserves_configured_compilation_setting(
+    monkeypatch, configured_compilations
+):
+    monkeypatch.setattr(
+        maintenance,
+        "configured_billboard_filters",
+        lambda _: {"include_compilations": configured_compilations},
+    )
+
+    default = maintenance._variants(None)
+    expanded = maintenance._variants(None, include_compilation_variants=True)
+
+    assert len(default) == 4
+    assert {item["include_compilations"] for item in default} == {configured_compilations}
+    assert len(expanded) == 8
+    assert {item["include_compilations"] for item in expanded} == {False, True}
+
+
+def test_compilation_manifest_import_verifies_its_full_declared_scope(publication, monkeypatch):
+    path, _ = publication
+    monkeypatch.setattr(
+        maintenance,
+        "_read_exact",
+        lambda family, params: {
+            "meta": {"available_years": [2022, 2023, 2024, 2025, 2026]},
+            "family": family,
+        },
+    )
+    exported = maintenance.export_manifest(None, path, include_compilation_variants=True)
+    assert exported["targets"] == 96
+    manifest = json.loads(path.read_text())
+    assert manifest["payload"]["variant_scope"] == {"include_compilation_variants": True}
+    monkeypatch.setattr(
+        maintenance,
+        "_read_exact",
+        lambda family, params: maintenance.cache.load_persisted_snapshot(
+            maintenance.cache.build_cache_context(family, params), allow_lkg=False
+        ),
+    )
+
+    result = maintenance.import_manifest(None, path)
+
+    assert result["targets"] == 96
+    assert result["variant_scope"] == {"include_compilation_variants": True}
+    assert maintenance.verify_publications(None)["targets"] == 48
+    assert maintenance.verify_publications(None, include_compilation_variants=True)["targets"] == 96
+
+
+def test_historical_manifest_without_scope_remains_default_four_variants(publication):
+    path, _ = publication
+    manifest = json.loads(path.read_text())
+    manifest["payload"].pop("variant_scope")
+    manifest["digest"] = maintenance._digest(manifest["payload"])
+    path.write_text(json.dumps(manifest))
+
+    _, entries = maintenance.validate_manifest(None, path)
+
+    assert len(entries) == 36
+
+
+@pytest.mark.parametrize("declared_scope", [None, False, True, "true", {"unexpected": True}])
+def test_manifest_scope_cannot_hide_extra_or_missing_compilation_targets(
+    publication, declared_scope
+):
+    path, _ = publication
+    # Only a complete eight-context set is legal when the manifest declares it.
+    maintenance.export_manifest(None, path, include_compilation_variants=True)
+    manifest = json.loads(path.read_text())
+    payload = manifest["payload"]
+    if declared_scope is None:
+        payload.pop("variant_scope")
+    elif declared_scope is True:
+        payload["entries"] = [
+            entry for entry in payload["entries"] if not entry["params"]["include_compilations"]
+        ]
+    elif isinstance(declared_scope, dict):
+        payload["variant_scope"] = declared_scope
+    else:
+        payload["variant_scope"] = {"include_compilation_variants": declared_scope}
+    manifest["digest"] = maintenance._digest(payload)
+    path.write_text(json.dumps(manifest))
+
+    with pytest.raises(RuntimeError, match="target|variant scope"):
+        maintenance.import_manifest(None, path)
+    assert not maintenance.Path(maintenance.cache.BILLBOARD_CACHE_PATH).exists()

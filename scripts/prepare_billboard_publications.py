@@ -43,13 +43,32 @@ def _digest(value):
     ).hexdigest()
 
 
-def _variants(conn):
+def _variants(conn, *, include_compilation_variants=False):
     default = configured_billboard_filters(conn)
-    return [
+    variants = [
         {**default, "merge_level": level, "dynamic_threshold": dynamic}
         for level in (2, 3)
         for dynamic in (False, True)
     ]
+    if include_compilation_variants:
+        return [
+            {**variant, "include_compilations": compilations}
+            for variant in variants
+            for compilations in (False, True)
+        ]
+    return variants
+
+
+def _manifest_scope(payload):
+    # Historical manifests contain exactly the four configured variants.
+    scope = payload.get("variant_scope", {"include_compilation_variants": False})
+    if (
+        not isinstance(scope, dict)
+        or set(scope) != {"include_compilation_variants"}
+        or type(scope["include_compilation_variants"]) is not bool
+    ):
+        raise RuntimeError("invalid Billboard manifest variant scope")
+    return scope
 
 
 def source_fence(conn):
@@ -111,9 +130,9 @@ def _read_exact(family, params):
     return payload
 
 
-def _targets(conn, latest):
+def _targets(conn, latest, *, include_compilation_variants=False):
     targets = []
-    for filters in _variants(conn):
+    for filters in _variants(conn, include_compilation_variants=include_compilation_variants):
         targets.extend((family, filters) for family in FAMILIES)
         params = _year_end_snapshot_params(filters, year=None)
         payload = latest(params)
@@ -126,8 +145,8 @@ def _targets(conn, latest):
     return targets
 
 
-def prepare_publications(conn):
-    """Build four exact variants using existing invocation-local maintenance facts."""
+def prepare_publications(conn, *, include_compilation_variants=False):
+    """Build selected exact variants using invocation-local maintenance facts."""
     _assert_private()
     from backend.core.cache_manager import invalidate
     from backend.domains.billboard.build_context import BillboardBuildContext
@@ -156,7 +175,7 @@ def prepare_publications(conn):
         )
     )
     prepared = []
-    for filters in _variants(conn):
+    for filters in _variants(conn, include_compilation_variants=include_compilation_variants):
         with BillboardBuildContext(filters) as facts:
             for builder in builders.values():
                 builder(**filters, force_rebuild=True, _build_context=facts)
@@ -171,6 +190,7 @@ def prepare_publications(conn):
                 {
                     "merge_level": filters["merge_level"],
                     "dynamic_threshold": filters["dynamic_threshold"],
+                    "include_compilations": filters.get("include_compilations", False),
                     "years": years,
                 }
             )
@@ -178,13 +198,20 @@ def prepare_publications(conn):
         invalidate("db")
     if captured != source_fence(conn):
         raise RuntimeError("Billboard source changed during copy preparation")
-    return {**verify_publications(conn), "prepared": prepared}
+    return {
+        **verify_publications(conn, include_compilation_variants=include_compilation_variants),
+        "prepared": prepared,
+    }
 
 
-def verify_publications(conn):
+def verify_publications(conn, *, include_compilation_variants=False):
     _assert_private()
     captured = source_fence(conn)
-    targets = _targets(conn, lambda params: _read_exact("year_end", params))
+    targets = _targets(
+        conn,
+        lambda params: _read_exact("year_end", params),
+        include_compilation_variants=include_compilation_variants,
+    )
     for family, params in targets:
         _read_exact(family, params)
     if captured != source_fence(conn):
@@ -193,13 +220,18 @@ def verify_publications(conn):
         "status": "ready",
         "targets": len(targets),
         "builder_version": cache.BILLBOARD_CACHE_BUILDER_VERSION,
+        "variant_scope": {"include_compilation_variants": include_compilation_variants},
     }
 
 
-def export_manifest(conn, path):
+def export_manifest(conn, path, *, include_compilation_variants=False):
     _assert_private()
     captured = source_fence(conn)
-    targets = _targets(conn, lambda params: _read_exact("year_end", params))
+    targets = _targets(
+        conn,
+        lambda params: _read_exact("year_end", params),
+        include_compilation_variants=include_compilation_variants,
+    )
     entries = []
     for family, params in targets:
         payload = _read_exact(family, params)
@@ -217,6 +249,7 @@ def export_manifest(conn, path):
     payload = {
         "builder_version": cache.BILLBOARD_CACHE_BUILDER_VERSION,
         "source_fence": captured,
+        "variant_scope": {"include_compilation_variants": include_compilation_variants},
         "entries": entries,
     }
     manifest = {"digest": _digest(payload), "payload": payload}
@@ -239,6 +272,7 @@ def validate_manifest(conn, path):
         raise RuntimeError("Billboard manifest digest/builder mismatch")
     if payload["source_fence"] != source_fence(conn):
         raise RuntimeError("Billboard manifest source/governance fence mismatch")
+    scope = _manifest_scope(payload)
     entries = payload["entries"]
     if not isinstance(entries, list) or len(entries) > cache.DEFAULT_MAX_ENTRIES:
         raise RuntimeError("invalid Billboard manifest target count")
@@ -260,7 +294,7 @@ def validate_manifest(conn, path):
             raise RuntimeError("Billboard latest-year target missing")
         return by_key[key]["payload"]
 
-    targets = _targets(conn, latest)
+    targets = _targets(conn, latest, **scope)
     if set(by_key) != {_digest([family, params]) for family, params in targets}:
         raise RuntimeError("Billboard manifest target set mismatch")
     return manifest, entries
@@ -305,7 +339,7 @@ def import_manifest(conn, path):
         raise
     finally:
         sidecar.close()
-    result = verify_publications(conn)
+    result = verify_publications(conn, **_manifest_scope(manifest["payload"]))
     return {**result, "status": "imported", "manifest_digest": manifest["digest"]}
 
 
@@ -314,6 +348,11 @@ def main():
     parser.add_argument("--db-path", type=Path, required=True)
     parser.add_argument("--cache-path", type=Path, required=True)
     parser.add_argument("--owned-copy", action="store_true")
+    parser.add_argument(
+        "--include-compilation-variants",
+        action="store_true",
+        help="Build, export or verify all eight L2/L3, threshold and compilation variants",
+    )
     parser.add_argument(
         "--closed-source",
         action="store_true",
@@ -326,6 +365,8 @@ def main():
     mode.add_argument("--validate-manifest", type=Path)
     mode.add_argument("--verify", action="store_true")
     args = parser.parse_args()
+    if args.include_compilation_variants and (args.import_manifest or args.validate_manifest):
+        parser.error("import/validate use the variant scope declared by the manifest")
     if args.closed_source and args.build_on_copy:
         parser.error("--closed-source cannot build publications")
     _assert_private()
@@ -354,9 +395,13 @@ def _run(args):
     conn = db.get_db(readonly=True)
     try:
         if args.build_on_copy:
-            result = prepare_publications(conn)
+            result = prepare_publications(
+                conn, include_compilation_variants=args.include_compilation_variants
+            )
         elif args.export:
-            result = export_manifest(conn, args.export)
+            result = export_manifest(
+                conn, args.export, include_compilation_variants=args.include_compilation_variants
+            )
         elif args.import_manifest:
             result = import_manifest(conn, args.import_manifest)
         elif args.validate_manifest:
@@ -367,7 +412,9 @@ def _run(args):
                 "manifest_digest": manifest["digest"],
             }
         else:
-            result = verify_publications(conn)
+            result = verify_publications(
+                conn, include_compilation_variants=args.include_compilation_variants
+            )
         return result
     finally:
         conn.close()
