@@ -672,6 +672,7 @@ def compare_releases(
 def _compare_release_batch(body, filters, merge_level, include_compilations):
     from backend.core.access_surface import snapshot_unavailable
     from backend.services.analysis_snapshot_revision import source_revision
+    from backend.services.release_cycle_resolution import resolve_advance_singles
 
     items = [item.model_dump() for item in body.items]
     conn = get_db(readonly=True)
@@ -691,14 +692,23 @@ def _compare_release_batch(body, filters, merge_level, include_compilations):
         else item
         for target, item in zip(targets, items)
     ]
-    artist_frame, artist_ranks, total_daily, album_frames, album_ranks = (
+    artist_frame, artist_ranks, total_daily, album_frames, album_ranks, selections = (
         prepare_project_comparison_data(
             filters,
             resolved_items,
             merge_level=merge_level,
             include_compilations=include_compilations,
+            include_selections=True,
         )
     )
+    conn = get_db(readonly=True)
+    try:
+        advance = [
+            resolve_advance_singles(conn, target, selection.track_ids)
+            for target, selection in zip(targets, selections)
+        ]
+    finally:
+        conn.close()
     result = []
     for index, target in enumerate(targets):
         if target.reason:
@@ -716,6 +726,7 @@ def _compare_release_batch(body, filters, merge_level, include_compilations):
             total_daily=total_daily,
             album_df=album_frames[index],
             album_rank_frame=album_ranks[index],
+            advance_singles=advance[index],
         )
         metrics = compute_release_metrics(cycle, "album")
         reasons = {}

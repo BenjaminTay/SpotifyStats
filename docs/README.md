@@ -1,6 +1,6 @@
 # SpotifyStats 文档地图
 
-- [榜单对决发行周期完整修复规划](plans/2026-10-21-versus-release-cycle-repair-plan.md)与[阶段验收](reports/2026-10-21-versus-release-cycle-repair-acceptance.md)：SS-2026-10-21-004；代码、3125来源补证及八上下文副本准备完成，实际应用与最终验收进行中。
+- [榜单对决发行周期完整修复规划](plans/2026-10-21-versus-release-cycle-repair-plan.md)与[验收记录](reports/2026-10-21-versus-release-cycle-repair-acceptance.md)：SS-2026-10-21-004；正式本地补证应用、111类保护及真实桌面/手机验收通过；3160dd91候选CI通过；先行单曲来源补修149项通过，旧Release部署前取消，新SHA发布及生产自身补证验收待完成。
 
 - [专辑旗下单曲成绩归属修复](reports/2026-10-21-album-song-performance-attribution.md)：统一项目归属、详情投影与正式点数排名；72首/41项目逐项对账，已本地提交，未推送/部署。
 

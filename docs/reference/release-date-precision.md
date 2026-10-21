@@ -49,6 +49,7 @@ legacy 的完整 ISO 字符串（包括 01-01、每月首日）不能证明真�
 - 项目重建与维护使用同一日期 pair 决策。已确认的项目日期与精度不被较弱名称匹配覆盖；新来源不一致时保留锚点和审核原因。legacy 仅在主来源全部确认且 pair 一致、比较范围兼容时纠正；人工日期保持。重复同步和重建必须稳定。
 - 周期对比逐项区分 `release_source_unconfirmed`（对应发行来源尚未确认）、`release_day_unconfirmed`（来源缺确认日）、`release_date_coarse`、`release_date_invalid`、`release_date_conflict`、`artist_identity_unconfirmed`、`release_ambiguous` 和 `entity_not_found`。缺快照属于请求级不可用，不能伪装空指标；真实零、未上榜、无窗口播放与缺证各自表达。
 - 私有和公开周期对比均只消费已安装证据和 exact-ready 成品，不在读取时联网补证、写库、排队或冷建。部分不可用保留请求列和原因，其余目标继续计算。
+- 对决影响力的先行单曲沿用同一项目/版本、Album 艺人与 confirmed/day 合同，候选歌曲来自当前 L2/L3 有效成员的完整来源集合；候选还须具有实际共享 Album 成员关系、来源类型 single 且早于目标发行日。不能通过全局同名 `LIMIT 1` 选择其他艺人或版本。存在歧义、日期冲突或粗日期时排除该先行候选，按既有公式回退发行前四周/全时段基线；主发行已可计算的其他指标保持。读取显式传入已验证先行证据，不调用旧名称补证 helper。
 - 日期和精度进入 Analysis、Archive、治理、Billboard、Yearly 现有 revision/cache 合同；规则 builder/version 一并升级，旧结果不能作为新规则的精确结果或跨规则 LKG。
 - 公开 GET 不补证、联网、写库、冷建或排队。当前隐藏的歌词、发行档案、发行周期、艺人生涯页签保持隐藏。
 

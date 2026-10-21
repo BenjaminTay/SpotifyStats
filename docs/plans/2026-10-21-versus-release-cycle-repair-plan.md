@@ -1,6 +1,6 @@
 # 榜单对决发行周期完整修复规划
 
-日期：2026-10-21。事项：`SS-2026-10-21-004`。状态：**ACTIVE，代码与副本阶段已完成，实际应用及最终验收进行中**。负责人：本问题链唯一研发负责人。规划基线：`4e70af2d`；研发分支 `codex/versus-release-cycle-repair-20261021`。阶段证据见[验收记录](../reports/2026-10-21-versus-release-cycle-repair-acceptance.md)。
+日期：2026-10-21。事项：`SS-2026-10-21-004`。状态：**ACTIVE，正式本地应用与验收通过；先行单曲来源补修已验证，旧Release部署前取消；新SHA发布、生产自身补证和最终验收待完成**。负责人：本问题链唯一研发负责人。规划基线：`4e70af2d`；研发分支 `codex/versus-release-cycle-repair-20261021`，隔离交付分支 `codex/versus-release-cycle-delivery-20261021`。阶段证据见[验收记录](../reports/2026-10-21-versus-release-cycle-repair-acceptance.md)。
 
 目标是恢复所有具备可靠发行证据的专辑对比，并使剩余不可计算项有准确原因和可执行的维护路径。交付包含发行解析、证据维护、历史数据恢复、API/前端状态、回归和后续发布方案；不能只补 TTPD 与 The Life of a Showgirl，也不能将未知精度批量标为 day。
 

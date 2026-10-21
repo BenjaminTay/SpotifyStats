@@ -171,3 +171,62 @@ def resolve_release_targets(conn, items: list[dict], merge_level: int = 2) -> li
             )
         )
     return result
+
+
+def resolve_advance_singles(
+    conn, target: ReleaseTarget, source_track_ids: tuple[int, ...]
+) -> list[dict]:
+    """Resolve shared-song single releases through the installed identity contract.
+
+    A global title match cannot establish an artist, edition or release date.
+    Each candidate must own the shared local album and resolve to a confirmed
+    single source. Unresolved/conflicting candidates leave the existing impact
+    formula's pre-release/all-time baseline fallback available.
+    """
+    if (
+        target.reason
+        or target.identity is None
+        or target.release_date is None
+        or not source_track_ids
+    ):
+        return []
+    candidates = {}
+    for offset in range(0, len(source_track_ids), 900):
+        chunk = source_track_ids[offset : offset + 900]
+        placeholders = ",".join("?" for _ in chunk)
+        for row in conn.execute(
+            f"""SELECT DISTINCT candidate.album_id,candidate.album_name
+            FROM track_albums shared
+            JOIN albums candidate ON candidate.album_id=shared.album_id
+            WHERE shared.track_id IN ({placeholders})""",
+            chunk,
+        ):
+            candidates[row[0]] = row[1]
+    rows = sorted(candidates.items())
+    if not rows:
+        return []
+    items = [{"artist_name": target.identity.artist_name, "album_name": row[1]} for row in rows]
+    resolved = resolve_release_targets(conn, items, merge_level=2)
+    result = {}
+    for row, candidate in zip(rows, resolved):
+        if candidate.reason or candidate.identity is None or not candidate.release_date:
+            continue
+        # The resolver's name compatibility must still refer to this actual
+        # shared album, rather than a uniquely named but unrelated catalog row.
+        if not conn.execute(
+            "SELECT 1 FROM album_project_albums WHERE project_id=? AND album_id=?",
+            (candidate.identity.project_id, row[0]),
+        ).fetchone():
+            continue
+        source = conn.execute(
+            "SELECT album_type FROM spotify_album_meta WHERE spotify_album_id=?",
+            (candidate.source_album_id,),
+        ).fetchone()
+        if source is None or source[0] != "single" or candidate.release_date >= target.release_date:
+            continue
+        result[candidate.source_album_id] = {
+            "single_name": candidate.album_name,
+            "release_date": candidate.release_date,
+            "source_album_id": candidate.source_album_id,
+        }
+    return sorted(result.values(), key=lambda row: (row["release_date"], row["source_album_id"]))

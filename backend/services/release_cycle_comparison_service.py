@@ -337,7 +337,9 @@ def prepare_comparison_data(filters, artist_names, merge_level=2, include_compil
     return selected, ranked[0], ranked[1], total_daily
 
 
-def prepare_project_comparison_data(filters, items, merge_level=2, include_compilations=False):
+def prepare_project_comparison_data(
+    filters, items, merge_level=2, include_compilations=False, *, include_selections=False
+):
     """Select project songs independently of the artist and source container.
 
     Artist timelines keep their existing primary-artist contract. Project
@@ -405,4 +407,5 @@ def prepare_project_comparison_data(filters, items, merge_level=2, include_compi
         conn.close()
     if persistent_cache.build_cache_context("weekly", params) != context:
         raise snapshot_unavailable("weekly")
-    return artist_frame, artist_ranks, total_daily, project_frames, project_ranks
+    result = (artist_frame, artist_ranks, total_daily, project_frames, project_ranks)
+    return (*result, selections) if include_selections else result

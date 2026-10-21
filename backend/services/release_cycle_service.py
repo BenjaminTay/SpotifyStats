@@ -787,6 +787,7 @@ def compute_release_cycle(
     release_date_precision=None,
     album_df=None,
     album_rank_frame=None,
+    advance_singles=None,
 ):
     """Compute all data within a release cycle anchored to release date.
 
@@ -954,7 +955,11 @@ def compute_release_cycle(
         result["album_ranks"] = align_to_release(alb_ranks, release_date, weeks_before, weeks_after)
 
     # Clean baseline window
-    advance = get_advance_singles(artist_name, album_name)
+    advance = (
+        advance_singles
+        if advance_singles is not None
+        else get_advance_singles(artist_name, album_name)
+    )
     if advance:
         first_single_date = min(pd.to_datetime(s["release_date"]) for s in advance)
         anchor = min(release_dt, first_single_date)
