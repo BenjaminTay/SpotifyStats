@@ -2,7 +2,9 @@
 
 ## 2026-10-21 详情全历史时区边界
 
-- `SS-2026-10-21-002`（`FIXED / LOCAL`，待发布）：UTC生产的有界详情用SQLite `date(ts,'localtime')`裁出UTC日期，再按北京时间过滤逻辑事件，导致末日凌晨播放被漏算；expectations的播放统计22次而摘要23次，差异精确落在2026-10-19。已固定为UTC+8，保留音乐过滤、空结果及自定义范围；UTC原版回归失败，修复后8项通过。属于生产核对发现的独立日期边界，非专辑归属或L2参与者回退；正式发布与复验见[报告](../reports/2026-10-21-album-song-performance-attribution.md#生产日期边界补修)。2026-10-21。
+- `SS-2026-10-21-003`（`FIXED / LOCAL`，待发布）：逐曲署名增量缺少四快照目标登记，现有发布fence因此拒绝当前目标；恢复旧生产My Heart决定时真实复现。补用完整构建共用prepare，保留旧服务键及后续目标改写拒绝；16项定向通过。维护处置与正式发布见[报告](../reports/2026-10-21-album-song-performance-attribution.md#署名决定保全及增量目标登记)。2026-10-21。
+
+- `SS-2026-10-21-002`（`FIXED / RELEASED`）：UTC生产的有界详情用SQLite `date(ts,'localtime')`裁出UTC日期，再按北京时间过滤逻辑事件，遗漏末日凌晨播放。24e2ccf7固定UTC+8；8项回归、正式CI/Release及生产5项通过，expectations恢复23次/20活跃日，专辑与艺人统计一致。见[报告](../reports/2026-10-21-album-song-performance-attribution.md#生产日期边界补修)。2026-10-21。
 
 ## 2026-10-21 专辑旗下单曲成绩归属
 

@@ -38,6 +38,7 @@ from backend.domains.music_search.snapshot import (
     _assert_shared_full_publish_fence,
     _validate_context_rows,
     _validate_shared_full_contexts,
+    prepare_music_search_snapshot_set,
 )
 from backend.domains.music_search.snapshot_delta import (
     _base_weekly_ledger_rows,
@@ -665,6 +666,9 @@ def apply_track_credit_statistics_delta(
         active_credit_revision=int(state[0]),
         source_dataset_digest=dataset_digest,
     )
+    # Claim the new revision before computing, as the shared-full builder does.
+    # Publication still rejects a later owner or source change; LKG stays active.
+    prepare_music_search_snapshot_set(conn, contexts)
 
     raw = _load_changed_raw_rows(
         conn,

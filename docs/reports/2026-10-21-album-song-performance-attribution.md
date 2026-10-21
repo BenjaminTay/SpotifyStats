@@ -89,3 +89,13 @@
 扩展署名复核先发现测试脚本复用了仅私有可用的`canonical/.../stats`路径，公开面按既有政策404；改用实际公开的`l1/.../stats`同一handler，未放宽路由。随后发现真实独立差异SS-2026-10-21-002：expectations的有界播放统计为22次/19活跃日，而本地及精确摘要为23次/20日，逐日差异只在北京时间2026-10-19。生产私有和公开统计同为22，排除访问面差异。
 
 根因是`_global_period_bounds`用SQLite `localtime`读取原始时间边界。开发机为上海，UTC容器把最新覆盖日当作10月18日，再过滤已按上海重建的逻辑事件，遗漏次日凌晨一次。只将该共用有界详情边界固定为UTC+8，不改原始数据、L2/L3、聚合、快照builder或计次规则。独立UTC进程在旧代码先失败、上海通过；修复后两环境及既有发布排名/零毫秒回归共8项通过。发布前不将扩展署名请求记录为全部通过；既有230项归属及周榜验证不受影响。
+
+### 署名决定保全及增量目标登记
+
+24e2ccf7的[正式Release 39559112357](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39559112357)及[质量CI 39559111954](https://github.com/BenjaminTay/SpotifyStats/actions/runs/39559111954)全部success，实际三容器同SHA且healthy。UTC敏感的独唱/L3、专辑、艺人及全局排名五项生产请求均与本机上海事实相同：expectations恢复23次/20活跃日，L3为30次。SS-2026-10-21-002已发布验证。
+
+137项署名扩展核对到5585时发现旧生产My Heart逐曲排除遗漏，不能把该轮记为全通过。数据同步以本地治理为准时未逐项合并这个生产独有决定；旧完整库仍在原文件和Online Backup内。逐项比较旧生产全部活跃人工覆盖对应曲目的有效署名，仅5585多出My Heart；5531的另一集合变化是已确认蔡健雅/Tanya Chua身份去重，不恢复重复实体。其余缺少旧覆盖行的曲目有效参与者与角色均相同。
+
+通过现有apply覆盖层、原证据及新幂等键恢复5585/7727 remove，本地和生产各新增审计；不直接拼接冲突的override/event ID。生产event94、override64、revision99；Online Backup为`spotify-stats-pre-restore-credit-20261021.db`，原始plays/tracks/track_artists摘要逐项不变。仅缓存重放该目标Spotify证据，自动成员变化0，application pending/blocked均0。
+
+正式重试维护暴露独立SS-2026-10-21-003：增量在提交时复用完整构建所有权fence，但入口未登记新四目标，旧目标被置空后发布被拒绝。错误和有界重试保留，原成品未被覆盖。修复在完整旧成品证明之后调用共用`prepare_music_search_snapshot_set`，随后才计算增量；不放宽源、候选代、revision或并发目标检查。入口回归使用真实SQLite四目标和真实发布fence，覆盖旧服务键保留、正确目标通过及计算中目标替换仍拒绝；旧代码先失败，补修与既有署名维护共16项通过。生产先通过既有私有prepare登记当前目标，再走正式HTTP重试入口恢复；此为本轮维护处置，永久补修另走CI/正式Release。最终状态在完成后追加。

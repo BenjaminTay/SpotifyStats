@@ -180,3 +180,120 @@ def test_delta_kill_switch_fails_closed_before_any_write(monkeypatch) -> None:
         )
 
     assert conn.total_changes == 0
+
+
+@pytest.mark.parametrize("replace_owner", [False, True])
+def test_credit_delta_claims_targets_and_rejects_later_owner(monkeypatch, replace_owner) -> None:
+    from dataclasses import replace
+
+    import pandas as pd
+
+    from backend.core.migrations import (
+        migrate_032,
+        migrate_034,
+        migrate_035,
+        migrate_042,
+        migrate_061,
+    )
+    from backend.domains.music_search import snapshot
+    from backend.domains.music_search import track_credit_delta as delta
+
+    conn = _raw_database()
+    migrate_032(conn)
+    migrate_034(conn)
+    migrate_035(conn)
+    migrate_042(conn)
+    migrate_061(conn)
+    conn.executescript(
+        "CREATE TABLE track_credit_state(state_id INTEGER PRIMARY KEY, "
+        "active_aggregate_revision INTEGER); INSERT INTO track_credit_state VALUES(1,1);"
+    )
+    contexts = tuple(
+        replace(
+            _context(),
+            merge_level=level,
+            dynamic_threshold=dynamic,
+            filter_fingerprint=f"target-{level}-{int(dynamic)}",
+        )
+        for level in (2, 3)
+        for dynamic in (False, True)
+    )
+    conn.executemany(
+        "INSERT INTO music_search_snapshot_variant_state(merge_level,dynamic_threshold,active_snapshot_key,active_filter_fingerprint,target_filter_fingerprint) VALUES(?,?,'old','old','old')",
+        [(c.merge_level, int(c.dynamic_threshold)) for c in contexts],
+    )
+    conn.commit()
+    monkeypatch.setattr(delta, "_validate_contexts", lambda _contexts: contexts[0])
+    monkeypatch.setattr(
+        delta, "get_music_search_index_state", lambda _conn: {"active_generation_id": "g1"}
+    )
+    monkeypatch.setattr(delta, "active_playback_lineage", lambda _conn: ("import-g1", "digest"))
+    monkeypatch.setattr(
+        delta,
+        "_base_snapshot_keys",
+        lambda *_args, **_kwargs: {c.filter_fingerprint: "old" for c in contexts},
+    )
+    monkeypatch.setattr(delta, "_load_changed_raw_rows", lambda *_args, **_kwargs: pd.DataFrame())
+    monkeypatch.setattr(
+        delta,
+        "_artist_replacement_ledger",
+        lambda *_args, **_kwargs: {c.filter_fingerprint: [] for c in contexts},
+    )
+    monkeypatch.setattr(delta, "_candidate_keys_for_context", lambda *_args, **_kwargs: set())
+    monkeypatch.setattr(delta, "_clone_lifetime_with_artist_delta", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(delta, "_base_weekly_ledger_rows", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(snapshot, "_active_playback_generation", lambda _conn: "import-g1")
+    monkeypatch.setattr(
+        snapshot,
+        "get_music_search_index_state",
+        lambda _conn: {"active_generation_id": "g1", "status": "ready"},
+    )
+    monkeypatch.setattr(
+        snapshot,
+        "build_music_search_filter_context",
+        lambda _conn, filters: next(
+            c
+            for c in contexts
+            if c.merge_level == filters["merge_level"]
+            and c.dynamic_threshold == filters["dynamic_threshold"]
+        ),
+    )
+
+    def publish(target, claimed, *_args, **_kwargs):
+        if replace_owner:
+            target.execute(
+                "UPDATE music_search_snapshot_variant_state SET target_filter_fingerprint='newer-owner' WHERE merge_level=2 AND dynamic_threshold=1"
+            )
+            target.commit()
+        snapshot._assert_shared_full_publish_fence(
+            target,
+            claimed,
+            source_generation_id="import-g1",
+            candidate_generation_id="g1",
+            semantic_base_key="base",
+        )
+        assert (
+            target.execute(
+                "SELECT count(*) FROM music_search_snapshot_variant_state WHERE maintenance_status='pending'"
+            ).fetchone()[0]
+            == 4
+        )
+        assert (
+            target.execute(
+                "SELECT count(*) FROM music_search_snapshot_variant_state WHERE active_snapshot_key='old'"
+            ).fetchone()[0]
+            == 4
+        )
+
+    monkeypatch.setattr(delta, "_publish", publish)
+    if replace_owner:
+        with pytest.raises(RuntimeError, match="target ownership changed"):
+            delta.apply_track_credit_statistics_delta(
+                conn, contexts, [_change(from_revision=1, to_revision=2)], target_revision=2
+            )
+    else:
+        result = delta.apply_track_credit_statistics_delta(
+            conn, contexts, [_change(from_revision=1, to_revision=2)], target_revision=2
+        )
+        assert result["strategy"] == "track_credit_delta"
+        assert result["lifetime_scan"] is False

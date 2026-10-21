@@ -1,5 +1,7 @@
 # SpotifyStats 开发状态总表
 
+> 2026-10-21发布后补修：24e2ccf7正式Release 39559112357与质量CI 39559111954均success，日期边界生产5项通过。扩展核对发现本地最新库缺少旧生产My Heart逐曲remove；已恢复本地/生产，其余旧人工决定的有效参与者保持，5531差异为已确认别名去重。原始三表摘要保持。维护又暴露SS-2026-10-21-003：署名增量未先登记四目标，被现有所有权fence拒绝；现补共用prepare步骤，保留LKG和并发目标改写拒绝。16项定向回归通过，补修正式发布及最终验收待完成，见[报告](reports/2026-10-21-album-song-performance-attribution.md#署名决定保全及增量目标登记)。
+
 > 2026-10-21生产核对跟进：a1241fdf的三条CI/Release全部成功，96,881条已受控同步，切换前31表漂移检查通过，原文件及前后Online Backup保留；production readiness=ready、署名pending/blocked=0、待运行任务0。72首/41项目的230个生产请求及三榜全部事实对账通过，Desktop三榜70行数字/播放条正确。署名扩展核对发现独立`SS-2026-10-21-002`：UTC容器用SQLite localtime计算详情全历史边界，expectations漏掉北京时间10月19日凌晨一条，个人统计22而摘要23。本地已改为固定UTC+8；UTC旧代码先失败，修复后UTC/上海与既有排名/零毫秒回归共8项通过，待正式发布及复验。原归属交付与该日期边界分别记录，见[生产报告](reports/2026-10-21-album-song-performance-attribution.md#正式部署与生产核对)。OOM仍仅观察。
 
 > 2026-10-21正式发布进行中：用户已授权合并main、正式部署及受影响页面验收；原候选五提交按同SHA快进main至bc6a7a97，两条候选CI通过。生产仍为f1280ac1/94,760条，本机96,881条；生产Online Backup及原始播放逐项对账完成，最新数据与线上独有AI任务/加密模型凭据在私有暂存中准备。独立升级副本的Analysis epoch不一致在发布前演练中被成品校验拒绝，首个Release 39547691039在镜像传输阶段取消，未停服；现补同源完整证明下的revision向量传递，不放宽源漂移、触发器或成品门禁。最终发布与生产验收另记于[报告](reports/2026-10-21-album-song-performance-attribution.md#正式部署与生产核对)，OOM观察范围不变。
