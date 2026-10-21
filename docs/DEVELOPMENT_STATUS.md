@@ -1,5 +1,7 @@
 # SpotifyStats 开发状态总表
 
+> 2026-10-21生产核对跟进：a1241fdf的三条CI/Release全部成功，96,881条已受控同步，切换前31表漂移检查通过，原文件及前后Online Backup保留；production readiness=ready、署名pending/blocked=0、待运行任务0。72首/41项目的230个生产请求及三榜全部事实对账通过，Desktop三榜70行数字/播放条正确。署名扩展核对发现独立`SS-2026-10-21-002`：UTC容器用SQLite localtime计算详情全历史边界，expectations漏掉北京时间10月19日凌晨一条，个人统计22而摘要23。本地已改为固定UTC+8；UTC旧代码先失败，修复后UTC/上海与既有排名/零毫秒回归共8项通过，待正式发布及复验。原归属交付与该日期边界分别记录，见[生产报告](reports/2026-10-21-album-song-performance-attribution.md#正式部署与生产核对)。OOM仍仅观察。
+
 > 2026-10-21正式发布进行中：用户已授权合并main、正式部署及受影响页面验收；原候选五提交按同SHA快进main至bc6a7a97，两条候选CI通过。生产仍为f1280ac1/94,760条，本机96,881条；生产Online Backup及原始播放逐项对账完成，最新数据与线上独有AI任务/加密模型凭据在私有暂存中准备。独立升级副本的Analysis epoch不一致在发布前演练中被成品校验拒绝，首个Release 39547691039在镜像传输阶段取消，未停服；现补同源完整证明下的revision向量传递，不放宽源漂移、触发器或成品门禁。最终发布与生产验收另记于[报告](reports/2026-10-21-album-song-performance-attribution.md#正式部署与生产核对)，OOM观察范围不变。
 
 > 2026-10-21 CI合同阶段跟进（SS-2026-10-21-001）：ef4b4633完整unit已通过，原13项失败清零；两条CI随后首次执行contract，暴露68项共用旧seed缺revision触发器（510通过）。已在函数独占测试副本的私有准备期迁移，再准备L3，不改变服务读取或503门禁。受影响三文件102项、完整contract578项、前端805项/4跳过、正式构建与后端lint通过；共用夹具的完整contract验证及远端最新SHA结论见[报告](reports/2026-10-21-album-song-performance-attribution.md#后续合同阶段修复)与该分支Actions。仍只推送候选分支，不合并main、不部署。

@@ -126,6 +126,8 @@ logical_plays = full_plays + (1 if remainder >= effective_threshold else 0)
 1. **播放次数**归到 `counted_at`：即该次完整播放或余数播放刚刚达到成立条件的时刻。`ts`、`ts_date`、`ts_year`、`ts_month`、`ts_week`、`ts_dow`、`ts_hour` 均由 `counted_at` 按 `Asia/Shanghai` 重建。
 2. **收听时长**归到未经过播放次数阈值过滤的推断收听区间：每条有效音乐原始记录以 `[ts - ms_played, ts)` 近似，跨小时、自然日或 Billboard 周边界时按边界切片。连续同曲只负责重建稳定时间线，不得因余数未达到计次阈值而丢弃该余数时长。
 
+歌曲、专辑和艺人详情的全历史查询边界同样固定使用北京时间（UTC+8），不得依赖宿主机或容器的 `localtime`；否则 UTC 容器会截掉最后一个北京时间自然日的凌晨播放。自定义日期范围仍使用用户明确指定的日期。
+
 因此，一次跨午夜完成的播放可以在次日增加 1 次播放，同时把午夜前后的收听分钟分别计入两天。Billboard 预聚合使用独立 `play_count` / `total_ms` 权重：事件行只贡献次数，切片行只贡献时长；任何消费者不得用切片行数代替播放次数。
 
 ### R4.2 逻辑播放事件身份

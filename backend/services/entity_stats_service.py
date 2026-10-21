@@ -156,8 +156,9 @@ def _global_period_bounds(
             "end_date": end_date,
         }
     where = "WHERE track_id IS NOT NULL" if music_only else ""
+    # Logical event dates use Asia/Shanghai regardless of the host/container TZ.
     row = conn.execute(
-        f"SELECT MIN(date(ts, 'localtime')), MAX(date(ts, 'localtime')) FROM plays {where}"
+        f"SELECT MIN(date(ts, '+8 hours')), MAX(date(ts, '+8 hours')) FROM plays {where}"
     ).fetchone()
     return {
         "period": "lifetime",
