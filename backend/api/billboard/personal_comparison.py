@@ -31,6 +31,7 @@ class TrackRequest(StrictBody):
 class AlbumSelection(StrictBody):
     album_name: Name
     artist_name: Name
+    project_id: Annotated[StrictInt, Field(gt=0)] | None = None
 
 
 class AlbumRequest(StrictBody):
@@ -112,7 +113,7 @@ def _items(kind: Kind, body: RequestBody) -> list:
     if kind == "track" and isinstance(body, TrackRequest):
         return body.track_ids
     if kind == "album" and isinstance(body, AlbumRequest):
-        return [item.model_dump() for item in body.albums]
+        return [item.model_dump(exclude_none=True) for item in body.albums]
     if kind == "artist" and isinstance(body, ArtistRequest):
         return body.artist_names
     raise HTTPException(422, "对象类型与请求内容不一致")

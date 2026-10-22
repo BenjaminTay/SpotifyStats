@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
-RELEASE_DATE_POLICY_VERSION = "release_date_evidence_v2_legacy_year"
+RELEASE_DATE_POLICY_VERSION = "release_date_evidence_v3_independent_dates"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS spotify_album_date_observations (
@@ -166,7 +166,43 @@ def persist_release_date(conn, album, *, source="spotify_refresh", source_run_id
     return status
 
 
-def release_anchor_sources(conn, album_id, *, project_id=None, explicit_edition=False):
+def _release_kind_sources(conn, rows, project_id):
+    """A same-title advance single cannot date an established album.
+
+    Keep single-only releases, unknown legacy kinds and explicit primary
+    bindings. This filters evidence; it never changes source associations.
+    """
+    if not rows or "album_type" not in {
+        r[1] for r in conn.execute("PRAGMA table_info(spotify_album_meta)")
+    }:
+        return rows
+    ids = tuple(row["spotify_album_id"] for row in rows)
+    kinds = dict(
+        conn.execute(
+            f"SELECT spotify_album_id,album_type FROM spotify_album_meta WHERE spotify_album_id IN ({','.join('?' for _ in ids)})",
+            ids,
+        )
+    )
+    project_type = None
+    if project_id is not None and "project_type" in {
+        r[1] for r in conn.execute("PRAGMA table_info(album_projects)")
+    }:
+        project = conn.execute(
+            "SELECT project_type FROM album_projects WHERE project_id=?", (project_id,)
+        ).fetchone()
+        project_type = project[0] if project else None
+    if project_type == "single" and "single" in kinds.values():
+        return [
+            row
+            for row in rows
+            if kinds.get(row["spotify_album_id"]) not in {"album", "compilation"}
+        ]
+    if any(kind in {"album", "compilation"} for kind in kinds.values()):
+        return [row for row in rows if kinds.get(row["spotify_album_id"]) != "single"]
+    return rows
+
+
+def _release_anchor_sources(conn, album_id, *, project_id=None, explicit_edition=False):
     """Read only already-established source associations for this target.
 
     A project primary binding is stronger than playback-container links. An
@@ -233,15 +269,16 @@ def release_anchor_sources(conn, album_id, *, project_id=None, explicit_edition=
             if normalize_album_project_lookup(str(row["album_name"] or "")) in names
         ]
         selected = primaries or matching or (bound if len(bound) == 1 else [])
-        return [
+        result = [
             {key: value for key, value in row.items() if key != "is_primary"}
             | {"project_bound": True}
             for row in selected
         ]
+        return result if primaries else _release_kind_sources(conn, result, project_id)
     if not album or "album_spotify_links" not in tables:
         return []
     bound_ids = {row["spotify_album_id"] for row in bound}
-    return [
+    result = [
         dict(
             zip(
                 (
@@ -264,6 +301,17 @@ def release_anchor_sources(conn, album_id, *, project_id=None, explicit_edition=
         )
         if normalize_album_project_lookup(str(row[1] or "")) in names
     ]
+    return _release_kind_sources(conn, result, project_id)
+
+
+def release_anchor_sources(conn, album_id, *, project_id=None, explicit_edition=False):
+    """Established catalog associations plus separately reviewed project date evidence."""
+    from backend.domains.metadata.album_release_date_evidence import overlay_source_dates
+
+    rows = _release_anchor_sources(
+        conn, album_id, project_id=project_id, explicit_edition=explicit_edition
+    )
+    return overlay_source_dates(conn, rows, project_id=project_id, album_id=album_id)
 
 
 def project_date_precision(conn, album_id, release_date, *, project_id=None):
@@ -271,6 +319,8 @@ def project_date_precision(conn, album_id, release_date, *, project_id=None):
     if (album_id is None and project_id is None) or not release_date:
         return None
     rows = release_anchor_sources(conn, album_id, project_id=project_id)
+    if any(row.get("independent_date_conflict") for row in rows):
+        return None
     values = [parse_release_date(r["release_date"], r["release_date_precision"]) for r in rows]
     confirmed = {
         item.precision for item in values if item.status == "confirmed" and item.raw == release_date
@@ -296,9 +346,23 @@ def project_release_date_pair(
     unanimous confirmed primary-source pairs compatible with its proven year.
     """
     current = parse_release_date(release_date, release_date_precision)
+    sources = release_anchor_sources(conn, album_id, project_id=project_id)
+    independent = [row for row in sources if row.get("release_date_assertion_id")]
+    if independent and not any(row.get("independent_date_conflict") for row in sources):
+        candidates = {row["release_date"] for row in independent}
+        if len(candidates) == 1:
+            candidate = parse_release_date(next(iter(candidates)), "day")
+            if compare_release_dates(current, candidate) in {"same", "compatible"} and all(
+                compare_release_dates(
+                    parse_release_date(row["release_date"], row["release_date_precision"]),
+                    candidate,
+                )
+                in {"same", "compatible"}
+                for row in sources
+            ):
+                return candidate.raw, "day"
     if current.status == "confirmed":
         return current.raw, current.precision
-    sources = release_anchor_sources(conn, album_id, project_id=project_id)
     values = [
         parse_release_date(row["release_date"], row["release_date_precision"]) for row in sources
     ]

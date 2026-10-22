@@ -1,5 +1,9 @@
 # SpotifyStats 文档地图
 
+- [发行周期本地研发收口](reports/2026-10-21-release-cycle-remaining-review.md#本地研发收口与交付检查点)：计算与通用缺口修复、原六指标UI、本地应用和验收统一提交保存；无活跃程序修复，剩余29项独立治理，Title暂缓。尚未推送/生产发布，下面逐阶段“未提交”保留历史语境。
+
+- [发行周期表格UI回退](reports/2026-10-21-release-cycle-remaining-review.md#按原始界面回退发行周期表格ui)：按用户要求恢复原六指标界面，保留计算/身份/独立日期修复；21前端回归、构建及双视口验收通过，本地成品已更新。
+- [发行周期来源审核与二次修复](reports/2026-10-21-release-cycle-remaining-review.md#第八批独立发行日期入口与21项粗日期审核)：schema94独立日期入口及10项同年day事实已本地应用，21项粗日期余11，总待审29；累计45主来源不变、69条目恢复。160定向回归、隔离/正式67HTTP、468独立指标及真实页面通过，原始/成员/归属、Spotify声明和Title保持。跨年/版别冲突继续逐项审阅，未提交/推送/生产发布。
 - [榜单对决发行周期完整修复规划（已完成归档）](archive/06-productization-closeout/2026-10-21-versus-release-cycle-repair-plan.md)与[最终验收](reports/2026-10-21-versus-release-cycle-repair-acceptance.md)：SS-2026-10-21-004，P0–P6 CLOSED / RELEASED；c741a96f的CI/Release、正式本地与生产自身补证/联合激活、111类保护、全项目资格和实际双视口通过，98项真实数据边界保留审核，含备份恢复及源码处置记录。
 
 - [专辑旗下单曲成绩归属修复](reports/2026-10-21-album-song-performance-attribution.md)：统一项目归属、详情投影与正式点数排名；72首/41项目逐项对账，已本地提交，未推送/部署。

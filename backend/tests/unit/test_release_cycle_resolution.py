@@ -95,6 +95,61 @@ def test_conflicting_same_edition_sources_are_not_chosen_by_order(source):
     assert resolve(source).reason == "release_date_conflict"
 
 
+def test_same_title_advance_single_does_not_override_album_release(source):
+    source.execute("ALTER TABLE spotify_album_meta ADD COLUMN album_type TEXT")
+    source.execute("UPDATE spotify_album_meta SET album_type='album'")
+    source.execute(
+        "INSERT INTO spotify_album_meta VALUES('advance','Album','2025-12-01','day','single')"
+    )
+    source.execute("INSERT INTO album_spotify_links VALUES(10,'advance',1)")
+    source.execute("INSERT INTO spotify_album_artist_credits VALUES('advance','main','Main',0)")
+    target = resolve(source)
+    assert (target.reason, target.release_date, target.source_album_id) == (
+        None,
+        "2026-01-02",
+        "original",
+    )
+    # Single-only releases keep their own anchors.
+    source.execute("DELETE FROM album_spotify_links WHERE spotify_album_id='original'")
+    target = resolve(source)
+    assert (target.reason, target.source_album_id) == (None, "advance")
+
+
+def test_explicit_project_id_distinguishes_same_name_releases(source):
+    source.execute("INSERT INTO album_projects VALUES(102,'ALBUM',1,11,'release',NULL,NULL,0)")
+    source.execute("INSERT INTO album_project_albums VALUES(102,11)")
+    assert resolve(source).reason == "release_ambiguous"
+    target = resolve_release_targets(
+        source, [{"artist_name": "Main", "album_name": "Album", "project_id": 100}]
+    )[0]
+    assert target.reason is None and target.identity.project_id == 100
+    invalid = resolve_release_targets(
+        source, [{"artist_name": "Main", "album_name": "Album", "project_id": 999}]
+    )[0]
+    assert invalid.reason == "entity_not_found"
+
+
+def test_project_id_keeps_named_member_edition_anchor(source):
+    target = resolve_release_targets(
+        source, [{"artist_name": "Main", "album_name": "Album Deluxe", "project_id": 100}]
+    )[0]
+    assert target.reason is None and target.release_date == "2026-02-06"
+    assert target.identity.matched_album_id == 11
+
+
+def test_explicit_primary_single_binding_is_not_replaced(source):
+    source.executescript("""
+        ALTER TABLE spotify_album_meta ADD COLUMN album_type TEXT;
+        UPDATE spotify_album_meta SET album_type='album';
+        INSERT INTO spotify_album_meta VALUES('advance','Album','2025-12-01','day','single');
+        INSERT INTO spotify_album_artist_credits VALUES('advance','main','Main',0);
+        CREATE TABLE album_project_external_ids(provider TEXT,external_album_id TEXT,project_id INTEGER,confidence REAL,is_primary INTEGER);
+        INSERT INTO album_project_external_ids VALUES('spotify','advance',100,1,1);
+    """)
+    target = resolve(source)
+    assert target.reason is None and target.source_album_id == "advance"
+
+
 def test_confirmed_or_manual_project_anchor_is_not_silently_changed(source):
     source.execute(
         "UPDATE album_projects SET release_date='2026-01-01',release_date_precision='day'"
@@ -353,3 +408,274 @@ def test_advance_single_candidate_queries_are_bounded_and_deduplicate_shared_alb
     rows = resolve_advance_singles(RecordingConnection(), resolve(advance_source), ids)
     assert query_sizes and max(query_sizes) <= 900
     assert [row["source_album_id"] for row in rows] == ["lead-main"]
+
+
+@pytest.fixture
+def independent_source(source):
+    from backend.domains.metadata.album_release_date_evidence import create_schema
+
+    source.execute("ALTER TABLE spotify_album_meta ADD COLUMN track_list TEXT")
+    source.execute("ALTER TABLE spotify_album_meta ADD COLUMN total_tracks INTEGER")
+    source.execute("UPDATE spotify_album_meta SET track_list='[\"track\"]',total_tracks=1")
+    source.execute(
+        "UPDATE spotify_album_meta SET release_date='2026',release_date_precision='year' WHERE spotify_album_id='original'"
+    )
+    source.execute("UPDATE album_projects SET release_date='2026',release_date_precision='year'")
+    source.execute(
+        "CREATE TABLE album_project_revision_state(state_id INTEGER PRIMARY KEY,current_revision INTEGER,updated_at TEXT)"
+    )
+    source.execute("INSERT INTO album_project_revision_state VALUES(1,1,'old')")
+    create_schema(source)
+    source.commit()
+    return source
+
+
+def independent_item(day="2026-01-02"):
+    return {
+        "project_id": 100,
+        "spotify_album_id": "original",
+        "release_date": day,
+        "date_kind": "original_release",
+        "territory": "TW",
+        "medium": "original album",
+        "scope_note": "Synthetic original-album date for this project, not the Deluxe edition.",
+        "sources": [
+            {
+                "url": "https://example.com/album",
+                "title": "Synthetic label notice",
+                "source_kind": "label",
+                "claim": "Original album release date",
+                "observed_at": "2026-10-22",
+            }
+        ],
+    }
+
+
+def test_independent_date_requires_approval_and_preserves_provider_pair(independent_source):
+    from backend.domains.metadata.album_release_date_evidence import (
+        record_assertion,
+        review_assertion,
+    )
+    from backend.domains.metadata.release_dates import (
+        project_release_date_pair,
+        sync_project_release_precisions,
+    )
+
+    c = independent_source
+    raw = tuple(
+        c.execute(
+            "SELECT release_date,release_date_precision,track_list,total_tracks FROM spotify_album_meta WHERE spotify_album_id='original'"
+        ).fetchone()
+    )
+    with c:
+        c.execute("BEGIN")
+        aid = record_assertion(c, independent_item(), actor="reviewer", run_id="test")
+        assert resolve(c).reason == "release_date_coarse"
+        assert record_assertion(c, independent_item(), actor="reviewer", run_id="repeat") == aid
+        assert review_assertion(
+            c, aid, "approve", actor="reviewer", reason="verified", run_id="test"
+        )
+        assert not review_assertion(
+            c, aid, "approve", actor="reviewer", reason="repeat", run_id="test"
+        )
+    assert resolve(c).release_date == "2026-01-02"
+    assert resolve(c, level=3).reason == "release_date_coarse"  # Different project is not approved.
+    assert resolve(c, "Album Deluxe").release_date == "2026-02-06"  # Never borrow primary date.
+    assert project_release_date_pair(c, 10, "2026", "year", project_id=100) == ("2026-01-02", "day")
+    assert sync_project_release_precisions(c, ["original"]) == 0
+    assert (
+        tuple(
+            c.execute(
+                "SELECT release_date,release_date_precision,track_list,total_tracks FROM spotify_album_meta WHERE spotify_album_id='original'"
+            ).fetchone()
+        )
+        == raw
+    )
+    assert c.execute("SELECT COUNT(*) FROM album_release_date_events").fetchone()[0] == 2
+    assert (
+        c.execute("SELECT current_revision FROM album_release_date_revision_state").fetchone()[0]
+        == 1
+    )
+
+
+@pytest.mark.parametrize("change", ["date", "catalog", "artist", "primary"])
+def test_reviewed_date_rejects_changed_source_or_identity(independent_source, change):
+    from backend.domains.metadata.album_release_date_evidence import (
+        record_assertion,
+        review_assertion,
+    )
+
+    c = independent_source
+    with c:
+        c.execute("BEGIN")
+        aid = record_assertion(c, independent_item(), actor="reviewer", run_id="test")
+        review_assertion(c, aid, "approve", actor="reviewer", reason="verified", run_id="test")
+    if change == "date":
+        c.execute(
+            "UPDATE spotify_album_meta SET release_date='2026-01-03',release_date_precision='day' WHERE spotify_album_id='original'"
+        )
+    elif change == "catalog":
+        c.execute(
+            "UPDATE spotify_album_meta SET track_list='[\"different\"]' WHERE spotify_album_id='original'"
+        )
+    elif change == "artist":
+        c.execute(
+            "UPDATE spotify_album_artist_credits SET spotify_artist_id='other' WHERE spotify_album_id='original'"
+        )
+    else:
+        c.execute("UPDATE album_projects SET primary_album_id=11 WHERE project_id=100")
+    target = resolve(c)
+    assert target.reason is not None  # Stale approval must never establish a day.
+
+
+def test_conflicting_independent_date_is_recorded_but_not_approved(independent_source):
+    from backend.domains.metadata.album_release_date_evidence import (
+        record_assertion,
+        review_assertion,
+    )
+
+    c = independent_source
+    with c:
+        c.execute("BEGIN")
+        aid = record_assertion(c, independent_item("2025-12-31"), actor="reviewer", run_id="test")
+    with pytest.raises(ValueError, match="conflicts_with_source"), c:
+        c.execute("BEGIN")
+        review_assertion(
+            c, aid, "approve", actor="reviewer", reason="cannot override source year", run_id="test"
+        )
+    assert resolve(c).reason == "release_date_coarse"
+    assert (
+        c.execute(
+            "SELECT status FROM album_release_date_assertions WHERE assertion_id=?", (aid,)
+        ).fetchone()[0]
+        == "pending"
+    )
+
+
+def test_revoke_restores_previous_project_pair_and_retains_evidence(independent_source):
+    from backend.domains.metadata.album_release_date_evidence import (
+        record_assertion,
+        review_assertion,
+    )
+
+    c = independent_source
+    with c:
+        c.execute("BEGIN")
+        aid = record_assertion(c, independent_item(), actor="reviewer", run_id="test")
+        review_assertion(c, aid, "approve", actor="reviewer", reason="verified", run_id="test")
+    with c:
+        c.execute("BEGIN")
+        review_assertion(c, aid, "revoke", actor="reviewer", reason="withdrawn", run_id="revoke")
+    assert resolve(c).reason == "release_date_coarse"
+    assert c.execute("SELECT COUNT(*) FROM album_release_date_assertions").fetchone()[0] == 1
+    assert c.execute("SELECT COUNT(*) FROM album_release_date_events").fetchone()[0] == 3
+
+
+def test_date_registry_migration_is_additive_and_readers_never_create_it(source):
+    from backend.core.migrations import migrate_094
+
+    before = [tuple(r) for r in source.execute("SELECT * FROM spotify_album_meta")]
+    source.execute("PRAGMA query_only=ON")
+    assert resolve(source).release_date == "2026-01-02"
+    assert not source.execute(
+        "SELECT 1 FROM sqlite_master WHERE name='album_release_date_assertions'"
+    ).fetchone()
+    source.execute("PRAGMA query_only=OFF")
+    migrate_094(source)
+    migrate_094(source)
+    assert [tuple(r) for r in source.execute("SELECT * FROM spotify_album_meta")] == before
+
+
+def test_independent_date_approval_checks_all_established_sources(independent_source):
+    from backend.domains.metadata.album_release_date_evidence import (
+        record_assertion,
+        review_assertion,
+    )
+
+    c = independent_source
+    with c:
+        c.execute("BEGIN")
+        aid = record_assertion(c, independent_item(), actor="reviewer", run_id="test")
+        c.execute(
+            "INSERT INTO spotify_album_meta VALUES('other-original','Album','2026-01-03','day','[\"track\"]',1)"
+        )
+        c.execute(
+            "INSERT INTO spotify_album_artist_credits VALUES('other-original','main','Main',0)"
+        )
+        c.execute("INSERT INTO album_spotify_links VALUES(10,'other-original',1)")
+    with pytest.raises(ValueError, match="conflicts_with_source_set"), c:
+        c.execute("BEGIN")
+        review_assertion(
+            c, aid, "approve", actor="reviewer", reason="must reject conflicting day", run_id="test"
+        )
+    assert tuple(
+        c.execute(
+            "SELECT release_date,release_date_precision FROM album_projects WHERE project_id=100"
+        ).fetchone()
+    ) == ("2026", "year")
+
+
+def test_stale_source_evidence_can_be_revoked_without_revalidating_it(independent_source):
+    from backend.domains.metadata.album_release_date_evidence import (
+        record_assertion,
+        review_assertion,
+    )
+
+    c = independent_source
+    with c:
+        c.execute("BEGIN")
+        aid = record_assertion(c, independent_item(), actor="reviewer", run_id="test")
+        review_assertion(c, aid, "approve", actor="reviewer", reason="verified", run_id="test")
+    with c:
+        c.execute(
+            "UPDATE spotify_album_meta SET track_list='[\"new-track\"]' WHERE spotify_album_id='original'"
+        )
+    assert resolve(c).reason == "release_date_conflict"
+    with c:
+        c.execute("BEGIN")
+        review_assertion(
+            c, aid, "revoke", actor="reviewer", reason="catalog changed", run_id="revoke"
+        )
+    assert resolve(c).reason == "release_date_coarse"
+    assert c.execute("SELECT COUNT(*) FROM album_release_date_events").fetchone()[0] == 3
+
+
+def test_date_batch_rolls_back_when_song_owner_would_change(independent_source, monkeypatch):
+    from types import SimpleNamespace
+
+    from backend.domains.metadata.album_release_date_evidence import record_assertion
+    from scripts import govern_album_release_dates as cli
+
+    c = independent_source
+    with c:
+        c.execute("BEGIN")
+        aid = record_assertion(c, independent_item(), actor="reviewer", run_id="test")
+    from dataclasses import dataclass
+
+    @dataclass
+    class Decision:
+        canonical_song_key: str
+        target_project_id: int
+        evidence: str = "synthetic"
+
+    plans = iter(
+        [
+            SimpleNamespace(decisions=[Decision("l1:1", 100)]),
+            SimpleNamespace(decisions=[Decision("l1:1", 101)]),
+        ]
+    )
+    monkeypatch.setattr(cli, "l3_album_attribution_dependencies_ready", lambda conn: True)
+    monkeypatch.setattr(cli, "plan_l3_album_attributions", lambda conn: next(plans))
+    with pytest.raises(ValueError, match="change song ownership"), c:
+        c.execute("BEGIN")
+        cli.review_batch(
+            c, [aid], "approve", actor="reviewer", reason="must preserve owners", run_id="test"
+        )
+    assert resolve(c).reason == "release_date_coarse"
+    assert (
+        c.execute(
+            "SELECT status FROM album_release_date_assertions WHERE assertion_id=?", (aid,)
+        ).fetchone()[0]
+        == "pending"
+    )
+    assert c.execute("SELECT COUNT(*) FROM album_release_date_events").fetchone()[0] == 1

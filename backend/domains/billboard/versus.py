@@ -31,9 +31,32 @@ def _vs_spotify_track_meta(track_id):
     return int(row["popularity"]) if row and row["popularity"] is not None else None
 
 
-def _vs_spotify_album_meta(album_name, artist_name):
+def _vs_spotify_album_meta(album_name, artist_name, project_id=None):
     """Fetch popularity for an album."""
-    conn = get_db()
+    conn = get_db(readonly=True)
+    if project_id is not None:
+        from backend.services.release_cycle_resolution import resolve_release_targets
+
+        try:
+            project = conn.execute(
+                "SELECT scope FROM album_projects WHERE project_id=?", (project_id,)
+            ).fetchone()
+            target = resolve_release_targets(
+                conn,
+                [{"album_name": album_name, "artist_name": artist_name, "project_id": project_id}],
+                merge_level=3 if project and project[0] == "composition" else 2,
+            )[0]
+            row = (
+                conn.execute(
+                    "SELECT popularity FROM spotify_album_meta WHERE spotify_album_id=?",
+                    (target.source_album_id,),
+                ).fetchone()
+                if not target.reason
+                else None
+            )
+            return int(row[0]) if row and row[0] is not None else None
+        finally:
+            conn.close()
     row = conn.execute(
         """SELECT DISTINCT sam.popularity
            FROM albums al
@@ -75,12 +98,16 @@ def _vs_spotify_artist_meta(artist_name):
     return pop, genres, cover, genre_source, genre_confidence
 
 
-def _get_ps_rank(power_scores_df, key_col, key_val, artist_val=None):
+def _get_ps_rank(power_scores_df, key_col, key_val, artist_val=None, project_id=None):
     """Look up power score and rank for an entity in a power_scores DataFrame."""
     if power_scores_df is None or len(power_scores_df) == 0:
         return None, None
     ps = published_power_order(power_scores_df)
-    if artist_val is not None:
+    if project_id is not None:
+        if "album_project_id" not in ps:
+            return None, None
+        mask = ps["album_project_id"] == project_id
+    elif artist_val is not None:
         mask = (ps[key_col] == key_val) & (ps["artist_name"] == artist_val)
     else:
         mask = ps[key_col] == key_val
@@ -543,11 +570,18 @@ def _compute_artist_album_ranks(album_power_scores):
     return ranked.merge(detail, on="artist_name", how="left")
 
 
-def _lookup_album_track_rank(ranks_df, album_name, artist_name):
+def _lookup_album_track_rank(ranks_df, album_name, artist_name, project_id=None):
     """Look up track rank by the same album + canonical artist identity as details."""
-    row = ranks_df[
-        (ranks_df["album_name"] == album_name) & (ranks_df["artist_name"] == artist_name)
-    ]
+    if project_id is not None:
+        row = (
+            ranks_df[ranks_df["album_project_id"] == project_id]
+            if "album_project_id" in ranks_df
+            else ranks_df.iloc[:0]
+        )
+    else:
+        row = ranks_df[
+            (ranks_df["album_name"] == album_name) & (ranks_df["artist_name"] == artist_name)
+        ]
     if row.empty or pd.isna(row.iloc[0]["track_power_rank"]):
         return None
     return int(row.iloc[0]["track_power_rank"])
@@ -628,6 +662,7 @@ def _build_album_entity(
     album_track_counts,
     track_per_album,
     album_track_ranks,
+    project_id=None,
 ):
     """Build an album using the exact project membership consumed by album details."""
     chart_rows = weekly_album[
@@ -637,6 +672,13 @@ def _build_album_entity(
         (album_track_counts["album_name"] == album_name)
         & (album_track_counts["artist_name"] == artist_name)
     ]
+    if project_id is not None:
+        if "album_project_id" not in weekly_album or "album_project_id" not in album_track_counts:
+            return None
+        chart_rows = weekly_album[weekly_album["album_project_id"] == project_id].sort_values(
+            "billboard_week"
+        )
+        count_rows = album_track_counts[album_track_counts["album_project_id"] == project_id]
     if chart_rows.empty or count_rows.empty:
         return None
 
@@ -648,18 +690,23 @@ def _build_album_entity(
         album_rows_mask(track_per_album, album_name, artist_name, project_ids)
     ]["track_id"].drop_duplicates()
     track_scores = track_power_scores[track_power_scores["track_id"].isin(track_ids)]
-    score, score_rank = _get_ps_rank(album_power_scores, "album_name", album_name, artist_name)
+    score, score_rank = _get_ps_rank(
+        album_power_scores, "album_name", album_name, artist_name, project_id
+    )
     cover_url = None
     if "cover_url" in chart_rows.columns:
         covers = chart_rows["cover_url"].dropna()
         cover_url = str(covers.iloc[0]) if not covers.empty else None
 
     return {
+        **({"project_id": project_id} if project_id is not None else {}),
         "name": f"{album_name} — {artist_name}",
         "album_name": album_name,
         "artist_name": artist_name,
         "cover_url": cover_url,
-        "popularity": _vs_spotify_album_meta(album_name, artist_name),
+        "popularity": _vs_spotify_album_meta(album_name, artist_name, project_id)
+        if project_id is not None
+        else _vs_spotify_album_meta(album_name, artist_name),
         "rank_history": [
             {
                 "week": str(row["billboard_week"]),
@@ -681,7 +728,7 @@ def _build_album_entity(
             if not track_scores.empty
             else 0,
             "track_power_rank": _lookup_album_track_rank(
-                album_track_ranks, album_name, artist_name
+                album_track_ranks, album_name, artist_name, project_id
             ),
             "track_peak_position": int(counts["best_peak"]),
             "total_track_weeks": int(counts["total_weeks"]),
@@ -831,6 +878,31 @@ def get_versus_album_multi(
     if len(albums) < 2:
         return {"found": False, "reason": "请至少选择 2 张专辑进行对比"}
 
+    if any(item.get("project_id") is not None for item in albums):
+        from backend.domains.playback.album_project_identity import resolve_album_project_identities
+
+        conn = get_db(readonly=True)
+        try:
+            identities = resolve_album_project_identities(conn, albums, merge_level=merge_level)
+        finally:
+            conn.close()
+        if any(
+            item.get("project_id") is not None and identity is None
+            for item, identity in zip(albums, identities)
+        ):
+            return {"found": False, "reason": "所选专辑项目与艺人或统计范围不匹配，请重新选择"}
+        albums = [
+            {
+                **item,
+                "project_id": identity.project_id,
+                "album_name": identity.canonical_name,
+                "artist_name": identity.artist_name,
+            }
+            if identity is not None and item.get("project_id") is not None
+            else item
+            for item, identity in zip(albums, identities)
+        ]
+
     data = compute_billboard_data(
         min_ms,
         music_only,
@@ -869,7 +941,10 @@ def get_versus_album_multi(
             album_track_counts,
             track_per_album,
             album_track_ranks,
+            project_id=alb.get("project_id"),
         )
+        if entity is None and alb.get("project_id") is not None:
+            return {"found": False, "reason": "所选项目在当前榜单范围中暂不可用，请重新选择"}
         if entity is not None:
             entities.append(entity)
 

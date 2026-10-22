@@ -181,7 +181,7 @@ def resolve_album_project_identity(
 
 def resolve_album_project_identities(
     conn: sqlite3.Connection,
-    items: list[dict[str, str]],
+    items: list[dict],
     *,
     merge_level: int = 2,
 ) -> list[AlbumProjectIdentity | None]:
@@ -196,13 +196,62 @@ def resolve_album_project_identities(
             normalized[value] = normalize_album_project_lookup(value)
         return normalized[value]
 
-    return [
-        _resolve_project_rows(
-            rows,
-            album_name=item["album_name"],
-            artist_name=item["artist_name"],
-            merge_level=merge_level,
-            normalize=normalize,
+    result = []
+    for item in items:
+        project_id = item.get("project_id")
+        if project_id is None:
+            result.append(
+                _resolve_project_rows(
+                    rows,
+                    album_name=item["album_name"],
+                    artist_name=item["artist_name"],
+                    merge_level=merge_level,
+                    normalize=normalize,
+                )
+            )
+            continue
+        if type(project_id) is not int or project_id <= 0:
+            result.append(None)
+            continue
+        selected = [row for row in rows if row["project_id"] == project_id]
+        if not selected:
+            result.append(None)
+            continue
+        row = selected[0]
+        artist_matches = normalize(str(row["artist_name"] or "")) == normalize(item["artist_name"])
+        if not artist_matches:
+            from backend.domains.metadata.artist_identity import (
+                get_artist_identity_map,
+                resolve_artist_names,
+            )
+
+            requested = resolve_artist_names(conn, [item["artist_name"]])[0]
+            artist = get_artist_identity_map(conn).get(row["artist_id"])
+            artist_matches = bool(
+                requested and artist and requested.canonical_artist_id == artist.canonical_artist_id
+            )
+        preferred_scope = "composition" if merge_level >= 3 else "release"
+        counterparts = [
+            r
+            for r in rows
+            if r["primary_album_id"] == row["primary_album_id"]
+            and r["artist_id"] == row["artist_id"]
+            and r["scope"] == preferred_scope
+        ]
+        if not artist_matches or (
+            row["scope"] != preferred_scope and (counterparts or merge_level < 3)
+        ):
+            result.append(None)
+            continue
+        # Retain an explicitly named member edition within the selected project.
+        identity = _resolve_project_rows(
+            selected, album_name=item["album_name"], merge_level=merge_level, normalize=normalize
         )
-        for item in items
-    ]
+        if identity is None:
+            identity = _resolve_project_rows(
+                selected, project_id=project_id, merge_level=merge_level
+            )
+        from dataclasses import replace
+
+        result.append(replace(identity, matched_by="project_id", requested_project_id=project_id))
+    return result

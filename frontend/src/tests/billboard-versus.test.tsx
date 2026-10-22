@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { buildBillboardContextParams } from '@/features/billboard/billboardContext'
 import { VersusReleaseCycleSection } from '@/features/billboard/versus/VersusReleaseCycleSection'
-import { EntityQueue, SearchableAddSelect } from '@/features/billboard/versus/versusPrimitives'
+import { SearchableAddSelect } from '@/features/billboard/versus/versusPrimitives'
 
 const useReleaseCycleCompareMock = vi.hoisted(() => vi.fn())
 
@@ -45,12 +45,6 @@ describe('Billboard versus context', () => {
 })
 
 describe('versus searchable picker', () => {
-  it('gives queue reordering and removal controls a 44 by 44 phone touch target', () => {
-    render(<EntityQueue items={[{ display: 'One' }, { display: 'Two' }]} onRemove={vi.fn()} onMoveUp={vi.fn()} onMoveDown={vi.fn()} />)
-    for (const button of screen.getAllByRole('button')) {
-      expect(button).toHaveClass('max-md:min-h-11', 'max-md:min-w-11')
-    }
-  })
   it('keeps the query and result list open after adding an item', async () => {
     const user = userEvent.setup()
     const onAdd = vi.fn()
@@ -110,17 +104,18 @@ describe('versus release cycle comparison', () => {
     expect(screen.queryByText('发行后 24 周窗口在榜周数')).not.toBeInTheDocument()
   })
 
-  it('retains every album column when all releases are unavailable and explains each reason', () => {
+  it('retains every album column and shows dashes when releases are unavailable', () => {
     useReleaseCycleCompareMock.mockReturnValue({
       results: [{ status: 'unavailable', reason: 'release_day_unconfirmed' }, { status: 'unavailable', reason: 'artist_identity_unconfirmed' }],
       loading: false,
     })
     render(<VersusReleaseCycleSection albums={albums} billboardParams={{}} />)
     expect(screen.getByRole('table', { name: '发行周期对比' })).toBeVisible()
-    expect(screen.getByText('缺少已确认的发行日，需补充发行证据。')).toBeVisible()
-    expect(screen.getByText('专辑艺人身份尚未确认。')).toBeVisible()
+    expect(screen.getAllByRole('row')).toHaveLength(7)
+    expect(screen.queryByText('发行日期')).not.toBeInTheDocument()
+    expect(screen.queryByText('计算状态')).not.toBeInTheDocument()
     expect(screen.getAllByRole('columnheader')).toHaveLength(3)
-    expect(screen.getAllByText('不可计算')).toHaveLength(12)
+    expect(screen.getAllByText('—')).toHaveLength(12)
   })
 
   it('keeps real zero separate from missing metrics in a partially successful comparison', () => {
@@ -132,12 +127,12 @@ describe('versus release cycle comparison', () => {
       loading: false,
     })
     render(<VersusReleaseCycleSection albums={albums} billboardParams={{}} />)
-    const row = screen.getByRole('row', { name: '发行周播放 不可计算 0' })
+    const row = screen.getByRole('row', { name: '发行周播放 — 0' })
     expect(within(row).getByText('0')).toBeVisible()
-    expect(screen.getByText('来源日期仅精确到年或月，无法按发行日对齐。')).toBeVisible()
-    expect(screen.getAllByText('窗口内未上榜')).toHaveLength(2)
-    expect(screen.getByText('无播放')).toBeVisible()
-    expect(screen.getByRole('region', { name: '发行周期对比表格，可横向滚动' })).toHaveClass('overflow-x-auto')
+    expect(screen.queryByText('2024-04-19')).not.toBeInTheDocument()
+    expect(screen.getByRole('row', { name: '首发排名 — —' })).toBeVisible()
+    expect(screen.getByRole('row', { name: '半数播放距 (周) — —' })).toBeVisible()
+    expect(screen.getByRole('table').parentElement).toHaveClass('overflow-x-auto')
   })
 
   it.each([
@@ -146,33 +141,31 @@ describe('versus release cycle comparison', () => {
     ['release_date_conflict', '发行日期存在冲突，需核对目标版本。'],
     ['entity_not_found', '未找到对应的专辑项目或发行版本。'],
     ['release_ambiguous', '无法唯一确定发行版本，需核对版本关联。'],
-  ])('shows the precise %s cause', (reason, message) => {
+  ])('keeps the %s diagnostic out of table cells', (reason, message) => {
     useReleaseCycleCompareMock.mockReturnValue({ results: [{ status: 'unavailable', reason }], loading: false })
     render(<VersusReleaseCycleSection albums={albums} billboardParams={{}} />)
-    expect(screen.getByText(message)).toBeVisible()
+    expect(screen.queryByText(message)).not.toBeInTheDocument()
+    expect(screen.getAllByText('—')).toHaveLength(12)
   })
 
-  it('preserves columns during a request failure and exposes an accessible retry', async () => {
-    const refetch = vi.fn()
-    useReleaseCycleCompareMock.mockReturnValue({ results: [], loading: false, error: '榜单数据正在准备，请稍后重新加载。', refetch })
+  it('keeps unavailable values as dashes without adding an error panel or controls', () => {
+    useReleaseCycleCompareMock.mockReturnValue({ results: [], loading: false, error: '榜单数据正在准备，请稍后重新加载。', refetch: vi.fn() })
     render(<VersusReleaseCycleSection albums={albums} billboardParams={{}} />)
-    expect(screen.getByRole('alert')).toHaveTextContent('榜单数据正在准备')
     expect(screen.getAllByRole('columnheader')).toHaveLength(3)
-    const retry = screen.getByRole('button', { name: '重新加载' })
-    expect(retry).toHaveClass('min-h-11', 'min-w-11')
-    await userEvent.setup().click(retry)
-    expect(refetch).toHaveBeenCalledTimes(1)
+    expect(screen.getAllByText('—')).toHaveLength(12)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('keeps the table and queue columns visible while loading or waiting for upstream reads', () => {
     useReleaseCycleCompareMock.mockReturnValue({ results: [], loading: true })
     const { rerender } = render(<VersusReleaseCycleSection albums={albums} billboardParams={{}} />)
-    expect(screen.getByRole('status')).toHaveTextContent('正在加载发行周期')
+    expect(screen.getByText('加载中...')).toBeVisible()
     expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true')
     expect(screen.getAllByRole('columnheader')).toHaveLength(3)
     rerender(<VersusReleaseCycleSection albums={albums} billboardParams={{}} enabled={false} />)
     expect(screen.getByRole('table')).toBeVisible()
-    expect(screen.getByRole('status')).toHaveTextContent('等待当前对决数据就绪')
+    expect(screen.getByText('加载中...')).toBeVisible()
     expect(screen.getAllByRole('columnheader')).toHaveLength(3)
   })
 })

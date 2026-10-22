@@ -13,6 +13,21 @@ function wrapper() {
 }
 afterEach(() => vi.restoreAllMocks())
 
+it('keeps same-name projects distinct in requests, caches and reordered results', async () => {
+  const items = [1, 2].map((project_id) => ({ artist_name: 'Cast', album_name: 'Same', project_id }))
+  const call = vi.spyOn(apiClient, 'postWithParams').mockImplementation((_path, body) => Promise.resolve({ comparisons: [...(body as { items: typeof items }).items].reverse().map((item) => ({ ...item, metrics: { release_week_plays: item.project_id * 10 } })) }) as Promise<never>)
+  const { result, rerender } = renderHook(({ values }) => useReleaseCycleCompare(values), { wrapper: wrapper(), initialProps: { values: items } })
+  await waitFor(() => expect(result.current.results).toHaveLength(2))
+  expect(result.current.data?.comparisons.map((row) => row.metrics.release_week_plays)).toEqual([10, 20])
+  expect((call.mock.calls[0][1] as {items: typeof items}).items.map((item) => item.project_id)).toEqual([1, 2])
+  rerender({ values: [...items].reverse() })
+  expect(result.current.data?.comparisons.map((row) => row.metrics.release_week_plays)).toEqual([20, 10])
+  expect(call).toHaveBeenCalledTimes(1)
+  rerender({ values: [items[0], { ...items[1], project_id: 3 }] })
+  await waitFor(() => expect(call).toHaveBeenCalledTimes(2))
+  await waitFor(() => expect(result.current.data?.comparisons.map((row) => row.metrics.release_week_plays)).toEqual([10, 30]))
+})
+
 it('holds release computation until personal groups settle and reuses the entity set for reorder', async () => {
   const call = vi.spyOn(apiClient, 'postWithParams').mockResolvedValue({ comparisons })
   const { result, rerender } = renderHook(({ items, enabled }) => useReleaseCycleCompare(items, { min_ms: 30000 }, enabled), { wrapper: wrapper(), initialProps: { items: albums, enabled: false } })

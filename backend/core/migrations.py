@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 93
+LATEST_SCHEMA_VERSION = 94
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4348,6 +4348,13 @@ def migrate_093(conn: sqlite3.Connection):
     from backend.domains.metadata.spotify_track_credits import APPLICATION_SCHEMA
 
     conn.execute(APPLICATION_SCHEMA)
+
+
+@migration(94, "independent_album_release_date_evidence")
+def migrate_094(conn: sqlite3.Connection):
+    from backend.domains.metadata.album_release_date_evidence import create_schema
+
+    create_schema(conn)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

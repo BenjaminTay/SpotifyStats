@@ -22,7 +22,7 @@ vi.mock('@/features/billboard/versus/VersusChartSection', () => ({ VersusChartSe
 
 afterEach(() => vi.restoreAllMocks())
 
-it('retains release columns while upstream reads settle and allows its own snapshot retry after upstream failure', async () => {
+it('keeps the original six-row table and correct values when upstream chart reads fail', async () => {
   let rejectPersonal!: (error: Error) => void
   const personal = new Promise((_, reject) => { rejectPersonal = reject })
   const unavailable = new SnapshotUnavailableError({ status: 'snapshot_unavailable', message: 'not ready' } as never)
@@ -31,11 +31,10 @@ it('retains release columns while upstream reads settle and allows its own snaps
     if (path.endsWith('/personal-stats') || path.endsWith('/personal-ranks')) return personal as Promise<never>
     if (path.endsWith('/release-cycle/compare')) {
       releaseCalls += 1
-      if (releaseCalls === 1) return Promise.reject(unavailable)
-      return Promise.resolve({ comparisons: [], unavailable: [
-        { artist_name: 'A', album_name: 'One', status: 'unavailable', reason: 'release_day_unconfirmed' },
-        { artist_name: 'B', album_name: 'Two', status: 'unavailable', reason: 'artist_identity_unconfirmed' },
-      ] }) as Promise<never>
+      return Promise.resolve({ comparisons: [
+        { artist_name: 'A', album_name: 'One', release_date: '2000-01-01', metrics: { release_week_plays: 0 } },
+        { artist_name: 'B', album_name: 'Two', release_date: '2001-02-03', metrics: { release_week_plays: 12 } },
+      ], unavailable: [] }) as Promise<never>
     }
     return Promise.reject(unavailable)
   })
@@ -47,16 +46,17 @@ it('retains release columns while upstream reads settle and allows its own snaps
   await user.click(screen.getByRole('button', { name: '添加Two' }))
   await waitFor(() => expect(call).toHaveBeenCalledTimes(3))
   expect(screen.getByRole('table', { name: '发行周期对比' })).toBeVisible()
-  expect(screen.getByRole('status')).toHaveTextContent('等待当前对决数据就绪')
+  expect(screen.getByText('加载中...')).toBeVisible()
   expect(releaseCalls).toBe(0)
 
   await act(async () => rejectPersonal(unavailable))
-  await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('发行周期读取失败'))
-  expect(screen.getByRole('table', { name: '发行周期对比' })).toBeVisible()
+  await waitFor(() => expect(screen.getByRole('row', { name: '发行周播放 0 12' })).toBeVisible())
+  expect(screen.getAllByRole('row')).toHaveLength(7)
   expect(screen.getAllByRole('columnheader')).toHaveLength(3)
   expect(screen.queryByText('走势已到达')).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: '重新加载' }))
-  await waitFor(() => expect(screen.getByText('缺少已确认的发行日，需补充发行证据。')).toBeVisible())
-  expect(screen.getByText('专辑艺人身份尚未确认。')).toBeVisible()
-  expect(releaseCalls).toBe(2)
+  expect(screen.queryByText('发行日期')).not.toBeInTheDocument()
+  expect(screen.queryByText('计算状态')).not.toBeInTheDocument()
+  expect(screen.queryByText('2000-01-01')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '重新加载' })).not.toBeInTheDocument()
+  expect(releaseCalls).toBe(1)
 })

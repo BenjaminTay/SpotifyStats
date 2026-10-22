@@ -4774,6 +4774,8 @@ export interface components {
             album_name: string;
             /** Artist Name */
             artist_name: string;
+            /** Project Id */
+            project_id?: number | null;
         };
         /** AllTimeProjectionResponse */
         AllTimeProjectionResponse: {
@@ -7633,6 +7635,8 @@ export interface components {
             artist_name: string;
             /** Album Name */
             album_name: string;
+            /** Project Id */
+            project_id?: number | null;
         };
         /** CompareReleaseResult */
         CompareReleaseResult: {
@@ -7683,7 +7687,7 @@ export interface components {
             comparisons?: components["schemas"]["CompareReleaseResult"][];
             /** Unavailable */
             unavailable?: {
-                [key: string]: string;
+                [key: string]: unknown;
             }[];
         };
         /** CompareRequest */

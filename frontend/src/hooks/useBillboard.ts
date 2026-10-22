@@ -378,11 +378,11 @@ export function useVersus(
 }
 
 export function useReleaseCycleCompare(
-  items: { artist_name: string; album_name: string }[] | null,
+  items: { artist_name: string; album_name: string; project_id?: number }[] | null,
   params: Record<string, string | number | boolean> = {},
   allowRequest = true,
 ) {
-  const sortedItems = items ? [...items].sort((a, b) => JSON.stringify([a.artist_name, a.album_name]).localeCompare(JSON.stringify([b.artist_name, b.album_name]))) : null
+  const sortedItems = items ? [...items].sort((a, b) => JSON.stringify([a.artist_name, a.album_name, a.project_id]).localeCompare(JSON.stringify([b.artist_name, b.album_name, b.project_id]))) : null
   const enabled = allowRequest && !!items && items.length >= 2
   const query = useQuery({
     queryKey: queryKeys.billboard.releaseCycleCompare({ items: sortedItems, filters: params }),
@@ -400,7 +400,7 @@ export function useReleaseCycleCompare(
   // current queue. Reordering shares the query without assigning facts by index.
   const results: import('@/types/billboard').ReleaseCycleCompareResult[] = query.data
     ? (items ?? []).map((item) => {
-      const matches = (result: { artist_name: string; album_name: string }) => result.artist_name === item.artist_name && result.album_name === item.album_name
+      const matches = (result: { artist_name: string; album_name: string; project_id?: number | string | null }) => result.artist_name === item.artist_name && result.album_name === item.album_name && (item.project_id == null || result.project_id === item.project_id)
       return query.data.comparisons.find(matches)
         ?? query.data.unavailable?.find(matches)
         ?? { ...item, status: 'unavailable' as const, reason: 'missing_result' }

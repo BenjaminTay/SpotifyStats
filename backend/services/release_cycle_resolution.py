@@ -26,9 +26,15 @@ class ReleaseTarget:
     release_date: str | None = None
     source_album_id: str | None = None
     reason: str | None = None
+    requested_project_id: int | None = None
 
     def unavailable(self) -> dict:
         return {
+            **(
+                {"project_id": self.requested_project_id}
+                if self.requested_project_id is not None
+                else {}
+            ),
             "artist_name": self.artist_name,
             "album_name": self.album_name,
             "status": "unavailable",
@@ -51,7 +57,7 @@ def resolve_release_targets(conn, items: list[dict], merge_level: int = 2) -> li
     mapping = get_artist_identity_map(conn)
     project_rows = _project_rows(conn)
     for index, (identity, artist) in enumerate(zip(identities, artist_targets)):
-        if identity is None and artist is not None:
+        if identity is None and artist is not None and items[index].get("project_id") is None:
             aliases = {
                 raw_id
                 for raw_id, value in mapping.items()
@@ -68,7 +74,11 @@ def resolve_release_targets(conn, items: list[dict], merge_level: int = 2) -> li
             "artist_name": item["artist_name"],
             "album_name": item["album_name"],
         }
+        values["requested_project_id"] = item.get("project_id")
         if identity is None:
+            if item.get("project_id") is not None:
+                result.append(ReleaseTarget(**values, reason="entity_not_found"))
+                continue
             name = normalize_album_project_lookup(item["album_name"])
             matching = [
                 row
@@ -123,6 +133,9 @@ def resolve_release_targets(conn, items: list[dict], merge_level: int = 2) -> li
         ]
         if not verified:
             result.append(ReleaseTarget(**values, reason="artist_identity_unconfirmed"))
+            continue
+        if any(row.get("independent_date_conflict") for row in verified):
+            result.append(ReleaseTarget(**values, reason="release_date_conflict"))
             continue
         dates = [
             (row, parse_release_date(row["release_date"], row["release_date_precision"]))

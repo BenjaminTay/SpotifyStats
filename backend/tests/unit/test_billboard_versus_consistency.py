@@ -1,7 +1,100 @@
+import sqlite3
+
 import pandas as pd
 import pytest
 
 from backend.domains.billboard import entity_lists, versus
+
+
+def test_picker_keeps_ids_and_labels_same_name_editions(monkeypatch):
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    c.executescript("""
+      CREATE TABLE albums(album_id INTEGER,album_name TEXT);
+      CREATE TABLE album_projects(project_id INTEGER,canonical_name TEXT,primary_album_id INTEGER,release_date TEXT);
+      CREATE TABLE album_spotify_links(album_id INTEGER,spotify_album_id TEXT,confidence REAL);
+      CREATE TABLE spotify_album_meta(spotify_album_id TEXT,album_name TEXT,release_date TEXT,release_date_precision TEXT,album_type TEXT);
+      INSERT INTO albums VALUES(1,'Same'),(2,'Same');
+      INSERT INTO album_projects VALUES(10,'Same',1,'1994-01-01'),(20,'Same',2,'2019-07-10');
+      INSERT INTO album_spotify_links VALUES(1,'old',1),(2,'new',1);
+      INSERT INTO spotify_album_meta VALUES('old','Same','1994-01-01','day','album'),('new','Same','2019-07-10','day','album');
+    """)
+    rows = [
+        {
+            "album_name": "Same",
+            "artist_name": "Cast",
+            "album_project_id": pid,
+            "power_score": 100 - pid,
+        }
+        for pid in (10, 20)
+    ]
+    payload = {
+        "track_summary": [],
+        "album_power_scores": rows,
+        "album_track_counts": rows,
+        "artist_power_scores": [],
+        "artist_track_counts": [],
+    }
+    monkeypatch.setattr(entity_lists, "compute_billboard_data", lambda *a, **k: payload)
+    monkeypatch.setattr(entity_lists, "get_db", lambda **k: c)
+    result = entity_lists.get_billboard_entity_lists(30000, True, 30, 20, 20, 4, 13, None, None)[
+        "albums"
+    ]
+    assert [r["project_id"] for r in result] == [10, 20]
+    assert "1994" in result[0]["display"] and "2019" in result[1]["display"]
+
+
+def test_same_label_chart_metrics_are_selected_by_project_id(monkeypatch):
+    weekly = pd.DataFrame(
+        [
+            {
+                "album_name": "Same",
+                "artist_name": "Cast",
+                "album_project_id": pid,
+                "billboard_week": "2026-01-02",
+                "rank": rank,
+                "play_count": plays,
+            }
+            for pid, rank, plays in [(10, 1, 100), (20, 2, 20)]
+        ]
+    )
+    powers = weekly.assign(power_score=[200, 30])
+    counts = weekly.assign(
+        total_tracks=1, top1=[1, 0], weeks_at_no1=[1, 0], best_peak=[1, 2], total_weeks=1
+    )
+    members = pd.DataFrame(
+        [
+            {
+                "album_project_id": 10,
+                "album_name": "Same",
+                "album_artist_name": "Cast",
+                "track_id": 1,
+            },
+            {
+                "album_project_id": 20,
+                "album_name": "Same",
+                "album_artist_name": "Cast",
+                "track_id": 2,
+            },
+        ]
+    )
+    tracks = pd.DataFrame(
+        [
+            {"track_id": 1, "power_score": 100, "peak_position": 1, "weeks_on_chart": 1},
+            {"track_id": 2, "power_score": 10, "peak_position": 2, "weeks_on_chart": 1},
+        ]
+    )
+    ranks = versus._compute_album_track_ranks(members, tracks)
+    monkeypatch.setattr(versus, "_vs_spotify_album_meta", lambda *a: None)
+    result = [
+        versus._build_album_entity(
+            "Same", "Cast", weekly, powers, tracks, counts, members, ranks, project_id=pid
+        )
+        for pid in (10, 20)
+    ]
+    assert [r["metrics"]["total_plays"] for r in result] == [100, 20]
+    assert [r["metrics"]["track_power_sum"] for r in result] == [100, 10]
+    assert [r["metrics"]["power_rank"] for r in result] == [1, 2]
 
 
 def _payload():

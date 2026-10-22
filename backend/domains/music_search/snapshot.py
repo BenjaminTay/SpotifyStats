@@ -1590,6 +1590,26 @@ def _prune_old_music_search_snapshot_bases(
                         )""",
                     tuple(keep),
                 )
+        for table in (
+            "music_search_detail_entity_projection",
+            "music_search_detail_source_facts",
+            "music_search_detail_projection_state",
+        ):
+            if conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ).fetchone():
+                conn.execute(
+                    f"""DELETE FROM {table}
+                        WHERE snapshot_key IN (
+                            SELECT snapshot_key
+                            FROM music_search_snapshot_meta
+                            WHERE (semantic_base_key IS NULL
+                                   OR semantic_base_key NOT IN ({placeholders}))
+                              AND status NOT IN ('pending', 'running')
+                              {protected_active}
+                        )""",
+                    tuple(keep),
+                )
         snapshot_columns = {
             str(row[1]) for row in conn.execute("PRAGMA table_info(music_search_snapshot_meta)")
         }

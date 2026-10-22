@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useVersusPersonal } from './useVersusPersonal'
 import { useVersusSelectionReady } from './useVersusSelectionReady'
 import { Plus, Sparkles } from 'lucide-react'
@@ -7,7 +7,7 @@ import { useEntityLists, useVersus } from '@/hooks/useBillboard'
 import { useAnalysisFilters } from '@/hooks/useAnalysis'
 import type { EntityListItem, VersusResponse } from '@/types/billboard'
 import type { VersusKind } from './versusData'
-import { MAX_QUEUE_SIZE } from './versusData'
+import { MAX_QUEUE_SIZE, versusEntityKey } from './versusData'
 import { VersusSkeleton } from './versusPrimitives'
 import { VersusSelectorSection } from './VersusSelectorSection'
 import { VersusScoreboardSection } from './VersusScoreboardSection'
@@ -29,6 +29,7 @@ function buildDetailLink(kind: VersusKind, item: EntityListItem): string | null 
     case 'track':
       return `/music/tracks/${item.track_id}`
     case 'album':
+      if (item.project_id != null) return `/music/album-projects/${item.project_id}`
       return `/music/albums/${encodeURIComponent(item.album_name ?? '')}?artist=${encodeURIComponent(item.artist_name ?? '')}`
     case 'artist':
       return `/music/artists/${encodeURIComponent(item.artist_name ?? '')}`
@@ -40,7 +41,7 @@ function buildVersusBody(kind: VersusKind, queue: EntityListItem[]): Record<stri
     case 'track':
       return { track_ids: queue.map((q) => q.track_id).filter(Boolean) }
     case 'album':
-      return { albums: queue.map((q) => ({ album_name: q.album_name, artist_name: q.artist_name })) }
+      return { albums: queue.map((q) => ({ album_name: q.album_name, artist_name: q.artist_name, ...(q.project_id != null ? { project_id: q.project_id } : {}) })) }
     case 'artist':
       return { artist_names: queue.map((q) => q.artist_name).filter(Boolean) }
   }
@@ -50,10 +51,6 @@ function cacheQueue(k: VersusKind, q: EntityListItem[]) {
   cachedQueues[k] = q
 }
 
-function entityKey(item: EntityListItem): string {
-  if (item.track_id != null) return `track:${item.track_id}`
-  return `${item.artist_name ?? ''}:${item.album_name ?? ''}`
-}
 
 export function VersusExperience() {
   useChineseTextVersion()
@@ -65,6 +62,20 @@ export function VersusExperience() {
   const personalStatsParams = buildPersonalStatsParams(filters)
 
   const { data: lists } = useEntityLists(billboardParams, undefined, !filtersLoading)
+
+  useEffect(() => {
+    if (kind !== 'album' || !lists) return
+    setQueue((current) => {
+      const next = current.map((item) => {
+        const exact = lists.albums.find((candidate) => item.project_id != null && candidate.project_id === item.project_id)
+        const named = lists.albums.filter((candidate) => candidate.album_name === item.album_name && candidate.artist_name === item.artist_name)
+        return exact ?? (named.length === 1 ? named[0] : item)
+      })
+      if (next.every((item, index) => item.project_id === current[index].project_id && item.display === current[index].display)) return current
+      cacheQueue('album', next)
+      return next
+    })
+  }, [kind, lists])
 
   // Share one current-context stability gate across all three reads.
   const selectionReady = useVersusSelectionReady(kind, queue, billboardParams)
@@ -118,8 +129,8 @@ export function VersusExperience() {
   const entityNames = queue.map((q) => q.display)
   const readyToCompare = queue.length >= 2
   const itemsForKind = kind === 'track' ? lists?.tracks : kind === 'album' ? lists?.albums : lists?.artists
-  const selectedKeys = new Set(queue.map(entityKey))
-  const quickAddItems = (itemsForKind ?? []).filter((item) => !selectedKeys.has(entityKey(item))).slice(0, 2)
+  const selectedKeys = new Set(queue.map(versusEntityKey))
+  const quickAddItems = (itemsForKind ?? []).filter((item) => !selectedKeys.has(versusEntityKey(item))).slice(0, 2)
 
   return (
     <div className={cn(isPhone && 'mobile-m4-page')} data-mobile-page={isPhone ? 'billboard-versus' : undefined}>
@@ -164,7 +175,7 @@ export function VersusExperience() {
             {quickAddItems.length > 0 && (
               <div className="mobile-versus-quick-add">
                 {quickAddItems.map((item) => (
-                  <button key={entityKey(item)} type="button" onClick={() => handleAdd(item)}>
+                  <button key={versusEntityKey(item)} type="button" onClick={() => handleAdd(item)}>
                     <Plus aria-hidden="true" />
                     <span>{displayName(item.display)}</span>
                   </button>
@@ -210,27 +221,27 @@ export function VersusExperience() {
         />
       )}
 
-      {/* Results */}
-      {readyToCompare && versusData && versusData.found && versusData.entities && (
+      {/* Keep release reads independent while retaining the original results layout. */}
+      {readyToCompare && ((versusData?.found && versusData.entities) || kind === 'album') && (
         <div className="mt-8 space-y-8">
-          <VersusChartSection
-            rankHistories={versusData.entities.map((e) => e.rank_history)}
-            names={entityNames}
-          />
-
-        </div>
-      )}
-      {readyToCompare && kind === 'album' && (
-        <div className="mt-8">
-          <VersusReleaseCycleSection
-            albums={queue.map((q) => ({
-              albumName: q.album_name ?? '',
-              artistName: q.artist_name ?? '',
-              name: q.display,
-            }))}
-            billboardParams={billboardParams}
-            enabled={selectionReady && !filtersLoading && !personal.stats.isLoading && !personal.ranks.isLoading && !personal.stats.isFetching && !personal.ranks.isFetching}
-          />
+          {versusData?.found && versusData.entities && (
+            <VersusChartSection
+              rankHistories={versusData.entities.map((e) => e.rank_history)}
+              names={entityNames}
+            />
+          )}
+          {kind === 'album' && (
+            <VersusReleaseCycleSection
+              albums={queue.map((q) => ({
+                projectId: q.project_id,
+                albumName: q.album_name ?? '',
+                artistName: q.artist_name ?? '',
+                name: q.display,
+              }))}
+              billboardParams={billboardParams}
+              enabled={selectionReady && !filtersLoading && !personal.stats.isLoading && !personal.ranks.isLoading && !personal.stats.isFetching && !personal.ranks.isFetching}
+            />
+          )}
         </div>
       )}
       {isPhone && readyToCompare && <button type="button" className="mobile-versus-adjust" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>调整对决对象</button>}

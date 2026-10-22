@@ -97,6 +97,22 @@ def test_stable_project_id_does_not_depend_on_path_name(conn: sqlite3.Connection
     assert identity.requested_project_id == 100
 
 
+def test_batch_explicit_id_checks_artist_scope_and_preserves_member(conn):
+    from backend.domains.playback.album_project_identity import resolve_album_project_identities
+
+    items = [
+        {"album_name": "A/B Deluxe", "artist_name": "Beyoncé", "project_id": 100},
+        {"album_name": "A/B", "artist_name": "Other Artist", "project_id": 100},
+        {"album_name": "A/B", "artist_name": "Beyoncé", "project_id": 101},
+        {"album_name": "A/B", "artist_name": "Beyoncé", "project_id": 999},
+    ]
+    result = resolve_album_project_identities(conn, items, merge_level=2)
+    assert result[0].project_id == 100 and result[0].matched_album_id == 11
+    assert result[1:] == [None, None, None]
+    assert resolve_album_project_identities(conn, [items[0]], merge_level=3) == [None]
+    assert resolve_album_project_identities(conn, [items[2]], merge_level=3)[0].project_id == 101
+
+
 @pytest.mark.parametrize("level", [2, 3])
 def test_batch_shares_rows_and_normalization_with_single_lookup_rules(conn, monkeypatch, level):
     from backend.domains.playback import album_project_identity as identity

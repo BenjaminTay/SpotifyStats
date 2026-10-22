@@ -124,6 +124,8 @@ def requested_key(kind: str, item: Any) -> str:
         parts = [kind, int(item)]
     elif kind == "album":
         parts = [kind, item["artist_name"], item["album_name"]]
+        if item.get("project_id") is not None:
+            parts.append(item["project_id"])
     elif kind == "artist":
         parts = [kind, str(item)]
     else:

@@ -8,13 +8,13 @@ import type { VersusKind } from './versusData'
 
 export function personalRequestedKey(kind: VersusKind, item: EntityListItem): string {
   return JSON.stringify(kind === 'track' ? ['track', item.track_id]
-    : kind === 'album' ? ['album', item.artist_name, item.album_name] : ['artist', item.artist_name])
+    : kind === 'album' ? ['album', item.artist_name, item.album_name, ...(item.project_id != null ? [item.project_id] : [])] : ['artist', item.artist_name])
 }
 
 export function personalBatchBody(kind: VersusKind, queue: EntityListItem[]) {
   const sorted = [...queue].sort((a, b) => personalRequestedKey(kind, a).localeCompare(personalRequestedKey(kind, b)))
   if (kind === 'track') return { track_ids: sorted.map((item) => item.track_id) }
-  if (kind === 'album') return { albums: sorted.map(({ album_name, artist_name }) => ({ album_name, artist_name })) }
+  if (kind === 'album') return { albums: sorted.map(({ album_name, artist_name, project_id }) => ({ album_name, artist_name, ...(project_id != null ? { project_id } : {}) })) }
   return { artist_names: sorted.map((item) => item.artist_name) }
 }
 

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { coverThumbnailUrl } from '@/lib/cover-thumbnail'
 import type { EntityListItem, VersusEntityData } from '@/types/billboard'
-import { ENTITY_COLORS, MAX_QUEUE_SIZE } from './versusData'
+import { ENTITY_COLORS, MAX_QUEUE_SIZE, versusEntityKey } from './versusData'
 import { displayName, useDisplayName, useChineseTextVersion } from '@/lib/chinese'
 
 // ── Skeleton ──
@@ -92,16 +92,10 @@ export function SearchableAddSelect({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const selectedSet = new Set(
-    alreadySelected.map((s) => {
-      if (s.track_id != null) return `t:${s.track_id}`
-      return `a:${s.artist_name}|${s.album_name ?? ''}`
-    })
-  )
+  const selectedSet = new Set(alreadySelected.map(versusEntityKey))
 
   function isAlreadyAdded(item: EntityListItem): boolean {
-    if (item.track_id != null) return selectedSet.has(`t:${item.track_id}`)
-    return selectedSet.has(`a:${item.artist_name}|${item.album_name ?? ''}`)
+    return selectedSet.has(versusEntityKey(item))
   }
 
   const filtered = search
@@ -142,7 +136,7 @@ export function SearchableAddSelect({
             ) : (
               filtered.map((item) => (
                 <button
-                  key={item.display}
+                  key={versusEntityKey(item)}
                   type="button"
                   onClick={() => {
                     onAdd(item)
@@ -205,7 +199,7 @@ export function EntityQueue({
                 onClick={() => onMoveUp(i)}
                 disabled={i === 0}
                 title="上移"
-                className="max-md:min-h-11 max-md:min-w-11 px-1.5 py-0.5 text-[10px] rounded transition-colors hover:bg-muted disabled:opacity-25 disabled:cursor-not-allowed"
+                className="px-1.5 py-0.5 text-[10px] rounded transition-colors hover:bg-muted disabled:opacity-25 disabled:cursor-not-allowed"
               >
                 ↑
               </button>
@@ -214,7 +208,7 @@ export function EntityQueue({
                 onClick={() => onMoveDown(i)}
                 disabled={i === items.length - 1}
                 title="下移"
-                className="max-md:min-h-11 max-md:min-w-11 px-1.5 py-0.5 text-[10px] rounded transition-colors hover:bg-muted disabled:opacity-25 disabled:cursor-not-allowed"
+                className="px-1.5 py-0.5 text-[10px] rounded transition-colors hover:bg-muted disabled:opacity-25 disabled:cursor-not-allowed"
               >
                 ↓
               </button>
@@ -222,7 +216,7 @@ export function EntityQueue({
                 type="button"
                 onClick={() => onRemove(i)}
                 title="移除"
-                className="max-md:min-h-11 max-md:min-w-11 ml-1 px-1.5 py-0.5 text-[10px] rounded text-red-400 transition-colors hover:bg-red-50 dark:hover:bg-red-950"
+                className="ml-1 px-1.5 py-0.5 text-[10px] rounded text-red-400 transition-colors hover:bg-red-50 dark:hover:bg-red-950"
               >
                 ✕
               </button>

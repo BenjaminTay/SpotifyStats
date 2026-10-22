@@ -1683,6 +1683,7 @@ export interface VersusResponse {
 }
 
 export interface EntityListItem {
+  project_id?: number
   [key: string]: any
   display: string
   track_id?: number

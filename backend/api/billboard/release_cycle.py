@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 from backend.core.access_surface import reset_public_readonly_db_guard, set_public_readonly_db_guard
 from backend.core.db import get_db
@@ -617,6 +617,7 @@ def get_artist_overview(
 class CompareItem(BaseModel):
     artist_name: str
     album_name: str
+    project_id: StrictInt | None = Field(default=None, gt=0)
 
 
 class CompareRequest(BaseModel):
@@ -643,7 +644,7 @@ class CompareReleaseResult(BaseModel):
 class CompareReleasesResponse(BaseModel):
     error: str | None = None
     comparisons: list[CompareReleaseResult] = Field(default_factory=list)
-    unavailable: list[dict[str, str]] = Field(default_factory=list)
+    unavailable: list[dict[str, Any]] = Field(default_factory=list)
 
 
 @router.post(
@@ -674,7 +675,7 @@ def _compare_release_batch(body, filters, merge_level, include_compilations):
     from backend.services.analysis_snapshot_revision import source_revision
     from backend.services.release_cycle_resolution import resolve_advance_singles
 
-    items = [item.model_dump() for item in body.items]
+    items = [item.model_dump(exclude_none=True) for item in body.items]
     conn = get_db(readonly=True)
     try:
         revision = source_revision(conn, "analysis_records")
@@ -687,7 +688,7 @@ def _compare_release_batch(body, filters, merge_level, include_compilations):
     if all(target.reason for target in targets):
         return {"comparisons": [], "unavailable": unavailable}
     resolved_items = [
-        {"album_name": target.album_name, "artist_name": target.identity.artist_name}
+        {**item, "album_name": target.album_name, "artist_name": target.identity.artist_name}
         if target.identity is not None
         else item
         for target, item in zip(targets, items)

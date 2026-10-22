@@ -2337,6 +2337,64 @@ def test_snapshot_prune_removes_context_when_foreign_keys_are_disabled() -> None
     } == {"current", "previous"}
 
 
+@pytest.mark.parametrize("foreign_keys", [False, True])
+def test_snapshot_prune_keeps_detail_children_consistent(foreign_keys: bool) -> None:
+    from backend.domains.music_search import snapshot as snapshot_module
+    from backend.domains.music_search.detail_projection import SCHEMA
+
+    conn = _conn()
+    migrate_061(conn)
+    conn.executescript(SCHEMA)
+    conn.execute(f"PRAGMA foreign_keys={int(foreign_keys)}")
+    rows = (
+        ("old", "stale", "base-old", "2026-01-01"),
+        ("previous", "ready", "base-previous", "2026-01-02"),
+        ("current", "ready", "base-current", "2026-01-03"),
+        ("building", "running", "base-building", "2025-01-01"),
+        ("active", "ready", None, "2025-01-01"),
+    )
+    for key, status, base, created in rows:
+        conn.execute(
+            """INSERT INTO music_search_snapshot_meta(
+                   snapshot_key, filter_fingerprint, source_revision, status,
+                   semantic_base_key, created_at, builder_version
+               ) VALUES (?, ?, 'revision', ?, ?, ?, ?)""",
+            (key, key, status, base, created, MUSIC_SEARCH_SNAPSHOT_BUILDER_VERSION),
+        )
+        conn.execute(
+            "INSERT INTO music_search_detail_projection_state VALUES (?, 'version', 'revision', 1)",
+            (key,),
+        )
+        conn.execute(
+            """INSERT INTO music_search_detail_source_facts
+               VALUES (?, 1, 2, 2, '2026-01-01', '2026-01-01', 1, 1000)""",
+            (key,),
+        )
+        conn.execute(
+            """INSERT INTO music_search_detail_entity_projection
+               VALUES (?, 'track', 1, '{}', 'digest')""",
+            (key,),
+        )
+    conn.execute(
+        """INSERT INTO music_search_snapshot_variant_state(
+               merge_level, dynamic_threshold, active_snapshot_key,
+               active_filter_fingerprint, target_filter_fingerprint, maintenance_status
+           ) VALUES (2, 1, 'active', 'active', 'current', 'ready')"""
+    )
+    conn.commit()
+    snapshot_module._prune_old_music_search_snapshot_bases(conn, "base-current")
+    expected = {"previous", "current", "building", "active"}
+    for table in (
+        "music_search_snapshot_meta",
+        "music_search_detail_projection_state",
+        "music_search_detail_source_facts",
+        "music_search_detail_entity_projection",
+    ):
+        assert {r[0] for r in conn.execute(f"SELECT snapshot_key FROM {table}")} == expected
+    assert not conn.execute("PRAGMA foreign_key_check").fetchall()
+    conn.close()
+
+
 def test_snapshot_prune_never_removes_active_pointer_with_null_semantic_base() -> None:
     conn = _conn()
     conn.execute(

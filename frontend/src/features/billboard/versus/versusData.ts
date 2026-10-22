@@ -1,4 +1,4 @@
-import type { VersusRankPoint } from '@/types/billboard'
+import type { EntityListItem, VersusRankPoint } from '@/types/billboard'
 
 export type VersusKind = 'track' | 'album' | 'artist'
 
@@ -92,4 +92,11 @@ export function bestIndices(values: (unknown)[], higherIsBetter: boolean): numbe
 
 export function toChartData(points: VersusRankPoint[]): { week: string; rank: number | null }[] {
   return points.map((p) => ({ week: p.week, rank: p.rank }))
+}
+
+/** A display label is not an entity identity. */
+export function versusEntityKey(item: EntityListItem): string {
+  if (item.track_id != null) return `track:${item.track_id}`
+  if (item.project_id != null) return `album:${item.project_id}`
+  return JSON.stringify([item.artist_name ?? '', item.album_name ?? ''])
 }
