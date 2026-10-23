@@ -150,6 +150,8 @@ docker compose -f compose.yml exec -T backend python scripts/backfill_cover_thum
 - 其他版本的上述文件至少经过 **48 小时**才清理，给待发布准备和失败诊断留出缓冲。打开中的文件、有非空 WAL 的数据库及符号链接跳过；current/previous 状态不一致或恢复材料缺失时拒绝清理。
 - 普通周备份仍按原 28 天规则；导入、恢复、独立数据修复前等人工命名保护点，以及运行库、当前 `music-search-resume.db`、CAS blobs 和正式镜像回滚归档不由该工具处理。独立维护完成后，由执行者清理当次处理副本，必要保护点压缩保存；不要把历史副本留在 `data/`。
 
+导入、发布演练和验证统一采用 `backups/<操作名>/tmp/` 保存可再生成的副本与成品。原库、旁库和原文件身份恢复点放在同级 `originals-*/` 或 `recovery/`，日志与证明文件放在操作目录。操作验收完成、所有相关进程退出后，执行 `touch backups/<操作名>/tmp/.cleanup-ready`；现有清理步骤会在标记满48小时后删除其中的普通文件。没有标记、标记后又写入文件、含符号链接或混入 `originals*`/`recovery*` 的临时目录会保留；打开文件及非空WAL仍跳过。不依据任意旧目录名称或日期猜测是否可删，历史目录先人工审核。本规则复用现有发布收尾，不增加定时任务；没有后续发布时，临时文件会保留到下一次成功发布收尾或人工调用该工具。
+
 不带 `--apply` 时只输出删除预览。例如在服务器执行 `sudo python3 /opt/spotify-stats/cleanup-release-files.py --revision <当前完整SHA>`；核对后加 `--apply`。清理失败会在 workflow 中明确报错，已健康的应用不因空间收尾失败回滚。该步骤随包含本改动的 workflow 发布后执行，无额外 timer 或常驻服务。
 
 历史 `.db.gz` 恢复点先用 `gzip -dk -- /绝对路径/备份.db.gz` 解压，再把生成的 `.db` 交给原有恢复流程。压缩前后内容必须一致，不能用压缩运行中的数据库代替 SQLite Online Backup。

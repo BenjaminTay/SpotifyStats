@@ -112,3 +112,60 @@ def test_workflow_packages_helper_and_cleans_only_after_success():
         "Activate CAS current and previous retention after successful deploy"
     )
     assert "cleanup-release-files.py --revision '$GITHUB_SHA' --apply" in workflow
+
+
+def marked_tmp(root, name, age=3 * 86400):
+    folder = root / "backups" / name / "tmp"
+    folder.mkdir(parents=True)
+    candidate = folder / "candidate.db"
+    candidate.write_bytes(b"temporary")
+    os.utime(candidate, (NOW - 4 * 86400, NOW - 4 * 86400))
+    marker = folder / ".cleanup-ready"
+    marker.touch()
+    os.utime(marker, (NOW - age, NOW - age))
+    return candidate, marker
+
+
+def test_completed_tmp_is_pruned_without_touching_recovery_and_logs(tmp_path):
+    root = setup_root(tmp_path)
+    candidate, marker = marked_tmp(root, "import-example")
+    recovery = root / "backups/import-example/originals-20261001"
+    recovery.mkdir()
+    original = recovery / "spotify_stats.db"
+    original.write_bytes(b"recovery")
+    log = root / "backups/import-example/acceptance.json"
+    log.write_text("{}")
+    result = module.plan(root, "a" * 40, NOW)
+    paths = {row["path"] for row in result["files"]}
+    assert str(candidate) in paths
+    assert all(str(p) not in paths for p in (marker, original, log))
+
+
+def test_tmp_sqlite_sidecars_are_removed_with_database_once(tmp_path, monkeypatch):
+    root = setup_root(tmp_path)
+    candidate, marker = marked_tmp(root, "operation")
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(str(candidate) + suffix)
+        sidecar.touch()
+        os.utime(sidecar, (NOW - 4 * 86400, NOW - 4 * 86400))
+    monkeypatch.setattr(module.subprocess, "run", lambda *args, **kw: SimpleNamespace(returncode=1))
+    result = module.apply_plan(module.plan(root, "a" * 40, NOW))
+    assert str(candidate) in {row["path"] for row in result["deleted"]}
+    assert not candidate.exists() and marker.exists()
+    assert not Path(str(candidate) + "-shm").exists()
+
+
+@pytest.mark.parametrize("condition", ["fresh", "unmarked", "modified", "symlink", "recovery"])
+def test_unsafe_or_unfinished_tmp_is_kept(tmp_path, condition):
+    root = setup_root(tmp_path)
+    candidate, marker = marked_tmp(root, "operation", age=60 if condition == "fresh" else 3 * 86400)
+    if condition == "unmarked":
+        marker.unlink()
+    elif condition == "modified":
+        os.utime(candidate, (NOW, NOW))
+    elif condition == "symlink":
+        (candidate.parent / "external").symlink_to(tmp_path / "outside")
+    elif condition == "recovery":
+        (candidate.parent / "originals-backup").mkdir()
+    paths = {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
+    assert str(candidate) not in paths

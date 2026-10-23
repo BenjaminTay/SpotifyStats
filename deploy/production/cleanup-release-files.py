@@ -17,6 +17,42 @@ MANIFEST = re.compile(r"(?:billboard|music-detail|versus-ranks)-([0-9a-f]{40})\.
 GRACE_SECONDS = 48 * 3600
 
 
+def completed_temporary_files(backups, now):
+    """Operations opt in by marking only their disposable tmp/ directory as ready."""
+    candidates = []
+    for operation in backups.iterdir():
+        if operation.is_symlink() or not operation.is_dir():
+            continue
+        temporary = operation / "tmp"
+        marker = temporary / ".cleanup-ready"
+        if (
+            temporary.is_symlink()
+            or not temporary.is_dir()
+            or marker.is_symlink()
+            or not marker.is_file()
+        ):
+            continue
+        marked_at = marker.stat().st_mtime
+        if now - marked_at < GRACE_SECONDS:
+            continue
+        tree = list(temporary.rglob("*"))
+        # Refuse mixed recovery directories or a directory reopened after completion.
+        if any(
+            p.is_symlink()
+            or any(
+                part.startswith(("originals", "recovery"))
+                for part in p.relative_to(temporary).parts
+            )
+            for p in tree
+        ):
+            continue
+        files = [p for p in tree if p.is_file() and p != marker]
+        if any(p.stat().st_mtime > marked_at for p in files):
+            continue
+        candidates.extend(p for p in files if not p.name.endswith(("-wal", "-shm")))
+    return candidates
+
+
 def plan(root, revision, now=None):
     now = time.time() if now is None else now
     backups = root / "backups"
@@ -74,6 +110,7 @@ def plan(root, revision, now=None):
                 for mode in ("release", "smoke"):
                     if not (folder / mode).is_symlink():
                         candidates.append(folder / mode / "docker-save.tar")
+    candidates.extend(completed_temporary_files(backups, now))
     files = []
     for p in sorted(candidates):
         if p.is_symlink() or not p.is_file():
