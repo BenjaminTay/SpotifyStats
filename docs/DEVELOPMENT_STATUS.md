@@ -1,6 +1,6 @@
 # SpotifyStats 开发状态总表
 
-> Title 本地收口（2026-10-23，SS-2026-10-23-001，FIXED / LOCAL APPLIED / VERIFIED）：已按确认将18首Expanded作为主来源并纠正项目日为2015-01-09，明确保留I’ll Be Home→Christmas。相关精确快照维护及正式42项HTTP/192项指标、原六行桌面/手机验收通过；114保护、7015归属、成员、Spotify声明和前端字节保持。8000/4173运行，七库与首页联合恢复点保留；未提交/推送/生产部署。见[实现与正式本地验收](reports/2026-10-23-title-release-attribution-repair.md#用户确认后的本地正式应用与收口)。
+> Title生产收口（2026-10-23，SS-2026-10-23-001，CLOSED / RELEASED）：本轮修复已独立提交推送，f153dc9f正式Release及质量CI成功，生产自身fresh备份应用18首Expanded主来源和2015-01-09项目日，I’ll Be Home仍归Christmas。117项保护、42项HTTP/192指标及桌面/手机原六行验收通过，96881原始播放、项目成员、7015归属、Spotify声明和UI保持。精确快照及同SHA预置manifest维护完成，旧七库/首页恢复点保留；本轮源分支和整合工作树已归档收尾。Title暂缓解除，其他28项独立治理保持；以下为历史检查点。见[生产交付](reports/2026-10-23-title-release-attribution-repair.md#用户授权后的提交生产发布与上线验收)。
 
 > 正式收口（2026-10-23，SS-2026-10-21-006，CLOSED / RELEASED）：业务2f4b7f26已推送并正式部署，CI／Release成功；生产自身fresh备份应用45主来源和10独立日期，114项保护、68HTTP／468指标、全选择器及桌面／手机验收通过。原始记录、成员、7015归属、Spotify声明与原六指标UI保持；29项独立治理、Title暂缓。见[生产交付](reports/2026-10-22-release-cycle-production-delivery.md)，以下本地与发布前记录保留历史语境。
 
@@ -220,7 +220,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
-| SS-2026-10-23-001 | Title改期导致歌曲归属迁移 | FIXED / LOCAL APPLIED / VERIFIED；正式本地应用、精确快照及接口/原界面验收完成 | READY待后续明确提交/发布；7015归属与UI保持，保留联合恢复点 | [本地验收](reports/2026-10-23-title-release-attribution-repair.md#用户确认后的本地正式应用与收口) | 2026-10-23 |
+| SS-2026-10-23-001 | Title改期导致歌曲归属迁移 | CLOSED / RELEASED；f153dc9f生产应用及验收完成 | 117保护、42HTTP/192指标、原六行UI通过；联合恢复点保留，源分支/工作树已收尾 | [生产验收](reports/2026-10-23-title-release-attribution-repair.md#用户授权后的提交生产发布与上线验收) | 2026-10-23 |
 | SS-2026-10-21-006 | 发行周期来源类型、稳定身份与独立日期 | CLOSED / RELEASED；2f4b7f26已上线，CI／Release及生产114保护、68HTTP／468指标、全部选择器和双视口通过 | 45主来源／10独立日期已应用，原始／成员／归属和原六指标UI保持；29项独立治理，Title暂缓 | [生产交付](reports/2026-10-22-release-cycle-production-delivery.md) | 2026-10-23 |
 | SS-2026-10-21-004 | 榜单对决发行周期恢复 | CLOSED / RELEASED：P0–P6全部完成；c741a96f的CI/Release、本地与生产自身补证应用、111类保护、全资格及实际双视口通过 | 有新来源证据或人工决定时维护剩余98项；无活跃修复待办 | [已完成规划](archive/06-productization-closeout/2026-10-21-versus-release-cycle-repair-plan.md)、[最终验收](reports/2026-10-21-versus-release-cycle-repair-acceptance.md) | 2026-10-21（本地/生产通过） |
 | SS-2026-10-08-001 | 后端内存稳定性 | OPEN / OBSERVING：本轮开发与发布CLOSED，f128已交付；历史OOM和旧失败保留 | P1：仅约1–3天实际正常使用及自然发生的相关维护观察；增长有界、容量足够、统计与体验正常且无本链新OOM/意外重启后再结项；不追加优化或实验 | [生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)、[精简计划](plans/2026-10-19-performance-scope-and-memory-closeout.md) | 2026-10-19（22:37既有快照healthy，非长期稳定证明） |

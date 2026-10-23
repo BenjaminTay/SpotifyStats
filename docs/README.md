@@ -1,6 +1,6 @@
 # SpotifyStats 文档地图
 
-- [Title发行日期与歌曲归属修复](reports/2026-10-23-title-release-attribution-repair.md)：SS-2026-10-23-001，本地正式应用及精确快照维护完成；42项HTTP/192指标、原六行桌面/手机通过，7015归属与前端字节保持，未提交/生产发布。
+- [Title发行日期与歌曲归属修复](reports/2026-10-23-title-release-attribution-repair.md)：SS-2026-10-23-001，f153dc9f已推送部署及生产应用，CI/Release、117保护、42HTTP/192指标与原六行桌面/手机验收通过；原始/成员/7015归属/UI保持，本轮工作树与分支已收尾。
 
 - [发行周期生产交付](reports/2026-10-22-release-cycle-production-delivery.md)：006 CLOSED / RELEASED；2f4b7f26代码与45主来源／10独立日期已上线，CI／Release、114保护、68HTTP／468指标、全部选择器与双视口通过，原六指标UI保持。
 
