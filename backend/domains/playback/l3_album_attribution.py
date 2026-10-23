@@ -14,7 +14,7 @@ import json
 import re
 import sqlite3
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 import pandas as pd
@@ -220,6 +220,61 @@ class _ProjectCandidate:
     has_original_recording: bool
     target_project_id: int
     target_project_name: str
+    source_evidence_status: str = "legacy"
+    source_evidence: tuple[tuple[str, Any], ...] = ()
+    source_date_scope: tuple[str, ...] = ()
+    source_date_confirmed: bool = False
+
+
+def _qualify_source_candidate(candidate, project_frame, approved):
+    """An approved edition fact refines input; it never edits project members."""
+    facts = [
+        row
+        for track_id in set(project_frame["track_id"].astype(int))
+        for row in approved.get((candidate.project_id, track_id), ())
+    ]
+    if not facts:
+        return candidate
+    evidence = tuple(
+        (
+            str(row["assertion_id"]),
+            {
+                "spotify_album_id": row["spotify_album_id"],
+                "spotify_track_id": row["spotify_track_id"],
+                "membership_kind": row["membership_kind"],
+                "included_on": row["included_on"],
+                "date_kind": row["date_kind"],
+                "territory": row["territory"],
+                "medium": row["medium"],
+                "valid": row["valid"],
+            },
+        )
+        for row in facts
+    )
+    originals = [row for row in facts if row["membership_kind"] == "original"]
+    selected = originals or facts
+    scopes = {(row["territory"], row["medium"], row["date_kind"]) for row in selected}
+    dates = [row["included_on"] for row in selected]
+    valid = all(row["valid"] for row in facts)
+    native_album = (
+        not candidate.project_type.startswith("compilation")
+        and not candidate.relation_tag
+        and not {"rerecord", "live_acoustic_remix", "single"}.intersection(candidate.source_buckets)
+    )
+    return replace(
+        candidate,
+        source_buckets=(("original_album",) if originals else ("deluxe",))
+        if native_album
+        else candidate.source_buckets,
+        membership_roles=(("standard",) if originals else ("deluxe",))
+        if native_album
+        else candidate.membership_roles,
+        release_date=min(dates) if all(dates) else "",
+        source_evidence_status="qualified" if valid and len(scopes) == 1 else "conflict",
+        source_evidence=evidence,
+        source_date_scope=next(iter(scopes)) if len(scopes) == 1 else (),
+        source_date_confirmed=valid and bool(dates) and all(dates),
+    )
 
 
 def _controlled_project_role(name: str) -> str | None:
@@ -905,6 +960,9 @@ def plan_l3_album_attributions(
     }
     legacy_project_schema = not {"artist_id", "scope"}.issubset(project_columns)
     overrides, override_conflicts, invalid_overrides = _active_overrides(conn, track_to_song_key)
+    from backend.domains.metadata.album_track_release_evidence import load_approved
+
+    approved_source_memberships = load_approved(conn)
 
     decisions: list[L3AlbumAttributionDecision] = []
     issues: list[L3AlbumAttributionIssue] = []
@@ -940,22 +998,28 @@ def plan_l3_album_attributions(
             target_project_id = parent[0] if parent else project_id_int
             target_project_name = parent[1] if parent else str(first["project_name"])
             candidates.append(
-                _ProjectCandidate(
-                    project_id=project_id_int,
-                    canonical_name=str(first["project_name"]),
-                    canonical_artist_id=canonical_artist_id,
-                    release_date=str(first["release_date"] or ""),
-                    project_type=str(first["project_type"]),
-                    is_manual=bool(first["is_manual"]),
-                    relation_tag=project_role,
-                    source_buckets=tuple(sorted(set(project_frame["source_bucket"].astype(str)))),
-                    membership_roles=tuple(
-                        sorted(set(project_frame["membership_role"].astype(str)))
+                _qualify_source_candidate(
+                    _ProjectCandidate(
+                        project_id=project_id_int,
+                        canonical_name=str(first["project_name"]),
+                        canonical_artist_id=canonical_artist_id,
+                        release_date=str(first["release_date"] or ""),
+                        project_type=str(first["project_type"]),
+                        is_manual=bool(first["is_manual"]),
+                        relation_tag=project_role,
+                        source_buckets=tuple(
+                            sorted(set(project_frame["source_bucket"].astype(str)))
+                        ),
+                        membership_roles=tuple(
+                            sorted(set(project_frame["membership_role"].astype(str)))
+                        ),
+                        track_relation_tags=tuple(sorted(track_relations)),
+                        has_original_recording=has_original,
+                        target_project_id=target_project_id,
+                        target_project_name=target_project_name,
                     ),
-                    track_relation_tags=tuple(sorted(track_relations)),
-                    has_original_recording=has_original,
-                    target_project_id=target_project_id,
-                    target_project_name=target_project_name,
+                    project_frame,
+                    approved_source_memberships,
                 )
             )
 
@@ -1024,6 +1088,46 @@ def plan_l3_album_attributions(
             )
             continue
         candidates.sort(key=_candidate_rank)
+        reviewed = [item for item in candidates if item.source_evidence_status != "legacy"]
+        native = [item for item in candidates if _candidate_rank(item)[0] <= 40]
+        tied = [
+            item
+            for item in candidates
+            if _candidate_rank(item)[0] == _candidate_rank(candidates[0])[0]
+        ]
+        source_conflict = any(item.source_evidence_status == "conflict" for item in reviewed)
+        if reviewed and key not in overrides:
+            source_conflict = source_conflict or any(
+                item.source_evidence_status == "legacy" for item in native
+            )
+            if len(tied) > 1:
+                source_conflict = source_conflict or not all(
+                    item.source_date_confirmed for item in tied
+                )
+                source_conflict = (
+                    source_conflict or len({item.source_date_scope for item in tied}) != 1
+                )
+        if source_conflict:
+            conflicts.add(key)
+            issues.append(
+                L3AlbumAttributionIssue(
+                    canonical_song_key=key,
+                    issue_kind="conflict",
+                    representative_track_id=_representative_track_id(conn, key, song_frame),
+                    canonical_song_name=str(work.canonical_song_name),
+                    canonical_artist_key=str(candidates[0].canonical_artist_id),
+                    candidate_project_ids=tuple(item.project_id for item in candidates),
+                    candidate_project_names=tuple(item.canonical_name for item in candidates),
+                    evidence_codes=("source_membership_not_comparable",),
+                    evidence=_stable_evidence(
+                        source_memberships=tuple(
+                            (item.project_id, item.source_evidence_status, item.source_evidence)
+                            for item in candidates
+                        )
+                    ),
+                )
+            )
+            continue
         if key in invalid_overrides:
             conflicts.add(key)
             override = invalid_overrides[key]
@@ -1063,6 +1167,18 @@ def plan_l3_album_attributions(
         decision_source = "automatic"
         confidence = 1.0 if _candidate_rank(winner)[0] <= 40 else 0.9
         evidence_codes = ["single_l3_album_owner", "catalog_membership"]
+        extra_evidence = {}
+        if reviewed:
+            from backend.domains.metadata.album_track_release_evidence import POLICY_VERSION
+
+            evidence_codes.append("reviewed_source_membership")
+            extra_evidence = {
+                "source_membership_policy": POLICY_VERSION,
+                "source_memberships": tuple(
+                    (item.project_id, item.source_evidence_status, item.source_evidence)
+                    for item in candidates
+                ),
+            }
 
         override = overrides.get(key)
         if override is not None:
@@ -1142,6 +1258,7 @@ def plan_l3_album_attributions(
                     track_relation_tags=winner.track_relation_tags,
                     project_relation_tag=winner.relation_tag,
                     override_reason=(str(override["reason"]) if override is not None else None),
+                    **extra_evidence,
                 ),
             )
         )

@@ -285,6 +285,14 @@ SS-2026-09-24-002 的本地实现（migration 88）独立于 Track evidence；�
 
 ## 发行日期精度
 
+### 项目原始日、版本日与逐曲收录
+
+项目原始发行日（`original_release`）与具体版本发行日（`edition_release`）分别审核及读取；明确版本请求不能借用项目原始日。日期回退优先明确主来源和独立日期事实，不以曲目数最多推定原版日期。原有同年精度补齐继续拒绝跨年冲突，跨年纠正使用单列显式提案。日期依赖合同为 `release_date_evidence_v4_release_scopes`，部署时须按新依赖维护相关精确快照，不能复用旧语义的日期结果。
+
+schema95提供独立逐曲版别收录层 `album_track_release_assertions`，审核 `original / bonus / reissue`、确切收录日或NULL、日期用途、地区/媒介及来源。该层不修改项目成员或Spotify原始声明；通过艺人ID、完整目录、owner和成员基线校验，审批/撤销推进项目revision。L3新增证据合同 `album_track_release_evidence_v1` 只在有审核事实时细化候选，历史无事实输入仍沿用v2。附加曲目不继承项目更早日期，未知或不可比日期不以项目ID决胜；失效事实进入冲突。合辑、重录、Live和单曲既有类别保持。
+
+要求改期时保持歌曲归属，必须将其保存为可审计的明确决定，不能依赖原错误日期。`project_release_correction`在显式事务中核验项目旧值、目录/艺人/成员/来源占用、规划与已发布摘要，限定闭合歌曲范围，只允许已批准解释变化，拒绝未批准目标变化或抢占来源；已有不同的独立原始日审批须另行审核。范围外既有发布与独立漂移保持，必要水位/摘要仅在前后范围证明成立后推进；下游精确快照另行维护。CLI `scripts/correct_project_release.py` 默认副本预演，apply仅允许隔离副本，正式应用与发布需按交付边界执行。实现和实际范围见[Title隔离验收](../reports/2026-10-23-title-release-attribution-repair.md)。
+
 日期原文、来源精度、legacy、范围比较与不可计算状态按[发行日期证据与精度](release-date-precision.md)执行（schema89，SS-2026-09-24-003）。缺失来源 day 不参与发行日/七日对齐，日期兼容不单独构成自动归并强证据。
 
 

@@ -1152,7 +1152,9 @@ def _bootstrap_from_release_groups(
         spotify_type = group["album_type"]
         release_date = group["release_date"]
         if not release_date and group["primary_album_id"]:
-            linked = _best_spotify_album_for_local_album(conn, int(group["primary_album_id"]))
+            linked = _best_spotify_album_for_local_album(
+                conn, int(group["primary_album_id"]), for_release_date=True
+            )
             if linked:
                 release_date = linked["release_date"] or release_date
         member_rows = conn.execute(
@@ -1361,7 +1363,9 @@ def _bootstrap_standalone_album_projects(
 
         # Release date: prefer name-match; fall back to best linked album
         if not release_date:
-            linked = _best_spotify_album_for_local_album(conn, int(album["album_id"]))
+            linked = _best_spotify_album_for_local_album(
+                conn, int(album["album_id"]), for_release_date=True
+            )
             if linked:
                 release_date = linked["release_date"] or release_date
         project_id = _upsert_project(
@@ -1464,7 +1468,7 @@ def _bootstrap_l3_single_projects(
             continue
         release_date = row["release_date"]
         if not release_date:
-            linked = _best_spotify_album_for_local_album(conn, album_id)
+            linked = _best_spotify_album_for_local_album(conn, album_id, for_release_date=True)
             if linked:
                 release_date = linked["release_date"] or release_date
         project_id = _upsert_project(
@@ -1499,9 +1503,11 @@ def _bootstrap_l3_single_projects(
             )
 
 
-def _best_spotify_album_for_local_album(conn: sqlite3.Connection, album_id: int):
+def _best_spotify_album_for_local_album(
+    conn: sqlite3.Connection, album_id: int, *, for_release_date=False
+):
     try:
-        return conn.execute(
+        rows = conn.execute(
             """SELECT sam.spotify_album_id, sam.album_type, sam.total_tracks,
                       sam.release_date, sam.album_artists, sam.image_url,
                       MAX(asl.confidence) AS confidence,
@@ -1516,9 +1522,33 @@ def _best_spotify_album_for_local_album(conn: sqlite3.Connection, album_id: int)
                  COALESCE(sam.total_tracks, 0) DESC,
                  COALESCE(play_count, 0) DESC,
                  confidence DESC
-               LIMIT 1""",
+               """,
             (album_id,),
-        ).fetchone()
+        ).fetchall()
+        if not rows:
+            return None
+        if not for_release_date:
+            return rows[0]
+        from backend.domains.metadata.release_dates import release_anchor_sources
+
+        projects = conn.execute(
+            "SELECT project_id FROM album_projects WHERE primary_album_id=? AND scope='release' LIMIT 2",
+            (album_id,),
+        ).fetchall()
+        sources = release_anchor_sources(
+            conn, album_id, project_id=projects[0][0] if len(projects) == 1 else None
+        )
+        if not sources or any(row.get("independent_date_conflict") for row in sources):
+            return None
+        pairs = {(row["release_date"], row["release_date_precision"]) for row in sources}
+        if len(pairs) != 1:
+            return None
+        ids = {row["spotify_album_id"] for row in sources}
+        selected = next((row for row in rows if row["spotify_album_id"] in ids), None)
+        if selected is None:
+            return None
+        day, precision = next(iter(pairs))
+        return {**dict(selected), "release_date": day, "release_date_precision": precision}
     except sqlite3.OperationalError as exc:
         if "album_spotify_links" not in str(exc):
             raise
@@ -1866,7 +1896,7 @@ def _bootstrap_compilation_exclusive_projects(
         ]
         if not exclusive_tracks:
             continue
-        linked = _best_spotify_album_for_local_album(conn, album_id)
+        linked = _best_spotify_album_for_local_album(conn, album_id, for_release_date=True)
         project_id = _upsert_project(
             conn,
             canonical_name=album["album_name"],

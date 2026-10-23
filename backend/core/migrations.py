@@ -4357,6 +4357,20 @@ def migrate_094(conn: sqlite3.Connection):
     create_schema(conn)
 
 
+@migration(95, "reviewed_album_track_release_evidence")
+def migrate_095(conn: sqlite3.Connection):
+    from backend.domains.metadata.album_track_release_evidence import create_schema
+
+    create_schema(conn)
+    conn.execute("DROP INDEX IF EXISTS idx_album_date_approved_project")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_album_date_approved_project ON album_release_date_assertions(project_id) WHERE status='approved' AND date_kind='original_release'"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_album_date_approved_edition ON album_release_date_assertions(project_id,spotify_album_id,territory,medium) WHERE status='approved' AND date_kind='edition_release'"
+    )
+
+
 def _ensure_migrations_table(conn: sqlite3.Connection):
     conn.execute(
         """CREATE TABLE IF NOT EXISTS schema_migrations (

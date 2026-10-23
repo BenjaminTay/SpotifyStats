@@ -451,6 +451,80 @@ def independent_item(day="2026-01-02"):
     }
 
 
+def test_edition_date_does_not_replace_original_project_date(independent_source):
+    from backend.core.migrations import migrate_095
+    from backend.domains.metadata.album_release_date_evidence import (
+        record_assertion,
+        review_assertion,
+    )
+    from backend.domains.metadata.release_dates import release_anchor_sources
+
+    c = independent_source
+    migrate_095(c)
+    c.commit()
+    with c:
+        c.execute("BEGIN")
+        original = record_assertion(c, independent_item(), actor="reviewer", run_id="original")
+        review_assertion(
+            c, original, "approve", actor="reviewer", reason="original day", run_id="original"
+        )
+        edition = independent_item("2026-11-20")
+        edition["date_kind"] = "edition_release"
+        eid = record_assertion(c, edition, actor="reviewer", run_id="edition")
+        review_assertion(
+            c, eid, "approve", actor="reviewer", reason="later edition day", run_id="edition"
+        )
+    assert tuple(
+        c.execute(
+            "SELECT release_date,release_date_precision FROM album_projects WHERE project_id=100"
+        ).fetchone()
+    ) == ("2026-01-02", "day")
+    assert release_anchor_sources(c, 10, project_id=100)[0]["release_date"] == "2026-01-02"
+    assert (
+        release_anchor_sources(c, 10, project_id=100, explicit_edition=True)[0]["release_date"]
+        == "2026-11-20"
+    )
+    with c:
+        c.execute("BEGIN")
+        review_assertion(
+            c, eid, "revoke", actor="reviewer", reason="edition revoked", run_id="revoke"
+        )
+    assert (
+        c.execute("SELECT release_date FROM album_projects WHERE project_id=100").fetchone()[0]
+        == "2026-01-02"
+    )
+
+
+def test_member_edition_date_is_not_borrowed_by_original_anchor(independent_source):
+    from backend.core.migrations import migrate_095
+    from backend.domains.metadata.album_release_date_evidence import (
+        record_assertion,
+        review_assertion,
+    )
+    from backend.domains.metadata.release_dates import release_anchor_sources
+
+    c = independent_source
+    migrate_095(c)
+    c.commit()
+    item = independent_item("2026-02-06")
+    item.update(spotify_album_id="deluxe", date_kind="edition_release")
+    with c:
+        c.execute("BEGIN")
+        eid = record_assertion(c, item, actor="reviewer", run_id="member")
+        review_assertion(
+            c, eid, "approve", actor="reviewer", reason="exact member edition", run_id="member"
+        )
+    assert (
+        c.execute("SELECT release_date FROM album_projects WHERE project_id=100").fetchone()[0]
+        == "2026"
+    )
+    assert release_anchor_sources(c, 10, project_id=100)[0]["release_date"] == "2026"
+    edition = release_anchor_sources(c, 11, project_id=100, explicit_edition=True)[0]
+    assert (
+        edition["release_date"] == "2026-02-06" and edition["release_date_origin"] == "independent"
+    )
+
+
 def test_independent_date_requires_approval_and_preserves_provider_pair(independent_source):
     from backend.domains.metadata.album_release_date_evidence import (
         record_assertion,

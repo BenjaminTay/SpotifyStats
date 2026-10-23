@@ -67,7 +67,7 @@ def _exists(conn):
     )
 
 
-def _guard(conn, project_id, source_id, *, verify_artist=True):
+def _guard(conn, project_id, source_id, *, verify_artist=True, date_kind="original_release"):
     from backend.domains.metadata.release_dates import _release_anchor_sources
     from backend.domains.metadata.spotify_album_credits import AlbumArtistResolver
     from backend.providers.spotify.album_tracks import complete_track_ids
@@ -78,7 +78,31 @@ def _guard(conn, project_id, source_id, *, verify_artist=True):
     ).fetchone()
     if p is None or p[2]:
         raise ValueError("unknown_or_manual_project")
+    edition_album_ids = []
     sources = _release_anchor_sources(conn, p[0], project_id=project_id)
+    if date_kind == "edition_release":
+        sources = []
+        for member in conn.execute(
+            "SELECT album_id FROM album_project_albums WHERE project_id=? ORDER BY album_id",
+            (project_id,),
+        ):
+            candidates = _release_anchor_sources(
+                conn, member[0], project_id=project_id, explicit_edition=True
+            )
+            if source_id in {row["spotify_album_id"] for row in candidates}:
+                edition_album_ids.append(member[0])
+                sources.extend(candidates)
+        bound = (
+            conn.execute(
+                "SELECT 1 FROM album_project_external_ids WHERE project_id=? AND provider='spotify' AND external_album_id=? AND confidence>=0.9",
+                (project_id, source_id),
+            ).fetchone()
+            if _table_available(conn, "album_project_external_ids")
+            else None
+        )
+        if bound and not edition_album_ids:
+            edition_album_ids = [p[0]]
+            sources = [{"spotify_album_id": source_id}]
     if source_id not in {r["spotify_album_id"] for r in sources}:
         raise ValueError("source_not_established_for_project")
     resolver = AlbumArtistResolver(conn) if verify_artist else None
@@ -92,7 +116,7 @@ def _guard(conn, project_id, source_id, *, verify_artist=True):
     catalog = complete_track_ids(s[2], s[3]) if s else None
     if catalog is None:
         raise ValueError("incomplete_source_catalog")
-    return {
+    guard = {
         "primary_album_id": p[0],
         "artist_id": p[1],
         "source_pair": [s[0], s[1]],
@@ -104,7 +128,19 @@ def _guard(conn, project_id, source_id, *, verify_artist=True):
                 (source_id,),
             )
         ],
-    }, [p[3], p[4]]
+    }
+    if date_kind == "edition_release":
+        guard["edition_album_ids"] = edition_album_ids
+    return guard, [p[3], p[4]]
+
+
+def _table_available(conn, name):
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone()
+        is not None
+    )
 
 
 def _event(conn, assertion_id, action, actor, reason, run_id):
@@ -143,7 +179,9 @@ def record_assertion(conn, item, *, actor, run_id):
         url = urlsplit(source["url"])
         if url.scheme != "https" or not url.hostname or url.username or url.password:
             raise ValueError("public_https_evidence_url_required")
-    guard, previous = _guard(conn, item["project_id"], item["spotify_album_id"])
+    guard, previous = _guard(
+        conn, item["project_id"], item["spotify_album_id"], date_kind=item["date_kind"]
+    )
     if item.get("expected_source_pair", guard["source_pair"]) != guard["source_pair"]:
         raise ValueError("source_pair_changed")
     if item.get("expected_project_pair", previous) != previous:
@@ -229,28 +267,45 @@ def review_assertion(conn, assertion_id, decision, *, actor, reason, run_id):
         if decision == "approve":
             from backend.domains.metadata.release_dates import _release_anchor_sources
 
-            guard, current = _guard(conn, row["project_id"], row["spotify_album_id"])
+            guard, current = _guard(
+                conn, row["project_id"], row["spotify_album_id"], date_kind=row["date_kind"]
+            )
             if guard != stored:
                 raise ValueError("source_or_project_identity_changed")
             raw = parse_release_date(*guard["source_pair"])
             if compare_release_dates(raw, day) not in ("compatible", "same"):
                 raise ValueError("independent_date_conflicts_with_source")
-            for source in _release_anchor_sources(
-                conn, guard["primary_album_id"], project_id=row["project_id"]
+            for source in (
+                _release_anchor_sources(
+                    conn, guard["primary_album_id"], project_id=row["project_id"]
+                )
+                if row["date_kind"] == "original_release"
+                else []
             ):
                 other = parse_release_date(source["release_date"], source["release_date_precision"])
                 if compare_release_dates(other, day) not in ("compatible", "same"):
                     raise ValueError("independent_date_conflicts_with_source_set")
-            if current != json.loads(row["previous_project_pair_json"]):
+            if row["date_kind"] == "original_release" and current != json.loads(
+                row["previous_project_pair_json"]
+            ):
                 raise ValueError("project_pair_changed")
-            if compare_release_dates(parse_release_date(*current), day) not in (
+            if row["date_kind"] == "original_release" and compare_release_dates(
+                parse_release_date(*current), day
+            ) not in (
                 "compatible",
                 "same",
             ):
                 raise ValueError("independent_date_conflicts_with_project")
             if conn.execute(
-                "SELECT 1 FROM album_release_date_assertions WHERE project_id=? AND status='approved'",
-                (row["project_id"],),
+                "SELECT 1 FROM album_release_date_assertions WHERE project_id=? AND status='approved' AND date_kind=? "
+                "AND (date_kind='original_release' OR (spotify_album_id=? AND territory=? AND medium=?))",
+                (
+                    row["project_id"],
+                    row["date_kind"],
+                    row["spotify_album_id"],
+                    row["territory"],
+                    row["medium"],
+                ),
             ).fetchone():
                 raise ValueError("project_already_has_approved_date")
             pair = [row["release_date"], "day"]
@@ -269,13 +324,14 @@ def review_assertion(conn, assertion_id, decision, *, actor, reason, run_id):
             ):
                 raise ValueError("source_or_project_identity_changed")
             current = list(project[3:])
-            if current != [row["release_date"], "day"]:
+            if row["date_kind"] == "original_release" and current != [row["release_date"], "day"]:
                 raise ValueError("approved_project_pair_changed")
             pair = json.loads(row["previous_project_pair_json"])
-        conn.execute(
-            "UPDATE album_projects SET release_date=?,release_date_precision=? WHERE project_id=?",
-            (*pair, row["project_id"]),
-        )
+        if row["date_kind"] == "original_release":
+            conn.execute(
+                "UPDATE album_projects SET release_date=?,release_date_precision=? WHERE project_id=?",
+                (*pair, row["project_id"]),
+            )
         _bump(conn)
     conn.execute(
         "UPDATE album_release_date_assertions SET status=?,reviewed_by=?,reviewed_at=?,review_reason=?,run_id=? WHERE assertion_id=?",
@@ -285,19 +341,31 @@ def review_assertion(conn, assertion_id, decision, *, actor, reason, run_id):
     return True
 
 
-def overlay_source_dates(conn, rows, *, project_id, album_id):
+def overlay_source_dates(conn, rows, *, project_id, album_id, date_kind="original_release"):
     """Read approved facts only; never create schema, approve sources or borrow editions."""
     if not rows or project_id is None or not _exists(conn):
         return rows
     active = conn.execute(
-        "SELECT assertion_id FROM album_release_date_assertions WHERE project_id=? AND status='approved'",
-        (project_id,),
-    ).fetchone()
-    if active is None:
+        "SELECT assertion_id FROM album_release_date_assertions WHERE project_id=? AND status='approved' AND date_kind=?",
+        (project_id, date_kind),
+    ).fetchall()
+    if not active:
         return rows
-    evidence = _row(conn, active[0])
+    matching = [_row(conn, row[0]) for row in active]
+    matching = [
+        item
+        for item in matching
+        if item["spotify_album_id"] in {row["spotify_album_id"] for row in rows}
+    ]
+    if not matching:
+        return rows
+    if len(matching) != 1:
+        return [{**row, "independent_date_conflict": True} for row in rows]
+    evidence = matching[0]
     stored = json.loads(evidence["guard_json"])
-    if album_id != stored["primary_album_id"]:
+    if (date_kind == "original_release" and album_id != stored["primary_album_id"]) or (
+        date_kind == "edition_release" and album_id not in stored.get("edition_album_ids", [])
+    ):
         return rows
     result = []
     for row in rows:
@@ -305,7 +373,13 @@ def overlay_source_dates(conn, rows, *, project_id, album_id):
             result.append(row)
             continue
         try:
-            guard, _ = _guard(conn, project_id, evidence["spotify_album_id"], verify_artist=False)
+            guard, _ = _guard(
+                conn,
+                project_id,
+                evidence["spotify_album_id"],
+                verify_artist=False,
+                date_kind=date_kind,
+            )
             valid = guard == stored
         except ValueError:
             valid = False

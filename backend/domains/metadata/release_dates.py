@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
-RELEASE_DATE_POLICY_VERSION = "release_date_evidence_v3_independent_dates"
+RELEASE_DATE_POLICY_VERSION = "release_date_evidence_v4_release_scopes"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS spotify_album_date_observations (
@@ -311,7 +311,13 @@ def release_anchor_sources(conn, album_id, *, project_id=None, explicit_edition=
     rows = _release_anchor_sources(
         conn, album_id, project_id=project_id, explicit_edition=explicit_edition
     )
-    return overlay_source_dates(conn, rows, project_id=project_id, album_id=album_id)
+    return overlay_source_dates(
+        conn,
+        rows,
+        project_id=project_id,
+        album_id=album_id,
+        date_kind="edition_release" if explicit_edition else "original_release",
+    )
 
 
 def project_date_precision(conn, album_id, release_date, *, project_id=None):
