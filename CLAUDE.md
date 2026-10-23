@@ -82,7 +82,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - `data/`、备份和密钥不得进入镜像；发布必须使用 commit SHA、Online Backup、三模式门禁、健康检查和联合回滚。
 - 搜索六变体首次冷建只能在明确数据库副本执行；正常发布必须精确复用 ready snapshot，源数据漂移时拒绝替换。
 - Tailscale、域名代理和外部 HTTPS 入口是部署外层，脚本不得擅自启用或关闭。
-- 服务器维护和验证的可再生成文件放在 `backups/<操作名>/tmp/`，原文件恢复点放在同级 `originals-*/` 或 `recovery/`，日志另存。操作验收结束、相关进程退出后才创建 `tmp/.cleanup-ready`，由已有发布收尾在48小时后清理；不得给混有恢复点或仍在执行的目录加标记。具体规则见生产部署说明。
+- 服务器维护和验证的可再生成文件放在 `backups/<操作名>/tmp/`，原文件恢复点放在同级 `originals-*/` 或 `recovery/`，日志另存。操作验收结束、相关进程退出后才创建 `tmp/.cleanup-ready`，由已有发布收尾在48小时后清理；不得给混有恢复点或仍在执行的目录加标记。普通周备份压缩保留28天；发布恢复仅留current/previous各一套。完整恢复点在操作目录写 `.recovery-revision`（完整SHA），随两版轮转；历史保护点完成核对后收尾，不永久累积。具体规则见生产部署说明。
 
 ## 开发范围与适度验证
 

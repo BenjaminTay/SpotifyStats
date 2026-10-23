@@ -28,7 +28,7 @@ if [[ ! "$backup_name" =~ ^spotify-stats-[A-Za-z0-9._-]+\.db$ ]]; then
   echo "SPOTIFY_STATS_BACKUP_NAME 必须是安全的 spotify-stats-*.db 文件名。" >&2
   exit 2
 fi
-if [[ -e "backups/$backup_name" ]]; then
+if [[ -e "backups/$backup_name" || -e "backups/$backup_name.gz" ]]; then
   echo "备份目标已存在，拒绝覆盖：$DEPLOY_DIR/backups/$backup_name" >&2
   exit 1
 fi
@@ -48,6 +48,13 @@ if integrity != "ok":
     raise SystemExit(f"backup integrity_check failed: {integrity}")
 PY
 
+# Ordinary weekly snapshots are self-contained; compress only after validation.
+# Named release/import snapshots keep their paths for the existing restore flow.
+if [[ "$backup_name" =~ ^spotify-stats-[0-9]{8}T[0-9]{6}Z\.db$ ]]; then
+  gzip -n -- "backups/$backup_name"
+  backup_name="$backup_name.gz"
+fi
+
 retention_days="$(sed -n 's/^BACKUP_RETENTION_DAYS=//p' "$ENV_FILE" | tail -n 1)"
 retention_days="${retention_days:-28}"
 if [[ ! "$retention_days" =~ ^[0-9]+$ ]]; then
@@ -60,7 +67,7 @@ fi
 find backups -maxdepth 1 -type f -mtime "+$retention_days" -print0 |
   while IFS= read -r -d '' path; do
     name="${path##*/}"
-    if [[ "$name" =~ ^spotify-stats-[0-9]{8}T[0-9]{6}Z\.db$ ]]; then
+    if [[ "$name" =~ ^spotify-stats-[0-9]{8}T[0-9]{6}Z\.db(\.gz)?$ ]]; then
       rm -- "$path"
     fi
   done

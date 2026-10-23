@@ -138,7 +138,7 @@ docker compose -f compose.yml exec -T backend python scripts/backfill_cover_thum
 5. 执行 `./deploy.sh <commit-sha>`，再运行 `./verify.sh`。
 6. 最后按需单独配置外部 HTTPS 入口。Tailscale 是可选项；只有明确需要时才运行
    `configure-tailscale.sh` 或 `configure-public-funnel.sh`。
-7. 运行 `./install-backup-timer.sh` 安装每周日 03:20（另有最多 20 分钟随机延迟）的 SQLite 在线备份。服务器 `.env` 中的 `BACKUP_RETENTION_DAYS=28` 只清理普通定时备份；备份完成并通过完整性检查后才清理过期文件。发布前和恢复前备份不会被普通轮转清理。
+7. 运行 `./install-backup-timer.sh` 安装每周日 03:20（另有最多 20 分钟随机延迟）的 SQLite 在线备份。服务器 `.env` 中的 `BACKUP_RETENTION_DAYS=28` 只清理普通定时备份；普通周备份完整性检查通过后自动压缩为 `.db.gz`，轮转同时识别 `.db` 和 `.db.gz`，新备份成功后才清理过期文件。发布前和恢复前备份不会被普通轮转清理。
 
 重要数据导入前，先运行 `SPOTIFY_STATS_BACKUP_NAME="spotify-stats-pre-import-$(date -u +%Y%m%dT%H%M%SZ).db" ./backup.sh` 并确认成功；导入完成后再以 `spotify-stats-post-import-` 前缀运行一次。普通周备份之间的其他写入最多可能损失约一周。修改本文件或 timer 模板后，须重新安装 timer，并用 `systemctl cat spotify-stats-backup.timer` 核对服务器生效规则。
 
@@ -146,11 +146,13 @@ docker compose -f compose.yml exec -T backend python scripts/backfill_cover_thum
 
 正式 workflow 在部署和健康门禁成功、CAS current/previous 更新及本次上传暂存清理完成后，运行 `cleanup-release-files.py --revision <完整SHA> --apply`。它只处理有固定命名的自动发布文件：主库及 Analysis/Billboard 的 `*-pre-release-<12位SHA>-<UTC时间>.db[.gz]`、`music-detail/billboard/versus-ranks-<完整SHA>.json` 和旧上传目录中的 `docker-save.tar`。
 
-- 自动发布恢复材料保留最近 **4 个版本**，始终包含 current/previous；对应私密成品清单也保留。
+- 发布恢复材料只保留 **current/previous 两个版本**，每版保留最新一套同时间戳的主库与 Analysis/Billboard 发布前备份及对应成品清单；同版重试的旧套件也在48小时缓冲后清理。最新套件缺少已有旁库时拒绝清理。
 - 其他版本的上述文件至少经过 **48 小时**才清理，给待发布准备和失败诊断留出缓冲。打开中的文件、有非空 WAL 的数据库及符号链接跳过；current/previous 状态不一致或恢复材料缺失时拒绝清理。
-- 普通周备份仍按原 28 天规则；导入、恢复、独立数据修复前等人工命名保护点，以及运行库、当前 `music-search-resume.db`、CAS blobs 和正式镜像回滚归档不由该工具处理。独立维护完成后，由执行者清理当次处理副本，必要保护点压缩保存；不要把历史副本留在 `data/`。
+- 三类统一管理：①普通备份每周一次、保留28天并压缩；②当前/上一版本各一套完整恢复材料；③进行中的临时文件，完成后留48小时再清理。运行库、当前 `music-search-resume.db`、CAS blobs 和正式镜像回滚归档不由该工具删除。历史人工命名保护点经核对已被两版恢复点覆盖后人工清理，不永久累积。
 
 导入、发布演练和验证统一采用 `backups/<操作名>/tmp/` 保存可再生成的副本与成品。原库、旁库和原文件身份恢复点放在同级 `originals-*/` 或 `recovery/`，日志与证明文件放在操作目录。操作验收完成、所有相关进程退出后，执行 `touch backups/<操作名>/tmp/.cleanup-ready`；现有清理步骤会在标记满48小时后删除其中的普通文件。没有标记、标记后又写入文件、含符号链接或混入 `originals*`/`recovery*` 的临时目录会保留；打开文件及非空WAL仍跳过。不依据任意旧目录名称或日期猜测是否可删，历史目录先人工审核。本规则复用现有发布收尾，不增加定时任务；没有后续发布时，临时文件会保留到下一次成功发布收尾或人工调用该工具。
+
+联合恢复点保持原文件路径和inode：七库、WAL/SHM及首页目录保留在操作目录的 `originals-*/`，必要的离线快照放在同级 `recovery/`，日志另存。验收完成后，在操作目录写入 `.recovery-revision`，内容为所属版本的完整SHA。工具始终保留current/previous的注册恢复点；该版本离开两版保留集合、标记已满48小时且没有后续写入后，才清理其中的旧恢复数据，保留小型脚本和证据。未注册目录不自动猜测用途，完成任务时必须明确登记或清理。清理同时持有发布和维护锁，跳过符号链接、打开文件与非空WAL；不停止应用。
 
 不带 `--apply` 时只输出删除预览。例如在服务器执行 `sudo python3 /opt/spotify-stats/cleanup-release-files.py --revision <当前完整SHA>`；核对后加 `--apply`。清理失败会在 workflow 中明确报错，已健康的应用不因空间收尾失败回滚。该步骤随包含本改动的 workflow 发布后执行，无额外 timer 或常驻服务。
 

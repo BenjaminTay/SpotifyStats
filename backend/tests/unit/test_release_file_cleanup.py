@@ -1,6 +1,9 @@
 import importlib.util
 import json
 import os
+import shutil
+import subprocess
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -49,12 +52,12 @@ def test_bounded_versions_preserve_manual_weekly_and_recent_preparations(tmp_pat
     (root / "backups" / f"billboard-{'8' * 40}.json").symlink_to(outside)
     result = module.plan(root, "a" * 40, NOW)
     paths = {row["path"] for row in result["files"]}
-    assert result["keep_release_prefixes"] == [char * 12 for char in "abcd"]
+    assert result["keep_release_prefixes"] == [char * 12 for char in "ab"]
     assert str(old_manifest) in paths
     assert all(
         str(p) not in paths for p in (weekly, manual, resume, new_manifest, retained_manifest)
     )
-    assert len(paths) == 3
+    assert len(paths) == 5
     assert old_manifest.exists()  # Preview never mutates.
 
 
@@ -112,6 +115,7 @@ def test_workflow_packages_helper_and_cleans_only_after_success():
         "Activate CAS current and previous retention after successful deploy"
     )
     assert "cleanup-release-files.py --revision '$GITHUB_SHA' --apply" in workflow
+    assert '      - "deploy/production/backup.sh"' in workflow.split("permissions:")[0]
 
 
 def marked_tmp(root, name, age=3 * 86400):
@@ -169,3 +173,102 @@ def test_unsafe_or_unfinished_tmp_is_kept(tmp_path, condition):
         (candidate.parent / "originals-backup").mkdir()
     paths = {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
     assert str(candidate) not in paths
+
+
+def test_only_latest_complete_set_per_retained_revision_survives(tmp_path):
+    root = setup_root(tmp_path)
+    old = write(root, f"spotify-stats-pre-release-{'a' * 12}-20261001T000000Z.db")
+    duplicate = write(root, f"spotify-stats-pre-release-{'a' * 12}-20261020T000000Z.db.gz")
+    analysis = write(root, f"analysis-pre-release-{'a' * 12}-20261020T000000Z.db")
+    recent = write(root, f"spotify-stats-pre-release-{'a' * 12}-20261002T000000Z.db", age=60)
+    result = module.plan(root, "a" * 40, NOW)
+    paths = {row["path"] for row in result["files"]}
+    assert str(old) in paths and str(duplicate) in paths
+    assert str(analysis) in result["retained_backup_files"]
+    assert str(recent) not in paths
+    analysis.rename(analysis.with_name(analysis.name.replace("20261020", "20261019")))
+    with pytest.raises(ValueError, match="incomplete"):
+        module.plan(root, "a" * 40, NOW)
+
+
+def test_registered_joint_recovery_expires_only_outside_current_previous(tmp_path):
+    root = setup_root(tmp_path)
+    files = {}
+    for char in "abc":
+        folder = root / "backups" / f"operation-{char}"
+        original = folder / "originals-example/spotify_stats.db"
+        original.parent.mkdir(parents=True)
+        original.write_bytes(b"original")
+        os.utime(original, (NOW - 4 * 86400, NOW - 4 * 86400))
+        marker = folder / ".recovery-revision"
+        marker.write_text(char * 40)
+        os.utime(marker, (NOW - 3 * 86400, NOW - 3 * 86400))
+        (folder / "acceptance.json").write_text("{}")
+        files[char] = original
+    paths = {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
+    assert str(files["a"]) not in paths and str(files["b"]) not in paths
+    assert str(files["c"]) in paths
+    assert not any(path.endswith("acceptance.json") for path in paths)
+    marker = files["c"].parent.parent / ".recovery-revision"
+    os.utime(marker, (NOW - 60, NOW - 60))
+    assert str(files["c"]) not in {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
+    os.utime(marker, (NOW - 3 * 86400, NOW - 3 * 86400))
+    os.utime(files["c"], (NOW, NOW))
+    assert str(files["c"]) not in {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
+
+
+def test_registered_recovery_refuses_invalid_revision_and_skips_symlinks(tmp_path):
+    root = setup_root(tmp_path)
+    operation = root / "backups/old-operation"
+    operation.mkdir()
+    marker = operation / ".recovery-revision"
+    marker.write_text("invalid")
+    with pytest.raises(ValueError, match="Invalid recovery revision"):
+        module.plan(root, "a" * 40, NOW)
+    marker.write_text("f" * 40)
+    os.utime(marker, (NOW - 3 * 86400, NOW - 3 * 86400))
+    original = operation / "originals-example"
+    original.mkdir()
+    (original / "external").symlink_to(tmp_path / "outside")
+    candidate = original / "spotify_stats.db"
+    candidate.write_bytes(b"recovery")
+    os.utime(candidate, (NOW - 4 * 86400, NOW - 4 * 86400))
+    assert str(candidate) not in {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
+
+
+def test_scheduled_rotation_expires_compressed_ordinary_backups_only(tmp_path):
+    script = tmp_path / "backup.sh"
+    shutil.copyfile(SOURCE.parent / "backup.sh", script)
+    (tmp_path / ".env").write_text("BACKUP_RETENTION_DAYS=28\n")
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    names = [
+        "spotify-stats-20260901T000000Z.db",
+        "spotify-stats-20260902T000000Z.db.gz",
+        "spotify-stats-pre-import-20260901T000000Z.db.gz",
+        "spotify-stats-20261020T000000Z.db.gz",
+    ]
+    for name in names:
+        p = backup_dir / name
+        p.write_bytes(b"fixture")
+        age = 1 if "20261020" in name else 40
+        timestamp = time.time() - age * 86400
+        os.utime(p, (timestamp, timestamp))
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    docker = binary / "docker"
+    docker.write_text(
+        '#!/bin/bash\nif [[ "$*" == *"ps --status running --services"* ]]; then\n'
+        'echo backend\nelse\ncat >/dev/null\nlast="${!#}"\ntouch "backups/${last##*/}"\nfi\n'
+    )
+    docker.chmod(0o755)
+    subprocess.run(
+        ["bash", str(script)],
+        env={**os.environ, "PATH": str(binary) + os.pathsep + os.environ["PATH"]},
+        check=True,
+        capture_output=True,
+    )
+    assert not (backup_dir / names[0]).exists() and not (backup_dir / names[1]).exists()
+    assert (backup_dir / names[2]).exists() and (backup_dir / names[3]).exists()
+    assert len(list(backup_dir.glob("*.db.gz"))) == 3
+    assert not list(backup_dir.glob("*.db"))
