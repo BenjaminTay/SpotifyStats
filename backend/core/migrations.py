@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 94
+LATEST_SCHEMA_VERSION = 95
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
