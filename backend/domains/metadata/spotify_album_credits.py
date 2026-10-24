@@ -319,6 +319,30 @@ class AlbumArtistResolver:
             ids = {next(iter(options)) for options in choices}
         return "canonical:" + ",".join(map(str, sorted(ids)))
 
+    def target_presence(self, album_id, artist_id):
+        """Release eligibility: prove this target, independently of other credits.
+
+        Complete-set canonicalization remains strict. Names alone never prove a
+        target; an ambiguous external ID that could denote it still fails closed.
+        """
+        if artist_id is None or int(artist_id) not in self.identity:
+            return "unresolved_target"
+        target = self.canonical(artist_id)
+        credits = self.read(album_id)
+        if any(
+            target in self.by_external.get(c["spotify_artist_id"], set())
+            and c["resolution_status"] == "ambiguous"
+            for c in credits
+        ):
+            return "ambiguous"
+        return (
+            "verified_id"
+            if any(c["canonical_artist_id"] == target for c in credits)
+            else "id_mismatch"
+            if credits
+            else "unresolved"
+        )
+
     def match(self, album_id, artist_id=None, artist_name=None, legacy_text=None):
         credits = self.read(album_id)
         if not credits:

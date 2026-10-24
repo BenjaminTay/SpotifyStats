@@ -258,7 +258,7 @@ Online Backup，但不得停服或替换数据库。
    候选，统计 fingerprint 没有变化时四个变体必须精确复用；当前四个 Year-End 投影也必须已准备，
    缺失时直接拒绝，不能在候选预算内补建周榜明细或年度统计。准备副本同源移植当前四个 fingerprint
    的搜索 context、周榜明细和年度投影，保留目标其他历史 key；
-3. 只有搜索兼容基线 migration 69 及目标镜像当前 schema（本次95）、当前语义精确四个 fingerprint、搜索 builder v13、Billboard 聚合 v6、
+3. 只有搜索兼容基线 migration 69 及目标镜像当前 schema（本次96）、当前语义精确四个 fingerprint、搜索 builder v13、Billboard 聚合 v6、
    收听时长策略 `all_music_intervals_v1`、搜索 context orphan=0、
    `integrity_check=ok` 以及宿主容量全部通过，才保留预检副本；报告写入
    `backups/music-search-preflight-<sha>-<timestamp>.json`；

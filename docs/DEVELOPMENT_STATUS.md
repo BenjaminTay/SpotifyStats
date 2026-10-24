@@ -1,5 +1,15 @@
 # SpotifyStats 开发状态总表
 
+> 五项生产发布进行中（2026-10-24，SS-2026-10-24-001）：用户已授权独立提交/推送/正式部署及5项应用，schema96声明和合成seed已同步。生产实查仍为f153dc9f/schema95，尚未应用本地前批4日期；本次生产仅应用确认5项目，不能将本地剩19误作生产基线。原始、成员、归属和UI边界不变；最终结果见本轮验收报告。
+
+> 五项本地正式应用收口（2026-10-24，SS-2026-10-24-001，APPLIED / LOCAL ACCEPTED）：三项共用能力代码已整合（未提交），正式自身fresh备份应用4参照/2日期、七库联合切换及相关精确快照维护完成。136回归、117保护、新副本/正式各81HTTP及216独立指标、原六行桌面/手机通过；原TTPD/Showgirl表格outerHTML一致。原始/成员/7015归属/Spotify声明/UI保持，正式剩19项（粗日期6、来源8、身份5），Nevermind与The Moment暂缓。未推送/生产部署；见[正式应用与验收](reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md#用户确认后的本地正式应用与验收)。
+
+> 历史候选检查点（2026-10-24，SS-2026-10-24-001，READY / COPY ACCEPTED）：目标艺人列名、非占有发行参照与显式日期冲突审核已在隔离工作树实现。六项目副本验证5通过、Nevermind录音ID映射缺证阻塞；4参照/2日期形成5项目待确认清单。136回归、117保护、44/81HTTP、36比较/216独立指标及原六行双视口通过；正式库/原始/成员/7015归属/Spotify声明/UI保持，The Moment继续暂缓。代码未整合到运行主目录，未提交/推送/部署；正式仍余24。见[候选验收及清单](reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md)。
+
+> 前序调查规划检查点（2026-10-24，SS-2026-10-24-001，INVESTIGATED / PLAN READY）：24项当前状态只读复核，新增181个Spotify录音观测。建议分5项日期补证/冲突、4项版本逐曲、9项目标署名/非占有发行参照、6项暂缓；不是新增恢复数，正式仍余24。已纠正“多人发行一律不能使用”的过粗概括；Andrew项目5首无其演唱署名、THE SHOW两处变动录音未证等价、Hands All Over唯一成员为后加Jagger等已单列。建议的目标列名验证、共享发行参照和显式日期冲突审核能力均未实现；正式数据/成员/归属/UI和上批4日期保持，The Moment继续暂缓。见[调查](reports/2026-10-24-release-cycle-remaining24-investigation.md)、[24项处理规划](plans/2026-10-24-release-cycle-remaining24-resolution.md)。
+
+> 四项日期本地应用收口（2026-10-24，SS-2026-10-23-002，APPLIED / LOCAL ACCEPTED）：按用户确认范围应用4项独立原专辑日期，沿用现有来源；fresh副本、七库联合切换及相关精确快照维护完成。117项保护、候选/正式各57HTTP与192项独立指标、桌面/手机原六行通过；96881播放、3328成员、7015归属、Spotify声明及UI保持，原TTPD/Showgirl表格HTML一致。剩余24项（粗日期7、来源12、身份5），The Moment及其两首归属保持暂缓。未提交/推送/生产部署；见[本地应用与验收](reports/2026-10-23-release-cycle-next-batch-review.md#用户确认后的本地正式应用与验收)。
+
 > Title生产收口（2026-10-23，SS-2026-10-23-001，CLOSED / RELEASED）：本轮修复已独立提交推送，f153dc9f正式Release及质量CI成功，生产自身fresh备份应用18首Expanded主来源和2015-01-09项目日，I’ll Be Home仍归Christmas。117项保护、42项HTTP/192指标及桌面/手机原六行验收通过，96881原始播放、项目成员、7015归属、Spotify声明和UI保持。精确快照及同SHA预置manifest维护完成，旧七库/首页恢复点保留；本轮源分支和整合工作树已归档收尾。Title暂缓解除，其他28项独立治理保持；以下为历史检查点。见[生产交付](reports/2026-10-23-title-release-attribution-repair.md#用户授权后的提交生产发布与上线验收)。
 
 > 正式收口（2026-10-23，SS-2026-10-21-006，CLOSED / RELEASED）：业务2f4b7f26已推送并正式部署，CI／Release成功；生产自身fresh备份应用45主来源和10独立日期，114项保护、68HTTP／468指标、全选择器及桌面／手机验收通过。原始记录、成员、7015归属、Spotify声明与原六指标UI保持；29项独立治理、Title暂缓。见[生产交付](reports/2026-10-22-release-cycle-production-delivery.md)，以下本地与发布前记录保留历史语境。
@@ -220,6 +230,8 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 
 | ID | 事项 | 状态与剩余工作 | 优先级 / 下一步 | 证据或方案 | 最后核验 |
 | --- | --- | --- | --- | --- | --- |
+| SS-2026-10-24-001 | 发行周期剩余24项处理方案 | INVESTIGATED / PLAN READY；5日期、4版本、9参照、6暂缓，正式未改 | 建议先补目标列名/共享参照/日期冲突共用合同，再逐批副本审阅；The Moment排除，不混入上批本地交付 | [调查](reports/2026-10-24-release-cycle-remaining24-investigation.md)、[完整规划](plans/2026-10-24-release-cycle-remaining24-resolution.md) | 2026-10-24 |
+| SS-2026-10-23-002 | 发行周期剩余来源与日期治理 | APPLIED / LOCAL ACCEPTED；4项日期正式本地应用及快照/接口/原UI验收完成，剩余24 | 本批本地收口，待明确生产交付指令；The Moment继续暂缓，其他来源/身份/目录边界保持 | [本地应用与验收](reports/2026-10-23-release-cycle-next-batch-review.md#用户确认后的本地正式应用与验收) | 2026-10-24 |
 | SS-2026-10-23-001 | Title改期导致歌曲归属迁移 | CLOSED / RELEASED；f153dc9f生产应用及验收完成 | 117保护、42HTTP/192指标、原六行UI通过；联合恢复点保留，源分支/工作树已收尾 | [生产验收](reports/2026-10-23-title-release-attribution-repair.md#用户授权后的提交生产发布与上线验收) | 2026-10-23 |
 | SS-2026-10-21-006 | 发行周期来源类型、稳定身份与独立日期 | CLOSED / RELEASED；2f4b7f26已上线，CI／Release及生产114保护、68HTTP／468指标、全部选择器和双视口通过 | 45主来源／10独立日期已应用，原始／成员／归属和原六指标UI保持；29项独立治理，Title暂缓 | [生产交付](reports/2026-10-22-release-cycle-production-delivery.md) | 2026-10-23 |
 | SS-2026-10-21-004 | 榜单对决发行周期恢复 | CLOSED / RELEASED：P0–P6全部完成；c741a96f的CI/Release、本地与生产自身补证应用、111类保护、全资格及实际双视口通过 | 有新来源证据或人工决定时维护剩余98项；无活跃修复待办 | [已完成规划](archive/06-productization-closeout/2026-10-21-versus-release-cycle-repair-plan.md)、[最终验收](reports/2026-10-21-versus-release-cycle-repair-acceptance.md) | 2026-10-21（本地/生产通过） |

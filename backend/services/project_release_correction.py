@@ -18,7 +18,7 @@ from backend.domains.metadata.album_track_release_evidence import (
     valid_assertion,
     validate_sources,
 )
-from backend.domains.metadata.release_dates import parse_release_date
+from backend.domains.metadata.release_dates import compare_release_dates, parse_release_date
 from backend.domains.playback.album_projects import _bump_album_project_revision
 from backend.domains.playback.l3_album_attribution import (
     L3_ALBUM_ATTRIBUTION_POLICY_VERSION,
@@ -72,6 +72,25 @@ def prepare_release_correction(conn, request):
     ).fetchone():
         raise ValueError("approved_original_date_requires_separate_review")
     guard, _ = source_guard(conn, pid, request["source_id"])
+    if (
+        compare_release_dates(
+            parse_release_date(*guard["source_identity"][2:4]),
+            parse_release_date(request["release_date"], "day"),
+        )
+        == "conflict"
+    ):
+        from backend.domains.metadata.release_dates import release_anchor_sources
+
+        project = _project(conn, pid)
+        reviewed = release_anchor_sources(conn, project["primary_album_id"], project_id=pid)
+        if not any(
+            row["spotify_album_id"] == request["source_id"]
+            and row.get("release_date_assertion_id")
+            and not row.get("independent_date_conflict")
+            and row["release_date"] == request["release_date"]
+            for row in reviewed
+        ):
+            raise ValueError("source_date_conflict_requires_explicit_date_review")
     plan = plan_l3_album_attributions(conn)
     scope = sorted(d.canonical_song_key for d in plan.decisions if pid in d.source_project_ids)
     if not scope:

@@ -121,8 +121,9 @@ def resolve_release_targets(conn, items: list[dict], merge_level: int = 2) -> li
         verified = [
             row
             for row in rows
-            if resolver.match(row["spotify_album_id"], identity.artist_id, identity.artist_name)
+            if resolver.target_presence(row["spotify_album_id"], identity.artist_id)
             == "verified_id"
+            or row.get("reference_verified")
             or (
                 row["project_bound"]
                 and resolver.read(row["spotify_album_id"])
@@ -131,6 +132,11 @@ def resolve_release_targets(conn, items: list[dict], merge_level: int = 2) -> li
                 )
             )
         ]
+        if any(
+            row.get("release_reference_id") and not row.get("reference_verified") for row in rows
+        ):
+            result.append(ReleaseTarget(**values, reason="release_source_unconfirmed"))
+            continue
         if not verified:
             result.append(ReleaseTarget(**values, reason="artist_identity_unconfirmed"))
             continue

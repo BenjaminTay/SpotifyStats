@@ -21,7 +21,7 @@ from backend.core.db import SCHEMA
 logger = logging.getLogger(__name__)
 
 MIGRATIONS: list[tuple[int, str, Callable[[sqlite3.Connection], None]]] = []
-LATEST_SCHEMA_VERSION = 95
+LATEST_SCHEMA_VERSION = 96
 
 _IDEMPOTENT_OPERATIONAL_ERRORS = (
     "already exists",
@@ -4369,6 +4369,13 @@ def migrate_095(conn: sqlite3.Connection):
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_album_date_approved_edition ON album_release_date_assertions(project_id,spotify_album_id,territory,medium) WHERE status='approved' AND date_kind='edition_release'"
     )
+
+
+@migration(96, "reviewed_release_references_and_date_conflicts")
+def migrate_096(conn: sqlite3.Connection):
+    from backend.domains.metadata.album_release_references import create_schema
+
+    create_schema(conn)
 
 
 def _ensure_migrations_table(conn: sqlite3.Connection):

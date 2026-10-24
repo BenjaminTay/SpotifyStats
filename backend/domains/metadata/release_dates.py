@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
-RELEASE_DATE_POLICY_VERSION = "release_date_evidence_v4_release_scopes"
+RELEASE_DATE_POLICY_VERSION = "release_date_evidence_v5_reviewed_references"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS spotify_album_date_observations (
@@ -210,6 +210,13 @@ def _release_anchor_sources(conn, album_id, *, project_id=None, explicit_edition
     edition's primary source. No relationship or artist identity is approved here.
     """
     from backend.domains.playback.album_project_identity import normalize_album_project_lookup
+
+    if not explicit_edition:
+        from backend.domains.metadata.album_release_references import reference_sources
+
+        reference = reference_sources(conn, project_id, album_id)
+        if reference is not None:
+            return reference
 
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     album = conn.execute("SELECT album_name FROM albums WHERE album_id=?", (album_id,)).fetchone()

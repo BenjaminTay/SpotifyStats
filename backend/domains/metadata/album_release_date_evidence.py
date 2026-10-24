@@ -107,7 +107,14 @@ def _guard(conn, project_id, source_id, *, verify_artist=True, date_kind="origin
         raise ValueError("source_not_established_for_project")
     resolver = AlbumArtistResolver(conn) if verify_artist else None
     name = conn.execute("SELECT artist_name FROM artists WHERE artist_id=?", (p[1],)).fetchone()
-    if not name or (verify_artist and resolver.match(source_id, p[1], name[0]) != "verified_id"):
+    reviewed_participation = any(
+        r["spotify_album_id"] == source_id and r.get("reference_verified") for r in sources
+    )
+    if not name or (
+        verify_artist
+        and resolver.target_presence(source_id, p[1]) != "verified_id"
+        and not reviewed_participation
+    ):
         raise ValueError("artist_identity_unconfirmed")
     s = conn.execute(
         "SELECT release_date,release_date_precision,track_list,total_tracks FROM spotify_album_meta WHERE spotify_album_id=?",
@@ -246,6 +253,14 @@ def _bump(conn):
 
 
 def review_assertion(conn, assertion_id, decision, *, actor, reason, run_id):
+    return _review_assertion(
+        conn, assertion_id, decision, actor=actor, reason=reason, run_id=run_id
+    )
+
+
+def _review_assertion(
+    conn, assertion_id, decision, *, actor, reason, run_id, explicit_conflict=False
+):
     """Caller must fence and reconcile L3 before committing approval/revocation."""
     from backend.domains.metadata.release_dates import compare_release_dates, parse_release_date
 
@@ -273,7 +288,10 @@ def review_assertion(conn, assertion_id, decision, *, actor, reason, run_id):
             if guard != stored:
                 raise ValueError("source_or_project_identity_changed")
             raw = parse_release_date(*guard["source_pair"])
-            if compare_release_dates(raw, day) not in ("compatible", "same"):
+            if not explicit_conflict and compare_release_dates(raw, day) not in (
+                "compatible",
+                "same",
+            ):
                 raise ValueError("independent_date_conflicts_with_source")
             for source in (
                 _release_anchor_sources(
@@ -283,17 +301,23 @@ def review_assertion(conn, assertion_id, decision, *, actor, reason, run_id):
                 else []
             ):
                 other = parse_release_date(source["release_date"], source["release_date_precision"])
-                if compare_release_dates(other, day) not in ("compatible", "same"):
+                if not explicit_conflict and compare_release_dates(other, day) not in (
+                    "compatible",
+                    "same",
+                ):
                     raise ValueError("independent_date_conflicts_with_source_set")
             if row["date_kind"] == "original_release" and current != json.loads(
                 row["previous_project_pair_json"]
             ):
                 raise ValueError("project_pair_changed")
-            if row["date_kind"] == "original_release" and compare_release_dates(
-                parse_release_date(*current), day
-            ) not in (
-                "compatible",
-                "same",
+            if (
+                not explicit_conflict
+                and row["date_kind"] == "original_release"
+                and compare_release_dates(parse_release_date(*current), day)
+                not in (
+                    "compatible",
+                    "same",
+                )
             ):
                 raise ValueError("independent_date_conflicts_with_project")
             if conn.execute(
@@ -367,9 +391,33 @@ def overlay_source_dates(conn, rows, *, project_id, album_id, date_kind="origina
         date_kind == "edition_release" and album_id not in stored.get("edition_album_ids", [])
     ):
         return rows
+    from backend.domains.metadata.album_release_references import available
+
+    conflict_review = (
+        conn.execute(
+            "SELECT guard_json FROM album_release_date_conflict_reviews WHERE assertion_id=?",
+            (evidence["assertion_id"],),
+        ).fetchone()
+        if available(conn, "album_release_date_conflict_reviews")
+        else None
+    )
+    if conflict_review:
+        expected = json.loads(conflict_review[0])
+        try:
+            valid = _conflict_guard(conn, evidence) == expected
+            if date_kind == "original_release":
+                pair = conn.execute(
+                    "SELECT release_date,release_date_precision FROM album_projects WHERE project_id=?",
+                    (project_id,),
+                ).fetchone()
+                valid = valid and list(pair) == [evidence["release_date"], "day"]
+        except ValueError:
+            valid = False
+        if not valid:
+            return [{**row, "independent_date_conflict": True} for row in rows]
     result = []
     for row in rows:
-        if row["spotify_album_id"] != evidence["spotify_album_id"]:
+        if row["spotify_album_id"] != evidence["spotify_album_id"] and not conflict_review:
             result.append(row)
             continue
         try:
@@ -399,3 +447,92 @@ def overlay_source_dates(conn, rows, *, project_id, album_id, date_kind="origina
             }
         )
     return result
+
+
+def _conflict_guard(conn, row):
+    from backend.domains.metadata.album_release_references import review_guard
+    from backend.domains.metadata.release_dates import _release_anchor_sources
+
+    guard = review_guard(conn, row["project_id"], row["spotify_album_id"])
+    original, _ = _guard(
+        conn, row["project_id"], row["spotify_album_id"], date_kind=row["date_kind"]
+    )
+    guard["date_source_guard"] = original
+    albums = original.get("edition_album_ids", [original["primary_album_id"]])
+    guard["source_sets"] = [
+        [
+            album,
+            _release_anchor_sources(
+                conn,
+                album,
+                project_id=row["project_id"],
+                explicit_edition=row["date_kind"] == "edition_release",
+            ),
+        ]
+        for album in albums
+    ]
+    return guard
+
+
+def prepare_date_conflict(conn, assertion_id):
+    """Explicit, read-only conflict proposal; ordinary precision approval stays strict."""
+    row = _row(conn, assertion_id)
+    if row["status"] != "pending":
+        raise ValueError("pending_date_assertion_required")
+    return {"assertion": row, "guard": _conflict_guard(conn, row)}
+
+
+def approve_date_conflict(conn, proposal, *, actor, reason, run_id):
+    """Caller must fence/reconcile L3; source declarations are never rewritten."""
+    from backend.domains.metadata.album_track_release_evidence import require_transaction
+
+    require_transaction(conn, actor, reason)
+    row = proposal["assertion"]
+    existing = conn.execute(
+        "SELECT guard_json FROM album_release_date_conflict_reviews WHERE assertion_id=?",
+        (row["assertion_id"],),
+    ).fetchone()
+    current = _row(conn, row["assertion_id"])
+    if existing and current["status"] == "approved":
+        if (
+            json.loads(existing[0]) != proposal["guard"]
+            or _conflict_guard(conn, current) != proposal["guard"]
+        ):
+            raise ValueError("approved_conflict_dependencies_changed")
+        project = conn.execute(
+            "SELECT release_date,release_date_precision FROM album_projects WHERE project_id=?",
+            (row["project_id"],),
+        ).fetchone()
+        if row["date_kind"] == "original_release" and list(project) != [row["release_date"], "day"]:
+            raise ValueError("approved_project_pair_changed")
+        return False
+    if prepare_date_conflict(conn, row["assertion_id"]) != proposal:
+        raise ValueError("stale_date_conflict_proposal")
+    # Savepoint also undoes an audit record if the underlying review rejects.
+    conn.execute("SAVEPOINT explicit_date_conflict")
+    try:
+        conn.execute(
+            "INSERT INTO album_release_date_conflict_reviews(assertion_id,guard_json,actor,reason,reviewed_at) VALUES(?,?,?,?,?)",
+            (
+                row["assertion_id"],
+                _json(proposal["guard"]),
+                actor,
+                reason,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        changed = _review_assertion(
+            conn,
+            row["assertion_id"],
+            "approve",
+            actor=actor,
+            reason=reason,
+            run_id=run_id,
+            explicit_conflict=True,
+        )
+        conn.execute("RELEASE SAVEPOINT explicit_date_conflict")
+        return changed
+    except Exception:
+        conn.execute("ROLLBACK TO SAVEPOINT explicit_date_conflict")
+        conn.execute("RELEASE SAVEPOINT explicit_date_conflict")
+        raise

@@ -108,7 +108,7 @@ def source_guard(conn, project_id, source_id, *, resolver=None):
         "SELECT artist_name FROM artists WHERE artist_id=?", (project[1],)
     ).fetchone()
     resolver = resolver or AlbumArtistResolver(conn)
-    if not name or resolver.match(source_id, project[1], name[0]) != "verified_id":
+    if not name or resolver.target_presence(source_id, project[1]) != "verified_id":
         raise ValueError("artist_identity_unconfirmed")
     guard = {
         "project_identity": list(project),

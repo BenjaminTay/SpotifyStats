@@ -1,5 +1,11 @@
 # 交付与验证报告索引
 
+- [三项共用能力与六项目副本验收](2026-10-24-release-cycle-shared-capabilities-acceptance.md)：SS-2026-10-24-001，5项已本地正式应用并验收，4参照/2日期、136回归/117保护/各216指标及原六行双视口通过；原始/成员/归属/UI保持，余19项，Nevermind与The Moment暂缓。未提交/推送/生产部署。
+
+- [发行周期剩余24项调查](2026-10-24-release-cycle-remaining24-investigation.md)：SS-2026-10-24-001，24项只读复核及181个录音观测，5日期/4版本/9参照/6暂缓的完整建议；[规划](../plans/2026-10-24-release-cycle-remaining24-resolution.md)待实施，正式数据/UI未改。
+
+- [发行周期28项审核与4项日期本地应用](2026-10-23-release-cycle-next-batch-review.md)：SS-2026-10-23-002，4项确认日期已应用到本地正式库；117保护、候选/正式57HTTP及192指标、原六行双视口通过，原始/成员/归属/UI保持。剩余24项，The Moment暂缓；未提交/推送/生产部署。
+
 - [Title发行日期与歌曲归属修复](2026-10-23-title-release-attribution-repair.md)：SS-2026-10-23-001，f153dc9f已推送部署及生产应用，CI/Release、117保护、42HTTP/192指标与原六行桌面/手机验收通过；原始/成员/7015归属/UI保持，本轮工作树与分支已收尾。
 
 - [专辑旗下单曲成绩归属修复](2026-10-21-album-song-performance-attribution.md)：统一项目归属、详情投影与正式点数排名；72首/41项目逐项对账，已本地提交，未推送/部署。

@@ -285,9 +285,20 @@ SS-2026-09-24-002 的本地实现（migration 88）独立于 Track evidence；�
 
 ## 发行日期精度
 
+
+### 目标艺人、发行参照与日期冲突审核
+
+发行资格使用稳定目标ID列名判断 `AlbumArtistResolver.target_presence()`，不要求其他联合艺人全部解析。目标自身歧义、未列名或只有名称仍拒绝；完整艺人集合的 `match()`／`canonical_key()` 继续严格，不改变艺人归并或有效歌曲署名。
+
+schema96的 `album_release_references` 是非占有、明确审核的发行参照。每份参照须覆盖所选项目全部既有曲目，保存明确Track owner与目录ID对应、Album/Track参与关系、日期用途、地区/媒介、证据以及目录、身份、成员、已发布归属守卫。参照不转移 `album_project_external_ids` 的唯一来源绑定，不添加来源目录成员，也不生成L3来源候选；同ISRC只构成调查支持，不能自动建立录音关系。待审不参与消费；批准/撤销更新revision，守卫漂移使批准失效，显式版别请求不借用项目参照。
+
+普通独立日期审批仍拒绝来源或项目日期冲突。冲突必须走 `prepare_date_conflict()`／`approve_date_conflict()`，明确保存旧声明、完整来源集合、选择日期的用途/地区/媒介、理由及成员/归属守卫；原Spotify声明不改，原项目日与具体版别日分开读取。来源纠正不得只写项目日期而使读取端继续使用冲突的原声明，必须先有同合同的有效独立日期审核。
+
+批准与撤销由事务调用方维护归属发布；`release_evidence_review`在保存点内核对完整前后规划和已发布目标/原生项目/代表曲目/艺人键/归属类型，限定受影响范围并拒绝未批准变化；不自动生成归属覆盖，不采用全库新规划。`scripts/preview_release_evidence.py`始终使用Online Backup临时副本演练，无输入源写入开关。正式数据应用另行确认并从自身fresh基线验收。当前候选应用范围、缺证及正式状态见主目录的三项共用能力验收报告。
+
 ### 项目原始日、版本日与逐曲收录
 
-项目原始发行日（`original_release`）与具体版本发行日（`edition_release`）分别审核及读取；明确版本请求不能借用项目原始日。日期回退优先明确主来源和独立日期事实，不以曲目数最多推定原版日期。原有同年精度补齐继续拒绝跨年冲突，跨年纠正使用单列显式提案。日期依赖合同为 `release_date_evidence_v4_release_scopes`，部署时须按新依赖维护相关精确快照，不能复用旧语义的日期结果。
+项目原始发行日（`original_release`）与具体版本发行日（`edition_release`）分别审核及读取；明确版本请求不能借用项目原始日。日期回退优先明确主来源和独立日期事实，不以曲目数最多推定原版日期。原有同年精度补齐继续拒绝跨年冲突，跨年纠正使用单列显式提案。日期依赖合同为 `release_date_evidence_v5_reviewed_references`，部署时须按新依赖维护相关精确快照，不能复用旧语义的日期结果。
 
 schema95提供独立逐曲版别收录层 `album_track_release_assertions`，审核 `original / bonus / reissue`、确切收录日或NULL、日期用途、地区/媒介及来源。该层不修改项目成员或Spotify原始声明；通过艺人ID、完整目录、owner和成员基线校验，审批/撤销推进项目revision。L3新增证据合同 `album_track_release_evidence_v1` 只在有审核事实时细化候选，历史无事实输入仍沿用v2。附加曲目不继承项目更早日期，未知或不可比日期不以项目ID决胜；失效事实进入冲突。合辑、重录、Live和单曲既有类别保持。
 
