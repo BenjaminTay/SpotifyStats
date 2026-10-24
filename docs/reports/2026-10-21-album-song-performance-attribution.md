@@ -115,3 +115,9 @@
 本地源分支codex/local-fixes-20261021已用merge-base证明完全合入main并删除，本地仅main且无新增工作树；远端源分支保留为已整合历史。五个原候选SHA未重写，三次发布补修分别是a1241fdf、24e2ccf7、15d96469。后续交付文档单独提交，不触发业务部署；README、AGENTS/CLAUDE和文档地图无新增入口，保持不变。独立OOM事项仍OPEN/OBSERVING，不以本轮健康状态代替长期正常使用观察。
 
 恢复资料仍在`backups/import-release-20261021/originals-20261021T062142Z/`及各Online Backup。为满足容量，报告上文部分`.db`路径现对应同名`.db.gz`，包括pre-import、pre/post-latest-sync、pre-restore-credit及已关闭pre-release/定时备份；均gzip校验通过，恢复时先解压到独立路径。在线DB、原文件身份恢复目录和旧失败resume未因此压缩或替换。跨库同步的人工治理保全和全过程容量预算已补入[导入规则](../reference/data-import-and-health.md#第二轮导入安全边界)，明确为维护要求，未宣称新增自动合库能力。
+
+## 2026-10-25远端分支清理
+
+按用户本轮清理授权，核对 `codex/local-fixes-20261021` 的远端HEAD为 `bc6a7a97395ff1e2cb5fa191357aaaccee970a4f`，是当前main `65591730607259c9ca8c0fbf5177010516eb1ceb` 的祖先，没有独有提交或打开的PR。使用精确SHA的force-with-lease随同另一条已合入交付分支原子删除；此前本地分支已删除，没有对应工作树需要移除。上文“远端保留”仅描述原交付时状态。
+
+原提交仍在main历史，可按需使用 `git branch codex/local-fixes-20261021 bc6a7a97395ff1e2cb5fa191357aaaccee970a4f` 恢复本地分支；本轮没有执行恢复。既有7个源码恢复引用、2个历史stash及运行数据保持不变，不新增业务修复或生产操作。

@@ -165,14 +165,16 @@
 
 | 状态 | 分支 / 候选 | 负责人及下一步 |
 | --- | --- | --- |
-| 唯一保留分支与工作树 | `main` | 清理基线f284d7d0的CI已通过；本轮7份清理文档随本次提交保存，推送及CI结果按该提交的实际Git/GitHub记录核对。OOM观察继续在主线维护，不再保留独立整合树。 |
+| 唯一保留分支与实际工作树 | `main` | 2026-10-25清理基线为65591730，本地/远端仅main，主目录为唯一实际工作树。清理未改变业务源码；6份文档随本次提交保存，推送及CI结果按该提交实际Git/GitHub记录核对。 |
+| ARCHIVED / 源码保留 | 原 `codex/versus-release-cycle-repair-20261021` | be175498已保存为 `refs/codex-archive/20261025-closeout/versus-release-cycle-repair`，核验包含555195c2后删除本地及远端分支。发行周期业务已等价合入；移动端修复保留为SS-2026-10-21-005独立待办，不整体合并6个主线外提交。 |
+| CLOSED / 已合入并清理 | 原 `codex/local-fixes-20261021`、`codex/versus-release-cycle-delivery-20261021` | 2026-10-25按用户授权删除两条远端历史分支，本地分支及临时工作树此前已收尾。删除前HEAD为bc6a7a97和2b69292d，均为当前main祖先，无独有待合入提交；按原SHA从main历史恢复。 |
 | CLOSED / 源码归档；采用范围已发布 | 原 `codex/album-rank-cost` | 5业务/16回归与main完全一致；本地及远端分支已删除，bfecef52由 `refs/codex-archive/20261020-closeout/album-rank-cost` 保留。未采用schema91等不作欠账；旧ignored运行材料的现位置未核实。 |
 | CLOSED / 已合入 | 原 `codex/versus-detail-integration` | 本地/远端分支及整合工作树已删除；原66ad5e60全部在main历史，无独有待合入提交。 |
-| CLOSED / 已合入 | 原专辑生产交付、详情性能、署名解析远端分支 | 六条历史远端分支均已清理；逐项原SHA及合入判定见10-20清理报告。 |
+| CLOSED / 已合入 | 原专辑生产交付、详情性能、署名解析远端分支 | 10-20的六条历史远端分支已清理；逐项原SHA及合入判定见10-20清理报告。 |
 | ARCHIVED / 未采用 | 前端设置加载、JSON名称传输、艺人范围身份及历史OOM混合补丁 | 原恢复引用保留；不整体合入。旧归档目录当前不存在，dirty补丁与运行证据的可恢复性未核实。 |
 | CLOSED / 修复已吸收 | 原CI挂起诊断分支 | 本地早已关闭，本轮删除远端；5个独有提交有既有 `refs/codex-archive/20261012T082400Z/ci` 保留，相关修复已核对由主线吸收。 |
 
-2026-10-20清理后：仅main、1个实际工作树、6个本地源码恢复引用、2个历史stash。实现、提交、推送和发布分别记录；当前[逐项处置与恢复入口](reports/2026-10-20-development-branch-worktree-closeout.md)，[10-12记录](reports/2026-10-12-development-worktree-closeout.md)保留历史语境。
+2026-10-25最终清理后：本地/远端仅main、1个实际工作树、8个本地源码恢复引用、2个历史stash。原SHA及恢复方式见[单曲成绩交付](reports/2026-10-21-album-song-performance-attribution.md#2026-10-25远端分支清理)、[交付分支清理](reports/2026-10-21-versus-release-cycle-repair-acceptance.md#2026-10-25远端交付分支清理)、[混合分支归档](reports/2026-10-21-versus-release-cycle-repair-acceptance.md#2026-10-25混合研发分支归档清理)。用户已授权将6份清理文档提交、推送并确认CI；本次仅交付文档，不包含移动端业务修复。[10-20处置](reports/2026-10-20-development-branch-worktree-closeout.md)及[10-12记录](reports/2026-10-12-development-worktree-closeout.md)保留历史语境。
 
 ## 当前概况
 
@@ -234,6 +236,7 @@ P1 表示建议优先推进，P2 表示后续排期。尚未实现的修改也�
 | SS-2026-10-23-002 | 发行周期剩余来源与日期治理 | APPLIED / LOCAL ACCEPTED；4项日期正式本地应用及快照/接口/原UI验收完成，剩余24 | 本批本地收口，待明确生产交付指令；The Moment继续暂缓，其他来源/身份/目录边界保持 | [本地应用与验收](reports/2026-10-23-release-cycle-next-batch-review.md#用户确认后的本地正式应用与验收) | 2026-10-24 |
 | SS-2026-10-23-001 | Title改期导致歌曲归属迁移 | CLOSED / RELEASED；f153dc9f生产应用及验收完成 | 117保护、42HTTP/192指标、原六行UI通过；联合恢复点保留，源分支/工作树已收尾 | [生产验收](reports/2026-10-23-title-release-attribution-repair.md#用户授权后的提交生产发布与上线验收) | 2026-10-23 |
 | SS-2026-10-21-006 | 发行周期来源类型、稳定身份与独立日期 | CLOSED / RELEASED；2f4b7f26已上线，CI／Release及生产114保护、68HTTP／468指标、全部选择器和双视口通过 | 45主来源／10独立日期已应用，原始／成员／归属和原六指标UI保持；29项独立治理，Title暂缓 | [生产交付](reports/2026-10-22-release-cycle-production-delivery.md) | 2026-10-23 |
+| SS-2026-10-21-005 | 移动端长时间轴排名趋势孤立点不可见 | OPEN / 待主线整合；555195c2已有历史本地候选，随be175498归档保留，尚未进入main或生产 | P2：从恢复引用按当前main提取RankTrendChart及定向回归，复核后再单独提交交付；不整体恢复混合分支 | [问题台账](issues/2026-08-27-issue-register.md#2026-10-21-移动端排名趋势孤立点不可见)、[恢复入口](reports/2026-10-21-versus-release-cycle-repair-acceptance.md#2026-10-25混合研发分支归档清理) | 2026-10-25（仅源码与待办核对，未重新验收） |
 | SS-2026-10-21-004 | 榜单对决发行周期恢复 | CLOSED / RELEASED：P0–P6全部完成；c741a96f的CI/Release、本地与生产自身补证应用、111类保护、全资格及实际双视口通过 | 有新来源证据或人工决定时维护剩余98项；无活跃修复待办 | [已完成规划](archive/06-productization-closeout/2026-10-21-versus-release-cycle-repair-plan.md)、[最终验收](reports/2026-10-21-versus-release-cycle-repair-acceptance.md) | 2026-10-21（本地/生产通过） |
 | SS-2026-10-08-001 | 后端内存稳定性 | OPEN / OBSERVING：本轮开发与发布CLOSED，f128已交付；历史OOM和旧失败保留 | P1：仅约1–3天实际正常使用及自然发生的相关维护观察；增长有界、容量足够、统计与体验正常且无本链新OOM/意外重启后再结项；不追加优化或实验 | [生产交付](reports/2026-10-19-minimal-memory-production-delivery.md)、[精简计划](plans/2026-10-19-performance-scope-and-memory-closeout.md) | 2026-10-19（22:37既有快照healthy，非长期稳定证明） |
 | SS-2026-10-11-001 | 手机播放统计加载时弹层状态丢失 | OPEN/P2；未改动前端基线受控复现，加载中打开时间弹层后，数据到达导致控件重新挂载并关闭弹层；尚未产品修复 | P2：独立保持控件/编辑状态连续性；本轮门禁只等待初始页面就绪，保留原超时与应用后断言，不用门禁Pass关闭产品问题 | [台账](issues/2026-08-27-issue-register.md)、[受控复现](reports/2026-10-09-music-detail-chart-performance-acceptance.md)本地专辑候选节 | 2026-10-11 |
