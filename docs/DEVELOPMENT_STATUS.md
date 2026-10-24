@@ -1,8 +1,8 @@
 # SpotifyStats 开发状态总表
 
-> 五项生产发布进行中（2026-10-24，SS-2026-10-24-001）：用户已授权独立提交/推送/正式部署及5项应用，schema96声明和合成seed已同步。生产实查仍为f153dc9f/schema95，尚未应用本地前批4日期；本次生产仅应用确认5项目，不能将本地剩19误作生产基线。原始、成员、归属和UI边界不变；最终结果见本轮验收报告。
+> 五项生产交付收口（2026-10-24，SS-2026-10-24-001，CLOSED / RELEASED）：三项共用能力与确认5项已生产交付；dacdb862正式Release/质量CI成功，4参照/2日期、120保护、81HTTP/216指标及原六行双视口通过。原始/成员/归属/Spotify声明/UI保持，生产余23、本地余19，Nevermind与The Moment暂缓。 前批4日期不混入本批生产。展示HTTPS入口额外81HTTP通过；私有Tailscale域名DNS直连待独立核查，未记为通过。见[生产交付](reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md#用户授权后的提交生产发布与上线验收)。
 
-> 五项本地正式应用收口（2026-10-24，SS-2026-10-24-001，APPLIED / LOCAL ACCEPTED）：三项共用能力代码已整合（未提交），正式自身fresh备份应用4参照/2日期、七库联合切换及相关精确快照维护完成。136回归、117保护、新副本/正式各81HTTP及216独立指标、原六行桌面/手机通过；原TTPD/Showgirl表格outerHTML一致。原始/成员/7015归属/Spotify声明/UI保持，正式剩19项（粗日期6、来源8、身份5），Nevermind与The Moment暂缓。未推送/生产部署；见[正式应用与验收](reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md#用户确认后的本地正式应用与验收)。
+> 历史五项本地正式应用收口（2026-10-24，SS-2026-10-24-001，APPLIED / LOCAL ACCEPTED）：三项共用能力代码已整合（未提交），正式自身fresh备份应用4参照/2日期、七库联合切换及相关精确快照维护完成。136回归、117保护、新副本/正式各81HTTP及216独立指标、原六行桌面/手机通过；原TTPD/Showgirl表格outerHTML一致。原始/成员/7015归属/Spotify声明/UI保持，正式剩19项（粗日期6、来源8、身份5），Nevermind与The Moment暂缓。未推送/生产部署；见[正式应用与验收](reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md#用户确认后的本地正式应用与验收)。
 
 > 历史候选检查点（2026-10-24，SS-2026-10-24-001，READY / COPY ACCEPTED）：目标艺人列名、非占有发行参照与显式日期冲突审核已在隔离工作树实现。六项目副本验证5通过、Nevermind录音ID映射缺证阻塞；4参照/2日期形成5项目待确认清单。136回归、117保护、44/81HTTP、36比较/216独立指标及原六行双视口通过；正式库/原始/成员/7015归属/Spotify声明/UI保持，The Moment继续暂缓。代码未整合到运行主目录，未提交/推送/部署；正式仍余24。见[候选验收及清单](reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md)。
 

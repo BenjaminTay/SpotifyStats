@@ -2,7 +2,7 @@
 
 ## 2026-10-24 发行周期剩余24项调查与方案
 
-- `SS-2026-10-24-001`（`APPLIED / LOCAL ACCEPTED`，最后核验2026-10-24）：三项共用能力已整合到主目录，确认的5项在本地正式应用，4参照/2日期及七库/相关快照维护完成。136回归、117保护、新副本/正式各81HTTP、216指标及原六行双视口通过；原始/成员/7015归属/Spotify声明/UI保持，原问题两专辑表格HTML一致。余19项（粗日期6、来源8、身份5），Nevermind与The Moment暂缓。未提交/推送/生产部署。见[正式验收](../reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md#用户确认后的本地正式应用与验收)。
+- `SS-2026-10-24-001`（`CLOSED / RELEASED`，最后核验2026-10-24）：三项共用能力与确认5项已生产交付；dacdb862正式Release/质量CI成功，4参照/2日期、120保护、81HTTP/216指标及原六行双视口通过。原始/成员/归属/Spotify声明/UI保持，生产余23、本地余19，Nevermind与The Moment暂缓。 前批4日期仍仅本地应用，未混入本批生产。见[生产验收](../reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md#用户授权后的提交生产发布与上线验收)。
 
 ## 2026-10-23 发行周期剩余28项独立治理审核
 

@@ -1,8 +1,8 @@
 # SpotifyStats 文档地图
 
-- [三项共用能力与六项目副本验收](reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md)：SS-2026-10-24-001，5项已本地正式应用并验收，4参照/2日期、136回归/117保护/各216指标及原六行双视口通过；原始/成员/归属/UI保持，余19项，Nevermind与The Moment暂缓。未提交/推送/生产部署。
+- [发行周期共用能力与五项生产交付](reports/2026-10-24-release-cycle-shared-capabilities-acceptance.md)：SS-2026-10-24-001，三项共用能力与确认5项已生产交付；dacdb862正式Release/质量CI成功，4参照/2日期、120保护、81HTTP/216指标及原六行双视口通过。原始/成员/归属/Spotify声明/UI保持，生产余23、本地余19，Nevermind与The Moment暂缓。
 
-- [剩余24项调查](reports/2026-10-24-release-cycle-remaining24-investigation.md)与[处理规划](plans/2026-10-24-release-cycle-remaining24-resolution.md)：SS-2026-10-24-001，181个录音新观测；逐项给出5日期、4版本、9参照和6暂缓建议，纠正多人署名概括。后续共用能力已在隔离候选实现（见上项验收），正式数据/成员/归属/UI保持，The Moment继续暂缓。
+- [剩余24项调查](reports/2026-10-24-release-cycle-remaining24-investigation.md)与[处理规划](plans/2026-10-24-release-cycle-remaining24-resolution.md)：SS-2026-10-24-001，181个录音新观测；逐项给出5日期、4版本、9参照和6暂缓建议，纠正多人署名概括。此为历史只读调查；后续共用能力及五项生产应用见上项，原始/成员/归属/UI保持，The Moment继续暂缓。
 
 - [发行周期28项审核与4项日期本地应用](reports/2026-10-23-release-cycle-next-batch-review.md)：SS-2026-10-23-002，4项确认日期已应用到本地正式库；117保护、候选/正式57HTTP及192指标、原六行双视口通过，原始/成员/归属/UI保持。剩余24项，The Moment暂缓；未提交/推送/生产部署。
 
