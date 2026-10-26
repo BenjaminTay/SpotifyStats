@@ -2,7 +2,7 @@
 
 面向维护者与协作Agent，统一记录当前事项、交付边界和下一步。产品介绍见[项目首页](../README.md)，使用方法见[使用指南](user-guide.md)。
 
-文档核对：2026-10-26。文档整理基线为 `509a88f3`；生产及CI结论引用各报告当时的记录，未因文档整理重新采样。实现、本地应用、提交、推送、部署、观察和外部验收分别记录。本轮文档整理已完成本地验收，统一Git交付范围与分支见[提交与推送记录](reports/2026-10-25-documentation-cleanup-delivery.md#统一提交与推送)。
+文档核对：2026-10-26。文档整理基线为 `509a88f3`；生产结论引用各报告当时的记录，未因文档整理重新采样。实现、本地应用、提交、推送、部署、观察和外部验收分别记录。本轮文档整理已完成本地验收，71312b6a已推送且两条远端CI成功；最新CI及主线整合边界见[CI确认与主线整合](reports/2026-10-25-documentation-cleanup-delivery.md#ci确认与主线整合)。
 
 ## 当前概况
 
@@ -12,8 +12,8 @@
 
 | 状态维度 | 已确认结论 | 证据范围 |
 | --- | --- | --- |
-| 实现与仓库 | 当前main为509a88f3；业务交付链已包含15d96469、c741a96f、2f4b7f26、f153dc9f及dacdb862，独立移动端555195c2仍只在恢复引用中 | [单曲成绩交付](reports/2026-10-21-album-song-performance-attribution.md#最终发布与生产验收)、[最新生产交付](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收) |
-| CI | 509a88f3清理文档CI已成功；dacdb862业务质量CI及正式Release成功，旧容量拒绝保留 | [文档CI](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40114632287)、[业务CI](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40059332349)、[正式Release](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40059332342) |
+| 实现与仓库 | 文档整理前main为509a88f3，统一文档提交为71312b6a；本次将通过CI的交付分支最新版本快进整合，业务交付链仍包含15d96469、c741a96f、2f4b7f26、f153dc9f及dacdb862，独立移动端555195c2仍只在恢复引用中 | [文档整合](reports/2026-10-25-documentation-cleanup-delivery.md#ci确认与主线整合)、[单曲成绩交付](reports/2026-10-21-album-song-performance-attribution.md#最终发布与生产验收)、[最新生产交付](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收) |
+| CI | 71312b6a质量CI与No Deploy契约检查均成功；发布忽略规则补修后的最新提交需全部CI成功后才整合。dacdb862业务质量CI及正式Release成功，旧容量拒绝保留 | [文档质量CI](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40274708185)、[No Deploy](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40274708159)、[整合边界](reports/2026-10-25-documentation-cleanup-delivery.md#ci确认与主线整合)、[正式Release](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40059332342) |
 | 生产发布 | 最新记录为dacdb862/schema96；生产自身fresh副本应用4参照/2日期，120类保护、81HTTP/216指标及原六行双视口通过；前批4日期未混入 | [生产应用与验收](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收)；独立数据审核、私有域名DNS及OOM观察未由本批交付关闭 |
 | 默认完整全栈 | 已有历史完整门禁按各自源码和输入版本保留；最近发行周期交付为受影响回归、CI及生产专项，不称当前main新跑过默认完整全栈 | [历史联合全栈](reports/2026-10-07-release-date-and-empty-stats-acceptance.md#发行日期精度与详情空统计联合集成验收)、[最新验收范围](reports/2026-10-24-release-cycle-review-and-delivery.md#发行周期共用能力六项目副本验收与五项生产交付) |
 | 真实模型、终端与入口 | 最新5项目有桌面/390×844及展示HTTPS额外81HTTP证据；私有网关经SSH隧道验收，私有Tailscale域名DNS直连未通过 | [入口边界](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收)；生产LLM、真实OAuth与物理手机仍单独验收 |
@@ -69,7 +69,7 @@
 
 | ID | 已交付能力 | 状态与证据 |
 | --- | --- | --- |
-| SS-2026-10-25-001 | 项目文档整理与更新 | CLOSED / LOCAL DOC VERIFIED；读者分工、命名、日常OAuth回调与Agent提交入口已补修；10-26再补齐Node.js 22.x最低22.13.0、Python分拆依赖更新及Spotify开发模式授权前提，针对性复验通过，正式Markdown保持242份；[最新补修与复验](reports/2026-10-25-documentation-cleanup-delivery.md#安装版本依赖更新与spotify授权前提补修)，统一收录于本次文档交付提交，分支及范围见[Git交付](reports/2026-10-25-documentation-cleanup-delivery.md#统一提交与推送)，不涉及生产部署 |
+| SS-2026-10-25-001 | 项目文档整理与更新 | CLOSED / LOCAL DOC VERIFIED；读者分工、命名、安装与授权说明、Agent提交入口及全部文档复验通过，正式Markdown保持242份；71312b6a已统一推送，两条CI成功；按[主线整合合同](reports/2026-10-25-documentation-cleanup-delivery.md#ci确认与主线整合)补齐发布忽略路径，并在最新提交CI通过后快进main，不部署；具体版本与远端结果以Git／Actions记录为准 |
 | SS-2026-10-24-001 | 目标艺人列名、非占有发行参照、显式日期冲突审核与确认5项目 | CLOSED / RELEASED；schema96与dacdb862已交付；[交付](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收) |
 | SS-2026-10-23-002（本地范围） | 4项独立原专辑日期应用 | APPLIED / LOCAL ACCEPTED；本地应用与验收收口；[本地验收](reports/2026-10-23-release-cycle-next-batch-review.md#用户确认后的本地正式应用与验收) |
 | SS-2026-10-23-001 | Title原项目日期与逐曲版别证据、既有歌曲归属保护 | CLOSED / RELEASED；f153dc9f已交付；[生产交付](reports/2026-10-23-title-release-attribution-repair.md#用户授权后的提交生产发布与上线验收) |

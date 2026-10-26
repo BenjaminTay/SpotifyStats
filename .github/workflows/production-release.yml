@@ -7,6 +7,11 @@ on:
       - main
     paths-ignore:
       - "**/*.md"
+      # Documentation assets, archived prototypes and their audit tools need CI, not deployment.
+      - "docs/**"
+      - "frontend/design-demos/**"
+      - "scripts/docs_audit.py"
+      - "scripts/tests/test_docs_audit.py"
       - ".github/workflows/ci-quality.yml"
       - ".github/workflows/reusable-quality-checks.yml"
       - ".github/workflows/production-release.yml"

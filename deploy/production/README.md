@@ -239,7 +239,7 @@ GitHub Actions 分为日常质量检查、部署契约检查和正式发布三�
 
 - `ci-quality.yml`：Pull Request 和常规分支 push 的后端、前端、文档与构建检查。
 - `production-deployment-contract.yml`：只在 Docker、部署脚本、生产测试或 workflow 变化时运行；只做契约检查，不连接服务器、不部署。
-- `production-release.yml`：`main` push 或手动触发的正式发布。
+- `production-release.yml`：`main` push 中存在未被发布忽略规则覆盖的路径，或手动触发时执行正式发布。纯Markdown、`docs/`内素材与归档、`frontend/design-demos/`历史方向稿，以及 `scripts/docs_audit.py`／`scripts/tests/test_docs_audit.py` 文档检查工具不触发自动发布；质量CI和适用的No Deploy契约检查照常运行。具体忽略路径以[工作流配置](../../.github/workflows/production-release.yml)为准，混入业务代码的推送仍会触发正式发布。
 - `production-image-transport-rehearsal.yml`：手动镜像传输演练；不部署、不重启线上服务。
 
 ```text
