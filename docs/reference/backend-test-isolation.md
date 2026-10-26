@@ -1,5 +1,7 @@
 # Backend 测试的数据库与派生文件隔离
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 ## 默认入口
 
 直接执行 `.venv/bin/pytest backend/tests/...` 即可。`backend/tests/conftest.py` 在导入应用和收集测试模块前调用 `path_safety.install_test_paths()`，创建本进程专用 `pytest-spotifystats-*` 临时目录：

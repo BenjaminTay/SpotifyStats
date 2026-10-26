@@ -1,6 +1,8 @@
 # 默认播放分析结果快照
 
-阶段 3A 只覆盖 `GET /api/analysis/stats`、`GET /api/analysis/records`。原始 builder、逻辑播放事件、时长切片、L2/L3、艺人 fan-out 均保留。图表、实体详情、Community、Archive 不使用此存储。
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
+本文覆盖 `GET /api/analysis/stats`、`GET /api/analysis/records`。原始 builder、逻辑播放事件、时长切片、L2/L3、艺人 fan-out 均保留。图表、实体详情、Community、Archive 不使用此存储。
 
 ## 存储与读取
 
@@ -63,21 +65,21 @@ migration 85 将 `spotify_auto_track_credits` 的曲目、艺人和角色语义�
 测试隔离在应用导入前设置 analysis 临时路径，见[后端测试隔离](backend-test-isolation.md)。本地临时副本实测与未达标项见[阶段 3A 报告](../reports/2026-09-19-analysis-result-snapshots.md)。
 
 
-## 阶段 3B：Records 局部实现约束
+## Records 局部实现约束
 
-阶段 3B 曾将 Records 来源摘要改为每 512 行批量读取，保留旧字节流和排序。阶段 7C 已将 Stats/Records 的公开 revision 读取统一改为上述事务触发器向量；旧摘要函数只保留给历史等价测试，不在 GET 使用。
+Stats/Records 的公开 revision 读取使用上述事务触发器向量；旧的每512行批量读取来源摘要函数保留旧字节流和排序，只供历史等价测试，不在 GET 使用。
 
 Records 单次 builder 内批量读取可信原版 Album Project 成员和 Spotify 候选，canonical song key 一次生成；event/duration 共用 membership。映射随调用结束释放，不形成持久或全局中间缓存。原版可信条件和 L2/L3/compilation 参数不变，fallback 总曲目查询保留原 LIMIT 1 选择。
 
 `records_duration_frame(copy=False)` 仅供只读聚合使用；需要修改或 attach 的调用继续独立复制。Yearly preloaded event/entity frames、年度范围及 milestone 语义保持不变。快照 GET 仍走完整 Pydantic/JSON/GZip 校验与响应链路，没有 raw JSON 绕行。
 
-本地实测、逐字段对账和未达标项见[阶段 3B 报告](../reports/2026-09-20-records-read-build-optimization.md)：warm/RSS/并发边界通过，exact 首读 P95 和重建中位数尚未达到目标。
+本地实测、逐字段对账和未达标项见[阶段 3B 报告](../reports/2026-09-20-records-read-and-build-delivery.md#阶段-3b播放纪录快照读取与-builder-专项优化)：warm/RSS/并发边界通过，exact 首读 P95 和重建中位数尚未达到目标。
 
 
-## Records 单次构建共享事实（阶段 3C）
+## Records 单次构建共享事实
 
 `RecordsDurationFacts` 只在一次 Records builder invocation 内存在。完整、有序的 `(start_ns, end_ns)` 区间序列是内存复用键，小时边界和逐切片毫秒取整仍由原 `explode_listening_slices()` 计算。event 与 artist 分别从自己的源行恢复身份、有效 credit 和顺序；共享的是切片几何，不是事件数、实体归属或聚合结果。范围过滤在各自附着时执行；Yearly 已切片的预加载 frame 不再 explode。实体 frame 准备完成后释放 context，不形成跨请求缓存。
 
 Longevity 为 track、album、artist 分别建立一次 facts。streak/comeback 共用实体级日期 presence 与双轨累计值；span/month 共用含名称的原分组口径，保留 null 分组排除规则，不从实体级总数推导。消费端只读取 facts，对榜单表取得独立 copy 后排序和裁剪；原 tie-break、Top 50、日期和展示字段不变。
 
-阶段 3C 不改变 snapshot key、source revision、builder version、LKG、失效或发布合同，也不改变共享 logical timeline 和 loader。完整字段对账、独立进程实测与停止结论见[阶段 3C 报告](../reports/2026-09-20-records-invocation-facts.md)。
+单次构建共享事实不改变 snapshot key、source revision、builder version、LKG、失效或发布合同，也不改变共享 logical timeline 和 loader。完整字段对账、独立进程实测与停止结论见[阶段 3C 报告](../reports/2026-09-20-records-read-and-build-delivery.md#阶段-3crecords-单次构建共享事实收口)。

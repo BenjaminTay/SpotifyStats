@@ -4,7 +4,7 @@
 
 ## 当前交付
 
-R0业务候选为 `c844b98f260b85b92ae298e9d135fdab6cb05de2`；R1工具与构建参数形成一个研发阶段提交 `bdcf0cbe5cceff9d0d8959b1535b996fe439efed`，5文件。未推送，main尚未应用业务或工具源码，源SHA到main的业务映射留给R4。完整路线见[收口规划](../plans/2026-10-17-oom-resource-closeout-plan.md)，R0采用范围见[候选审阅](2026-10-17-oom-candidate-freeze-review.md)。
+R0业务候选为 `c844b98f260b85b92ae298e9d135fdab6cb05de2`；R1工具与构建参数形成一个研发阶段提交 `bdcf0cbe5cceff9d0d8959b1535b996fe439efed`，5文件。未推送，main尚未应用业务或工具源码，源SHA到main的业务映射留给R4。完整路线见[收口规划](../archive/06-productization-closeout/2026-10-17-oom-resource-closeout-plan.md)，R0采用范围见[候选审阅](2026-10-17-oom-candidate-freeze-review.md)。
 
 新增三个命令行脚本提供init、pack、preflight、run、summarize、restore、cleanup及合成selftest。独立HTTP客户端负责完整正文缓冲与哈希，strict审计也使用独立有界容器；Backend仅共享隔离loopback网络。采样用固定容量原生缓冲，逐行导出，并读取内核cgroup memory.peak，避免历史样本展开污染Backend驻留。失败、缺证、NaN、未完成维护、未真正淘汰等情况不能输出资源通过。
 

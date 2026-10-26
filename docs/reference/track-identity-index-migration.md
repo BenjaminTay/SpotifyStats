@@ -1,5 +1,7 @@
 # 旧数据库身份 fallback 索引一致性
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 ## 语义和目标 DDL
 
 `track_l1_identities.provider` 是兼容投影字段，不是 fallback 身份的限定条件。非空 `fallback_track_id` 在整个表内唯一，包括非 local provider 与 superseded 行。Spotify external owner 优先解析；没有 Spotify token 时使用未 superseded 的 fallback；找不到有效身份时保留原始 track ID。索引修复不能改变这些 JOIN 条件。

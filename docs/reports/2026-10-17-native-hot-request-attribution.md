@@ -34,7 +34,7 @@
 
 新实际候选镜像已从提交源码构建，基础digest保持原Python 3.9，540个镜像内源码/requirements文件逐项匹配，45项依赖、Python 3.9.25/glibc 2.41、无私密数据检查通过。运行ENV严格等于旧R0候选；相对R0前baseline仍保留既有`MALLOC_MMAP_THRESHOLD_=131072`差异，不能写成两版ENV完全一致。Mac config ID为`1a125cd20b95d52bf4e26f05489110841b0730f2192ef0c156d57b77a476590e`，导出OCI manifest ID为`447d3de4050f92091d3cbb6b1009beda40c1e9760926ac3748488b6311a4e805`，已在学校load后重新核对实际镜像、源码与运行配置。baseline与新候选镜像包135817037字节，SHA `cc99d5cc13bc2a5f15d29129d914d03abddd404a1755e3c3e0d07c7ef929c314`。
 
-受影响的原冷/热对照已完成，见下节；有单次局部改善，仍未达原热请求门槛。旧诊断probe包装的公共摘要入口及artist map别名与新私有内核不同，不能用于新版本宣称解析次数或性能通过；原R2工具保持无业务probe。原首组累计2023.2123123533092秒永久闭合；新run只能依据固定历史首组/恢复/清理证据进入continued，不重开两批额度，历史宿主先导不算新镜像样本。原R2 FAIL保留。原114矩阵、两版原90浏览器、64MiB/50%/LRU/长期/三次CPU中位数、最终整合CI/full8及生产交付仍按[完整规划](../plans/2026-10-17-oom-resource-closeout-plan.md)执行，R3仍最多两轮有证据整改。
+受影响的原冷/热对照已完成，见下节；有单次局部改善，仍未达原热请求门槛。旧诊断probe包装的公共摘要入口及artist map别名与新私有内核不同，不能用于新版本宣称解析次数或性能通过；原R2工具保持无业务probe。原首组累计2023.2123123533092秒永久闭合；新run只能依据固定历史首组/恢复/清理证据进入continued，不重开两批额度，历史宿主先导不算新镜像样本。原R2 FAIL保留。原114矩阵、两版原90浏览器、64MiB/50%/LRU/长期/三次CPU中位数、最终整合CI/full8及生产交付仍按[完整规划](../archive/06-productization-closeout/2026-10-17-oom-resource-closeout-plan.md)执行，R3仍最多两轮有证据整改。
 
 新候选首次准备run `oom-school-20261017-r3fix1-10b06529`尚未到测量：本机先因沿用旧bundle-integrity被拒；官方重封后，远端预检又因沿用已清理的旧source owner路径判INVALID。两次原错误均保留，没有启动测试Backend、创建runtime/archives或开始continued时钟，不能算业务性能FAIL/PASS。完成43份预检元数据CRC及逐文件实际恢复后，按固定preflight-only白名单清理本run/guard/两镜像/proof，原16服务/29镜像保全。失败与清理包`R3-first-candidate-preflight-failure-cleanup.zip`共109文件、1132665字节，SHA `bf3b43d9dc90c478b8b58d2b65add9511e257ee9af889013643c3cadb185f4dd`，不含数据库内容，实际恢复通过。随后新run `oom-school-20261017-r3fix1b-c98ed910`使用显式新root输入路径、无资源继承并重新官方封包，独立核对原合同及所有实际路径后准备；原失败不覆盖、首组预算不重开。
 
@@ -108,7 +108,7 @@ run `oom-school-20261017-r3fix2-50f9535a`，实际final manifest canonical SHA `
 
 工具/元数据/审阅/清理包`R3-final-fix-native-results-cleanup.zip`共564文件、3571354字节，SHA `53b9badc9934954ffaba8929680b7cae860348444f7fe8e23f9c505d34de17d4`，不含数据库载荷，CRC及逐文件实际恢复通过。原始两份私密ZIP在独立mirror中保留，包内只带对应小元数据。研发`R3-credit-lazy-native/final-native-pair-analysis.json`、两份native审阅和`cleanup-execution/`分别记录最终分析、独立核对与实际清理。
 
-两轮业务整改已经用尽，原矩阵STOP，整体OOM继续OPEN/Partial、资源HOLD，业务没有整合至main、未推送或部署。下一步仅为选择[目标事实发布架构或容量方案](../designs/2026-10-17-detail-resource-architecture-decision.md)；推荐维护期发布目标署名事实，revision覆盖、版本和原子发布尚须设计与验证，不宣称该方向已经达标，不另起第三轮局部补丁。
+两轮业务整改已经用尽，原矩阵STOP，整体OOM继续OPEN/Partial、资源HOLD，业务没有整合至main、未推送或部署。下一步仅为选择[目标事实发布架构或容量方案](../archive/06-productization-closeout/2026-10-17-detail-resource-architecture-decision.md)；推荐维护期发布目标署名事实，revision覆盖、版本和原子发布尚须设计与验证，不宣称该方向已经达标，不另起第三轮局部补丁。
 
 ## 恢复、清理与证据边界
 

@@ -162,4 +162,4 @@ My Heart 这种未被 Spotify 覆盖、但已定位为普通歌名误识别的�
 
 实施后更新 [元数据治理规则](../../reference/music-metadata-management.md)、[播放统计规则](../../reference/playback-stats-rules.md) 中相关口径及需要变化的缓存合同说明；完成本次开发后更新 CHANGELOG。计划阶段仅登记目标规则，不把 reference 提前改成未实现状态。
 
-[开发状态总表](../../DEVELOPMENT_STATUS.md) 与 [问题台账](../../issues/2026-08-27-issue-register.md) 使用 SS-2026-10-06-001 跟踪。代码实现、专项验证、默认完整全栈、提交、推送和生产生效分开登记。生产验收完成后归档本计划，别名与跨 ID 例外继续按其独立状态维护。
+[开发状态总表](../../DEVELOPMENT_STATUS.md) 与 [问题台账](../../issues/README.md) 使用 SS-2026-10-06-001 跟踪。代码实现、专项验证、默认完整全栈、提交、推送和生产生效分开登记。生产验收完成后归档本计划，别名与跨 ID 例外继续按其独立状态维护。

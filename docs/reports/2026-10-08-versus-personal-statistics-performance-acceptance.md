@@ -751,7 +751,7 @@ PRIMARY新release汇总api-denial-acceptance-summary.json SHA cc613072d7e5b14ef0
 
 重启前后全部三容器同container ID/image ID/完整c587 OCI/config+HostConfig+mounts digest，web/public-web init PID不变、全部healthy。后端宿主uvicorn1488259/start_ticks137303694→1520161/start_ticks137481646；后者服务端13:14:10.003UTC独立确认。13:14:10.683189UTC schema90、done6293/failed38/noactive，正常启动维护自然结束；合法3001/3002 capabilities完整c587/surface同。没有summary/overview/stats预暖、源维护、清cache/queue或外层入口修改。正式detail-controlled-restart-execution-v3.json SHA f0880b4dd0ec3087460f8610f3b72e1181ee72f8207a5041c1a057bb812c1c9e；真实人类授权和独立计划另存。
 
-根将实际新进程及收口receipt明确HANDOFF_READY交接详情任务，对https://stats.benjaminlei.site执行其独立自然90、whole-window资源、116全字段HTTPS与完整源/治理/发布守恒；本报告不预记详情结果。本项原28首次窗口发生在这次独立重启前，时间/进程边界不混用。详情接手首SSH检查握手关闭，未开始before/采样/90/116，仍零业务请求；仅恢复传输，不再次restart或用warm测代首次。
+根将实际新进程及收口receipt明确HANDOFF_READY交接详情任务，对[公开入口](https://stats.benjaminlei.site)执行其独立自然90、whole-window资源、116全字段HTTPS与完整源/治理/发布守恒；本报告不预记详情结果。本项原28首次窗口发生在这次独立重启前，时间/进程边界不混用。详情接手首SSH检查握手关闭，未开始before/采样/90/116，仍零业务请求；仅恢复传输，不再次restart或用warm测代首次。
 
 ### 21.13 详情独立首次已结束，性能失败不影响对决独立结论
 

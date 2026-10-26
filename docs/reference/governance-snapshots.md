@@ -1,6 +1,8 @@
 # 治理 Coverage / Health 持久结果
 
-阶段 6C 只处理 Settings 实际消费的 import health、genre coverage/taxonomy/axis-gaps、language coverage。reviews、L1 风险摘要、L3 health、track credits status 保留原有轻量 SQL / 已发布状态读取。
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
+本合同覆盖 Settings 实际消费的 import health、genre coverage/taxonomy/axis-gaps、language coverage。reviews、L1 风险摘要、L3 health、track credits status 保留原有轻量 SQL / 已发布状态读取。
 
 ## 读取与维护
 

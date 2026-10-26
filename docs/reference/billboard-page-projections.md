@@ -1,6 +1,8 @@
 # Billboard 页面响应投影
 
-阶段 2A 仅改变 Records、Weekly、All-Time 和 Number Ones 的传输形状与前端消费。排名、完整结束周、L2/L3、精选集、双轨时长及持久快照 builder 均沿用既有实现。
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
+本合同规定 Records、Weekly、All-Time 和 Number Ones 的传输形状与前端消费。排名、完整结束周、L2/L3、精选集、双轨时长及持久快照 builder 均沿用既有实现。
 
 ## 请求与兼容性
 

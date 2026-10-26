@@ -1,30 +1,53 @@
-# 近期产品化收口归档
+# 产品化收口和历史决策
 
-本目录保存 2026-08 至 2026-10 产品化收口阶段已经完成、但仍有回溯价值的计划、设计和专项治理方案。
+完成或被替代的计划、设计按问题链保存。同日相关设计和实施方案已合并，阶段与原文件名在文内可查。旧分支、数量、失败和待发布均按当时日期理解；当前入口见[文档地图](../../README.md)与[开发状态](../../DEVELOPMENT_STATUS.md)。
 
-## 当前替代入口
+## 逐篇资料
 
-- 当前统计规则：[`../../reference/playback-stats-rules.md`](../../reference/playback-stats-rules.md)
-- 当前音乐档案规则：[`../../reference/account-archive-statistics.md`](../../reference/account-archive-statistics.md)
-- 当前元数据治理：[`../../reference/music-metadata-management.md`](../../reference/music-metadata-management.md)
-- 当前移动端视觉规则：[`../../../frontend/UI_STYLE_GUIDE.md`](../../../frontend/UI_STYLE_GUIDE.md)
-- 当前生产部署：[`../../../deploy/production/README.md`](../../../deploy/production/README.md)
-- 交付证据索引：[`../../reports/README.md`](../../reports/README.md)
+- [播放记录（Playback Records）完整规划](2026-06-23-playback-records-plan.md)
+- [AI Agent Harness Quality Roadmap Implementation Plan（历史实施规划）](2026-06-29-ai-agent-harness-quality-roadmap.md)
+- [AI Yearly Report Editorial Agent Pipeline Design](2026-07-04-ai-yearly-report-editorial-agent-pipeline-design.md)
+- [Genre Review Settings Panel Design](2026-07-04-genre-review-settings-design.md)
+- [艺人常用语言解析与覆盖率审计设计](2026-07-10-artist-language-resolution-design.md)
+- [Artist Language Resolution Phase A Implementation Plan](2026-07-11-artist-language-resolution-phase-a.md)
+- [Genre Axis Supplement 与 Metadata 预审核设计](2026-07-15-genre-axis-language-pre-review-design.md)
+- [移动网页设计冻结与实施规划](2026-08-05-mobile-web-design-and-plan.md)
+- [年度总结V2内容设计与实施规划](2026-08-12-yearly-review-v2-design-and-plan.md)
+- [账号中心重构方案：从“人格橱窗”到“个人音乐档案”](2026-08-13-account-archive-redesign-plan.md)
+- [SpotifyStats 双运行面实施规划](2026-08-13-dual-deployment-profile-plan.md)
+- [音乐查找方向与性能修复规划](2026-08-16-music-search-design-and-remediation.md)
+- [Spotify 串流数据增量导入开发规划](2026-08-23-incremental-streaming-import-plan.md)
+- [年度总结 artifact key 与增量导入失效契约](2026-08-23-yearly-artifact-key-invalidation-contract.md)
+- [音乐详情页年榜历史设计](2026-08-25-music-detail-year-end-history.md)
+- [设置重建状态与数据导入治理完整修复方案](2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md)
+- [Spotify Track ID 作为 L1 身份的早期修复方案（已取代）](2026-08-27-spotify-track-identity-l1-migration-plan.md)
+- [音乐查找零停机、上一可用版本与元数据增量维护完整修复方案](2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md)
+- [Billboard Records 一致性与排行稳定性修复规划](2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)
+- [播放记录全板块统计正确性与稳定排序修复规划](2026-08-30-playback-records-correctness-and-ranking-plan.md)
+- [AI Agent V2至V4历史设计](2026-08-31-ai-agent-v2-v4-design.md)
+- [L2与L3身份及专辑归属历史规划](2026-08-31-l2-l3-identity-and-attribution-plan.md)
+- [Billboard 持久化快照与事件驱动重建优化升级规划](2026-09-12-billboard-persistent-snapshot-optimization-plan.md)
+- [数据导入、处理与治理修复优化规划](2026-09-21-import-processing-governance-remediation-plan.md)
+- [AI Agent V6 统一运行时、报告恢复与交互优化规划](2026-09-22-ai-agent-v6-optimization-plan.md)
+- [启动、运行资源与长期内存优化实施规划](2026-09-22-runtime-resource-optimization-plan.md)
+- [Spotify Track `artists 数组` 多艺人署名证据接入完整实施规划](2026-09-23-spotify-track-artists-evidence-plan.md)
+- [专辑艺人稳定 ID 与有序证据实施方案](2026-10-02-album-artist-evidence-plan.md)
+- [合作曲排行修改计划](2026-10-02-collaboration-ranking-plan.md)
+- [专辑完整分页与艺人证据本地集成计划](2026-10-03-album-metadata-integration-plan.md)
+- [全站封面图片优化实施方案](2026-10-03-cover-image-optimization-plan.md)
+- [曲目署名来源优先级与标题解析修复实施计划](2026-10-06-track-credit-resolution-plan.md)
+- [发行日期精度实施与集成计划](2026-10-07-release-date-precision-plan.md)
+- [榜单对决个人播放统计优化规划](2026-10-08-versus-personal-statistics-performance-plan.md)
+- [音乐详情榜单成绩加载修复规划](2026-10-09-music-detail-chart-performance-plan.md)
+- [详情资源两轮整改后的架构与容量决策](2026-10-17-detail-resource-architecture-decision.md)
+- [详情统计资源与 OOM 完整收口规划](2026-10-17-oom-resource-closeout-plan.md)
+- [加载性能结项与内存稳定性精简收口](2026-10-19-performance-scope-and-memory-decision.md)
+- [榜单对决发行周期完整修复规划](2026-10-21-versus-release-cycle-repair-plan.md)
+- [开发状态历史检查点](2026-10-25-development-status-history.md)
+- [项目文档整理与更新执行规划](2026-10-25-documentation-cleanup-and-update-plan.md)
+- [问题台账历史记录](2026-10-25-issue-register-history.md)
+- [SpotifyStats 移动端 M0 视觉原型](mobile-web-m0-prototype/README.md)
 
-## 已完成规划
+## 原型
 
-- [`2026-10-07-release-date-precision-plan.md`](2026-10-07-release-date-precision-plan.md)：发行日期精度、详情空统计联合集成、schema89、固定92来源/78项目补证及生产年度/API/两视口专项完成；维护OOM及详情内存增长独立开放，证据见[生产验收](../../reports/2026-10-08-release-date-production-delivery.md)。
-- [`2026-09-21-import-processing-governance-remediation-plan.md`](2026-09-21-import-processing-governance-remediation-plan.md)：导入批次一致性、阶段恢复、关键任务调度、身份治理与 S6 完整本地终验已完成；最终证据见 [`../../reports/2026-09-21-import-governance-final-acceptance.md`](../../reports/2026-09-21-import-governance-final-acceptance.md)。
-- [`2026-08-23-incremental-streaming-import-plan.md`](2026-08-23-incremental-streaming-import-plan.md)：串流数据关系识别、基础事实增量发布、派生分区更新、历史修正与恢复边界。当前运行规则以 [`../../reference/data-import-and-health.md`](../../reference/data-import-and-health.md) 为准，分阶段证据见 [`../../reports/README.md`](../../reports/README.md)。
-- [`2026-08-27-spotify-track-identity-l1-migration-plan.md`](2026-08-27-spotify-track-identity-l1-migration-plan.md)：已被最终 canonical track / L2 / L3 方案取代的早期 Spotify-L1 规划；只用于回溯决策过程。当前规则见 [`../../reference/music-metadata-management.md`](../../reference/music-metadata-management.md)，最终证据见 [`../../reports/2026-08-27-spotify-track-l1-identity-migration.md`](../../reports/2026-08-27-spotify-track-l1-identity-migration.md)。
-- [`2026-06-23-playback-records-plan.md`](2026-06-23-playback-records-plan.md)：播放记录早期 6 栏规划；已补当前 5 栏/20 模块实现差异，未采用 P2 不自动成为待办。
-- [`2026-06-29-ai-agent-harness-quality-roadmap.md`](2026-06-29-ai-agent-harness-quality-roadmap.md)：evidence cards、intent、resolver、comparison、coverage、critic 与 golden harness 的历史实施路线。
-- [`2026-08-16-music-search-direction-realignment.md`](2026-08-16-music-search-direction-realignment.md)：候选/统计解耦与生产复用的历史方向，由 2026-08-28 方案和当前 reference 接管。
-- [`2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md`](2026-08-26-settings-rebuild-and-data-governance-remediation-plan.md)：设置重建状态与数据治理已完成方案；真实清理仍保留独立授权边界。
-- [`2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md`](2026-08-28-music-search-zero-downtime-and-metadata-delta-plan.md)：搜索 LKG、影子 generation、revision 竞态与曲目署名增量维护已完成方案。
-- [`2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md`](2026-08-29-billboard-records-consistency-and-ranking-hardening-plan.md)：Billboard Records 一致性、51 个列表的稳定排序和播放排行同值裁决已完成；历史默认门禁未重跑边界由全栈门禁开放项继续跟踪。
-- [`2026-08-30-playback-records-correctness-and-ranking-plan.md`](2026-08-30-playback-records-correctness-and-ranking-plan.md)：播放记录 5 个板块、20 个可见模块及 API-only 模块的统计与排序修复已完成；历史冷路径验收尾项已移交统一门禁计划。
-- [`2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md`](2026-08-31-l2-l3-identity-and-album-attribution-remediation-plan.md)：等价发行、stable work、归属 coverage 与 L1 风险分类已完成的实施计划。
-- [`2026-09-12-billboard-persistent-snapshot-optimization-plan.md`](2026-09-12-billboard-persistent-snapshot-optimization-plan.md)：Billboard 周榜、年榜、总榜持久快照与事件驱动后台重建已完成并在生产上线。
-
-归档文件保留设计过程、决策和实施边界，不再作为新的开发计划直接执行。若归档内容与当前代码或 `reference/` 冲突，以当前实现和当前参考规则为准。
+- [移动端M0交互画板](mobile-web-m0-prototype/index.html)，仅解释历史方向，使用自带占位图。

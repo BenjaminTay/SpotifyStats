@@ -11,7 +11,7 @@
 - migration 80 新增 `spotify_track_credit_sets`、`spotify_track_artist_credits`、`spotify_track_credit_events`。每个合法 Track 的 artist ID、credited name 和数组顺序原样保存；首次观察与变化追加事件，重复内容不追加事件。非法响应保留上一可用证据。
 - 现有 Spotify metadata refresh 会选择本次导入相关和有界历史证据缺口，输出 requested / observed / changed / unchanged / failed / LKG / missing 计数。缺凭据或部分响应仍是可重试的 metadata partial，不把已发布的播放事实回滚。健康读取只使用数据库状态，不联网。
 - 新增默认 dry-run、仅允许隔离副本 `--apply` 的显式回填脚本，以及只读 owner/artist identity 差异报告脚本。没有自动创建本地艺人、自动写入 override、推断 `primary` / `featured` 或重建下游统计。
-- 其他待处理 Spotify 字段、第二数据源和曲目语言问题仍在[多源元数据路线记录](../plans/2026-09-23-multi-source-music-metadata-roadmap.md)，未作为本次实现。
+- 其他待处理 Spotify 字段、第二数据源和曲目语言问题仍在[多源元数据路线记录](../plans/multi-source-music-metadata.md)，未作为本次实现。
 
 ## 隔离真实数据/API 验收
 

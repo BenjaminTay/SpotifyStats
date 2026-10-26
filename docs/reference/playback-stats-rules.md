@@ -1,10 +1,25 @@
 # 播放统计与版本合并规则：最新版
 
-> 创建日期：2026-06-18；最近修订：2026-09-01
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
+> 创建日期：2026-06-18；文档整理核对：2026-10-25
 > 状态：规则源文件，作为后续实现与验收依据
 > 来源：整合 [`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md)、[`docs/archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md`](../archive/02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md)，以及后续对歌曲/专辑多版本语义的确认。
 
 ---
+
+## 按问题查找
+
+| 要查什么 | 规则入口 |
+| --- | --- |
+| 有效播放、skipped、合并间隔、次数与时长 | [播放事件](#3-播放事件层规则) |
+| L1／L2／L3和歌曲版本 | [合并级别](#4-合并级别总览)、[歌曲版本](#5-歌曲版本合并规则) |
+| 专辑项目、来源、合辑与类型 | [专辑项目](#6-专辑项目与专辑播放量规则)、[来源拆分](#7-专辑播放量来源拆分)、[合辑](#8-精选集与合辑规则)、[类型过滤](#9-专辑类型过滤) |
+| 艺人署名与合作归属 | [艺人归属](#10-艺人归属规则) |
+| 周榜、完整周与积分 | [Billboard周榜](#11-billboard-周榜规则) |
+| 页面展示和稳定排序 | [展示规则](#12-展示规则) |
+| 数据关系、约束与业务例子 | [数据关系](#13-数据关系要求)、[全局不变量](#14-全局不变量)、[典型示例](#15-典型示例) |
+| 日期证据与对决个人统计 | [日期边界](#发行日期证据边界)、[对决读取](#对决个人统计读取合同) |
 
 ## 1. 总体目标
 
@@ -877,39 +892,7 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 
 ### 年度总结 V2 消费契约
 
-Desktop/Compact 与 Phone 的 `/yearly-review` 共用确定性 `YearlyReviewV2` 数据契约，但分别使用完整杂志年鉴与“口袋音乐年鉴”presentation；页面只提供这一套自有年度总结，不再提供“官方 Wrapped”页签。Phone/Desktop 必须互斥挂载。`/api/wrapped-hub`、官方导入表和读取服务仅作只读兼容冻结，不进入年度总结消费链路。
-
-V2 统一继承当前 `music_only`、连续播放合并、动态阈值、`merge_level`、精选集、三类 Billboard Top N 与周边界。前端主报告 query key、后端 cache key 和兼容 records 响应必须使用同一过滤指纹，并包含版本化内容策略、display taxonomy 与艺人元数据 revision。
-
-V2 的 `schema_version` 与 `content_version` 分开治理：前者只描述对外契约形状，后者覆盖统计、编排、公开文案与方法语义。任何语义变化都必须提升 content version，使进程 LRU 和 sidecar 精确键同时分流；sidecar 的压缩格式版本不能替代内容版本。
-
-展示语义：
-
-- “播放排行”同时保留播放次数与播放时长，两者不得混名。
-- “个人 Billboard 年榜”使用本文件 Billboard Year-End 规则，只能描述本地个人榜；不得写成 Spotify 或外部官方 Billboard。
-- 月度正文只有一条年度赛季/转折时间线；十二个月完整事实只在可展开账本中出现，不再复制第二套月度叙事。
-- 关系、回归、发现、纪录和品味迁移只有在对应 coverage/支持阈值成立时才生成；不足时降级为空态或限制说明，不得由 LLM 补写。
-- 主曲风只消费 `style`，地区流行只消费 `scene`，语言独立统计；`context` / `role` 不进入主图，unknown 必须保留为“尚未归类”并显示覆盖率。
-- YTD、完整年、部分年和空年份由实际播放范围与榜单周覆盖决定；YTD/partial 不得使用“完整年度冠军”等已结算措辞。
-- 年度里程碑必须先在完整个人历史的 canonical track 播放序列上计算累计阈值，再筛选阈值跨越日期是否位于报告年；报告年内的第 1,000 次播放不得写成个人历史第 1,000 次。
-- 年度 discovery 必须先从完整历史得到 canonical track、album project、canonical artist 的真实首次播放日期，再筛选首次日期位于报告年的实体；只在年度切片内第一次出现的旧实体不算“第一次听到”。
-- 每日播放次数与每日收听时长分别排名并使用 dense rank。只有各自的第一名可写“最多的一天/最长的一天”；并列第一必须明确标注并列，第二名及以后只能陈述名次或普通事实。
-- 同比必须使用当前观察范围映射出的上一年 aligned window；闰日取合法月末。若上一年没有覆盖完整 aligned window，则回退到两年映射后的最大共同日历区间，且共同区间至少 90 天才可比较；否则不生成比较。比较模式明确区分 `full_year`、`same_period`、`common_period` 与 `unavailable`，消费端在非完整年度窗口显示“比去年同期”。工作日/周末日均以观察区间自然日数量为分母，不以活跃日或固定 5/2 为分母。
-- 当报告截止在未完整月份时，该月的环比与同比只能分别与上月同期、上年同期的等长窗口比较，metric 必须保存两侧起止日期；只有完整自然月才能使用完整自然月比较。
-- Passport 曲目/专辑/艺人数分别与播放榜的规范曲目、album project、有效署名艺人口径一致；同比也必须使用同粒度。
-- 收听生活的歌曲总数、新歌数、探索率与复听率统一使用 canonical track identity。头号艺人的“播放占比”以年度逻辑播放总数为分母，以包含该有效署名艺人的逻辑播放数为分子；不得使用 fan-out 后艺人表总行数作分母。
-- 完整年品味比较 H1→H2；YTD 只比较最近两个完整季度，少于两个完整季度时仅显示分布。差值和驱动实体必须使用同一日期切片。
-- 公开纪录必须命中显式 renderer 并具备实体、数值或精确周期证据；未知/internal key、blocked map 和开篇/年榜首重复事实不得公开。阶段无法由连续月度多数冠军证明时必须返回空 stages，结语不得原样复制开篇头条。
-- 主报告只携带 Top 50/30/30 和 6–8 条精选纪录。年报不提供“更多年度纪录”下钻，完整播放纪录/Billboard 纪录回到各自独立页面；兼容 `/api/yearly-review/{year}/records` 只返回与正文相同的精选集合，artifact 不得再序列化数千条候选。
-- 消费界面不得渲染过滤指纹、策略版本、证据等级、coverage、limitations 或“统计口径 / 可比基线”等审计词；这些信息只服务于 API 契约、诊断与自动验收。
-- 顶部六项指标统一称为“年度播放 / 年度时长 / 年度活跃天数 / 年度播放曲目 / 年度播放专辑 / 年度播放艺人”。有上一年数据时只显示红/绿方向箭头与百分比，不再重复显示“高/低”或绝对差值；完整比较语义保留在 accessible label 中。
-- 年份按钮按升序排列且只显示年份；完整年度封面不显示“完整年度”和起止日期，YTD 报告仍在封面保留“进行中 · 截至日期”。封面不显示三条头条或海报按钮。
-- 大标题下不附加解释性 subtitle。附录用户入口只称“完整榜单”，并且只保留播放榜与个人 Billboard；十二月明细只能从唯一年度时间线展开。
-- 用户界面提到的歌曲、专辑、艺人应尽可能提供封面和既有详情深链；统一占位负责缺图降级。Phone/Compact/Desktop 默认最新可用年度，当前年明确标注进行中。年度名称和动态文案遵循全局简繁体偏好；回归等事件必须标注实体类型，避免把专辑事件误读为歌曲事实。
-- 新关系故事按实体类型分别使用“今年发现的新歌 / 今年新听的专辑 / 今年认识的新艺人”，不得用“新名字”指代歌曲或专辑。同一专辑或艺人多首进入个人榜单的纪录必须显示准确曲目数；分歧故事在宽屏使用两列，空间收窄时回到单列。
-- 所有正文章节统一使用紧凑纵向节奏；当前 Desktop/Compact section padding 为 `clamp(48px, 5.5vw, 80px)`，不得恢复为造成双倍大空白的超宽间距。
-
-当前缓存热响应预算为 250ms，未压缩主 JSON 预算为 512 KiB，真实重算预算为 30 秒。关系历史中的首次播放与回归前末次播放日期必须按实体类型一次性聚合，不得在逐实体循环中反复扫描和转换完整历史；年度播放纪录应复用编排层已经建立的年度事件与实体帧。最终 artifact 可以压缩持久化，但必须使用独立 sidecar SQLite，完整 cache key 继续包含稳定播放事实 revision、过滤指纹、content version、策略和元数据 revision；不得使用 SQLite main/WAL 物理 mtime 让无关写入造成缓存抖动，不得用旧 key 或近似 key 返回 stale 报告。持久缓存损坏时必须自动视为 miss 并重算。年度生成使用 `yearly_review_generation_v1`：相同精确 key 只允许一个任务，不同年份的缓存命中不得被冷构建阻塞；单工作线程优先生成当前年份，其余真实可用年份从近到远排队，revision 漂移时不得写入旧 key，失败只公开稳定错误码且可重试，终态任务表必须有界。设置变更、流式导入与应用启动继续预建最新默认年份；Desktop/Compact/Phone 进入年度总结后按当前完整筛选上下文批量预建全部可用年份。性能优化不得改变统计口径或让浏览器静默吞掉本地 API 超时。历史 content v2.8 的 2023–2026 同进程真实重算为 10.65–16.54 秒、热响应为 26.56–29.85ms，跨进程持久命中为 10.20–21.07ms。当前 `yearly_review_v2_16` 使用 `highlight_policy_v3`、`season_stage_v2` 与 probe v7；probe 除公开文案、封面/深链、YTD 措辞、精选证据、结语去重和阶段状态外，还必须验证跨章节歌曲 identity、艺人占比分母、未完整月份以及完整年缺失基线时的共同区间比较。
+年度内容、跨章节事实、过滤指纹、覆盖、同比、artifact key 与生成缓存统一见[年度总结规则](yearly-review.md)。播放事件、专辑项目、艺人署名与Billboard事实继续遵守本文件。
 
 ---
 
@@ -1087,58 +1070,11 @@ Live Improvisation
 
 ## 17. Implementation Status
 
-2026-08-31 已实现新的 L3 专辑目标契约：Taylor's Version 采用专辑作品并集，Live/Remix/
-Acoustic 采用逐歌曲原生专辑归属并保留 residual。实现使用
-`l3_song_album_attributions`、稳定人工覆盖与独立 revision，所有 L3 专辑消费者共用同一 owner
-映射；代码门禁已通过，真实主库切换与最终全栈证据以本轮验收报告为准。执行状态见
-[`docs/archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md`](../archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md)。
-
-截至 2026-08-31，L1→L2→L3 composition v1 联合治理已经在两份独立 Online Backup 副本完成全量演练并应用到
-本地主库：L2 保持 46 个活动 recording group / 93 个 membership，L3 新建 380 个活动 composition
-group / 873 个 membership；L3 album composition 新建 2 个父项目并挂接 4 个完整 release child。
-原始 `plays`、`tracks`、`track_artists` 的行数和 hash 均保持不变，四套 L2/L3 × fixed/dynamic
-精确搜索快照及详情年榜投影共同发布。实现、真实数据、API、响应式 UI 与门禁证据见
-[`docs/reports/2026-08-31-l3-governance-execution-and-acceptance.md`](../reports/2026-08-31-l3-governance-execution-and-acceptance.md)。
-
-截至 2026-08-30，Billboard Records 的 6 个家族共 51 个列表已使用完整候选集排序、业务二级/后续指标和稳定实体键；冠军单曲/专辑名人堂分别按对应冠周排序，专辑名人堂只接受冠军专辑数大于 0 的艺人。实现与真实 API/浏览器验收证据见 [`docs/reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)。
-
-截至 2026-08-17，album statistics 已在 analysis charts、leaderboards、Billboard album charts 和 album detail pages 使用 album project 语义；歌曲、专辑、艺人详情统计已统一采用实体范围时长帧和逻辑播放加权版本拆分。
-
-已落地的不变式：
-
-- Valid play events 独立于 `merge_level`。
-- L2/L3 专辑统计使用 album project track membership，不再按 source album 行直接求和。
-- 先行单曲播放计入全时 album project totals。
-- Billboard 专辑周榜按 `album_project.release_date` 排除发行前播放。
-- Source breakdown bucket totals 与 album project plays 对齐。
-- L3 详情把 residual、已回流目标和完整 source release 播放分开显示；0 residual 来源发行仍可查询。
-- 纯既有歌曲精选集不会在非 L1 下成为默认独立 album project。
-- 精选集独有曲目可以形成 compilation-exclusive project。
-- track-source weekly pre-aggregation 与 raw fallback 在新 album project 口径下一致。
-- 专辑详情页返回 `album_project` payload，并展示来源拆分与项目曲目集合。
-- 详情页摘要、分布和时长排行不会从全库时长切片继承时长；实体播放次数与收听时长保持双轨归属。
-- 艺人最近 50 次按逻辑播放事件去重，版本组和发行组展示复用 Billboard `play_count` / `total_ms` 加权帧。
-- 相对窗口 `last_4_weeks` / `last_6_months` 以最新有效数据日锚定；修复证据见 `docs/reports/2026-08-17-music-detail-statistics-fix-delivery.md`。
-
----
+实现与治理数量按日期保存在[L3治理报告](../reports/2026-08-31-l3-governance-execution-and-acceptance.md)、[原生专辑归属报告](../reports/2026-08-31-l3-native-album-attribution-execution-and-acceptance.md)和[详情修复报告](../reports/2026-08-17-music-detail-statistics-fix-delivery.md)。当前待办见[开发状态](../DEVELOPMENT_STATUS.md)，不把历史样本量作为现库基线。
 
 ## 18. Import-Time Derived Data Maintenance
 
-导入新的 Extended Streaming History 后，系统必须动态维护后端数据库，而不是假设所有歌曲、专辑和艺人都已经在旧库中出现过。
-
-导入阶段分为两步：
-
-1. `import_data()` 只负责确定性的本地事实：播放事件、艺人/专辑/曲目维度、featured artist、原始 Spotify track URI，以及播放当时的 `spotify_track_id_at_play`。
-2. 导入 job 在标记 `done` 前运行后置维护：刷新 Spotify track/album 元数据、建立本地 album 到 Spotify album 的证据链接、重建 album projects、重建周聚合表、清理缓存，并返回导入健康报告。
-
-维护不变式：
-
-- 新播放记录中的 Spotify track id 要优先来自原始播放行，而不是只依赖 `tracks` 维表中的当前值。
-- 本地 `albums` 不直接承载唯一 Spotify album 归属；`album_spotify_links` 记录证据、置信度、播放数、曲目数与首次/末次出现时间。
-- album project bootstrap 必须优先使用 `album_spotify_links` 指向的 Spotify album metadata；同名 single 与完整专辑冲突时，完整专辑候选优先。
-- 如果 Spotify API 凭据缺失或上游失败，导入仍应完成基础播放数据写入，并返回 `maintenance_status=partial`；不得让新歌播放记录整体不可用。
-- `build_aggregations()` 必须在 metadata refresh 和 album project rebuild 之后运行，避免榜单基于旧封面、旧 duration 或旧 album project membership。
-- 既有数据库可用 `scripts/refresh_import_derived_data.py` 手动运行同一条维护管线。
+导入事实、元数据、Album Project、周聚合及快照维护遵守[数据导入与健康规则](data-import-and-health.md)。Spotify ID保留在原始播放行，专辑来源通过证据链接解析；元数据失败不撤销已经提交的原始事实，相关派生阶段可恢复重试。
 
 ## 发行日期证据边界
 

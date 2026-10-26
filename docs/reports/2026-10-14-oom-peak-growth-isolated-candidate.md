@@ -6,7 +6,7 @@
 
 ## 归因结果
 
-此前[生产首次窗口](2026-10-14-native-trim-maintenance-production-delivery.md)显示，维护结束 trim 后起点RSS低，但启动历史高水位约1.19GiB、读取又增加约352MiB。此次沿实际 warmup=0 的维护队列和实体 stats 链追踪，没有复跑生产窗口。
+此前[生产首次窗口](2026-10-14-native-trim-maintenance-delivery.md#维护完成原生回收生产交付与首次验收)显示，维护结束 trim 后起点RSS低，但启动历史高水位约1.19GiB、读取又增加约352MiB。此次沿实际 warmup=0 的维护队列和实体 stats 链追踪，没有复跑生产窗口。
 
 1. 启动最高采样点邻近 analysis snapshot maintenance；峰值前栈中的 `_build_entity_frames` 同时持有事件、时长、track/album结果及专辑归并中间表，数万行、约45–56列。宽表和切片的瞬时持有是工作集的一部分，维护结束回收不能降低构建时的全部活对象峰值。
 2. 自然启动就绪后帧预算接近0；两条读取链使预算增至202.910MiB。同一键各重复三轮后没有持续增长，只支持这个有限序列内的平台观察，不说明全站长期稳定。

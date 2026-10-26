@@ -92,3 +92,29 @@ source .venv/bin/activate && pytest backend/tests/unit/test_artist_genre_resolut
 - seed import 单测：8 passed
 - genre resolution + wrapped panorama 单测：23 passed
 
+## 规则文档中的2026-07-04历史快照
+
+从原流派规则文档承接的历史记录；数量与比例只属于标题所示日期，不作为当前数据基线。
+
+以下是旧版跨轴分摊逻辑的历史结果，仅用于对比，不应再作为当前口径：
+
+- Raw genre labels: 230
+- Canonical genre labels: 26
+- Noncanonical passthrough: 0
+- Unknown artist genre hours: 30.9h，约占 lifetime 播放时长 0.8%
+
+Settings taxonomy audit 的 lifetime Top canonical genres：
+
+| Genre | Axis | Share | Dominance |
+|-------|------|-------|-----------|
+| pop | style | 33.0% | - |
+| c-pop | scene | 26.3% | - |
+| singer-songwriter | role | 10.7% | Taylor Swift contributes 79.6% |
+| country | style | 9.3% | Taylor Swift contributes 90.8% |
+| r&b/soul | style | 4.6% | - |
+| rock/alternative | style | 4.4% | - |
+| holiday | context | 2.3% | Mariah Carey contributes 72.4% |
+| indie/alternative | style | 1.7% | - |
+| folk | style | 0.7% | - |
+
+这说明 v2 taxonomy 已经把 `singer-songwriter/folk` 和 `country/americana` 拆开，但也暴露了新的解释风险：`singer-songwriter` 与 `country` 在当前 lifetime 数据里高度受 Taylor Swift 的 curated fallback 标签驱动。因此报告和 AI 回答应把这两个结果解释为 dominance-sensitive，而不是直接说“整体偏好明显偏 country / folk”。

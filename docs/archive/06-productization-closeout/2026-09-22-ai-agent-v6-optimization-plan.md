@@ -12,7 +12,7 @@
 
 > 下文保留实施时的计划、停止条件和历史验收范围，不再作为未完成开发路线；其中“未 commit、push 或部署”均描述记录形成时。以下第六轮记录对应合并前候选；主分支集成与当前迁移编号见[本地集成报告](../../reports/2026-09-27-ai-agent-v6-local-integration.md)。
 
-> 2026-09-27 第六轮完成：L3 composition 下 `vampire` 的旧 v11 快照 381 次与规范成员事件 380 次差异已关闭；v12 四变体重建、12/12 代表组合、动态/固定阈值各 493/493 多成员 L3 组对账、固定 11 题真实模型和默认完整 run `20260927T123442.686018Z-e24f493b421d` 均通过。第五轮及第六轮中间失败 run 继续保留为历史证据。当前证据见 [`../reports/2026-09-22-ai-agent-v6-final-acceptance.md`](../../reports/2026-09-22-ai-agent-v6-final-acceptance.md)。未 commit、push 或部署。
+> 2026-09-27 第六轮完成：L3 composition 下 `vampire` 的旧 v11 快照 381 次与规范成员事件 380 次差异已关闭；v12 四变体重建、12/12 代表组合、动态/固定阈值各 493/493 多成员 L3 组对账、固定 11 题真实模型和默认完整 run `20260927T123442.686018Z-e24f493b421d` 均通过。第五轮及第六轮中间失败 run 继续保留为历史证据。当前证据见 [`../reports/2026-09-22-ai-agent-v6-final-acceptance.md`](../../reports/2026-09-22-ai-agent-v6-baseline-and-acceptance.md#ai-agent-v6-统一运行时与渐进报告最终本地验收)。未 commit、push 或部署。
 
 ## 1. 目标与完成定义
 
@@ -62,7 +62,7 @@ V5 功能已经进入主线。`AI_AGENT_RUNTIME=v2` 是运行时的历史标识�
 
 历史 141 题是静态问题矩阵，不能当成 141 题真实模型通过。生产最后一份相关验收记录为“代码已部署、服务器无 LLM 凭据”；V6 开始或发布时重新确认，不能推定今天已可在线使用。
 
-参考：[V5 专项验收](../../reports/2026-08-31-ai-agent-performance-v5-acceptance.md)、[9 月 13 日真实模型与发布验收](../../reports/2026-09-13-development-closeout-and-release.md)、[后续全栈验收](../../reports/2026-09-21-stage7e-final-fullstack-acceptance.md)。
+参考：[V5 专项验收](../../reports/2026-08-31-ai-agent-v3-v5-acceptance.md#ai-agent-performance-v5-实施与验收报告)、[9 月 13 日真实模型与发布验收](../../reports/2026-09-13-development-closeout-and-release.md)、[后续全栈验收](../../reports/2026-09-21-stage7e-final-fullstack-acceptance.md)。
 
 ## 3. 范围和不做项
 

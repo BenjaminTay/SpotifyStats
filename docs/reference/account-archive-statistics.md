@@ -1,5 +1,7 @@
 # 音乐档案统计规则
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 版本：`account_archive_filter_v3` / `account_archive_journey_v2_0` / `account_archive_cohorts_v2_0` / `account_archive_returns_v1_0` / `account_archive_discovery_v1_0` / `account_archive_library_v1_0` / `account_archive_other_media_v2_0`
 日期：2026-09-20
 

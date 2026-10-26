@@ -2,7 +2,7 @@
 
 当前补记（2026-10-18）：prep-only工具47纯测/实际pack/独审通过；原boundary-2两窗PASS，四HTTP200/四完整正文一致，当前六Analysis/103jobs/default+fixed、原37/strict、限额/退出/恢复ACK通过，仅2/114，整体资源HOLD。学校本批清理、原16/29保全。下一两LRU窗各90分钟提案待批准，未实现或启用，原1800/7200仍有效。先前路径及准备协议INVALID保持原样；准备成本归因限制与完整证据见文末。
 
-日期：2026-10-18。事项：`SS-2026-10-08-001`。用户已选择[架构方案A](../designs/2026-10-17-detail-resource-architecture-decision.md)。状态：**修正版bfecef52受影响pair与原boundary-2准备验证通过，当前2/114、整体Partial；旧FAIL/INVALID保留，学校本批已清理。两LRU各90分钟提案待批准，完整资源HOLD。** 旧两轮R3有效FAIL保持原样，本轮不作为第三次局部微优化。未整合业务到main、推送或部署。
+日期：2026-10-18。事项：`SS-2026-10-08-001`。用户已选择[架构方案A](../archive/06-productization-closeout/2026-10-17-detail-resource-architecture-decision.md)。状态：**修正版bfecef52受影响pair与原boundary-2准备验证通过，当前2/114、整体Partial；旧FAIL/INVALID保留，学校本批已清理。两LRU各90分钟提案待批准，完整资源HOLD。** 旧两轮R3有效FAIL保持原样，本轮不作为第三次局部微优化。未整合业务到main、推送或部署。
 
 ## 实现与失效边界
 

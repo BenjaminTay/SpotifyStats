@@ -1,5 +1,7 @@
 # 首页展示与长期记忆规则
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 > 最近修订：2026-09-19
 > 状态：当前规则
 > 适用范围：`/` 个人音乐头版、`/api/home/overview` 以及首页 Desktop / Phone presentation

@@ -189,8 +189,8 @@
 ## 10 参考依据
 
 - [发行日期证据与精度](../../reference/release-date-precision.md)
-- [日期精度本地验收](../../reports/2026-10-07-release-date-precision-acceptance.md)
-- [日期生产专项交付](../../reports/2026-10-08-release-date-production-delivery.md)
+- [日期精度本地验收](../../reports/2026-10-07-release-date-and-empty-stats-acceptance.md#发行日期精度本地交付与验收)
+- [日期生产专项交付](../../reports/2026-10-08-release-date-production-acceptance.md#日期精度与详情空统计生产交付验收)
 - [专辑单曲成绩归属修复](../../reports/2026-10-21-album-song-performance-attribution.md)
 - [按改动选择验证范围](../../reference/fullstack-verification.md#按改动选择验证范围)
 - [开发与工作树收尾](../../reference/development-delivery-workflow.md)

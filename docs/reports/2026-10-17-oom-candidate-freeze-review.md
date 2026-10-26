@@ -16,7 +16,7 @@ AI线程SQLite警告做候选/HEAD各一次自然定向：候选2通过未复现
 
 ## 阶段验证与提交
 
-- 当前五个业务Python文件及allocator ENV与[10-16默认完整门禁](2026-10-16-oom-date-warning-startup-validation.md)逐字节一致，复用run `20261016T100238.045158Z-7c6286a7191d` 的八阶段PASS/实际0。本轮两处测试补修后未重跑full8；最终整合版仍须执行一次完整门禁。
+- 当前五个业务Python文件及allocator ENV与[10-16默认完整门禁](2026-10-16-oom-residency-and-arena-research.md#日期回填警告修复的独立启动对照与累计候选验证)逐字节一致，复用run `20261016T100238.045158Z-7c6286a7191d` 的八阶段PASS/实际0。本轮两处测试补修后未重跑full8；最终整合版仍须执行一次完整门禁。
 - 新增2项unit/6项contract通过；Ruff、format、mypy、detect-secrets四hooks通过，提交时staged hooks再次通过；diff check通过。
 - 原22文件及补修后23文件patch在main/现有整合树apply-check均0，尚未将业务补丁应用到二者。
 - 按大阶段提交授权形成研发提交 `c844b98f260b85b92ae298e9d135fdab6cb05de2`，标题 `perf: 降低实体统计与播放记录构建的临时内存`，共23文件；未推送部署。源SHA→main业务SHA映射待R4。

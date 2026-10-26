@@ -5,7 +5,7 @@
 > 适用范围：Billboard 预聚合有效性、Records 完整/分段接口一致性、Records 过滤参数传播、Billboard 记录与详情稳定排序、播放排行同次数排序
 > 交付状态：实现提交 `0b23c4425c1635d4f3dc36f5ccd29e0758d1749f` 与 `46fc7afa93210a74d29eec05a37d1c8f39c01269` 已进入 `origin/main`；当前主线 `d37e8aaf`，生产代码版本 `b0d674bd`包含两项修复
 > 历史验收边界：本计划原验收未在 `46fc7afa` 单独重跑默认完整全栈门禁；该跨项目验收尾项不再作为本计划的业务实现待办
-> 关联台账：[`../issues/2026-08-27-issue-register.md`](../../issues/2026-08-27-issue-register.md)
+> 关联台账：[`../issues/2026-08-27-issue-register.md`](../../issues/README.md)
 > 当前规则：[`../reference/playback-stats-rules.md`](../../reference/playback-stats-rules.md)
 > 交付证据：[`../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md`](../../reports/2026-08-29-billboard-records-consistency-and-ranking-hardening.md)
 
@@ -179,7 +179,7 @@ bb_week_start_hour
 
 - [`backend/domains/billboard/chart_compute.py`](../../../backend/domains/billboard/chart_compute.py)
 - [`backend/domains/billboard/chart_staged_cache.py`](../../../backend/domains/billboard/chart_staged_cache.py)
-- [`backend/domains/billboard/records*.py`](../../../backend/domains/billboard/)
+- [`backend/domains/billboard/records*.py`](../../../backend/domains/billboard)
 - Billboard unit/contract tests
 
 实施内容：

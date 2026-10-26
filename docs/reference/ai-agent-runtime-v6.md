@@ -1,5 +1,7 @@
 # AI Agent V6 运行、恢复与报告发布规则
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 ## 1. 适用范围
 
 本规则适用于 AI 问答、年度报告快照研究和逐章写作。周报、月报保留固定工作流。`AI_AGENT_RUNTIME=v2` 仍是历史配置值；新任务在任务记录中固定 `runtime_version/workflow_version/event_schema_version`，不以批量改名替代协议升级。
@@ -50,6 +52,6 @@
 - Agent 快路径保持回答所需的周历史、榜单间断、running 指标和 chart data，但不展开页面展示专用的 `meta.version_group`；这项展示差异不得被描述为事实缺失或逐字段完全相等。
 - 音乐搜索只在专辑/艺人具有 `image_path` 或 `image_url` 元数据时发布本地 `/covers/...jpg`。读取旧候选 generation 或 legacy 搜索结果时，按当前结果页至多执行两次元数据查询并将失效本地 URL 清为 `null`；不访问文件系统、不触发封面下载，也不要求同步重建索引。外部/provider URL 原样保留。
 
-## 7. 主分支迁移集成
+## 8. 主分支迁移集成
 
 2026-09-27 合并后保留主分支已使用的 schema 80/81（Spotify 多艺人署名），V6 运行与章节、冻结上下文与预算、模型派发三项迁移依次使用 82/83/84。分支验收期间的 80/81/82 仅是当时隔离副本的编号，历史验收数据库不能直接替换正式数据库；新验收或发布从主分支数据库副本按当前迁移链升级。搜索候选版本为 `music_search_candidate_index_v6_credits_and_covers`，同时包含有效署名与封面可用性。

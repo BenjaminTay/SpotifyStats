@@ -5,7 +5,7 @@
 
 ## 提交与范围
 
-阶段 7C Analysis revision 提交为 `410d0b971dfdd8bd9efb750030a4dfeaf7f8a63b`。Import Preflight 独立提交为 `53dbf90e1af781c79a846ab6eb50c2426e8c4dca`，原始 profile、三进程 cold、21 个 hot 与缓存合同见[阶段 7D](2026-09-20-stage7d-import-preflight.md)。
+阶段 7C Analysis revision 提交为 `410d0b971dfdd8bd9efb750030a4dfeaf7f8a63b`。Import Preflight 独立提交为 `53dbf90e1af781c79a846ab6eb50c2426e8c4dca`，原始 profile、三进程 cold、21 个 hot 与缓存合同见[阶段 7D](2026-09-20-stage7-performance-checkpoints.md#阶段-7dimport-preflight-复用与最终本地全栈验收partial)。
 
 本阶段统一收口 Analysis/browser 验收合同、seed/integration 数据源分层、测试临时目录生命周期及存储保护。未改变产品统计/导入算法，未新增任意日期快照架构。验证时 HEAD 为上述 Import commit，工作区包含本阶段修改；本检查点最终 SHA 由提交后 Git 回执记录，避免在提交内自引用 SHA。README 的 unit/contract 入口不需修改，AGENTS/CLAUDE 未变化。
 

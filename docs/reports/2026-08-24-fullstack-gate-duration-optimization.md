@@ -4,7 +4,7 @@
 
 状态：**Partial（P0 与首项 P1 去重完成；25 分钟与三轮稳定目标未达成）**
 
-关联计划：[`../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)
+关联计划：[`../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](../plans/fullstack-verification-performance.md)
 
 当前规则：[`../reference/fullstack-verification.md`](../reference/fullstack-verification.md)
 

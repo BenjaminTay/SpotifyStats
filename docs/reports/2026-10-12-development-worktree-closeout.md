@@ -36,7 +36,7 @@
 
 | 来源 | 主线对应 | 判定依据 |
 | --- | --- | --- |
-| 分页 `4f9a01ff`、艺人身份 `8f638494` | 联合提交 `ad9cc3c6`，最终验证代码 `8464ffa6` | [专辑联合整合报告](2026-10-03-album-metadata-final-integration.md)及提交正文记录固定输入 |
+| 分页 `4f9a01ff`、艺人身份 `8f638494` | 联合提交 `ad9cc3c6`，最终验证代码 `8464ffa6` | [专辑联合整合报告](2026-10-03-album-metadata-delivery.md#专辑证据与最新封面主线最终本地集成验收)及提交正文记录固定输入 |
 | CI 共享连接修复 `d3400023` | `49bfadfd` | 三个 snapshot service 的该次提交补丁逐字一致 |
 | 单测诊断 `06f43628`、契约诊断 `06c4cc28` / `63e0c376` | `e06b2d4d` / `49bfadfd` 与其后主线 | 当前 reusable quality workflow 与旧分支完全一致 |
 | Linux 空 WAL `eb5e97d9` | 契约边界 `49bfadfd`；相关持久缓存测试 `e06b2d4d` | 当前测试保留空 WAL 处理并有后续合同扩展；完整差异保存在 CI slot |

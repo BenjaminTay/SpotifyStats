@@ -1,5 +1,7 @@
 # Community 与详情非核心请求合同
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 ## Community 设置与查询身份
 
 `useCommunityChartParams()` 返回 `params / ready / loading / error / refetch`。设置成功前，feed、trending 和 post Query 均 disabled；设置错误走页面错误状态和设置重试，不发 fallback 请求。服务端控制的字段来自 settings；merge level、dynamic threshold 沿用当前浏览器的既有用户选择，在 settings ready 后统一组合。

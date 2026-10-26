@@ -1,5 +1,7 @@
 # 发行日期证据与精度
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 对应 `SS-2026-09-24-003`；规则版本 `release_date_evidence_v3_independent_dates`，schema94。
 
 ## 来源与持久化

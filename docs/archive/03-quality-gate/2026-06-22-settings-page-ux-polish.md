@@ -1,6 +1,6 @@
 # Settings Page UX Polish Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> 历史实施提纲：已省略大段实现／测试代码草稿、重复命令及红绿测试步骤，保留设计要求、分工、接口示例与原验收事实。正文中的任务和Expected属于当时计划；当前行为见[文档地图](../../README.md)。
 
 **Goal:** Make the Settings page easier to understand, more visually coherent, and safer to operate by separating onboarding, routine settings, advanced parameters, rebuild actions, and LLM profile management.
 
@@ -11,8 +11,6 @@
 ---
 
 ## Latest Review Baseline
-
-2026-06-22 latest CC patch evaluation:
 
 **Overall judgment:** UX direction is correct, but release readiness is **Fail** until the frontend build blocker is fixed. The page is now more understandable than the previous version, especially because the status overview, global rebuild notice, and LLM current-model card give users clearer answers. However, the current patch cannot be accepted as complete because `npm run build` fails and the focused tests do not cover the broken interaction/type path.
 
@@ -32,19 +30,6 @@
 - The LLM add-profile modal allows saving an empty API Key, but the copy does not clearly explain that such a profile cannot call the model.
 - The visual direction is improved but still a little engineering-heavy: `Settings / Configuration`, `Data Import`, `profile`, `llm_enabled`, and raw setting keys reduce the polished editorial feel.
 - The mobile layout has no horizontal overflow, but top navigation and theme controls still consume enough space that Settings content feels lower than ideal on 390px.
-
-**Evidence from latest review:**
-
-```bash
-cd frontend && npm run build
-# FAIL: DataFilteringSection props mismatch and missing LLM test props
-
-cd frontend && npm test -- settings-sections.test.tsx settings-llm-section.test.tsx
-# PASS: 2 test files, but insufficient coverage for typecheck and interactions
-
-.venv/bin/pytest backend/tests/contract/test_settings_api_mutations.py -q
-# PASS: 11 tests
-```
 
 Browser evidence:
 
@@ -107,106 +92,24 @@ The finished Settings page should answer four user questions quickly:
 
 ### Task 0: Stabilize Latest CC Patch Before More UX Polish
 
-**Files:**
-- Modify: `frontend/src/features/settings/components/DataFilteringSection.tsx`
-- Modify: `frontend/src/tests/settings-sections.test.tsx`
-- Modify: `frontend/src/tests/settings-llm-section.test.tsx`
+涉及文件：`frontend/src/features/settings/components/DataFilteringSection.tsx`、`frontend/src/tests/settings-sections.test.tsx`、`frontend/src/tests/settings-llm-section.test.tsx`。
+
 - Optional modify: `frontend/src/features/settings/components/LLMTranslationSection.tsx`
-
-- [ ] **Step 1: Fix `DataFilteringSection` props**
-
-Replace the component parameter destructuring with this exact shape:
-
-```tsx
-export function DataFilteringSection({
-  settings,
-  onUpdate,
-  onRequiresRebuild,
-  chineseStyle,
-  onChangeChineseStyle,
-}: {
-  settings: { min_ms: number; music_only: boolean; merge_enabled: boolean }
-  onUpdate: (p: SettingsUpdatePayload) => void
-  onRequiresRebuild: () => void
-  chineseStyle: ChineseStyle
-  onChangeChineseStyle: (s: string | null) => void
-}) {
-```
+- Fix `DataFilteringSection` props
 
 Remove any remaining `onRebuild` and `rebuildLoading` references from this file. The child section should only mark pending rebuild; the page-level `RebuildNotice` owns the rebuild action.
 
-- [ ] **Step 2: Update the LLM focused test props**
-
-In `frontend/src/tests/settings-llm-section.test.tsx`, pass the new active-profile props to `LLMTranslationSection`:
-
-```tsx
-activeProfileId={1}
-activeProfileName="DeepSeek 主配置"
-```
+- Update the LLM focused test props
 
 Keep the existing assertions for provider logo and single switch, then add:
 
-```tsx
-expect(await screen.findByText('DeepSeek 主配置')).toBeInTheDocument()
-expect(screen.getByText('当前')).toBeInTheDocument()
-```
-
-- [ ] **Step 3: Add an interaction regression test for pending rebuild**
+- Add an interaction regression test for pending rebuild
 
 Extend `frontend/src/tests/settings-sections.test.tsx` to click a filtering toggle and assert the parent callback fires:
 
-```tsx
-import { fireEvent, render, screen } from '@testing-library/react'
-
-it('notifies parent when a filtering toggle changes statistics semantics', () => {
-  const onRequiresRebuild = vi.fn()
-  const onUpdate = vi.fn()
-
-  render(
-    <DataFilteringSection
-      settings={{
-        min_ms: 30000,
-        music_only: true,
-        merge_enabled: true,
-      }}
-      onUpdate={onUpdate}
-      onRequiresRebuild={onRequiresRebuild}
-      chineseStyle="original"
-      onChangeChineseStyle={vi.fn()}
-    />,
-  )
-
-  fireEvent.click(screen.getByRole('switch', { name: '仅音乐' }))
-
-  expect(onUpdate).toHaveBeenCalledWith({ music_only: false })
-  expect(onRequiresRebuild).toHaveBeenCalledTimes(1)
-})
-```
-
-- [ ] **Step 4: Decide whether `activeProfileName` should render**
-
-If keeping `activeProfileName` as a prop, render it in the current-model card:
-
-```tsx
-{activeProfileName && (
-  <div className="mt-3 text-[12px] text-muted-foreground">
-    当前档案：<span className="text-foreground">{activeProfileName}</span>
-  </div>
-)}
-```
+- Decide whether `activeProfileName` should render
 
 If this line makes the current-model card too dense, remove the prop from `LLMTranslationSection` and from the caller. Do not leave an unused required prop because `noUnusedLocals` will fail the build.
-
-- [ ] **Step 5: Re-run the minimum stabilization checks**
-
-Run:
-
-```bash
-cd frontend && npm test -- settings-sections.test.tsx settings-llm-section.test.tsx
-cd frontend && npm run build
-```
-
-Expected:
 
 ```text
 Settings focused tests pass.
@@ -218,445 +121,61 @@ Do not continue to visual polish tasks until this task passes.
 
 ---
 
+- 历史实施约束：If keeping `activeProfileName` as a prop, render it in the current-model card.
+
 ### Task 1: Add Backend Active LLM Profile Contract
 
-**Files:**
-- Modify: `backend/models/common.py`
-- Modify: `backend/api/settings.py`
-- Test: `backend/tests/contract/test_settings_api_mutations.py`
+涉及文件：`backend/models/common.py`、`backend/api/settings.py`、`backend/tests/contract/test_settings_api_mutations.py`。
 
-- [ ] **Step 1: Write the failing contract assertions**
+历史验收预期： `KeyError: 'llm_active_profile_id'` or equivalent missing-field failure.
 
-Add these assertions after applying a profile in `test_llm_profile_crud_apply_and_secret_redaction`:
-
-```python
-settings = client.get("/api/settings").json()
-assert settings["llm_provider"] == "openai"
-assert settings["llm_model"] == "gpt-contract-updated"
-assert settings["has_llm_key"] is True
-assert settings["llm_active_profile_id"] == profile_id
-assert settings["llm_active_profile_name"] == "Contract Profile"
-assert "llm_api_key" not in settings
-```
-
-- [ ] **Step 2: Run the focused backend test and confirm it fails**
-
-Run:
-
-```bash
-.venv/bin/pytest backend/tests/contract/test_settings_api_mutations.py::test_llm_profile_crud_apply_and_secret_redaction -q
-```
-
-Expected: `KeyError: 'llm_active_profile_id'` or equivalent missing-field failure.
-
-- [ ] **Step 3: Extend the settings response model**
-
-In `backend/models/common.py`, add these fields to `SettingsResponse`:
-
-```python
-llm_active_profile_id: int | None = None
-llm_active_profile_name: str | None = None
-```
-
-- [ ] **Step 4: Implement profile matching in the settings response**
-
-In `backend/api/settings.py`, add a helper near `_build_settings_response`:
-
-```python
-def _find_active_llm_profile(conn: Connection, current: dict) -> dict[str, int | str | None]:
-    row = conn.execute(
-        """
-        SELECT id, profile_name
-        FROM llm_profiles
-        WHERE llm_provider = ?
-          AND llm_model = ?
-          AND COALESCE(llm_api_key, '') = ?
-          AND COALESCE(llm_base_url, '') = ?
-        ORDER BY updated_at DESC, id DESC
-        LIMIT 1
-        """,
-        (
-            current.get("llm_provider", ""),
-            current.get("llm_model", ""),
-            current.get("llm_api_key", ""),
-            current.get("llm_base_url", ""),
-        ),
-    ).fetchone()
-    if not row:
-        return {"llm_active_profile_id": None, "llm_active_profile_name": None}
-    return {"llm_active_profile_id": row["id"], "llm_active_profile_name": row["profile_name"]}
-```
+- Extend the settings response model
+- Implement profile matching in the settings response
 
 Then merge it into `_build_settings_response` before redacting secrets:
 
-```python
-resp.update(_find_active_llm_profile(conn, _current))
-```
-
-- [ ] **Step 5: Verify backend contract**
-
-Run:
-
-```bash
-.venv/bin/pytest backend/tests/contract/test_settings_api_mutations.py -q
-```
-
-Expected: all tests in the file pass.
+- Verify backend contract
 
 ---
 
 ### Task 2: Add Top Settings Overview
 
-**Files:**
-- Create: `frontend/src/features/settings/components/SettingsOverview.tsx`
-- Modify: `frontend/src/pages/SettingsPage.tsx`
-- Test: `frontend/src/tests/settings-sections.test.tsx`
+涉及文件：`frontend/src/features/settings/components/SettingsOverview.tsx`、`frontend/src/pages/SettingsPage.tsx`、`frontend/src/tests/settings-sections.test.tsx`。
 
-- [ ] **Step 1: Write a failing overview test**
+历史验收预期： import or component-not-found failure.
 
-Append a test to `frontend/src/tests/settings-sections.test.tsx`:
-
-```tsx
-import { SettingsOverview } from '@/features/settings/components/SettingsOverview'
-
-it('summarizes setup status at the top of Settings', () => {
-  render(
-    <SettingsOverview
-      dbRecordCount={1200}
-      accountImported
-      spotifyConnected
-      hasLlmKey
-      llmProvider="deepseek"
-      llmModel="deepseek-chat"
-      rebuildPending={false}
-    />,
-  )
-
-  expect(screen.getByText('数据就绪')).toBeInTheDocument()
-  expect(screen.getByText('Spotify 已连接')).toBeInTheDocument()
-  expect(screen.getByText('统计已生效')).toBeInTheDocument()
-  expect(screen.getByText('DeepSeek')).toBeInTheDocument()
-})
-```
-
-- [ ] **Step 2: Run the focused frontend test and confirm it fails**
-
-Run:
-
-```bash
-cd frontend && npm test -- settings-sections.test.tsx
-```
-
-Expected: import or component-not-found failure.
-
-- [ ] **Step 3: Create the overview component**
-
-Create `frontend/src/features/settings/components/SettingsOverview.tsx`:
-
-```tsx
-import { CheckCircle2, Database, Link, RefreshCw, Sparkles } from 'lucide-react'
-import { cn } from '@/lib/utils'
-
-function StatusCell({
-  icon,
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  tone?: 'good' | 'warn' | 'neutral'
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-card/70 p-4">
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[1.2px] text-muted-foreground">
-        {icon}
-        {label}
-      </div>
-      <div
-        className={cn(
-          'mt-2 font-sans text-[14px] font-semibold',
-          tone === 'good' && 'text-green-700 dark:text-green-400',
-          tone === 'warn' && 'text-amber-700 dark:text-amber-300',
-          tone === 'neutral' && 'text-foreground',
-        )}
-      >
-        {value}
-      </div>
-    </div>
-  )
-}
-
-export function SettingsOverview({
-  dbRecordCount,
-  accountImported,
-  spotifyConnected,
-  hasLlmKey,
-  llmProvider,
-  llmModel,
-  rebuildPending,
-}: {
-  dbRecordCount: number
-  accountImported: boolean
-  spotifyConnected: boolean
-  hasLlmKey: boolean
-  llmProvider: string
-  llmModel: string
-  rebuildPending: boolean
-}) {
-  const dataReady = dbRecordCount > 0 && accountImported
-  const providerLabel = llmProvider === 'deepseek'
-    ? 'DeepSeek'
-    : llmProvider === 'openai'
-      ? 'OpenAI'
-      : llmProvider === 'anthropic'
-        ? 'Anthropic'
-        : llmProvider || '未配置'
-
-  return (
-    <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
-      <StatusCell
-        icon={dataReady ? <CheckCircle2 className="size-3.5" /> : <Database className="size-3.5" />}
-        label="数据状态"
-        value={dataReady ? '数据就绪' : '需要导入'}
-        tone={dataReady ? 'good' : 'warn'}
-      />
-      <StatusCell
-        icon={<Link className="size-3.5" />}
-        label="Spotify"
-        value={spotifyConnected ? 'Spotify 已连接' : '未连接'}
-        tone={spotifyConnected ? 'good' : 'neutral'}
-      />
-      <StatusCell
-        icon={<RefreshCw className="size-3.5" />}
-        label="统计口径"
-        value={rebuildPending ? '有改动待生效' : '统计已生效'}
-        tone={rebuildPending ? 'warn' : 'good'}
-      />
-      <StatusCell
-        icon={<Sparkles className="size-3.5" />}
-        label="当前模型"
-        value={hasLlmKey ? `${providerLabel} · ${llmModel || '默认模型'}` : '缺少 API Key'}
-        tone={hasLlmKey ? 'good' : 'warn'}
-      />
-    </section>
-  )
-}
-```
-
-- [ ] **Step 4: Render overview below the page hero**
-
-In `frontend/src/pages/SettingsPage.tsx`, import and render:
-
-```tsx
-import { SettingsOverview } from '@/features/settings/components/SettingsOverview'
-```
-
-Add:
-
-```tsx
-const [rebuildPending, setRebuildPending] = useState(false)
-```
+- Create the overview component
+- Render overview below the page hero
 
 Render after the hero section:
 
-```tsx
-<SettingsOverview
-  dbRecordCount={settings.db_record_count}
-  accountImported={settings.account_data_imported}
-  spotifyConnected={settings.spotify_connected}
-  hasLlmKey={settings.has_llm_key}
-  llmProvider={settings.llm_provider}
-  llmModel={settings.llm_model}
-  rebuildPending={rebuildPending}
-/>
-```
-
-- [ ] **Step 5: Verify overview**
-
-Run:
-
-```bash
-cd frontend && npm test -- settings-sections.test.tsx
-cd frontend && npm run build
-```
-
-Expected: tests and build pass.
+- Verify overview
 
 ---
 
 ### Task 3: Centralize Rebuild Action
 
-**Files:**
-- Create: `frontend/src/features/settings/components/RebuildNotice.tsx`
-- Modify: `frontend/src/pages/SettingsPage.tsx`
-- Modify: `frontend/src/features/settings/components/DataFilteringSection.tsx`
-- Modify: `frontend/src/features/settings/components/BillboardParamsSection.tsx`
-- Test: `frontend/src/tests/settings-sections.test.tsx`
+涉及文件：`frontend/src/features/settings/components/RebuildNotice.tsx`、`frontend/src/pages/SettingsPage.tsx`、`frontend/src/features/settings/components/DataFilteringSection.tsx`、`frontend/src/features/settings/components/BillboardParamsSection.tsx`、`frontend/src/tests/settings-sections.test.tsx`。
 
-- [ ] **Step 1: Add a failing test for a single rebuild CTA**
-
-Add a test that renders `RebuildNotice`:
-
-```tsx
-import { RebuildNotice } from '@/features/settings/components/RebuildNotice'
-
-it('shows one global rebuild action when statistics settings are pending', () => {
-  render(
-    <RebuildNotice
-      pending
-      loading={false}
-      message=""
-      onRebuild={vi.fn()}
-    />,
-  )
-
-  expect(screen.getByText('统计口径有改动待生效')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '应用改动并重建统计' })).toBeInTheDocument()
-})
-```
-
-- [ ] **Step 2: Create `RebuildNotice`**
-
-```tsx
-import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-
-export function RebuildNotice({
-  pending,
-  loading,
-  message,
-  onRebuild,
-}: {
-  pending: boolean
-  loading: boolean
-  message: string
-  onRebuild: () => void
-}) {
-  if (!pending && !message) return null
-
-  return (
-    <div className={cn(
-      'rounded-xl border px-4 py-3',
-      pending ? 'border-amber-500/30 bg-amber-500/5' : 'border-green-500/30 bg-green-500/5',
-    )}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-2.5">
-          {pending ? (
-            <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-300" />
-          ) : (
-            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green-600 dark:text-green-400" />
-          )}
-          <div>
-            <div className="text-[13px] font-semibold text-foreground">
-              {pending ? '统计口径有改动待生效' : message}
-            </div>
-            {pending && (
-              <p className="mt-0.5 text-[12px] leading-relaxed text-muted-foreground">
-                播放过滤或榜单参数已改变。应用后，所有榜单和统计会按新规则重新计算。
-              </p>
-            )}
-          </div>
-        </div>
-        {pending && (
-          <Button size="sm" onClick={onRebuild} disabled={loading} className="gap-1.5">
-            <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
-            {loading ? '重建中...' : '应用改动并重建统计'}
-          </Button>
-        )}
-      </div>
-    </div>
-  )
-}
-```
-
-- [ ] **Step 3: Track pending rebuild at page level**
-
-In `SettingsPage.tsx`, add:
-
-```tsx
-const [rebuildPending, setRebuildPending] = useState(false)
-
-const handleSettingsRequireRebuild = () => {
-  setRebuildPending(true)
-}
-```
-
-Update `handleRebuild`:
-
-```tsx
-const handleRebuild = () => {
-  setRebuildLoading(true)
-  setRebuildMsg('')
-  rebuildAgg().then((res) => {
-    setRebuildMsg(res.status === 'done' ? '聚合表重建完成' : '重建完成')
-    setRebuildPending(false)
-    setRebuildLoading(false)
-  }).catch((e) => {
-    setRebuildMsg(e instanceof Error ? e.message : '重建失败，请重试')
-    setRebuildLoading(false)
-  })
-}
-```
-
-- [ ] **Step 4: Render global notice below the overview**
-
-```tsx
-<RebuildNotice
-  pending={rebuildPending}
-  loading={rebuildLoading}
-  message={rebuildMsg}
-  onRebuild={handleRebuild}
-/>
-```
-
-- [ ] **Step 5: Remove duplicate rebuild buttons from child sections**
-
-In `DataFilteringSection.tsx` and `BillboardParamsSection.tsx`, replace direct rebuild buttons with a prop:
-
-```tsx
-onRequiresRebuild: () => void
-```
-
-Call it after settings changes that affect statistics:
-
-```tsx
-const updateAndRequireRebuild = (p: SettingsUpdatePayload) => {
-  update(p)
-  onRequiresRebuild()
-}
-```
+- Add a failing test for a single rebuild CTA
+- Create `RebuildNotice`
+- Track pending rebuild at page level
+- Render global notice below the overview
+- Remove duplicate rebuild buttons from child sections
 
 Use `updateAndRequireRebuild` for `min_ms`, `music_only`, `merge_enabled`, `bb_top_n`, `bb_album_top_n`, `bb_artist_top_n`, `bb_week_start_dow`, and `bb_week_start_hour`.
 
-- [ ] **Step 6: Verify single rebuild CTA**
+- Verify single rebuild CTA
 
-Run:
-
-```bash
-cd frontend && npm test -- settings-sections.test.tsx
-cd frontend && npm run build
-```
-
-Expected: no test should find more than one rebuild CTA in rendered section tests.
+历史验收预期： no test should find more than one rebuild CTA in rendered section tests.
 
 ---
 
 ### Task 4: Progressive Disclosure and Naming Cleanup
 
-**Files:**
-- Modify: `frontend/src/features/settings/components/SettingsHelpers.tsx`
-- Modify: `frontend/src/pages/SettingsPage.tsx`
-- Modify: `frontend/src/features/settings/components/DataImportSection.tsx`
-- Modify: `frontend/src/features/settings/components/DataFilteringSection.tsx`
-- Modify: `frontend/src/features/settings/components/BillboardParamsSection.tsx`
-- Modify: `frontend/src/features/settings/components/VersionMergeSection.tsx`
-- Modify: `frontend/src/features/settings/components/LLMTranslationSection.tsx`
-- Test: `frontend/src/tests/settings-sections.test.tsx`
+涉及文件：`frontend/src/features/settings/components/SettingsHelpers.tsx`、`frontend/src/pages/SettingsPage.tsx`、`frontend/src/features/settings/components/DataImportSection.tsx`、`frontend/src/features/settings/components/DataFilteringSection.tsx`、`frontend/src/features/settings/components/BillboardParamsSection.tsx`、`frontend/src/features/settings/components/VersionMergeSection.tsx`、`frontend/src/features/settings/components/LLMTranslationSection.tsx`、`frontend/src/tests/settings-sections.test.tsx`。
 
-- [ ] **Step 1: Define Chinese section titles**
+- Define Chinese section titles
 
 Use these titles:
 
@@ -669,182 +188,60 @@ Use these titles:
 06 · LLM 配置
 ```
 
-- [ ] **Step 2: Add summary support for every collapsible section**
+- Add summary support for every collapsible section
 
 Keep `CollapsibleSection` API but ensure collapsed sections always show useful summaries:
 
-```tsx
-<CollapsibleSection
-  num={4}
-  title="榜单参数"
-  desc={`${bbName} 周榜的计算边界和榜单容量。`}
-  defaultOpen={false}
-  summary={`单曲 ${settings.bb_top_n} · 专辑 ${settings.bb_album_top_n} · 艺人 ${settings.bb_artist_top_n}`}
->
-```
-
-- [ ] **Step 3: Default advanced sections closed**
-
-Set:
-
-```tsx
-<BillboardParamsSection defaultOpen={false} />
-<VersionMergeSection defaultOpen={false} />
-```
+- Default advanced sections closed
 
 If passing `defaultOpen` would create too much prop churn, set it directly inside those section components.
 
-- [ ] **Step 4: Keep onboarding sections open when incomplete**
-
-`DataImportSection` already does this:
-
-```tsx
-defaultOpen={!imported}
-```
+- Keep onboarding sections open when incomplete
 
 Use the same principle for Spotify:
 
-```tsx
-defaultOpen={!connected}
-summary={connected ? '已连接，可同步收藏时间' : '未连接'}
-```
-
-- [ ] **Step 5: Verify title consistency**
+- Verify title consistency
 
 Add test assertions:
 
-```tsx
-expect(screen.queryByText('Data Import')).not.toBeInTheDocument()
-expect(screen.queryByText('Data & Display')).not.toBeInTheDocument()
-expect(screen.queryByText('Billboard Parameters')).not.toBeInTheDocument()
-expect(screen.getByText(/数据导入/)).toBeInTheDocument()
-expect(screen.getByText(/数据与显示/)).toBeInTheDocument()
-expect(screen.getByText(/榜单参数/)).toBeInTheDocument()
-```
-
-- [ ] **Step 6: Verify**
-
-Run:
-
-```bash
-cd frontend && npm test -- settings-sections.test.tsx
-cd frontend && npm run build
-```
-
-Expected: title tests pass and build passes.
+- Verify
 
 ---
 
 ### Task 5: Improve LLM Profile Clarity
 
-**Files:**
-- Modify: `frontend/src/types/settings.ts`
-- Modify: `frontend/src/features/settings/components/LLMTranslationSection.tsx`
-- Modify: `frontend/src/pages/SettingsPage.tsx`
-- Modify: `frontend/src/hooks/useSettings.ts`
-- Test: `frontend/src/tests/settings-llm-section.test.tsx`
+涉及文件：`frontend/src/types/settings.ts`、`frontend/src/features/settings/components/LLMTranslationSection.tsx`、`frontend/src/pages/SettingsPage.tsx`、`frontend/src/hooks/useSettings.ts`、`frontend/src/tests/settings-llm-section.test.tsx`。
 
-- [ ] **Step 1: Add active profile fields to frontend type**
-
-In `SettingsData`:
-
-```ts
-llm_active_profile_id: number | null
-llm_active_profile_name: string | null
-```
-
-- [ ] **Step 2: Extend LLM section props**
-
-Add:
-
-```ts
-activeProfileId: number | null
-activeProfileName: string | null
-```
+- Add active profile fields to frontend type
+- Extend LLM section props
 
 Pass from `SettingsPage`:
 
-```tsx
-activeProfileId={settings.llm_active_profile_id}
-activeProfileName={settings.llm_active_profile_name}
-```
-
-- [ ] **Step 3: Select active profile from backend contract**
-
-Replace local-only selected logic:
-
-```tsx
-const selected = activeProfileId === profile.id || selectedProfileId === profile.id
-```
+- Select active profile from backend contract
 
 Show active source only when meaningful:
 
-```tsx
-{activeProfileName && (
-  <div className="mt-3 text-[12px] text-muted-foreground">
-    当前档案：<span className="text-foreground">{activeProfileName}</span>
-  </div>
-)}
-```
-
-- [ ] **Step 4: Improve empty state action**
+- Improve empty state action
 
 Use one clear empty state:
 
-```tsx
-<div className="rounded-xl border border-dashed border-border bg-muted/20 p-5">
-  <p className="text-[13px] text-muted-foreground">
-    暂无已保存的配置档案。添加第一个配置后，可在 DeepSeek、OpenAI、Anthropic 或自定义接口之间切换。
-  </p>
-  <Button size="sm" onClick={openAddProfileModal} className="mt-3 gap-1.5">
-    <Plus className="size-3.5" />
-    添加第一个配置
-  </Button>
-</div>
-```
-
-- [ ] **Step 5: Keep one translation switch**
+- Keep one translation switch
 
 Add or keep this test:
 
-```tsx
-expect(screen.getAllByRole('switch')).toHaveLength(1)
-expect(screen.getByRole('switch', { name: '启用 Wikipedia LLM 翻译' })).toBeInTheDocument()
-```
-
-- [ ] **Step 6: Verify**
-
-Run:
-
-```bash
-cd frontend && npm test -- settings-llm-section.test.tsx
-cd frontend && npm run build
-```
-
-Expected: active profile and single-switch tests pass.
+- Verify
 
 ---
 
 ### Task 6: Visual Polish and Responsive QA
 
-**Files:**
-- Modify: `frontend/src/features/settings/components/SettingsOverview.tsx`
-- Modify: `frontend/src/features/settings/components/RebuildNotice.tsx`
-- Modify: `frontend/src/features/settings/components/SettingsHelpers.tsx`
-- Modify: `frontend/src/features/settings/components/LLMTranslationSection.tsx`
-- Test: existing frontend smoke scripts
+涉及文件：`frontend/src/features/settings/components/SettingsOverview.tsx`、`frontend/src/features/settings/components/RebuildNotice.tsx`、`frontend/src/features/settings/components/SettingsHelpers.tsx`、`frontend/src/features/settings/components/LLMTranslationSection.tsx`。
 
-- [ ] **Step 1: Align cards with UI guide**
-
-Use the existing visual grammar:
-
-```tsx
-className="rounded-xl border border-border bg-card/70 p-4"
-```
+- Align cards with UI guide
 
 Avoid nested heavy cards inside cards; use subtle `bg-muted/20` panels only for related controls.
 
-- [ ] **Step 2: Reduce noisy badges**
+- Reduce noisy badges
 
 Keep badges only when they help user decisions:
 
@@ -855,7 +252,7 @@ Remove or soften: raw internal keys like bb_top_n, llm_enabled, max_merge_gap_mi
 
 Technical keys may remain in tooltips or smaller secondary text if needed.
 
-- [ ] **Step 3: Clean up mixed-language user-facing copy**
+- Clean up mixed-language user-facing copy
 
 Use Chinese-first section names and action labels. Keep product/provider names in English only when they are proper names.
 
@@ -868,8 +265,6 @@ profile
 llm_enabled
 ```
 
-With:
-
 ```text
 设置
 数据导入
@@ -879,134 +274,32 @@ Wikipedia 翻译
 
 The top hero can keep a subtle English kicker only if it does not compete with the Chinese page title. Preferred copy:
 
-```tsx
-<div className="mb-3 font-sans text-[11px] font-bold uppercase tracking-[1.8px] text-accent-foreground">
-  Settings
-</div>
-```
-
-- [ ] **Step 4: Make the LLM modal more intuitive**
-
-Clarify the API Key field:
-
-```tsx
-<p className="text-[12px] text-muted-foreground">
-  需要填写 API Key 才能调用模型；留空只会保存一个不可调用的档案。
-</p>
-```
-
-Prefer disabling save when the profile would be misleading:
-
-```tsx
-const canSaveProfile = formProfileName.trim().length > 0 && formApiKey.trim().length > 0
-```
-
-Then use:
-
-```tsx
-<Button size="sm" onClick={handleSaveProfile} disabled={profileSaving || !canSaveProfile}>
-  {profileSaving ? '保存中...' : '保存并设为当前'}
-</Button>
-```
+- Make the LLM modal more intuitive
 
 If empty-key profiles are intentionally supported for local gateway workflows, keep Save enabled but add an inline warning before the buttons:
 
-```tsx
-{!formApiKey.trim() && (
-  <p className="mt-3 text-[12px] text-amber-700 dark:text-amber-300">
-    未填写 API Key，保存后该档案会显示为缺少密钥，无法用于 AI 洞察或翻译。
-  </p>
-)}
-```
-
-- [ ] **Step 5: Add mobile constraints**
+- Add mobile constraints
 
 Use these patterns where necessary:
 
-```tsx
-className="min-w-0"
-className="truncate"
-className="grid grid-cols-1 gap-4 md:grid-cols-2"
-className="w-full max-w-[200px]"
-```
+- Check mobile first viewport
 
-- [ ] **Step 6: Check mobile first viewport**
-
-At 390px width, the Settings page should show at least one Settings-specific element without feeling buried under navigation. If the masthead remains visually heavy, reduce the page hero top padding for Settings only:
-
-```tsx
-<div className="mx-auto max-w-[900px] space-y-6 px-6 py-8 md:py-12">
-```
+At 390px width, the Settings page should show at least one Settings-specific element without feeling buried under navigation. If the masthead remains visually heavy, reduce the page hero top padding for Settings only.
 
 Do not hide navigation links unless the shared `Masthead` already has an established mobile pattern; this plan should not turn into a global navigation redesign.
 
-- [ ] **Step 7: Run route smoke**
+历史验收预期： `/settings` has no console warnings/errors and no horizontal overflow.
 
-With backend `8000` and frontend `5173` running:
-
-```bash
-node scripts/frontend_route_smoke.mjs --base-url http://localhost:5173 --viewport both --max-scroll-overflow 0 --fail-on-console-warning
-```
-
-Expected: `/settings` has no console warnings/errors and no horizontal overflow.
-
-- [ ] **Step 8: Run interaction smoke**
-
-```bash
-node scripts/frontend_interaction_smoke.mjs --base-url http://localhost:5173
-```
-
-Expected: settings controls and data import flow pass.
-
-- [ ] **Step 9: Run control inventory**
-
-```bash
-node scripts/frontend_control_inventory_smoke.mjs --base-url http://localhost:5173 --viewport both --include-detail-routes
-```
-
-Expected: no unnamed visible controls, no nested interactive controls, no duplicate ids.
+历史验收预期： no unnamed visible controls, no nested interactive controls, no duplicate ids.
 
 ---
 
 ### Task 7: Final Validation and Documentation
 
-**Files:**
 - Optional modify: `frontend/UI_STYLE_GUIDE.md`
 - Verify: no required code file changes
 
-- [ ] **Step 1: Run focused frontend tests**
-
-```bash
-cd frontend && npm test -- settings-sections.test.tsx settings-llm-section.test.tsx
-```
-
-Expected: all focused Settings tests pass.
-
-- [ ] **Step 2: Run frontend build**
-
-```bash
-cd frontend && npm run build
-```
-
-Expected: TypeScript and Vite build pass.
-
-- [ ] **Step 3: Run backend settings contract tests**
-
-```bash
-.venv/bin/pytest backend/tests/contract/test_settings_api_mutations.py -q
-```
-
-Expected: all settings mutation/profile contract tests pass.
-
-- [ ] **Step 4: Run full frontend tests when time allows**
-
-```bash
-cd frontend && npm test
-```
-
-Expected: existing architecture guardrails may fail only if unrelated pre-existing line-count issues remain; any new Settings tests must pass.
-
-- [ ] **Step 5: Update style guide only if the new pattern is stable**
+- Update style guide only if the new pattern is stable
 
 If Settings overview and global rebuild banner should become canonical, add a short section to `frontend/UI_STYLE_GUIDE.md`:
 
@@ -1020,7 +313,7 @@ If Settings overview and global rebuild banner should become canonical, add a sh
 - LLM provider identity uses local SVG logos with text fallback.
 ```
 
-- [ ] **Step 6: Final UX acceptance checklist**
+- Final UX acceptance checklist
 
 Manual check at `http://localhost:5173/settings`:
 
@@ -1037,6 +330,8 @@ Manual check at `http://localhost:5173/settings`:
 ```
 
 ---
+
+- 历史验收要求：existing architecture guardrails may fail only if unrelated pre-existing line-count issues remain; any new Settings tests must pass.
 
 ## Implementation Order
 

@@ -2,8 +2,8 @@
 
 日期：2026-08-12
 状态：**PASS，内容重构、性能优化、统计验收与用户展示验收持续收口（当前 content `yearly_review_v2_14`）**
-实施依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
-执行计划：[`../archive/06-productization-closeout/2026-08-12-yearly-review-v2-rebuild-plan.md`](../archive/06-productization-closeout/2026-08-12-yearly-review-v2-rebuild-plan.md)
+实施依据：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../archive/06-productization-closeout/2026-08-12-yearly-review-v2-design-and-plan.md#年度总结-v2-内容与数据契约设计)
+执行计划：[`../archive/06-productization-closeout/2026-08-12-yearly-review-v2-rebuild-plan.md`](../archive/06-productization-closeout/2026-08-12-yearly-review-v2-design-and-plan.md#年度总结-v2-完整重构实施计划)
 
 ## 1. 最终结论
 

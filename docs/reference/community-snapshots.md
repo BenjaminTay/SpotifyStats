@@ -1,6 +1,8 @@
 # Community 持久读模型
 
-> 当前合同：阶段 6A；本地验收见 [交付报告](../reports/2026-09-20-community-read-model.md)。
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
+实施与本地验收证据见 [交付报告](../reports/2026-09-20-community-read-model.md)。
 
 Community 的 feed、trending、post GET 只读取已发布 SQLite sidecar。打开页面不构建历史帖子、不排队；private/public 行为一致。`POST /api/community/refresh` 是 private 维护入口，按完整 Billboard 参数幂等排队；public 禁止调用。启动、播放导入/身份/credit/Billboard 维护完成，以及设置/元数据/收藏同步写入后的维护钩子确保默认投影。失败任务沿用 JobQueue 重试；终止失败后可重新 refresh。
 
@@ -27,11 +29,11 @@ Community 的 feed、trending、post GET 只读取已发布 SQLite sidecar。打
 - post：索引查 ID；同日、共有实体、其他账号的最早候选，每账号一个、最多四条回复。只反序列化目标及最终回复。
 - 展示补全：按返回帖子关联的 track/artist/album 分批查询封面映射；模拟 metrics 沿用既有范围和字段，按返回集合生成。
 - exact：200，`snapshot.status=ready`、`freshness=current`；兼容旧代：200，`warming/last_known_good`。失败目标另有 `build_status=failed`，保留旧事实。完全缺失/不兼容：503 `snapshot_unavailable`，不得转成空社区。
-- 页面继续等待 settings ready，Query key/signal 保留阶段 2B 的筛选与迟到响应隔离。共享 SnapshotStatusNotice 支持无限分页的 pages，以及 failed-LKG；account/post 同样显示明确 unavailable 文案。
+- 页面继续等待 settings ready，Query key/signal 保留统一的筛选与迟到响应隔离。共享 SnapshotStatusNotice 支持无限分页的 pages，以及 failed-LKG；account/post 同样显示明确 unavailable 文案。
 
 ## 构建语义
 
-阶段 4 的完整 ranked weekly facts 是 invocation 内临时共享对象，持久 sidecar 是 API 投影，不能证明它能无损回答 Community 的全部候选。因此本实现没有复用已发布 Billboard payload，也不从公开 GET 触发其构建。后台复用现有 raw loader、排名函数、有效署名与 canonical artist 规则；从同一次加载的独立次数/时长贡献行派生艺人输入，避免第二次完整 raw 加载。
+完整 ranked weekly facts 是 invocation 内临时共享对象，持久 sidecar 是 API 投影，不能证明它能无损回答 Community 的全部候选。因此本实现没有复用已发布 Billboard payload，也不从公开 GET 触发其构建。后台复用现有 raw loader、排名函数、有效署名与 canonical artist 规则；从同一次加载的独立次数/时长贡献行派生艺人输入，避免第二次完整 raw 加载。
 
 兼容的主库预聚合可由既有校验器选择；动态阈值、merge gap、merge_enabled 全部传入。Community 排除最新播放所在开放周，完成周使用原周结束时间。时代总结必须在最后完整周结束后发布；此前开始周时间戳提前暴露全周事实的问题已修正。其他周序历史 state、文案变体、字段与帖子生成规则保持。
 

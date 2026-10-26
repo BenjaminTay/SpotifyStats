@@ -2,7 +2,7 @@
 
 > 本文保留本地提交及后续失败检查点的历史语境；实际已随f1280ac1发布，最终CI、恢复与线上核验见[生产交付](2026-10-19-minimal-memory-production-delivery.md)。
 
-日期：2026-10-19。事项：SS-2026-10-08-001。范围依据：[精简收口计划](../plans/2026-10-19-performance-scope-and-memory-closeout.md)与用户本轮授权。本文只记录最终选中的业务组合；加载体验任务已经交付，OOM稳定性继续独立跟踪。
+日期：2026-10-19。事项：SS-2026-10-08-001。范围依据：[精简收口计划](../plans/performance-and-memory-closeout.md)与用户本轮授权。本文只记录最终选中的业务组合；加载体验任务已经交付，OOM稳定性继续独立跟踪。
 
 ## 采用范围与版本
 
@@ -26,8 +26,8 @@
 
 - 本轮只运行受影响的16个回归文件：**337通过**，pytest实际退出0；唯一warning为本机既有LibreSSL提示。源表/返回对象所有权、空表、NULL与dtype、重复索引、去重键、日期回填和生命周期边界均在既有用例范围内。
 - 21路径Ruff检查及格式检查通过，`git diff --check`通过。没有运行全后端或全站浏览器矩阵。
-- 复用[累计冻结审阅](2026-10-17-oom-candidate-freeze-review.md)中五业务文件、共享Yearly调用者和异常fallback的审阅，以及[合作事实累计对账](2026-10-15-oom-collaboration-credit-expansion-and-cumulative-review.md)中的52次旧builder、144合作榜及231组实体对账。
-- 相同五业务源码已有[10-16默认完整验证](2026-10-16-oom-date-warning-startup-validation.md)，run为 `20261016T100238.045158Z-7c6286a7191d`。本轮复用其业务正确性覆盖；没有将旧环境的资源数值归因给本组合，也没有声称新执行过full8。
+- 复用[累计冻结审阅](2026-10-17-oom-candidate-freeze-review.md)中五业务文件、共享Yearly调用者和异常fallback的审阅，以及[合作事实累计对账](2026-10-15-oom-projections-and-lifetimes.md#合作署名窄表展开与累计候选收益审阅)中的52次旧builder、144合作榜及231组实体对账。
+- 相同五业务源码已有[10-16默认完整验证](2026-10-16-oom-residency-and-arena-research.md#日期回填警告修复的独立启动对照与累计候选验证)，run为 `20261016T100238.045158Z-7c6286a7191d`。本轮复用其业务正确性覆盖；没有将旧环境的资源数值归因给本组合，也没有声称新执行过full8。
 
 ## 唯一必要资源对照
 

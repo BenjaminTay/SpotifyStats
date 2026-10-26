@@ -508,7 +508,7 @@ python3 scripts/docs_audit.py
 ## 15. 依赖文档与交付证据
 
 - [Spotify Track `artists[]` 证据交付与隔离验收报告](../../reports/2026-09-24-spotify-track-artists-evidence-delivery.md)
-- [多源音乐元数据后续路线记录](../../plans/2026-09-23-multi-source-music-metadata-roadmap.md)
+- [多源音乐元数据后续路线记录](../../plans/multi-source-music-metadata.md)
 - [音乐元数据管理规则](../../reference/music-metadata-management.md)
 - [数据导入与健康规则](../../reference/data-import-and-health.md)
 - [艺人语言事实与统计规则](../../reference/artist-language-statistics.md)

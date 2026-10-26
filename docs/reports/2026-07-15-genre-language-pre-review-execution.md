@@ -118,3 +118,16 @@ Language 最终覆盖率从本轮开始前的 97.45% 提升至 98.46%，未知�
 - 受控脚本：`scripts/review_high_impact_metadata_batch.py`、
   `scripts/approve_artist_language_long_tail_batch.py`
 - 两个脚本默认 dry-run；只有显式 `--apply` 才写正式数据库。
+
+## 规则文档中的2026-07-15历史快照
+
+从原流派规则文档承接的历史记录；数量与比例只属于标题所示日期，不作为当前数据基线。
+
+按 Settings 默认过滤口径重新计算：
+
+- Source genre 已知时长：4011.0h，原始标签覆盖率 100%。这只代表每位已归属艺人都有 source genre，不代表每个标签都能解释成声音风格。
+- Style 轴覆盖率：72.6%，未知 27.4%；Scene 轴 32.9%；Context 轴 4.2%；Role 轴 30.2%。四个轴独立统计，未知时长不会被隐藏。
+- Style 轴 Top 构成：Pop 55.0%、Country 18.8%、R&B / Soul 9.6%、Rock / Alternative 7.2%、Indie / Alternative 3.7%。这些百分比是 style 已知时长内部构成，不等同于全部播放时长占比。
+- 主要来源时长：Spotify 2009.0h、curated seed 1263.0h、LLM approved 739.0h。来源置信度会同时乘以该行自身 confidence；缺少证据 URL、LLM 占比过高或单一艺人主导都会触发风险标记并限制最高置信度。
+
+年度总结通过 `consumer_v1` 分别展示 style 的“主曲风”、scene 的“地区流行”和独立语言分布；`context`、`role` 只保留在 Settings 治理层。Settings 继续保留 raw -> canonical 映射、来源、证据覆盖、Top driving artists 和审核历史，供维护者复核。

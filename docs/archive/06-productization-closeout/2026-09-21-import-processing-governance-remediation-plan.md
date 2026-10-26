@@ -10,7 +10,7 @@
 | 本次导入事故的既有修复 | 已纳入 S0–S6 完整交付与回归 |
 | Git / 发布 | 本地阶段提交至 `8c5dfc0`；UNPUSHED、NOT_DEPLOYED，未再次迁移正式数据 |
 
-完成证据见 [S0 基线报告](../../reports/2026-09-21-import-remediation-s0-baseline.md)、[S1–S5 实施报告](../../reports/2026-09-21-import-remediation-s1-s5.md)与 [S6 最终验收报告](../../reports/2026-09-21-import-governance-final-acceptance.md)。本文保留原规划内容用于回溯，不再作为待执行计划。
+完成证据见 [S0 基线报告](../../reports/2026-09-21-import-incident-and-remediation.md#阶段-s0导入事故修复与测量基线)、[S1–S5 实施报告](../../reports/2026-09-21-import-incident-and-remediation.md#导入处理与治理修复-s1s5-实施报告)与 [S6 最终验收报告](../../reports/2026-09-21-import-incident-and-remediation.md#数据导入处理与治理-s6-最终验收报告)。本文保留原规划内容用于回溯，不再作为待执行计划。
 
 初次 S6 收口后的独立复核曾发现三个 P1，并已在 `031075a` 追加修复：尾包活动来源父链、replace 确认与跨进程发布竞态、prepared/主库已提交崩溃窗口。最终门禁又在 `7d3d079` 修复 Community 语义 revision 受封面后台并发写入干扰而瞬时 503 的问题。追加的真实编排、来源重放、浏览器和新默认完整 fullstack 均已通过，规划维持 ARCHIVED/PASS；具体证据以 S6 最终报告的追加章节为准。
 
@@ -26,10 +26,10 @@
 
 依据按证据类型区分：
 
-- [2026-09-21 导入事故报告](../../reports/2026-09-21-streaming-import-incident-and-optimization.md)：本次失败、回滚、修复和成功导入证据。
+- [2026-09-21 导入事故报告](../../reports/2026-09-21-import-incident-and-remediation.md#2026-09-21-spotify-extended-streaming-history-导入复盘报告)：本次失败、回滚、修复和成功导入证据。
 - [关联任务：导入最新 Spotify 数据](thread://01a0c22e-f8e9-7471-ac13-2316a6ea0393?hostId=local)：导入完成后对新旧原始数据集合的补充核对。
 - [数据导入与健康规则](../../reference/data-import-and-health.md)、[音乐源数据管理规则](../../reference/music-metadata-management.md)：当前安全、统计与治理合同。
-- [阶段 7D 预检优化证据](../../reports/2026-09-20-stage7d-import-preflight.md)、[增量导入终验](../../reports/2026-08-23-incremental-import-final-acceptance.md)：既有能力与历史性能基线。
+- [阶段 7D 预检优化证据](../../reports/2026-09-20-stage7-performance-checkpoints.md#阶段-7dimport-preflight-复用与最终本地全栈验收partial)、[增量导入终验](../../reports/2026-08-23-incremental-import-delivery.md#串流数据增量导入最终闭环验收)：既有能力与历史性能基线。
 - 本轮读取的当前工作区源码：导入 API、基线加载与执行决策、维护与恢复服务、JobQueue、L3 规划和预检界面。
 
 本文的数字均为本次事故及后续分析的历史样本，不是对当前正式数据库的再次验收。后续实施必须先核对实际代码、工作区改动和数据版本。

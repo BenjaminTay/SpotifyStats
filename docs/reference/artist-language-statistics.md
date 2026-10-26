@@ -1,9 +1,11 @@
 # 艺人语言事实与统计规则
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 ## 适用范围
 
 本文约束艺人语言事实、播放语言统计、Settings 审核和年度总结消费层。它补充
-[`2026-07-04-artist-genre-taxonomy.md`](2026-07-04-artist-genre-taxonomy.md)，语言事实不从 genre、地区、国籍或艺人名称推断。
+[`2026-07-04-artist-genre-taxonomy.md`](artist-genre-taxonomy.md)，语言事实不从 genre、地区、国籍或艺人名称推断。
 
 ## 当前规则
 

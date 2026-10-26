@@ -1,0 +1,524 @@
+# 旧账号中心设计与实施提纲
+
+2026-10-26按主题合并。历史设计保留决策及合同，实施部分只保留目标、分工和验收要求；旧操作步骤不作为当前任务，计划中的Expected不等于实际通过。
+
+## 阅读顺序
+
+- [账号中心页面设计文档](#账号中心页面设计文档)
+- [账号中心页面实现计划](#账号中心页面实现计划)
+
+## 账号中心页面设计文档
+
+原记录：`2026-05-30-spec.md`。
+
+> 日期：2026-05-30
+> 状态：Tab 1、2 已详细设计，Tab 3 已完成
+
+### 概述
+
+在 `/account` 新建账号中心页面，作为第六个顶级导航入口。页面以"人格叙事"为主线，三层递进组织内容——从收藏到习惯再到身份——回答"我是怎样的听众？"。
+
+#### 与现有页面的差异化定位
+
+| 页面 | 回答的问题 |
+|---|---|
+| 总览 `/` | 我听了多少？ |
+| 分析 `/analytics` | 我有什么行为规律？ |
+| Billboard `/billboard` | 我的榜单长什么样？ |
+| 年度回顾 `/yearly-review` | 这一年我经历了什么？ |
+| **账号中心 `/account`** | **我是怎样的听众？** |
+| 设置 `/settings` | 如何定制体验？ |
+
+### 页面架构
+
+#### 导航
+
+- 路由：`/account`
+- Masthead 新增项：`{ to: '/account', label: '账号中心' }`
+- 懒加载：`const AccountPage = lazy(() => import('@/pages/AccountPage'))`
+
+#### 整体布局
+
+```
+┌─────────────────────────────────┐
+│  Hero 身份卡片（常驻顶部）         │
+│  头像 + 姓名 + 关键身份信息 + 人格标签 │
+├─────────────────────────────────┤
+│  Tab: 你的收藏 | 你的习惯 | 你的身份 │  ← 状态驱动 Tab 切换
+├─────────────────────────────────┤
+│  当前 Tab 内容                    │
+└─────────────────────────────────┘
+```
+
+- Hero 在三个 Tab 之间保持不变
+- Tab 切换使用 `useState` + 按钮（复用 YearlyReviewPage 的 Tab 样式模式）
+- 页面宽度：`max-w-[900px]`，匹配 SettingsPage
+
+#### 数据状态处理
+
+- **加载中**：Skeleton 组件匹配最终布局
+- **错误**：居中错误消息 + 重新加载按钮
+- **空状态**：提示未导入账号数据，引导前往设置页导入
+- **缓存**：模块级变量缓存 API 响应，hook 模式 `{ data, loading, error, refetch }`
+
+---
+
+### Tab 1：你的收藏
+
+**核心问题**：你主动保存、整理、筛选了什么？
+
+#### 叙事弧线
+
+```
+你是谁（收藏人格）
+  ↓
+你有什么（KPI + 时间线）
+  ↓
+一切的开始（第一首收藏的故事）
+  ↓
+生命周期（一首歌被收藏后经历了什么？）
+  ↓
+化学反应（收藏时刻 × 播放行为的 6 种关系模式）
+  ↓
+另一面 + 品味迁徙（播放多但没收藏的歌 + 关键词变迁 + 双厨时刻）
+  ↓
+排行榜（收藏最多艺人 + 错位榜）
+  ↓
+浏览器（收藏曲目 + 播放列表）
+```
+
+#### 1.1 收藏人格 Hero
+
+- 渐变背景卡片，全宽
+- 左侧：人格名称（如「深海淘金者」）+ 一句话描述
+- 右侧：环形图（conic-gradient）展示核心指标
+- 底部三个指标：慢热指数 / 留存率 / 收藏中位播放数
+- **算法**：根据收藏前平均播放次数 + 收藏后留存率 + 收藏/播放比值，计算人格类型
+
+人格类型定义：
+- 深海淘金者：高慢热指数 + 高留存率
+- 冲动收藏家：低慢热指数 + 中留存率
+- 精挑细选者：高慢热指数 + 低收藏量
+- 囤积者：高收藏量 + 低播放率
+- 潮流追逐者：集中在发行日附近收藏
+
+#### 1.2 收藏纵览
+
+- 左侧 4 个 KPI 卡片：收藏曲目 / 收藏专辑 / 收藏艺人 / 播放列表
+- 右侧收藏时间线柱状图（按年）：展示每年收藏量变化
+
+#### 1.3 第一首收藏的故事
+
+- 大卡片 + 左边框装饰线
+- 叙述性文字：「2020 年 3 月 15 日，你收藏了周杰伦的《晴天》...」
+- 底部三个数字：陪伴天数 / 累计播放 / 平均收听间隔
+- 右侧边栏：收藏夹档案（总时长、年代跨度、语言与地域分布）
+
+#### 1.4 收藏的生命周期
+
+- 四个阶段并排卡片：蜜月期（0-7 天）→ 冷却期（1-3 月）→ 沉淀期（3-12 月）→ 一年后的命运
+- 每张卡片：阶段名 + 平均周播放量 + 简短叙事
+- 最终分化数字：常青 48% / 偶尔 31% / 遗忘 21%
+
+#### 1.5 收藏 × 播放 化学反应
+
+六种关系类型卡片（3×2 网格），每种有独特配色：
+- 💘 一见钟情：收藏时播放 ≤ 3 次
+- 🔥 慢热型：收藏时已播放 ≥ 20 次
+- 🌠 昙花一现：收藏周高播放，现已 > 3 月未播
+- 🌱 厚积薄发：收藏后 6 个月播放持续增长
+- 💪 细水长流：收藏前后播放稳定，波动 < 30%
+- 📌 收藏夹吃灰：收藏后总播放 ≤ 3 次
+
+每张卡片：图标 + 名称 + 判定条件 + 数量 + 占百分比 + 代表曲目示例
+
+#### 1.6 另一面 + 品味迁徙
+
+- 左半边：播放最多却没收藏的歌（Top 4，含播放次数）+ 洞察提示
+- 右半边：收藏关键词变迁（按年展示高频词标签） + 双厨时刻（同日收藏艺人组合排名）
+
+#### 1.7 排行榜
+
+- 左半边：收藏曲目最多艺人 Top 5 表格（含总播放列）
+- 右半边：收藏 vs 播放错位榜（收藏多播放少 + 播放多收藏少两组）
+
+#### 1.8 浏览器
+
+- 左半边：收藏曲目列表（搜索框 + 排序下拉 + 表格：曲目/艺人/收藏日/播放次数，曲目名可点击跳转 `/music/tracks/:id`）
+- 右半边：播放列表浏览（搜索框 + 表格：名称/曲目数/最后更新，行可点击展开内部曲目）
+
+#### 数据依赖
+
+| 数据 | 来源 |
+|---|---|
+| 收藏歌曲/专辑/艺人/播放列表计数 | `GET /api/library` |
+| 遗忘曲目 | `GET /api/library` (forgotten_tracks) |
+| 艺人对比 | `GET /api/library` (artist_comparison) |
+| 播放列表列表 | `GET /api/library/playlists` |
+| 播放列表曲目 | `GET /api/library/playlists/{id}/tracks` |
+| 收藏×播放交叉分析 | 需要**新增后端服务**或前端计算（基于 saved_tracks 的 added_date × plays 的 end_time） |
+| 收藏时间线 | 同上 |
+| 双厨时刻 | 同上 |
+| 收藏曲目浏览器 | `GET /api/library` + 前端排序筛选 |
+
+> **注意**：收藏×播放交叉分析（生命周期、化学反应、品味迁徙等）目前后端 API 不完整，需要新增专门的 `/api/account/collection-insights` 端点或在现有 library API 中扩展。
+
+---
+
+### Tab 2：你的习惯
+
+**核心问题**：你在 Spotify 上的搜索、收听、互动行为模式是什么？
+
+#### 叙事弧线
+
+```
+你是谁（收听人格 Hero）
+  ↓
+你怎么发现音乐（搜索编年史）
+  ↓
+你对艺人的忠诚度（粉丝层级）
+  ↓
+你不只听歌（播客 + Marquee 推广）
+  ↓
+你还"看"歌（视频分析）
+  ↓
+一张图总结（四维习惯画像）
+```
+
+#### 2.1 收听人格 Hero
+
+- 渐变背景，「你的收听人格」
+- 人格名称（如「午夜掘金人」）+ 描述
+- 三个核心指标：深夜活跃度 / 搜索精准度 / 多媒介指数
+- 右侧环形图
+
+人格类型定义：
+- 午夜掘金人：深夜高活跃 + 搜索精准 + 多媒介
+- 白日探索者：白天活跃 + 高浏览型搜索
+- 纯音频派：视频/播客消费极低
+- 全媒介达人：音频+视频+播客均衡消费
+
+#### 2.2 搜索编年史
+
+- 左侧 KPI 边栏：总搜索次数 + 意图分布条（艺人 43% / 歌曲 33% / 浏览 24%）+ 搜索最多的一天
+- 右侧：DOW×Hour 热力图（简化展示） + 热搜词 Top 10
+- 底部：发现之旅三数字卡（通过搜索首次接触的艺人数 / 搜索后有播放的比例 / 查了没播的词数）
+
+#### 2.3 粉丝层级
+
+- 左侧：环形图分布 + 粉丝结构洞察
+- 右侧：超级粉丝档案卡（Top 3 艺人，金牌银牌铜牌样式）
+
+层级定义：
+- 超级粉丝（Top 5）：rank 1-5
+- 核心艺人（Top 15）：rank 6-15
+- 泛听艺人：rank 16+
+
+#### 2.4 播客 + Marquee
+
+- 左半边：播客 KPIs + 最爱节目 Top 5 + 收藏节目数 + 收听时段洞察
+- 右半边：Marquee 推广曝光/播放/转化率 + 最佳转化艺人 + 与平台均值对比
+
+#### 2.5 视频
+
+- 左半边：视频播放 KPIs + 看得最多的音乐视频
+- 右半边：视频播放时段分布（晚间 62% / 下午 25% / 上午 13%）+ 行为洞察
+
+#### 2.6 习惯总结
+
+- 四列总结：搜索画像 / 粉丝画像 / 媒介偏好 / 被安利指数
+
+#### 数据依赖
+
+| 数据 | 来源 |
+|---|---|
+| 搜索数据 | `GET /api/search-history` |
+| 粉丝层级 | `GET /api/insights/tiers` |
+| Marquee | `GET /api/insights/marquee` |
+| 播客 | `GET /api/podcast` |
+| 视频 | `GET /api/video` |
+
+---
+
+### Tab 3：你的身份
+
+**核心问题**：你是谁？Spotify 眼中的你是什么样的？
+
+#### 叙事弧线
+
+```
+你的身份证（身份档案 + 重要时刻）
+  ↓
+官方眼中的你（Wrapped 身份：俱乐部 + 派对性格 + 档案报告）
+  ↓
+你的社交圈 + 你的边界（关注/粉丝 + 已屏蔽）
+  ↓
+算法眼中的你（兴趣推断 + 声音胶囊 + AI 对话）
+  ↓
+你的 Spotify DNA（五维基因总结）
+```
+
+#### 3.1 身份档案
+
+- 左侧大卡片：头像（如果有 imageUrl 则显示，否则渐变色占位）+ 姓名 + 用户名/国家/生日 + 标签行（收听年龄/总播放/始于年份）
+- 右侧时间线：首次播放 → 首次收藏 → 订阅 Premium → 收听年龄，左边框竖线连接
+
+#### 3.2 官方 Wrapped 身份
+
+- 三列并排：你的俱乐部 / 派对性格五维 / 档案报告
+- 底部五个统计数字：独特曲目 / 独特艺人 / 连续听歌天数 / 发现艺人 / 非母语占比
+
+#### 3.3 社交 + 边界
+
+- 左半边：关注/粉丝/已屏蔽数字 + 关注艺人标签云
+- 右半边：已屏蔽曲目和艺人列表，附 quote：「品味不只在于喜欢什么，也在于不喜欢什么」
+
+#### 3.4 数字足迹
+
+- 三列：兴趣推断标签云 / 声音胶囊高光时刻 / AI 对话记录（趣味角落）
+
+#### 3.5 Spotify DNA
+
+- 五列基因总结：地理基因 / 时间基因 / 忠诚基因 / 探索基因 / 情绪基因
+- 每列：图标 + 基因名 + 标签 + 一句话
+
+#### 数据依赖
+
+| 数据 | 来源 |
+|---|---|
+| 个人资料 | `GET /api/profile` (profile + follows + stats) |
+| 黑名单 | `GET /api/profile` (banned_items) |
+| AI 对话 | `GET /api/profile` (prompts) |
+| Wrapped 俱乐部 | `GET /api/wrapped-hub` (clubs, party_metrics, listening_age, archive_reports) |
+| 兴趣推断 | `GET /api/profile`（需要扩展，或新增端点） |
+| 声音胶囊 | 需要新增端点，目前只在 Streamlit 中使用 |
+
+> **注意**：Tab 3 的部分数据（inferences、sound_capsule）目前后端 API 不完整，需要新增端点或在 profile API 中扩展。
+
+---
+
+### 后端待补充
+
+现有 API 覆盖了大部分基础数据，但以下洞察需要新增或扩展：
+
+1. **收藏 × 播放交叉分析**（Tab 1 核心）：
+   - `GET /api/account/collection-insights` — 返回生命周期阶段、化学反应分类、双厨时刻、关键词变迁等
+   - 或将计算逻辑放到前端，基于 `saved_tracks.added_date` × `plays.end_time` 交叉计算
+
+2. **Inferences（兴趣推断）**（Tab 3）：
+   - 扩展 `GET /api/profile` 包含 `inferences` 表数据
+
+3. **Sound Capsule（声音胶囊）**（Tab 3）：
+   - 新增 `GET /api/profile/sound-capsule` 端点，返回 highlights 和 daily stats
+
+---
+
+### 前端实现要点
+
+#### 组件拆分
+
+```
+AccountPage.tsx          — 主页面（Hero + Tab 切换）
+├── AccountHero.tsx       — Hero 身份卡片（三个 Tab 共享）
+├── CollectionTab.tsx     — Tab 1
+│   ├── CollectionPersonality.tsx
+│   ├── CollectionOverview.tsx
+│   ├── FirstSaveStory.tsx
+│   ├── SaveLifecycle.tsx
+│   ├── SavePlayChemistry.tsx
+│   ├── FlipSide.tsx
+│   ├── CollectionRankings.tsx
+│   └── CollectionBrowser.tsx
+├── HabitsTab.tsx         — Tab 2
+│   ├── HabitsPersonality.tsx
+│   ├── SearchChronicle.tsx
+│   ├── FanTiers.tsx
+│   ├── PodcastMarquee.tsx
+│   ├── VideoHabits.tsx
+│   └── HabitsSummary.tsx
+└── IdentityTab.tsx       — Tab 3
+    ├── IdentityCard.tsx
+    ├── WrappedIdentity.tsx
+    ├── SocialBoundaries.tsx
+    ├── DigitalFootprint.tsx
+    └── SpotifyDna.tsx
+```
+
+#### Hook 设计
+
+```typescript
+// useAccount.ts — 主 hook
+function useAccount(): {
+  profile: ProfileData | null
+  library: LibraryData | null
+  search: SearchData | null
+  insights: InsightsData | null
+  podcast: PodcastData | null
+  video: VideoData | null
+  wrappedHub: WrappedHubData | null
+  collectionInsights: CollectionInsights | null
+  loading: boolean
+  error: string | null
+  refetch: () => void
+}
+```
+
+#### 样式要点
+
+- 复用现有 UI 组件：GlassCard、KpiCard、Badge、Skeleton
+- Tab 切换样式参考 YearlyReviewPage（`border-b-2` + `text-[13px] font-medium`）
+- 渐变 Hero 使用深色背景 + radial-gradient 叠加 + 白色半透明文字
+- 不对称杂志排版：大卡片 + 侧边栏、窄卡片 + 宽卡片搭配
+- 颜色：只用 Tailwind 语义类，不手写 oklch
+
+---
+
+### 边界情况
+
+- **账号数据未导入**：每个 Tab 检测 `available` 字段，无数据时显示引导提示，链接到设置页导入
+- **部分数据为空**：某些账号可能没有播客/视频/Wrapped 数据，对应区块显示空状态提示
+- **收藏日期缺失**：部分 saved_tracks 的 added_date 可能为 NULL，交叉分析时排除这些记录
+- **艺人名匹配失败**：saved_tracks 的 artist_name 和 plays 的 artist_name 可能因字符差异匹配不上，需要做模糊匹配或归一化处理
+
+## 账号中心页面实现计划
+
+原记录：`2026-05-30-plan.md`。
+
+> 历史实施提纲：已省略大段实现／测试代码草稿、重复命令及红绿测试步骤，保留设计要求、分工、接口示例与原验收事实。正文中的任务和Expected属于当时计划；当前行为见[文档地图](../../../../README.md)。
+
+**Goal:** 新建 `/account` 账号中心页面，含 Hero 身份卡片 + 三个 Tab（你的收藏 / 你的习惯 / 你的身份），以人格叙事三层递进组织内容。
+
+**Architecture:** 后端新增 `account_service.py` 提供收藏×播放交叉分析计算；新增 `account.py` API 路由聚合所有账号数据；前端新建 `AccountCenterPage` + `useAccount` hook + 类型定义，复用现有 GlassCard、KpiCard 等共享组件和 Tab 切换样式模式。
+
+**Tech Stack:** FastAPI (Python) + React 19 + TypeScript + Tailwind CSS v4 + shadcn/ui
+
+**Spec:** `docs/superpowers/specs/2026-05-30-account-center-design.md`
+
+---
+
+### 文件结构
+
+```
+Create:  backend/services/account_service.py    ← 收藏×播放交叉分析 + 聚合账号数据
+Create:  backend/api/account.py                  ← 账号中心 API 路由
+Modify:  backend/api/router.py                   ← 注册新路由
+Create:  frontend/src/types/account.ts           ← 账号相关 TypeScript 类型
+Create:  frontend/src/hooks/useAccount.ts         ← 账号中心数据 hook
+Create:  frontend/src/pages/AccountCenterPage.tsx ← 主页面（Hero + Tab 切换）
+Create:  frontend/src/pages/account/CollectionTab.tsx   ← Tab 1: 你的收藏
+Create:  frontend/src/pages/account/HabitsTab.tsx       ← Tab 2: 你的习惯
+Create:  frontend/src/pages/account/IdentityTab.tsx     ← Tab 3: 你的身份
+Modify:  frontend/src/App.tsx                    ← 路由注册
+Modify:  frontend/src/components/layout/Masthead.tsx ← 导航项
+Modify:  frontend/src/lib/api.ts                 ← 类型重导出
+```
+
+---
+
+#### Task 1: 后端 — 账号中心服务层
+
+涉及文件：`backend/services/account_service.py`、`backend/services/library_service.py`、`backend/services/search_service.py`。
+
+- 创建服务文件，实现 `get_collection_insights()`
+- 实现 `get_account_summary()` 聚合方法
+
+---
+
+#### Task 2: 后端 — 账号中心 API 路由
+
+涉及文件：`backend/api/account.py`、`backend/api/router.py`。
+
+- 创建 API 路由文件
+- 注册路由到 api_router
+- 验证 API 可访问
+
+---
+
+#### Task 3: 前端 — TypeScript 类型定义
+
+涉及文件：`frontend/src/types/account.ts`。
+
+- 创建类型文件
+- 在 api.ts 中重导出类型
+
+---
+
+#### Task 4: 前端 — useAccount Hook
+
+涉及文件：`frontend/src/hooks/useAccount.ts`、`frontend/src/hooks/useSettings.ts`、`frontend/src/hooks/useYearlyReview.ts`。
+
+- 创建 hook 文件
+- 验证 hook 无类型错误
+
+---
+
+#### Task 5: 前端 — 路由和导航注册
+
+涉及文件：`frontend/src/App.tsx`、`frontend/src/components/layout/Masthead.tsx`。
+
+- 在 App.tsx 添加懒加载和路由
+- 在 Masthead.tsx 添加导航项
+- 验证前端编译通过
+
+---
+
+#### Task 6: 前端 — AccountCenterPage 主页面骨架
+
+涉及文件：`frontend/src/pages/AccountCenterPage.tsx`、`frontend/src/pages/account/CollectionTab.tsx`、`frontend/src/pages/account/HabitsTab.tsx`、`frontend/src/pages/account/IdentityTab.tsx`、`frontend/src/pages/YearlyReviewPage.tsx`。
+
+- 创建三个 Tab 占位组件
+
+`frontend/src/pages/account/IdentityTab.tsx`:
+
+- 创建主页面组件
+
+`frontend/src/pages/AccountCenterPage.tsx`:
+
+- 验证编译
+- 启动开发服务器验证页面可访问
+
+---
+
+#### Task 7: 前端 — CollectionTab 完整实现
+
+- Modify (rewrite): `frontend/src/pages/account/CollectionTab.tsx`
+- 因为单个文件太大（~400 行），所有子区块内联为组件，不需要拆分成单独文件
+
+> **注意**: 以下仅列出关键结构和数据映射，完整 UI 代码按照 `docs/superpowers/specs/2026-05-30-account-center-design.md` Tab 1 的 8 个模块逐一实现。每个模块渲染一个 GlassCard 或 border-card。由于代码量巨大，实现时参考设计文档中的 mockup 线框图，将每一块翻译成 Tailwind + React。
+
+- 实现收藏人格区块
+- 实现收藏纵览（KPI + 时间线）
+- 实现第一首收藏故事 + 收藏夹档案
+- 实现收藏生命周期四阶段
+- 实现化学反应六类型网格
+- 实现另一面 + 品味迁徙 + 双厨时刻
+- 实现排行榜（Top 艺人 + 错位榜）
+- 实现浏览器（收藏曲目 + 播放列表）
+- 验证编译 + 提交
+
+---
+
+#### Task 8: 前端 — HabitsTab 完整实现
+
+- Modify (rewrite): `frontend/src/pages/account/HabitsTab.tsx`
+
+同上，按设计文档 Tab 2 的 6 个模块逐一实现。
+
+---
+
+#### Task 9: 前端 — IdentityTab 完整实现
+
+- Modify (rewrite): `frontend/src/pages/account/IdentityTab.tsx`
+
+同上，按设计文档 Tab 3 的 5 个模块逐一实现。
+
+---
+
+### 实现顺序建议
+
+1. Task 1-2 (后端) → 验证 API 返回数据
+2. Task 3-4 (类型 + Hook) → 验证数据流
+3. Task 5-6 (路由 + 页面骨架) → 验证页面可访问
+4. Task 7-9 (三个 Tab) → 逐一填充内容
+
+每个 Task 内部步骤完成后启动一次开发服务器确认不报错。

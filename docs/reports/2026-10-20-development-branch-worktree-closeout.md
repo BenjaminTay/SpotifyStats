@@ -6,7 +6,7 @@
 
 清理基线为main `f284d7d06f0a9eb59f963f85f2243d059ec78216`。删除2个本地分支、6个远端分支和1个多余工作树后，本地与远端仅保留main，实际工作树仅保留 `/Users/benjaminlei/Code/202605-SpotifyStats`。清理完成时main的HEAD未改变，文档修改当时尚未提交；用户后续明确授权将7份清理文档提交、推送并确认CI，本报告随该文档提交保存，交付SHA和CI结果按实际Git/GitHub记录核对。
 
-没有合入旧实验、修改业务代码、执行应用测试或生产操作。OOM事项SS-2026-10-08-001继续OPEN / OBSERVING，按[精简计划](../plans/2026-10-19-performance-scope-and-memory-closeout.md)仅保留正常使用观察；分支清理不代表稳定性观察完成。
+没有合入旧实验、修改业务代码、执行应用测试或生产操作。OOM事项SS-2026-10-08-001继续OPEN / OBSERVING，按[精简计划](../plans/performance-and-memory-closeout.md)仅保留正常使用观察；分支清理不代表稳定性观察完成。
 
 ## 分支逐项处置
 

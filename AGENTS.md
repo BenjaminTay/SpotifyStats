@@ -1,6 +1,6 @@
-# SpotifyStats 项目工作约定
+# Agent 项目执行约定
 
-本文档是 AI 与开发工具共用的当前项目速查。`AGENTS.md` 与 `CLAUDE.md` 必须保持完全一致；详细规则只在对应参考文档维护，不在这里复制完整历史。
+面向在本仓库执行工作的Agent；人类协作者的环境、架构和流程入口是[开发指南](CONTRIBUTING.md)。`AGENTS.md` 与 `CLAUDE.md` 必须保持完全一致；详细规则只在对应参考文档维护，不在这里复制完整历史。
 
 ## 交流语言
 
@@ -12,18 +12,12 @@
 
 ## 文档阅读顺序
 
-- 项目介绍与启动：[README.md](README.md)
-- 开发状态与下一步：[docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md)
-- 文档地图：[docs/README.md](docs/README.md)
-- 当前统计规则：[docs/reference/playback-stats-rules.md](docs/reference/playback-stats-rules.md)
-- 首页展示规则：[docs/reference/homepage-presentation-rules.md](docs/reference/homepage-presentation-rules.md)
-- 音乐档案规则：[docs/reference/account-archive-statistics.md](docs/reference/account-archive-statistics.md)
-- 元数据治理：[docs/reference/music-metadata-management.md](docs/reference/music-metadata-management.md)
-- 流派与语言：[docs/reference/2026-07-04-artist-genre-taxonomy.md](docs/reference/2026-07-04-artist-genre-taxonomy.md)、[docs/reference/artist-language-statistics.md](docs/reference/artist-language-statistics.md)
-- 导入健康：[docs/reference/data-import-and-health.md](docs/reference/data-import-and-health.md)
-- 生产运行：[deploy/production/README.md](deploy/production/README.md)
-- 交付证据：[docs/reports/README.md](docs/reports/README.md)
-- 开发与分支收尾：[docs/reference/development-delivery-workflow.md](docs/reference/development-delivery-workflow.md)
+1. [开发状态总表](docs/DEVELOPMENT_STATUS.md)：确认稳定ID、负责人、范围和下一步。
+2. [文档地图](docs/README.md#agent-入口)：选择适用的当前规则，历史材料仅用于回溯。
+3. [开发与交付规则](docs/reference/development-delivery-workflow.md)：按已有授权和任务范围工作。
+4. 后端先读[后端局部指令](backend/CLAUDE.md)与[后端开发说明](backend/README.md)；前端先读[前端局部指令](frontend/CLAUDE.md)、[前端开发说明](frontend/README.md)及[UI规范](frontend/UI_STYLE_GUIDE.md)。
+
+业务规则统一见[当前共用参考](docs/README.md#维护者与共用参考)，包括统计、首页、音乐档案、元数据、流派语言、搜索与年度总结。生产操作以[运维手册](deploy/production/README.md)为准，证据追加到[主题报告](docs/reports/README.md)。项目首页与[使用指南](docs/user-guide.md)面向使用者，不放Agent执行过程、内部版本或验证矩阵。
 
 ## 项目定位
 
@@ -64,7 +58,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - 昂贵计算使用规范化 wrapper、缓存和 `singleflight()`，不得在热路径恢复逐行 `apply(axis=1)`、`iterrows()` 或整表重复扫描。
 - 首页组合响应使用 revision/filter 精确持久快照与语义 LKG；`warming` 只能表示旧事实正在后台更新，打开首页不得同步冷建年度报告或完整 Billboard。
 - 音乐详情默认 `summary/overview/project` 只读取同一 exact-ready 发布上下文中的目标事实，缺失、损坏或范围不支持时返回 `snapshot_unavailable`，不得回退完整详情、全库时间线或个人统计；附属投影只在维护期原子发布。实体统计首屏只加载目标范围，完整全局排名通过 `include_rank_context` 延后请求。
-- 串流导入同步更新音乐查找候选索引，六套精确统计快照通过后台队列继续构建；warming 期间不得回退到搜索 GET 冷建或虚假 0。
+- 串流导入同步更新音乐查找候选索引，L2/L3 × 动态/固定阈值四套精确统计快照通过后台队列继续构建；L1 仅保留兼容或陈旧证据，不属于当前必须发布集合。warming 期间不得回退到搜索 GET 冷建或虚假 0，具体规则见[音乐搜索合同](docs/reference/music-search.md)。
 - 开发后端使用 `uvicorn backend.main:app --reload --reload-dir backend`，避免扫描 `.venv`、`node_modules` 和 `data`。
 
 ## 前端约束
@@ -80,7 +74,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - `DEPLOYMENT_MODE=full|showcase|dual` 只决定 loopback Web 网关；Backend 不映射宿主公网端口。
 - 3000、3001、3002、8000 不得直接开放公网；完全版外部入口必须另有身份边界，公开展示入口是持链接者可访问，不等于整站认证。
 - `data/`、备份和密钥不得进入镜像；发布必须使用 commit SHA、Online Backup、三模式门禁、健康检查和联合回滚。
-- 搜索六变体首次冷建只能在明确数据库副本执行；正常发布必须精确复用 ready snapshot，源数据漂移时拒绝替换。
+- 搜索当前四变体首次冷建只能在明确数据库副本执行；正常发布必须精确复用 ready snapshot，源数据漂移时拒绝替换。
 - Tailscale、域名代理和外部 HTTPS 入口是部署外层，脚本不得擅自启用或关闭。
 - 服务器维护和验证的可再生成文件放在 `backups/<操作名>/tmp/`，原文件恢复点放在同级 `originals-*/` 或 `recovery/`，日志另存。操作验收结束、相关进程退出后才创建 `tmp/.cleanup-ready`，由已有发布收尾在48小时后清理；不得给混有恢复点或仍在执行的目录加标记。普通周备份压缩保留28天；发布恢复仅留current/previous各一套。完整恢复点在操作目录写 `.recovery-revision`（完整SHA），随两版轮转；历史保护点完成核对后收尾，不永久累积。具体规则见生产部署说明。
 
@@ -92,7 +86,7 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - 同一业务代码、数据和有效环境的结果应复用；仅在新改动影响已验范围、出现新失败或有明确覆盖缺口时补测。跨模块累计改动在最终版本集中验证，不每个小改动都重跑全套；必需CI和发布检查仍执行。
 - Docker、学校机和生产机按问题选择，不要求逐环境重复。生产可做低负载只读观察与正常使用验证；主动内存压力实验使用隔离副本和实际容量限制。
 - 达到统计正确、体验达标和实际容量目标后停止扩展；工程比较指标不自动升级为产品验收门槛。不得为追求全绿反复开发采样、审计或恢复工具，保留必要的数据保护与回退即可。
-- 详细执行规则见[按改动选择验证范围](docs/reference/fullstack-verification.md#按改动选择验证范围)。本轮加载/内存任务以[精简收口计划](docs/plans/2026-10-19-performance-scope-and-memory-closeout.md)为准；历史失败保留，不改写为通过。
+- 详细执行规则见[按改动选择验证范围](docs/reference/fullstack-verification.md#按改动选择验证范围)。本轮加载/内存任务以[精简收口计划](docs/plans/performance-and-memory-closeout.md)为准；历史失败保留，不改写为通过。
 
 ## 验证入口
 
@@ -116,4 +110,4 @@ SpotifyStats 是本地优先的单用户 Spotify Extended Streaming History 分�
 - 开始开发前查 [开发状态总表](docs/DEVELOPMENT_STATUS.md)；实现、验收、提交/推送/发布或暂缓决定变化时，更新对应事项、证据、下一步和最后核验日期。新问题复用问题台账稳定 ID；探索方向与已启动任务分开记录。
 - 新增或移动文档后更新 [docs/README.md](docs/README.md)，并运行文档审计。
 - 未经明确要求不执行 `git commit` 或 `git push`。
-- 若用户明确要求提交，先检查 README、AGENTS、CLAUDE、docs 地图和 CHANGELOG 是否需要同步，再运行 `git diff --check`、测试和项目 hooks。
+- 若用户明确要求提交，先阅读并遵循[开发指南中的协作与提交规范](CONTRIBUTING.md#协作与提交)，再检查 README、AGENTS、CLAUDE、docs 地图和 CHANGELOG 是否需要同步，运行 `git diff --check`、必要测试和项目 hooks。提交信息格式与复杂提交正文要求以该节为准。

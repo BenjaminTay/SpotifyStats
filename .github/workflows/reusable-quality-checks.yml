@@ -35,7 +35,9 @@ jobs:
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Documentation checks
-        run: .venv/bin/python scripts/docs_audit.py --include-archive
+        run: |
+          .venv/bin/python -m unittest scripts.tests.test_docs_audit
+          .venv/bin/python scripts/docs_audit.py --include-archive
 
       - name: Backend unit checks
         env:

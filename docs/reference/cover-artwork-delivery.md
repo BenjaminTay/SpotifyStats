@@ -1,5 +1,7 @@
 # 音乐封面传输规则
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 ## 来源和尺寸
 
 前端本地音乐图片统一由 `frontend/src/lib/cover-thumbnail.ts` 选择：数字 ID 的 `/covers/albums/`、`/covers/artists/` 支持 160、320、640 和 original。`coverArtworkUrl` 负责纯地址映射；渲染使用 `coverDisplayUrl`，在首次请求前考虑当前 DPR。外部 URL 和其他类型不得凭名称或 URL 猜测新地址。

@@ -53,7 +53,7 @@
 
 首次串行stats的采样峰增量：folklore基线79.688/候选83.340MiB，Melodrama79.645/81.473，reputation动态106.914/107.520；对应完成后增量约0–28MiB。读阶段观察到加权表约71k行×41列、37k行×57列，后续可进一步拆分冷排名/加权计算的临时工作集；本轮未据此追加业务修改。
 
-这些是含排名个人`stats`，不是默认`overview`。规划[默认overview资源门槛](../plans/2026-10-09-music-detail-chart-performance-plan.md)的64MiB指标不能套用为此次stats门禁失败；默认overview逐请求验证仍另行开放。并发窗口的内存是共享观测，不冒充单请求归因。
+这些是含排名个人`stats`，不是默认`overview`。规划[默认overview资源门槛](../archive/06-productization-closeout/2026-10-09-music-detail-chart-performance-plan.md)的64MiB指标不能套用为此次stats门禁失败；默认overview逐请求验证仍另行开放。并发窗口的内存是共享观测，不冒充单请求归因。
 
 ## 原失败、处置与恢复
 

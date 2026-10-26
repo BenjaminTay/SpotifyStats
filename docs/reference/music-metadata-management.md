@@ -1,5 +1,7 @@
 # 音乐源数据管理与曲目署名规则
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 ## 1. 管理入口与边界
 
 Settings 的“音乐源数据管理”是人工音乐事实治理的唯一入口，分为“归并与版本 / 曲目署名 / 艺人身份 / 流派与语言”四个平级模块。“归并与版本”先选择“歌曲归并 / 专辑归并”，再共用“自动检测 / 已保存分组 / 手动创建”三类任务。对象切换在三个任务中始终可见；手动创建统一采用“选择成员 → 配置代表版本与层级 → 确认保存”三步流程；用户只选择 L2/L3，不提供 L1 统计开关。专辑自动检测额外提供重叠率，Album Projects 重建归入维护工具，不再以另一套工作台或隐藏的对象入口呈现。单曲详情的“编辑”先展示“归并歌曲版本 / 调整曲目署名 / 管理艺人身份”动作菜单，再以实体参数和返回地址深链到唯一治理入口；专辑和艺人详情同样只提供深链，不能复制写逻辑。
@@ -89,7 +91,7 @@ Album Project 身份，并优先于机器结果。精选集策略继续冻结，
 扩大处理范围。Settings 的专辑自动治理页显示归属健康、机器理由、来源发行和人工覆盖；每次覆盖
 创建或撤销后必须在同一事务重建完整归属，并使搜索、Billboard、年度和详情缓存失效。实现阶段、
 schema 和验收门禁见
-[`docs/archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md`](../archive/06-productization-closeout/2026-08-31-l3-work-and-album-attribution-plan.md)。
+[`docs/archive/06-productization-closeout/2026-08-31-l2-l3-identity-and-attribution-plan.md`](../archive/06-productization-closeout/2026-08-31-l2-l3-identity-and-attribution-plan.md#l3-作品与原生专辑归属实施计划)。
 
 Album Project 的规范项目名、所有成员发行名及其 Unicode/大小写/空白等价形式都是同一项目的只读
 别名，但项目身份始终是稳定 `album_project_id`。新搜索结果和详情深链必须使用
@@ -202,7 +204,7 @@ SS-2026-09-24-002 的本地实现（migration 88）独立于 Track evidence；�
 
 副本演练入口：`scripts/backfill_spotify_album_artist_credits.py --source-db <只读源> --output-db <不存在的新副本> --limit 20 [--ids ...]`。该 CLI 先用 Online Backup 创建副本并迁移，再最多处理 1..100 个明确有界 Album；输出目标必须是新文件，禁止直接执行正式库回填。它只写 Album 证据/兼容显示和必要的最小元数据父行，不写 Track 元数据或任何署名。正式库全量回填、冲突审批和发布需要另行授权及验证。
 
-2026-10-03 已按授权完成限定生产维护，选择范围与未解析身份见[生产交付](../reports/2026-10-03-album-metadata-production-delivery.md)。正式维护先在新副本验证，再以实时来源保护和原子安装/事务发布；本轮两份CLI均仅在副本执行。目录消费依赖的缺失简化Track元数据可随已选发行有界补齐，不能据此生成Track艺人证据、改写原始曲目或增加播放贡献。
+2026-10-03 已按授权完成限定生产维护，选择范围与未解析身份见[生产交付](../reports/2026-10-03-album-metadata-delivery.md#专辑目录与艺人证据生产交付)。正式维护先在新副本验证，再以实时来源保护和原子安装/事务发布；本轮两份CLI均仅在副本执行。目录消费依赖的缺失简化Track元数据可随已选发行有界补齐，不能据此生成Track艺人证据、改写原始曲目或增加播放贡献。
 
 ## 4. API
 

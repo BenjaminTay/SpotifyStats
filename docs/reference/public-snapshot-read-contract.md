@@ -1,5 +1,7 @@
 # Home / Billboard 公开快照读取合同
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 > 最近修订：2026-09-21
 > 状态：CURRENT；实现及局部验证见 [阶段 1 交付报告](../reports/2026-09-19-public-snapshot-boundary.md)
 
@@ -73,3 +75,13 @@ Community 三个 GET 的只读发布、LKG、unavailable、分页及私有维护
 
 
 来源revision采集使用短只读SQLite事务，把tracking合同与持久epoch/revision向量固定为一个已提交快照，结束后rollback。封面缓存或任务簿记提交不能仅凭`PRAGMA data_version`变化使有效来源读取503；无效tracking、未提交调用事务和真实发布前后漂移仍失败，不引入GET修复或事实扫描。
+
+## 详情年榜附属投影
+
+年榜摘要与历史由维护期从精确周账本发布，复用公共Year-End评分、覆盖与排序函数。核心搜索快照和附属投影分别记录状态；附属投影失败不把可用搜索摘要改成失败，也不能把旧投影拼到新来源。
+
+`summary`不读取年榜历史，`year_end_history`保持空数组；`overview/full`返回按年份降序的完整行，展示组件在副本中调整顺序。`year_end_summary`只在有入榜事实时返回对象，无入榜事实时为null。`ready + summary=null + history=[]`表示已完成且未入过年榜，不显示假名次。
+
+`warming`表示精确投影已排队或正在维护；失败、版本不兼容、无精确快照使用unavailable，不在详情GET触发Year-End builder。启动维护必须同时检查核心快照和当前投影；旧库有核心ready但缺投影时幂等补齐，完成后重启不重复排队；终止失败不能永久维持warming。
+
+同fingerprint重发和旧快照pruning必须清理过期投影，不能依赖调用方恰好启用了SQLite外键。验收逐字段核对公共Year-End名次、积分、峰值、在榜/冠军/前五/前十周与播放数；时延按当前受影响体验合同判断，不重新启动历史组合资源门槛。UI规则见[详情年榜展示](../../frontend/UI_STYLE_GUIDE.md#详情年榜展示)。

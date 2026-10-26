@@ -118,4 +118,4 @@ sh scripts/fullstack_verification_check.sh \
 
 按本轮数据估算，P0 可使晚阶段修复后的单次反馈从十几分钟降到约 2–5 分钟，并避免三次重跑产生的 20–30 分钟以上前置重复；完整干净门禁在实现同轮去重后可先从约 27 分钟降到约 24–25 分钟。若 P1 的并行隔离经 profile 证明安全，目标可进一步收敛到约 16–20 分钟。以上是基于本轮阶段数据的工程估算，实施后仍需用三次冷/热运行重新量化，不能预先视为已达成。
 
-具体实施边界、阶段 CLI、状态合同和验收矩阵见 [`../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md)。
+具体实施边界、阶段 CLI、状态合同和验收矩阵见 [`../plans/2026-08-24-fullstack-gate-duration-optimization-plan.md`](../plans/fullstack-verification-performance.md)。

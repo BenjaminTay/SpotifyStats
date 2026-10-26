@@ -1,26 +1,69 @@
 # 历史归档索引
 
-- [榜单对决个人播放统计已完成规划](06-productization-closeout/2026-10-08-versus-personal-statistics-performance-plan.md)：S0–S5完成，c58775f0已发布；人类明确仅公开HTTPS，原FIRST14/28、完整资源/守恒及96API/三denial通过，详情独立验收与OOM另行跟踪。见[验收报告](../reports/2026-10-08-versus-personal-statistics-performance-acceptance.md)。
+面向历史回溯。归档中的旧产品方向、Agent编排指令和执行清单保留形成时语境，不能当作当前需求或工作约定。
 
-- [专辑艺人证据已完成方案](06-productization-closeout/2026-10-02-album-artist-evidence-plan.md)与[联合集成方案](06-productization-closeout/2026-10-03-album-metadata-integration-plan.md)：固定daf098ca发布与有界生产维护，详见[生产报告](../reports/2026-10-03-album-metadata-production-delivery.md)。
+历史材料保留产品演进、迁移、决策和验证证据；它们不构成当前开发指令。当前入口见[文档地图](../README.md)，主要变化见[CHANGELOG](../CHANGELOG.md)。
 
-归档资料用于回溯产品演进、设计决策、迁移过程和验收证据。归档文件不代表当前实现，也不应直接作为新任务的实施计划。
+## Streamlit原型
 
-- [全站封面优化已完成方案](06-productization-closeout/2026-10-03-cover-image-optimization-plan.md)：S0–S5 已完成；`814ea7cb` 已发布，8,720 个生产派生资产及实际 HTTPS 验收完成，见[验收报告](../reports/2026-10-03-cover-image-optimization-acceptance.md)。
+- [旧账号中心设计与实施提纲](01-streamlit-mvp/features/account-center/2026-05-30-account-center-design-and-plan.md)
+- [Spotify Stats 增强与优化 — 设计文档](01-streamlit-mvp/features/enhancements/2026-05-16-spec.md)
+- [旧发行周期设计与实施提纲](01-streamlit-mvp/features/release-cycle/2026-05-22-release-cycle-design-and-plan.md)
+- [旧年度回顾设计与实施提纲](01-streamlit-mvp/features/yearly-review/2026-05-29-yearly-review-design-and-plan.md)
+- [Streamlit 应用完整功能清单](01-streamlit-mvp/phase1-2-streamlit/2026-05-25-streamlit-feature-inventory.md)
+- [新版前端页面架构规划](01-streamlit-mvp/phase3-frontend/2026-05-26-frontend-page-plan.md)
+- [SpotifyStats 项目架构优化白皮书](01-streamlit-mvp/phase4-architecture/2026-05-30-architecture-optimize.md)
+- [SpotifyStats 项目架构优化最终验收报告](01-streamlit-mvp/phase4-architecture/2026-05-30-final-acceptance-report.md)
 
-- [合作曲排行已完成规划](06-productization-closeout/2026-10-02-collaboration-ranking-plan.md)：S1–S6 已完成；`fa683d97` 已发布，服务器快照和两端浏览器验收通过，详见[验收报告](../reports/2026-10-02-collaboration-ranking-acceptance.md)。
+## React产品化
 
-## 最近归档
+- [Phase 5：产品化收口与可持续迭代基线](02-react-productization/2026-06-08-phase5-baseline.md)
+- [AI 洞察层 — 功能规划、设计与完成情况](02-react-productization/2026-06-11-ai-insights.md)
+- [前端风格探索归档](02-react-productization/design-demos/README.md)
+- [Playback Stats Implementation Plan](02-react-productization/playback-stats/2026-06-12-playback-stats-implementation-plan.md)
+- [播放数据统计规则：现状分析、目标定义与优化规划](02-react-productization/playback-stats/2026-06-12-playback-stats-rules-v1.md)
+- [Album Project Playback Stats Implementation Plan](02-react-productization/playback-stats/2026-06-18-album-project.md)
+- [旧Dashboard截图](02-react-productization/dashboard.png)
 
-- [AI Agent V6 已完成规划](06-productization-closeout/2026-09-22-ai-agent-v6-optimization-plan.md)：本地开发与主线集成已完成，代码随 `194fd113` 发布；当前验证边界见 [开发状态总表](../DEVELOPMENT_STATUS.md)。
+## 质量门禁与早期年榜
 
-## 阶段目录
+- [SpotifyStats Fullstack Verification And Performance Plan](03-quality-gate/2026-06-19-fullstack-verification-performance.md)
+- [Settings Page UX Polish Implementation Plan](03-quality-gate/2026-06-22-settings-page-ux-polish.md)
+- [Import Derived Data Maintenance Implementation Plan](03-quality-gate/2026-06-24-import-derived-data-maintenance.md)
+- [Billboard年榜设计与实施记录](03-quality-gate/2026-06-26-billboard-year-end-design-and-plan.md)
 
-- [`01-streamlit-mvp/`](01-streamlit-mvp/)：Streamlit 原型与早期页面设计
-- [`02-react-productization/`](02-react-productization/)：React 产品化、Phase 5 和早期播放统计规则
-- [`03-quality-gate/`](03-quality-gate/)：全栈质量门禁与 Billboard 年榜早期方案
-- [`04-ai-agent-harness/`](04-ai-agent-harness/)：AI Agent 中间层早期方案
-- [`05-yearly-report-genre/`](05-yearly-report-genre/)：年度报告、音乐查找和流派治理早期迭代
-- [`06-productization-closeout/`](06-productization-closeout/)：产品化、性能及 Agent 等已完成计划和设计
+## 早期AI Harness
 
-当前有效入口见 [`../README.md`](../README.md)。
+- [早期AI可观测编排设计与实施提纲](04-ai-agent-harness/2026-06-28-ai-observable-agent-design-and-plan.md)
+- [Mobile Navigation Orientation Implementation Plan](04-ai-agent-harness/2026-06-28-mobile-navigation-orientation.md)
+- [早期AI分析框架设计与实施提纲](04-ai-agent-harness/2026-06-29-ai-analytical-harness-design-and-plan.md)
+- [AI项目上下文设计与实施提纲](04-ai-agent-harness/2026-06-29-ai-project-context-design-and-plan.md)
+- [AI Harness Matrix Fixes Implementation Plan](04-ai-agent-harness/2026-07-03-ai-harness-matrix-fixes.md)
+
+## 年报 搜索与流派
+
+- [Agentic Longform Yearly Report 设计](05-yearly-report-genre/ai-yearly-report/2026-07-03-agentic-longform-yearly-report-design.md)
+- [Agentic Longform Yearly Report Implementation Plan](05-yearly-report-genre/ai-yearly-report/2026-07-03-agentic-longform-yearly-report.md)
+- [AI Visual Yearly Report Artifact Design](05-yearly-report-genre/ai-yearly-report/2026-07-03-ai-visual-yearly-report-artifact-design.md)
+- [AI Yearly Report Editorial Quality Implementation Plan](05-yearly-report-genre/ai-yearly-report/2026-07-03-ai-yearly-report-editorial-quality.md)
+- [AI Yearly Report Quality Implementation Plan](05-yearly-report-genre/ai-yearly-report/2026-07-03-ai-yearly-report-quality.md)
+- [AI Visual Yearly Report Artifact Implementation Plan](05-yearly-report-genre/ai-yearly-report/2026-07-04-ai-visual-yearly-report-artifact.md)
+- [AI Visual Yearly Report Editorial Fix Implementation Plan](05-yearly-report-genre/ai-yearly-report/2026-07-04-ai-visual-yearly-report-editorial-fix.md)
+- [AI Visual Yearly Report Quality Polish Implementation Plan](05-yearly-report-genre/ai-yearly-report/2026-07-04-ai-visual-yearly-report-quality-polish.md)
+- [AI Yearly Report Editorial Agent Pipeline Implementation Plan](05-yearly-report-genre/ai-yearly-report/2026-07-04-ai-yearly-report-editorial-agent-pipeline.md)
+- [AI Yearly Report Editorial Layer Design](05-yearly-report-genre/ai-yearly-report/2026-07-04-ai-yearly-report-editorial-layer-design.md)
+- [AI Yearly Report Editorial Layer Implementation Plan](05-yearly-report-genre/ai-yearly-report/2026-07-04-ai-yearly-report-editorial-layer.md)
+- [AI Yearly Final Artifact Quality Gate Implementation Plan](05-yearly-report-genre/ai-yearly-report/2026-07-05-ai-yearly-final-artifact-quality-gate.md)
+- [Artist Genre Resolution Implementation Plan](05-yearly-report-genre/genre-taxonomy/2026-07-04-artist-genre-resolution.md)
+- [Artist Genre Taxonomy v2 Implementation Plan](05-yearly-report-genre/genre-taxonomy/2026-07-04-artist-genre-taxonomy-v2.md)
+- [Artist Genre Axis And Confidence Implementation Plan](05-yearly-report-genre/genre-taxonomy/2026-07-05-artist-genre-axis-confidence.md)
+- [Music Search Chart Badges Implementation Plan](05-yearly-report-genre/music-search/2026-07-03-music-search-chart-badges.md)
+- [Music Search Quick Open Implementation Plan](05-yearly-report-genre/music-search/2026-07-03-music-search-quick-open.md)
+
+## 产品化收口与历史决策
+
+- [完整逐篇索引](06-productization-closeout/README.md)
+
+## 月度变更历史
+
+- [2026年6月至10月](changelog/README.md)，保留各时点候选、失败和交付原文。

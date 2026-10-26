@@ -1,6 +1,6 @@
-# Spotify 数据格式说明
+# Spotify 数据格式参考
 
-> **目标读者**：数据使用者（导入、查询、或分析播放记录的人）
+> **目标读者**：维护者、数据分析人员及Agent。普通导入操作见[使用指南](../docs/user-guide.md#导入并检查数据)
 >
 > 本文档说明从 Spotify 官方导出的 Extended Streaming History 及 Account Data 的数据格式、目录结构、JSON 字段含义，以及在本项目中的导入与使用方式。
 
@@ -115,20 +115,15 @@ data/
 | `reason_start` | `string` | 播放开始原因（如 `trackdone` 上一曲结束、`clickrow` 手动点击、`playbtn` 播放按钮）。 |
 | `reason_end` | `string` | 播放结束原因（如 `trackdone` 正常播完、`fwdbtn` 快进、`backbtn` 返回）。 |
 | `shuffle` | `boolean` | 是否随机播放模式。 |
-| `skipped` | `boolean` | 是否被跳过（用户点击下一曲）。跳过记录不纳入有效播放统计，但仍入库。 |
+| `skipped` | `boolean` | 是否被跳过（用户点击下一曲）。该字段保留原始跳过标记，不作为统计硬过滤条件。 |
 | `offline` | `boolean` | 是否离线播放。 |
 | `incognito_mode` | `boolean` | 是否隐私模式播放。 |
 
 ### 有效播放判定
 
-导入完成后，统计查询使用以下规则判定「有效播放」：
+统计口径统一由[播放统计规则](../docs/reference/playback-stats-rules.md#3-播放事件层规则)维护。`skipped` 不作为硬过滤条件；开启动态阈值时，逻辑事件的计次门槛为 `max(min_ms, duration_ms × 0.1)`，缺少有效曲长时回退到 `min_ms`。连续合并和时间归属见同一规则，原始字段不直接等同于最终逻辑事件。
 
-1. **最短时长过滤**：`ms_played >= 30000`（默认值，可通过设置修改）
-2. **仅音频**：`content_type = 'audio'`（`music_only=true` 时排除视频记录）
-3. **连续播放合并**：相邻的音频播放（同一 track_id + 间隔 ≤ 阈值）合并为一次有效 session，过滤碎片记录
-4. **动态阈值**：短播放（< 阈值）若连续出现，视为异常跳过而非有效播放
-
-详见 [`docs/reference/playback-stats-rules.md`](../docs/reference/playback-stats-rules.md)。
+播放次数与收听时长分别统计，未达到计次门槛的有效音乐收听仍可贡献时长。
 
 ### 视频记录
 

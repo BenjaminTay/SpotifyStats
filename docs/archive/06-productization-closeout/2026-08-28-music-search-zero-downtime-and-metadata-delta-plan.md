@@ -3,7 +3,7 @@
 > 创建日期：2026-08-28
 > 状态：`IMPLEMENTED / PASS（本地完整范围）`；候选/统计 LKG、原子切换、任务竞态、署名增量与公开边界已完成，本文已归档
 > 适用范围：Masthead Quick Open、`/music/search`、候选索引、精确统计快照、曲目署名与艺人身份维护、后台任务队列
-> 现行方向：[`2026-08-16-music-search-direction-realignment.md`](2026-08-16-music-search-direction-realignment.md)
+> 现行方向：[`2026-08-16-music-search-direction-realignment.md`](2026-08-16-music-search-design-and-remediation.md#音乐查找方向重新指引轻量候选索引与统计快照解耦)
 > 当前规则：[`../../reference/music-metadata-management.md`](../../reference/music-metadata-management.md)、[`../../reference/playback-stats-rules.md`](../../reference/playback-stats-rules.md)
 > 本地提交：`dc7055a7e97b01474022af04624497d4b2ee6064`，尚未 push
 > 部署状态：未生产部署；Pass 限定为本地代码、真实数据库副本、真实浏览器和默认完整全栈门禁

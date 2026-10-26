@@ -4,7 +4,7 @@
 状态：**PASS（年度总结修复范围）；后续项目全栈门禁已完成修复并转为 Pass**
 适用内容版本：`yearly_review_v2_14`
 当前规则：[`../reference/playback-stats-rules.md`](../reference/playback-stats-rules.md)
-设计契约：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../designs/2026-08-12-yearly-review-v2-content-data-contract.md)
+设计契约：[`../designs/2026-08-12-yearly-review-v2-content-data-contract.md`](../archive/06-productization-closeout/2026-08-12-yearly-review-v2-design-and-plan.md#年度总结-v2-内容与数据契约设计)
 
 ## 1. 问题与根因
 

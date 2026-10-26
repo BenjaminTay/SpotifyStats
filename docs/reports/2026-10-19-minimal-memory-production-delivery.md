@@ -1,6 +1,6 @@
 # 五文件内存修复的生产交付
 
-日期：2026-10-19。事项：SS-2026-10-08-001。**本轮开发与发布正式收口（CLOSED / RELEASED），OOM稳定性保持OPEN / OBSERVING。** 本次沿用[精简计划](../plans/2026-10-19-performance-scope-and-memory-closeout.md)，不再追加优化或实验。
+日期：2026-10-19。事项：SS-2026-10-08-001。**本轮开发与发布正式收口（CLOSED / RELEASED），OOM稳定性保持OPEN / OBSERVING。** 本次沿用[精简计划](../plans/performance-and-memory-closeout.md)，不再追加优化或实验。
 
 ## 版本与采用范围
 

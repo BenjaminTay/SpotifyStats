@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""只读检查项目文档链接、入口同步和当前目录中的旧路径。"""
+"""只读检查文档文件与章节链接、索引覆盖、工作约定同步和当前旧路径。"""
 
 from __future__ import annotations
 
 import argparse
 import re
 import sys
+import unicodedata
 from pathlib import Path
-
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
-LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
+LINK_RE = re.compile(r"(?<!!)\[(?:[^\[\]\n]|\[[^\]\n]*\])*\]\(([^)\n]+)\)")
 HTML_SRC_RE = re.compile(r"<(?:img|source)\b[^>]*\bsrc=[\"']([^\"']+)[\"']", re.IGNORECASE)
 INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
 STALE_PATHS = (
@@ -45,21 +46,32 @@ def markdown_files(include_archive: bool) -> list[Path]:
 
 
 def _iter_document_lines(path: Path):
-    in_fence = False
+    fence = None
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence:
+            if (
+                marker
+                and marker[1][0] == fence[0]
+                and len(marker[1]) >= len(fence)
+                and not marker[2].strip()
+            ):
+                fence = None
             continue
-        if not in_fence:
-            yield line_number, line
+        if marker:
+            fence = marker[1]
+            continue
+        yield line_number, line
 
 
 def _is_external_target(target: str) -> bool:
-    return not target or target.startswith(("#", "data:", "mailto:")) or "://" in target
+    return not target or target.startswith(("data:", "mailto:")) or "://" in target
 
 
 def _resolve_target(path: Path, target: str) -> Path:
-    target = target.strip("<>").split("#", 1)[0].split("?", 1)[0]
+    target = unquote(target.strip("<>").split("#", 1)[0].split("?", 1)[0])
+    if not target:
+        return path
     if target.startswith("/"):
         return ROOT / target.lstrip("/")
     if target.startswith(ROOT_PATH_PREFIXES) or target in ROOT_FILES:
@@ -67,8 +79,38 @@ def _resolve_target(path: Path, target: str) -> Path:
     return path.parent / target
 
 
+def heading_anchors(path: Path) -> set[str]:
+    """Collect local Markdown heading IDs and explicit HTML anchors outside fences."""
+    anchors = set()
+    used = set()
+    previous = None
+    for line_number, line in _iter_document_lines(path):
+        anchors.update(re.findall(r'<[^>]+\b(?:id|name)=["\']([^"\']+)["\']', line))
+        match = re.match(r"^ {0,3}#{1,6}\s+(.+?)(?:\s+#+)?\s*$", line)
+        title = match[1] if match else None
+        if title is None and previous and previous[0] == line_number - 1 and previous[1].strip():
+            if re.fullmatch(r" {0,3}(?:=+|-+)\s*", line):
+                title = previous[1].strip()
+        if title is not None:
+            title = re.sub(r"!?\[([^\]]+)\]\([^)]*\)", r"\1", title)
+            title = re.sub(r"<[^>]+>", "", title).strip().lower()
+            base = "".join(
+                c for c in title if c in "-_ " or unicodedata.category(c)[0] in "LNM"
+            ).replace(" ", "-")
+            slug = base
+            suffix = 0
+            while slug in used:
+                suffix += 1
+                slug = f"{base}-{suffix}"
+            used.add(slug)
+            anchors.add(slug)
+        previous = (line_number, line)
+    return anchors
+
+
 def check_links(files: list[Path]) -> list[str]:
     issues = []
+    anchors = {}
     for path in files:
         relative = path.relative_to(ROOT)
         for line_number, line in _iter_document_lines(path):
@@ -78,6 +120,43 @@ def check_links(files: list[Path]) -> list[str]:
                 resolved = _resolve_target(path, raw_target).resolve()
                 if not resolved.exists():
                     issues.append(f"{relative}:{line_number}: broken local link -> {raw_target}")
+                    continue
+                fragment = unquote(raw_target.strip("<>").partition("#")[2])
+                if fragment and resolved.is_file() and resolved.suffix.lower() == ".md":
+                    if resolved not in anchors:
+                        anchors[resolved] = heading_anchors(resolved)
+                    if fragment not in anchors[resolved]:
+                        issues.append(
+                            f"{relative}:{line_number}: broken local anchor -> {raw_target}"
+                        )
+    return issues
+
+
+def check_index_coverage(files: list[Path]) -> list[str]:
+    """Require every report/archive Markdown file to be reachable from its index."""
+    issues = []
+    for directory in (ROOT / "docs/reports", ROOT / "docs/archive"):
+        targets = {p.resolve() for p in files if p.is_relative_to(directory)}
+        if not targets:
+            continue
+        seen = set()
+        pending = [(directory / "README.md").resolve()]
+        while pending:
+            path = pending.pop()
+            if path in seen or not path.is_file():
+                continue
+            seen.add(path)
+            for _, line in _iter_document_lines(path):
+                for target in LINK_RE.findall(line):
+                    if _is_external_target(target):
+                        continue
+                    resolved = _resolve_target(path, target).resolve()
+                    if resolved in targets and resolved not in seen:
+                        pending.append(resolved)
+        for path in sorted(targets - seen):
+            issues.append(
+                f"{path.relative_to(ROOT)}: missing from {directory.relative_to(ROOT)}/README.md navigation"
+            )
     return issues
 
 
@@ -91,7 +170,9 @@ def check_html_sources(files: list[Path]) -> list[str]:
                     continue
                 resolved = _resolve_target(path, raw_target).resolve()
                 if not resolved.exists():
-                    issues.append(f"{relative}:{line_number}: broken local HTML source -> {raw_target}")
+                    issues.append(
+                        f"{relative}:{line_number}: broken local HTML source -> {raw_target}"
+                    )
     return issues
 
 
@@ -132,7 +213,11 @@ def check_guidance_parity() -> list[str]:
 def check_doc_map() -> list[str]:
     path = ROOT / "docs/README.md"
     text = path.read_text(encoding="utf-8")
-    return [f"docs/README.md: missing required entry -> {entry}" for entry in REQUIRED_ENTRIES if entry not in text]
+    return [
+        f"docs/README.md: missing required entry -> {entry}"
+        for entry in REQUIRED_ENTRIES
+        if entry not in text
+    ]
 
 
 def main() -> int:
@@ -153,6 +238,7 @@ def main() -> int:
     issues.extend(check_inline_paths(current_files))
     issues.extend(check_guidance_parity())
     issues.extend(check_doc_map())
+    issues.extend(check_index_coverage(files))
 
     scope = "全部 Markdown" if args.include_archive else "当前 Markdown（不含 archive）"
     print(f"文档文件：{len(files)} ({scope})")

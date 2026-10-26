@@ -1,5 +1,7 @@
 # 全栈验证与阶段执行规则
 
+适用读者：维护者与Agent。本文是共用技术参考；日常操作见[使用指南](../user-guide.md)，实施与验收证据见[报告索引](../reports/README.md)。
+
 > 更新日期：2026-10-19
 > 状态：当前规则
 > 适用范围：本地 Phase 5、全栈门禁、局部排障和机器可读验收报告
@@ -24,7 +26,7 @@
 
 工程指标必须与当前产品目标或容量依据关联；没有明确依据的更低延迟、更大降幅和更多重复次数不自动成为交付门槛。工具故障只修复妨碍当前结论的部分，不扩展通用测试/审计/恢复平台。保留原失败、统计正确性、数据保护与必要回退，不删失败断言来换取通过。
 
-当前加载/内存问题链的范围和旧指标取舍见[2026-10-19精简计划](../plans/2026-10-19-performance-scope-and-memory-closeout.md)。既有必需CI与部署门禁不因本节而跳过。
+当前加载/内存问题链的范围和旧指标取舍见[2026-10-19精简计划](../plans/performance-and-memory-closeout.md)。既有必需CI与部署门禁不因本节而跳过。
 
 ## 1. 完整门禁
 
@@ -217,3 +219,24 @@ node scripts/frontend_web_vitals_probe.mjs   --base-url http://127.0.0.1:5173 --
 ```
 
 全栈可用 `PERFORMANCE_DB_PATH`、`PERFORMANCE_DATASET`、`PERFORMANCE_ROUTE_PARAMS`、`RESOURCE_WATCH_PATH` 传入同一上下文；没有显式 PERFORMANCE_DB_PATH 时继承 SPOTIFY_STATS_TEST_SOURCE_DB，但 HTTP 服务仍须由调用方绑定到同一副本。局部校准仍为 Partial，不替代完整应用验收或生产 SLA。
+
+## 验证工具入口
+
+以下工具按实际改动选用，不是每轮执行清单。数量、耗时和预算以相应版本的报告及具体参数为准。
+
+| 目的 | 入口 | 使用范围 |
+| --- | --- | --- |
+| 文档与入口 | `scripts/docs_audit.py --include-archive` | Markdown 链接、当前旧路径和工作约定同步 |
+| Phase 5 与本地CI覆盖 | `scripts/phase5_check.sh`、`scripts/ci_baseline_parity.py` | 必需质量检查与编排合同 |
+| 启动冒烟 | `scripts/quickstart_smoke.py` | 自启或复用本地服务，检查健康、API文档、前端和proxy，清理自己创建的进程 |
+| OpenAPI 覆盖 | `scripts/openapi_operation_audit.py`、`scripts/openapi_parameter_boundary_audit.py` | operation 与参数边界的验证归属 |
+| API 正常与边界 | `scripts/api_smoke_probe.py`、`scripts/api_boundary_probe.py` | 只读响应、非法输入及Request ID；不替代真实统计对账 |
+| API 性能 | `scripts/benchmark_api.py` | 冷热响应、传输体积与热P95，遵守共享排他合同 |
+| 路由 | `scripts/frontend_route_smoke.mjs` | 路由内容、真实详情、视口溢出和console；需要详情样本时启用对应参数 |
+| 页面和图表交互 | `scripts/frontend_interaction_smoke.mjs`、`scripts/frontend_chart_interaction_smoke.mjs` | 导航、控件、tooltip、legend及缩放 |
+| 控件与长列表 | `scripts/frontend_control_inventory_smoke.mjs`、`scripts/frontend_long_list_smoke.mjs` | 可访问名称、交互结构、分页及分段窗口 |
+| 跨浏览器 | `scripts/frontend_cross_browser_smoke.mjs` | Chromium、Firefox和WebKit；不等同物理手机验收 |
+| 页面与进程资源 | `scripts/frontend_web_vitals_probe.mjs`、`scripts/runtime_resource_probe.py` | 明确需求下的lab指标、进程树CPU/RSS |
+| AI离线与真实矩阵 | `scripts/evaluate_ai_agent_harness.py`、`scripts/evaluate_ai_question_matrix.py` | static与真实模型模式分别报告，真实模式会创建任务 |
+
+聚合命令见本文件完整门禁和局部排障章节。前端preview脚本通过 `--api-base-url` 访问真实API；fullstack使用 `--preview-api-url` 转发。脚本自己产生的临时报告保留在指定输出目录，不打包进镜像或代替Git交付报告。
