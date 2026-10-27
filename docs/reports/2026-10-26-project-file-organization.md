@@ -261,3 +261,14 @@
 - 已推送到`origin/codex/project-file-organization-20261027`，远端分支SHA与整理提交一致。main仍为`2da50438f6631eb36964daaf0aa9a70116081681`，没有合入或推送main。
 - 首次远端观察：[质量CI 40516397309](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40516397309)为`queued`，尚不能标记远端CI成功。同SHA的Production Release运行列表为空；No Deploy工作流的路径条件未命中，没有相应运行。
 - 本节及状态总表作为随后独立文档收尾提交推送，最新分支SHA与CI状态以Git远端和Actions为准；这次文档提交不改变已验收源码。没有创建PR、修改工作流或执行生产部署。
+
+
+## 2026-10-27 主线整合与CI补修
+
+用户随后授权合并。main在`2da50438`，分支可快进整合；合并推送main会按现有Production Release规则自动启动生产发布，本聊天已明确告知该影响。先等分支质量CI通过，再整合，不更改或跳过质量/发布工作流。
+
+分支首次完整质量检查[40516549378](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40516549378)在后端unit阶段失败：3275通过、1失败、2跳过、1441未选，耗时430.36秒；契约、后端lint及前端阶段因该失败未执行。失败来自`test_snapshot_rebuild_cli.py`用`importlib.import_module(f"scripts.rebuild_{kind}")`动态构造旧路径，其中account_archive工具已经迁到maintenance。此前静态Import/ImportFrom检查没有覆盖动态模块名，旧局部验收不足以宣称所有消费者迁移完整；保留该次失败，不改写为通过。
+
+修复将两种CLI的实际模块路径作为显式测试参数，account_archive使用`scripts.maintenance.rebuild_account_archive`，governance维持`scripts.rebuild_governance`；原旧库升级、维护顺序与播放记录保留断言不变。额外检查backend测试与脚本中的importlib/runpy动态加载入口，未见其他相同迁移遗漏。本次增加一个必要测试文件到原交付范围，不新增业务逻辑或兼容壳。
+
+本地定向`test_snapshot_rebuild_cli.py`两项通过（0.06秒），环境仍有同一urllib3/LibreSSL警告。日志保存于`data/maintenance/project-file-organization-20261026/merge-dynamic-import-tests.log`；原远端完整作业日志保存在同目录`merge-ci-job.log`。修复提交后等待其远端质量结果，当前尚未合并main或触发生产发布。

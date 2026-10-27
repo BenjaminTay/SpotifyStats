@@ -16,12 +16,20 @@ from backend.core.migrations import LATEST_SCHEMA_VERSION
 pytestmark = pytest.mark.unit
 
 
-@pytest.mark.parametrize("kind", ["account_archive", "governance"])
-def test_rebuild_cli_migrates_existing_copy_before_maintenance(tmp_path, monkeypatch, kind):
+@pytest.mark.parametrize(
+    ("kind", "module_name"),
+    [
+        ("account_archive", "scripts.maintenance.rebuild_account_archive"),
+        ("governance", "scripts.rebuild_governance"),
+    ],
+)
+def test_rebuild_cli_migrates_existing_copy_before_maintenance(
+    tmp_path, monkeypatch, kind, module_name
+):
     target = tmp_path / "old.db"
     shutil.copy2(Path(__file__).parents[1] / "fixtures" / "seed.db", target)
     monkeypatch.setattr(db, "DB_PATH", str(target))
-    module = importlib.import_module(f"scripts.rebuild_{kind}")
+    module = importlib.import_module(module_name)
     service = importlib.import_module(f"backend.services.{kind}_snapshot_service")
     calls = []
 

@@ -69,7 +69,7 @@
 
 | ID | 已交付能力 | 状态与证据 |
 | --- | --- | --- |
-| SS-2026-10-26-001 | 本地文件整理、日志迁移与退役代码清理 | CLOSED / LOCAL VERIFIED；负责人为当前聊天Codex；10-26大产物清理增加16.37 GiB可用空间，18脚本迁移、2个删除、80个稳定入口保留；10-27补正force模型调用说明、补齐脚本导航，累计退役61个前端文件并迁移有效测试，删除约8.21 MiB已验收浏览器材料；补充128项前端测试、受管构建与本地服务检查通过；最终复验修复runtime_df_compare的后端测试旧导入，23项定向后端测试及Ruff通过；cbf7ef98已提交并推送至codex/project-file-organization-20261027，项目hooks通过，远端质量CI待完成；未合入main，未触发生产发布；[Git交付](reports/2026-10-26-project-file-organization.md#2026-10-27-git交付) |
+| SS-2026-10-26-001 | 本地文件整理、日志迁移与退役代码清理 | LOCAL VERIFIED / MERGE PENDING；负责人为当前聊天Codex；10-26大产物清理增加16.37 GiB可用空间，18脚本迁移、2个删除、80个稳定入口保留；10-27补正force模型调用说明、补齐脚本导航，累计退役61个前端文件并迁移有效测试，删除约8.21 MiB已验收浏览器材料；补充128项前端测试、受管构建与本地服务检查通过；最终复验修复runtime_df_compare的后端测试旧导入，23项定向后端测试及Ruff通过；cbf7ef98已提交并推送至codex/project-file-organization-20261027，项目hooks通过，合并前CI发现快照重建测试的动态旧导入，已修正并通过2项定向测试，待修复提交CI通过后快进主线；未合入main，未触发生产发布；[Git交付](reports/2026-10-26-project-file-organization.md#2026-10-27-git交付) |
 | SS-2026-10-25-001 | 项目文档整理与更新 | CLOSED / LOCAL DOC VERIFIED；读者分工、命名、安装与授权说明、Agent提交入口及全部文档复验通过，正式Markdown保持242份；71312b6a已统一推送，两条CI成功；按[主线整合合同](reports/2026-10-25-documentation-cleanup-delivery.md#ci确认与主线整合)补齐发布忽略路径，并在最新提交CI通过后快进main，不部署；具体版本与远端结果以Git／Actions记录为准 |
 | SS-2026-10-24-001 | 目标艺人列名、非占有发行参照、显式日期冲突审核与确认5项目 | CLOSED / RELEASED；schema96与dacdb862已交付；[交付](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收) |
 | SS-2026-10-23-002（本地范围） | 4项独立原专辑日期应用 | APPLIED / LOCAL ACCEPTED；本地应用与验收收口；[本地验收](reports/2026-10-23-release-cycle-next-batch-review.md#用户确认后的本地正式应用与验收) |
