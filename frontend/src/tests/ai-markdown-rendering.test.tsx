@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { ChatMessageList } from '@/features/ai-insights/ChatMessageList'
 import { ReportCard } from '@/features/ai-insights/ReportCard'
+import { AiMarkdown } from '@/features/ai-insights/AiMarkdown'
 
 const MARKDOWN_TABLE = [
   '| 维度 | GUTS | The Life of a Showgirl |',
@@ -13,6 +14,22 @@ const MARKDOWN_TABLE = [
 ].join('\n')
 
 describe('AI markdown rendering', () => {
+  it('preserves emphasis while stripping unsafe HTML', () => {
+    const { container } = render(
+      <AiMarkdown>{'Hello **bold** and *italic* <img src=x onerror="alert(1)">safe'}</AiMarkdown>,
+    )
+
+    expect(screen.getByText('bold').tagName).toBe('STRONG')
+    expect(screen.getByText('italic').tagName).toBe('EM')
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).toContain('safe')
+  })
+
+  it('rejects unsafe link protocols', () => {
+    const { container } = render(<AiMarkdown>{'[link](javascript:alert%281%29)'}</AiMarkdown>)
+    expect(container.querySelector('a')?.getAttribute('href') ?? '').not.toMatch(/^javascript:/i)
+  })
+
   it('renders assistant markdown tables as real tables in chat messages', () => {
     render(
       <ChatMessageList

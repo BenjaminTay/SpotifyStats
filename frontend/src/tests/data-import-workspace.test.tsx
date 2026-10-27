@@ -75,6 +75,53 @@ function hookResult() {
 }
 
 describe('data import workspace', () => {
+  const preflight = {
+    status: 'healthy', streaming_files: [], account_files: [], duplicate_file_groups: [],
+    date_overlaps: [], blockers: [], warnings: [], record_delta_comparable: true,
+    detected_relation: 'snapshot_superset', estimated_strategy: 'incremental',
+    incoming_record_count: 93120, unchanged_record_count: 91286,
+    added_record_count: 1834, removed_record_count: 0, confirmation_token: 'test-token',
+  }
+
+  it('shows the current incremental plan without executing an import', () => {
+    const value = { ...hookResult(), run: null, preflight }
+    useDataImportMock.mockReturnValue(value)
+    render(<DataImportWorkspace presentation="desktop" dbRecordCount={94760} accountImported />, { wrapper })
+
+    expect(screen.getByText('输入关系：snapshot_superset · 建议策略：incremental')).toBeVisible()
+    expect(screen.getByText('93,120')).toBeVisible()
+    expect(screen.getByText('91,286')).toBeVisible()
+    expect(screen.getByText('1,834')).toBeVisible()
+    expect(value.executeRun).not.toHaveBeenCalled()
+    expect(value.finalizeBatch).not.toHaveBeenCalled()
+  })
+
+  it('offers explicit mode selection for ambiguous inputs without executing them', () => {
+    const value = { ...hookResult(), run: null, preflight: {
+      ...preflight, detected_relation: 'ambiguous', requires_confirmation: true,
+    } }
+    useDataImportMock.mockReturnValue(value)
+    render(<DataImportWorkspace presentation="phone" dbRecordCount={94760} accountImported />, { wrapper })
+
+    expect(screen.getByRole('button', { name: '仅追加' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: '完整替换' }))
+    expect(useDataImportMock.mock.calls.at(-1)?.[0].mode).toBe('replace')
+    expect(value.executeRun).not.toHaveBeenCalled()
+  })
+
+  it('blocks execution when the current plan has blockers', () => {
+    const value = { ...hookResult(), run: null, preflight: {
+      ...preflight, blockers: ['输入来源不一致，不能应用'],
+    } }
+    useDataImportMock.mockReturnValue(value)
+    render(<DataImportWorkspace presentation="desktop" dbRecordCount={94760} accountImported />, { wrapper })
+
+    expect(screen.getByText('1 项阻断')).toBeVisible()
+    expect(screen.getByText(/输入来源不一致，不能应用/)).toBeVisible()
+    expect(screen.getByRole('button', { name: '执行已确认计划' })).toBeDisabled()
+    expect(value.executeRun).not.toHaveBeenCalled()
+  })
+
   it('polls only non-terminal persistent runs', () => {
     expect(importRunNeedsPolling({ status: 'running' } as never)).toBe(true)
     expect(importRunNeedsPolling({ status: 'blocked' } as never)).toBe(false)

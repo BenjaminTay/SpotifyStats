@@ -29,7 +29,7 @@
 | 专辑单曲排行 / 艺人单曲排行 | 2 / 2 相等 |
 | 合计 | 8 / 8 相等 |
 
-可重复使用 [`../../scripts/music_detail_equivalence_probe.py`](../../scripts/music_detail_equivalence_probe.py) 校验完整响应与各子视图的无损关系，并通过 `--baseline-dir` 与预先保存的详情基线比较。基线目录和真实数据库只作为本地验证工件，不进入 Git。
+可重复使用 [`../../scripts/music_detail_equivalence_probe.py`](../../scripts/verification/music_detail_equivalence_probe.py) 校验完整响应与各子视图的无损关系，并通过 `--baseline-dir` 与预先保存的详情基线比较。基线目录和真实数据库只作为本地验证工件，不进入 Git。
 
 ## 首屏传输快照
 

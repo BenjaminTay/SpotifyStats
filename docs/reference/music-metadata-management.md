@@ -141,7 +141,7 @@ L2/L3 发布，但不得伪装成已自动修复。
 
 Spotify Track API 返回的完整 `artists[]` 以原始顺序保存到 `spotify_track_credit_sets`、`spotify_track_artist_credits`；首次观察或成员、顺序、署名名称变化记入 `spotify_track_credit_events`。这三张表仍只表示 provider evidence，不表示 `primary` / `featured` 角色；独立的 `spotify_auto_track_credits` 才是可用于有效署名的自动投影。除原始主艺人外的 Spotify 成员在现有双角色模型中使用技术性 `featured`，不代表 Spotify 声称其为 feat.。重复且内容相同的刷新只更新时间，不新增事件或署名 revision；空数组、缺失/重复艺人 ID 等非法响应保留上一可用证据和自动署名并报告失败。
 
-日常 Spotify 元数据刷新会优先补本次导入关联曲目的证据缺口，并有界重试历史缺口；成功获取后自动同步有效署名，并通过同一 track-credit revision 触发统计与搜索维护。全库历史补采使用 `scripts/backfill_spotify_track_artist_credits.py --apply`；已有证据可用 `--sync-existing` 离线同步。默认只预览；写正式应用数据库必须显式给出 `--allow-primary --backup-path`，脚本先做 SQLite Online Backup。失败或中断后可再次运行，已保存的证据不会重复拉取。`scripts/audit_spotify_track_credits.py` 仍是只读差异诊断，不是人工审批队列；历史报告中的待核对状态不能当作当前有效署名状态。
+日常 Spotify 元数据刷新会优先补本次导入关联曲目的证据缺口，并有界重试历史缺口；成功获取后自动同步有效署名，并通过同一 track-credit revision 触发统计与搜索维护。全库历史补采使用 `scripts/backfill_spotify_track_artist_credits.py --apply`；已有证据可用 `--sync-existing` 离线同步。默认只预览；写正式应用数据库必须显式给出 `--allow-primary --backup-path`，脚本先做 SQLite Online Backup。失败或中断后可再次运行，已保存的证据不会重复拉取。`scripts/maintenance/audit_spotify_track_credits.py` 仍是只读差异诊断，不是人工审批队列；历史报告中的待核对状态不能当作当前有效署名状态。
 
 当具体发行的主艺人与原始主艺人不一致时，完整、active的逐曲人工纠正可以作为该曲的应用依据：provider各成员必须唯一解析，有效canonical参与集合须与完整provider集合完全相等，并存在有效primary。部分补充、身份冲突或缺少primary仍阻塞；这不建立全局艺人别名。应用策略`spotify_owner_credits_v5_reviewed_members`的输入指纹包含有序active人工覆盖，撤销或证据变动须重新应用。对于active `spotify_track_review`完整发行审核，后续provider成员集合必须与当前已审核有效canonical集合一致；即使原始主艺人仍在，新增、移除或未解析成员也只能记录新证据并标记`reviewed_track_credits_changed`，不得静默改变有效署名。普通局部覆盖不等同于完整发行审核。
 
@@ -296,7 +296,7 @@ schema96的 `album_release_references` 是非占有、明确审核的发行参�
 
 普通独立日期审批仍拒绝来源或项目日期冲突。冲突必须走 `prepare_date_conflict()`／`approve_date_conflict()`，明确保存旧声明、完整来源集合、选择日期的用途/地区/媒介、理由及成员/归属守卫；原Spotify声明不改，原项目日与具体版别日分开读取。来源纠正不得只写项目日期而使读取端继续使用冲突的原声明，必须先有同合同的有效独立日期审核。
 
-批准与撤销由事务调用方维护归属发布；`release_evidence_review`在保存点内核对完整前后规划和已发布目标/原生项目/代表曲目/艺人键/归属类型，限定受影响范围并拒绝未批准变化；不自动生成归属覆盖，不采用全库新规划。`scripts/preview_release_evidence.py`始终使用Online Backup临时副本演练，无输入源写入开关。正式数据应用另行确认并从自身fresh基线验收。当前候选应用范围、缺证及正式状态见主目录的三项共用能力验收报告。
+批准与撤销由事务调用方维护归属发布；`release_evidence_review`在保存点内核对完整前后规划和已发布目标/原生项目/代表曲目/艺人键/归属类型，限定受影响范围并拒绝未批准变化；不自动生成归属覆盖，不采用全库新规划。`scripts/maintenance/preview_release_evidence.py`始终使用Online Backup临时副本演练，无输入源写入开关。正式数据应用另行确认并从自身fresh基线验收。当前候选应用范围、缺证及正式状态见主目录的三项共用能力验收报告。
 
 ### 项目原始日、版本日与逐曲收录
 

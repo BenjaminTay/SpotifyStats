@@ -2,8 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { DataHealthSummary } from '@/features/settings/components/DataHealthSummary'
-import { ImportPreflightPanel } from '@/features/settings/components/ImportPreflightPanel'
-import type { ImportHealthResponse, ImportPreflightResponse } from '@/types/data-import'
+import type { ImportHealthResponse } from '@/types/data-import'
 
 const health: ImportHealthResponse = {
   status: 'partial',
@@ -84,51 +83,6 @@ const health: ImportHealthResponse = {
   warnings: ['发现 7831 个数据库外键关系问题'],
 }
 
-const preflight: ImportPreflightResponse = {
-  status: 'partial',
-  streaming_files: [
-    {
-      source_key: 'streaming_audio',
-      label: '音频播放历史',
-      file_name: 'Streaming_History_Audio_000.json',
-      required: true,
-      status: 'ok',
-      size_bytes: 100,
-      record_count: 4,
-      duplicate_record_count: 0,
-      first_date: '2026-01-01',
-      last_date: '2026-01-02',
-      errors: [],
-      warnings: [],
-    },
-  ],
-  account_files: [],
-  duplicate_file_groups: [],
-  date_overlaps: [],
-  blockers: [],
-  warnings: [],
-}
-
-const incrementalPreflight: ImportPreflightResponse = {
-  ...preflight,
-  account_identity_status: 'matched',
-  fingerprint_baseline_status: 'ready',
-  detected_relation: 'snapshot_superset',
-  requested_mode: 'auto',
-  requires_confirmation: false,
-  existing_record_count: 91286,
-  incoming_record_count: 93120,
-  unchanged_record_count: 91286,
-  added_record_count: 1834,
-  removed_record_count: 0,
-  existing_date_range: { first_date: '2022-07-01', last_date: '2026-07-24' },
-  incoming_date_range: { first_date: '2022-07-01', last_date: '2026-08-21' },
-  affected_weeks_count: 2,
-  affected_years_count: 1,
-  planned_actions: ['追加播放事实', '更新受影响榜单周'],
-  estimated_strategy: 'incremental',
-}
-
 describe('data import health UI', () => {
   it('shows health metrics and read-only warnings', () => {
     render(<DataHealthSummary health={health} loading={false} error={null} onRefresh={vi.fn()} />)
@@ -152,45 +106,4 @@ describe('data import health UI', () => {
     expect(screen.getByRole('button', { name: '重新读取' })).toBeVisible()
   })
 
-  it('keeps preflight as an explicit read-only action', () => {
-    const onRun = vi.fn()
-    render(<ImportPreflightPanel preflight={preflight} loading={false} error={null} onRun={onRun} />)
-
-    expect(screen.getByText('只读取 Spotify 导出文件并在临时环境演练，不修改当前数据库。')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /文件详情/ }))
-    expect(screen.getByText('Streaming_History_Audio_000.json')).toBeInTheDocument()
-    expect(screen.getByText('4 条')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '重新检查' }))
-    expect(onRun).toHaveBeenCalledOnce()
-  })
-
-  it('shows a natural-language incremental import plan', () => {
-    render(<ImportPreflightPanel preflight={incrementalPreflight} loading={false} error={null} onRun={vi.fn()} />)
-
-    expect(screen.getByText('播放事实增量')).toBeInTheDocument()
-    expect(screen.getByText('检测到当前数据基础上的完整追加：新增 1,834 条记录，变化涉及 2 个榜单周和 1 个年度范围。')).toBeInTheDocument()
-    expect(screen.getByText('91,286 条')).toBeInTheDocument()
-    expect(screen.getByText('93,120 条')).toBeInTheDocument()
-    expect(screen.getByText('2022-07-01 → 2026-07-24')).toBeInTheDocument()
-    expect(screen.getByText('· 更新受影响榜单周')).toBeInTheDocument()
-  })
-
-  it('asks for confirmation when the input relationship is ambiguous', () => {
-    render(
-      <ImportPreflightPanel
-        preflight={{
-          ...incrementalPreflight,
-          detected_relation: 'ambiguous',
-          requires_confirmation: true,
-          estimated_strategy: 'full',
-        }}
-        loading={false}
-        error={null}
-        onRun={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByText('导入前需要确认')).toBeInTheDocument()
-    expect(screen.getByText('无法证明输入包是完整快照还是尾部增量，需要确认导入方式。')).toBeInTheDocument()
-  })
 })

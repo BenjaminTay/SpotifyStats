@@ -204,7 +204,7 @@ track interaction burst
 导入完成、收藏同步完成、设置/identity/group/相关元数据写入后只由私有任务维护默认配置，任务执行时重新解析最新 revision。已有数据库的显式本地补建入口：
 
 ```bash
-.venv/bin/python scripts/rebuild_account_archive.py --db /absolute/path/to/copy.db --install-revisions
+.venv/bin/python scripts/maintenance/rebuild_account_archive.py --db /absolute/path/to/copy.db --install-revisions
 ```
 
 可用 `--cache` 指定隔离结果库、`--families discovery` 限定章节，或用 `--filters-json '{"merge_enabled":false,"merge_level":3}'` 补建特定筛选。打开页面不会补建缺失配置；本阶段只在隔离副本执行了补建，正式数据库尚未执行迁移或重建。

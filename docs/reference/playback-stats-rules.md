@@ -773,7 +773,7 @@ Billboard Year-End 年榜不是单纯的年度播放量榜。它先使用当前 
 只读一致性检查：
 
 ```bash
-.venv/bin/python scripts/billboard_year_end_consistency_probe.py \
+.venv/bin/python scripts/verification/billboard_year_end_consistency_probe.py \
   --merge-levels 2,3 \
   --json-output /tmp/billboard_year_end_consistency.json
 ```

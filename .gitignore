@@ -24,6 +24,8 @@ data/covers/
 data/cache/
 data/import_control/
 data/import_sources/
+data/logs/
+data/maintenance/
 
 # Local database backups, raw import snapshots, and recovery artifacts
 data/backups/

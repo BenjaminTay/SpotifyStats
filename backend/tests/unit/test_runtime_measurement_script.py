@@ -18,11 +18,11 @@ import pytest
 
 from scripts import (
     frontend_spa_ready_probe,
-    runtime_df_compare,
     runtime_matrix_run,
     runtime_matrix_suite,
     runtime_measurement,
 )
+from scripts.performance import runtime_df_compare
 
 pytestmark = pytest.mark.unit
 

@@ -12,10 +12,11 @@ import { MobileAllTime } from '@/features/mobile/billboard/MobileAllTime'
 import { MobileNumberOnes } from '@/features/mobile/billboard/MobileNumberOnes'
 import { MobileVersusScoreboard } from '@/features/mobile/billboard/MobileVersusScoreboard'
 import { MobileYearEnd } from '@/features/mobile/billboard/MobileYearEnd'
-import { YearlyPeriodNotice } from '@/features/mobile/yearly/YearlyPeriodNotice'
+import { MobileYearlyCover } from '@/features/mobile/yearly-v2/MobileYearlyCover'
 import type { NumberOnesComputed, YearFilteredNumberOnes } from '@/features/billboard/number-ones/numberOnesData'
 import type { ArtistTrackCounts, BillboardRecords, BillboardYearEndResponse, TrackSummary, VersusEntityData } from '@/types/billboard'
 import type { PlaybackRecordRow } from '@/types/analysis'
+import type { YearlyReviewResponse } from '@/types/yearly-review-v2'
 
 beforeEach(() => {
   Object.defineProperty(window, 'matchMedia', {
@@ -35,15 +36,16 @@ beforeEach(() => {
 
 describe('M4 mobile page presentations', () => {
   it('shows the effective cutoff for a partial current year and stays silent for a full year', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-08-06T00:00:00Z'))
-    const { rerender } = render(<YearlyPeriodNotice period={{ year: 2026, start_date: '2026-01-01', end_date: '2026-07-24', latest_data_date: '2026-07-24', active_days: 205, days_covered: 205, is_partial_year: true, label: '2026 年截至 2026-07-24' }} />)
-    expect(screen.getByRole('complementary', { name: '年度数据范围' })).toHaveTextContent('年度进行中')
-    expect(screen.getByText('数据截至 2026-07-24')).toBeInTheDocument()
+    const report = {
+      year: 2026,
+      status: 'year_to_date',
+      passport: { observed_end: '2026-07-24', metrics: [] },
+    } as unknown as YearlyReviewResponse
+    const { rerender } = render(<MobileYearlyCover report={report} />)
+    expect(screen.getByText(/截至 2026\.07\.24/)).toBeInTheDocument()
 
-    rerender(<YearlyPeriodNotice period={{ year: 2025, start_date: '2025-01-01', end_date: '2025-12-31', latest_data_date: '2025-12-31', active_days: 300, days_covered: 365, is_partial_year: false, label: '2025 年全年' }} />)
-    expect(screen.queryByRole('complementary', { name: '年度数据范围' })).not.toBeInTheDocument()
-    vi.useRealTimers()
+    rerender(<MobileYearlyCover report={{ ...report, year: 2025, status: 'complete' }} />)
+    expect(screen.queryByText(/截至/)).not.toBeInTheDocument()
   })
 
   it('switches record families through the shared section sheet', async () => {

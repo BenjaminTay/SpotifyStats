@@ -58,11 +58,8 @@ import analysisSubNavSource from '../components/shared/AnalysisSubNav.tsx?raw'
 import billboardSubNavSource from '../components/shared/BillboardSubNav.tsx?raw'
 import chineseSource from '../lib/chinese.ts?raw'
 import billboardNameSource from '../lib/billboard-name.ts?raw'
-import monthlyTrendChartSource from '../components/charts/MonthlyTrendChart.tsx?raw'
-import monthlyTrendEChartSource from '../components/charts/MonthlyTrendEChart.tsx?raw'
 import analysisChartsSource from '../components/charts/AnalysisCharts.tsx?raw'
 import rankTrendChartSource from '../components/charts/RankTrendChart.tsx?raw'
-import releaseTimelineChartSource from '../components/charts/ReleaseTimelineChart.tsx?raw'
 import versusRankChartSource from '../components/charts/VersusRankChart.tsx?raw'
 import numberOnesPrimitivesChartSource from '../features/billboard/number-ones/NumberOnesPrimitives.tsx?raw'
 
@@ -417,18 +414,9 @@ describe('Phase 5 architecture guardrails', () => {
     expect(appLayoutSource).toContain('useBillboardNameVersion()')
   })
 
-  it('keeps the dashboard monthly trend chart lazy-loaded for first paint', () => {
-    expect(monthlyTrendChartSource).toContain("lazy(() => import('./MonthlyTrendEChart'))")
-    expect(monthlyTrendChartSource).not.toContain('LazyEChart')
-    expect(monthlyTrendChartSource).not.toContain('EChartsTheme')
-    expect(monthlyTrendEChartSource).toContain('LazyEChart')
-    expect(monthlyTrendEChartSource).toContain('EChartsTheme')
-  })
-
   it.each([
     ['AnalysisCharts.tsx', analysisChartsSource],
     ['RankTrendChart.tsx', rankTrendChartSource],
-    ['ReleaseTimelineChart.tsx', releaseTimelineChartSource],
     ['VersusRankChart.tsx', versusRankChartSource],
     ['NumberOnesPrimitives.tsx', numberOnesPrimitivesChartSource],
   ])('%s uses the shared lightweight ECharts wrapper', (_path, content) => {

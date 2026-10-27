@@ -20,6 +20,7 @@
 | 后端架构与开发 | [后端README](../backend/README.md) |
 | 前端架构、交互与设计 | [前端README](../frontend/README.md)、[UI规范](../frontend/UI_STYLE_GUIDE.md) |
 | 输入JSON、导入实现与运行文件 | [数据格式参考](../data/README.md) |
+| 维护、验证与性能工具 | [脚本用途与运行边界](../scripts/README.md) |
 | 部署、网关、备份与恢复 | [运维手册](../deploy/production/README.md) |
 
 以下是维护者与Agent共用的当前规范，各自只维护一份。技术标识和实现边界用于精确理解行为；普通操作不要求通读。
@@ -87,6 +88,7 @@
 
 - [设计决策](designs/README.md)、[交付与验证报告](reports/README.md)、[历史归档](archive/README.md)、[月度变更历史](archive/changelog/README.md)。
 - [近期产品化归档](archive/06-productization-closeout/README.md)、[项目截图素材说明](assets/readme/README.md)。
+- [项目文件整理交付](reports/2026-10-26-project-file-organization.md)、[已完成实施规划](archive/06-productization-closeout/2026-10-26-project-file-organization-plan.md)。
 - [文档整理与验收记录](reports/2026-10-25-documentation-cleanup-delivery.md#读者分工与命名更新)。
 
 ## 文档职责与维护

@@ -61,13 +61,15 @@ data/
 
 ```
 data/
-├── spotify_stats.db                     # SQLite 数据库（78MB+，导入后生成）
+├── spotify_stats.db                     # SQLite数据库，大小取决于输入及持久快照
 ├── spotify_stats.db-shm / .db-wal       # SQLite WAL 文件（运行时自动管理）
 ├── import_control/                      # 独立控制库、发布锁与批次锁
 ├── import_sources/                      # 已发布的活动原始来源版本与指针
 ├── import_backups/                      # 写入前数据库/旧来源恢复点（本地私有）
 ├── artist_genre_overrides.seed.json     # 人工审校的艺人流派种子数据（~171KB）
 ├── *_cache.db                           # Billboard、年度、治理等持久派生 sidecar
+├── logs/                                # 本地日常服务日志（忽略）
+├── maintenance/                         # 本地维护操作的少量私有收据（忽略）
 └── covers/                              # 封面图片缓存
     ├── albums/                          #   专辑封面（WebP，Spotify API 全量拉取）
     └── artists/                         #   艺人头像
@@ -307,6 +309,12 @@ Wrapped 2025 → 音乐库 → 歌单 → 搜索记录 → 兴趣画像
 - `import_sources/` 保存服务端拥有的来源版本；活动指针只在事实提交和目录发布都满足栅栏时切换。启动恢复会完成可证明的切换，或成套恢复到旧库/旧来源。
 - `import_backups/` 是本地私有恢复证据，不进入 Git，也不自动清理。清理策略必须另行确认，不能把磁盘回收与一次导入执行混在一起。
 - 运行中会出现 `.lock`、WAL/SHM 和临时目录；应用正常退出或恢复后可回收临时 staging，但活动来源、控制库、备份和失败证据必须保留。
+
+### 日常日志与维护收据
+
+`logs/`保存本地日常服务日志，启动重定向方式见[开发指南](../CONTRIBUTING.md#环境与开发启动)。`maintenance/`保存维护操作的范围、路径映射、检查结果等少量私有收据，两目录不进入Git或镜像。运行日志不依赖可随任务清理的 `output/`。
+
+任务数据库副本、完整接口响应和截图按需生成，收口后按该任务决定处理，不把它们自动复制到维护收据目录。2026-10-26已收口材料清理的范围和不可恢复边界见[项目文件整理报告](../docs/reports/2026-10-26-project-file-organization.md)；旧备份的删除不改变以后导入或维护创建新恢复点的能力。
 
 ### covers/ — 封面缓存
 

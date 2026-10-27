@@ -130,6 +130,7 @@
 
 ## 交付收尾
 
+- [项目文件整理与本地材料清理](2026-10-26-project-file-organization.md)
 - [项目文档整理交付报告](2026-10-25-documentation-cleanup-delivery.md)
 - [已结束分支与工作树清理收口](2026-10-20-development-branch-worktree-closeout.md)
 - [开发分支、历史补丁与共享文档整理](2026-10-12-development-worktree-closeout.md)

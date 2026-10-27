@@ -913,7 +913,7 @@ def _build_monthly_genres(year_df, artist_genres: dict[str, list[str]]) -> list[
 # 4b. Music Map — genre-based region inference
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Genre → (language, region, flag) — mirrors frontend/src/lib/genre-regions.ts
+# Genre → (language, region, flag) — retained for legacy Wrapped compatibility.
 GENRE_REGION_MAP = {
     "mandopop": ("chinese", "中国", "🇨🇳"),
     "cantopop": ("chinese", "中国香港", "🇭🇰"),

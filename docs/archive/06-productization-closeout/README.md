@@ -45,6 +45,7 @@
 - [榜单对决发行周期完整修复规划](2026-10-21-versus-release-cycle-repair-plan.md)
 - [开发状态历史检查点](2026-10-25-development-status-history.md)
 - [项目文档整理与更新执行规划](2026-10-25-documentation-cleanup-and-update-plan.md)
+- [项目文件整理执行规划](2026-10-26-project-file-organization-plan.md)
 - [问题台账历史记录](2026-10-25-issue-register-history.md)
 - [SpotifyStats 移动端 M0 视觉原型](mobile-web-m0-prototype/README.md)
 

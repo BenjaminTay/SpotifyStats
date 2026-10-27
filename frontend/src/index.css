@@ -1169,52 +1169,6 @@
   margin-block: 6px;
 }
 
-.yearly-period-notice {
-  display: flex;
-  max-width: 560px;
-  min-height: 56px;
-  align-items: center;
-  gap: 11px;
-  margin: -14px 0 22px;
-  border: 1px solid color-mix(in oklch, var(--accent-foreground) 28%, var(--border));
-  border-radius: 16px;
-  padding: 10px 13px;
-  background:
-    linear-gradient(115deg, color-mix(in oklch, var(--accent-foreground) 9%, var(--card)), color-mix(in oklch, var(--card) 88%, transparent));
-}
-
-.yearly-period-notice-icon {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  place-items: center;
-  border-radius: 12px;
-  color: var(--accent-foreground);
-  background: color-mix(in oklch, var(--accent-foreground) 10%, transparent);
-}
-
-.yearly-period-notice-icon svg {
-  width: 17px;
-  height: 17px;
-}
-
-.yearly-period-notice strong,
-.yearly-period-notice small {
-  display: block;
-}
-
-.yearly-period-notice strong {
-  font-family: var(--font-serif);
-  font-size: 15px;
-}
-
-.yearly-period-notice small {
-  margin-top: 2px;
-  color: var(--muted-foreground);
-  font-size: 10px;
-}
-
 .mobile-state-panel {
   display: flex;
   min-height: 176px;
@@ -2444,75 +2398,6 @@
 
 .mobile-yearly-controls > div:first-child button {
   min-height: 44px;
-}
-
-.mobile-yearly-chapters {
-  position: sticky;
-  top: calc(var(--mobile-topbar-height) + env(safe-area-inset-top) - 1px);
-  z-index: 24;
-  display: flex;
-  max-width: calc(100vw - (var(--mobile-gutter) * 2));
-  gap: 6px;
-  overflow-x: auto;
-  margin: 0 0 14px;
-  padding: 9px 2px;
-  scrollbar-width: none;
-  background: color-mix(in oklch, var(--background) 88%, transparent);
-  backdrop-filter: blur(18px) saturate(1.2);
-}
-
-.mobile-yearly-chapters::-webkit-scrollbar { display: none; }
-
-.mobile-yearly-chapters button {
-  display: inline-flex;
-  min-height: 44px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 7px 11px;
-  color: var(--muted-foreground);
-  font-size: 11px;
-  background: color-mix(in oklch, var(--card) 90%, transparent);
-}
-
-.mobile-yearly-chapters button span {
-  color: color-mix(in oklch, var(--accent-foreground) 72%, var(--muted-foreground));
-  font-family: var(--font-serif);
-  font-size: 9px;
-  font-style: italic;
-}
-
-.mobile-yearly-chapters button.active {
-  border-color: var(--accent-foreground);
-  color: var(--primary-foreground);
-  background: var(--accent-foreground);
-}
-
-.mobile-yearly-chapters button.active span { color: var(--primary-foreground); }
-
-.mobile-story-section {
-  scroll-margin-top: calc(var(--mobile-topbar-height) + 68px);
-}
-
-.mobile-yearly-story .yearly-review-content {
-  display: grid;
-  gap: 22px;
-}
-
-.mobile-yearly-story .mobile-story-section > section,
-.mobile-yearly-story .mobile-story-section > div {
-  margin-bottom: 0;
-}
-
-.mobile-yearly-story h2 {
-  font-size: clamp(24px, 7.5vw, 31px);
-  overflow-wrap: anywhere;
-}
-
-.mobile-yearly-story .grid {
-  gap: 12px;
 }
 
 .mobile-records-stack .glass-card,

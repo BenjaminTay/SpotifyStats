@@ -22,6 +22,13 @@ npm run dev
 
 日常入口使用 `scripts/start_daily.py`；开发入口使用 reload 和 Vite dev。日常入口只绑定 loopback、采用 minimal 预热并复用前端正式构建。`--build` 会在构建成功后保存前端输入清单；普通 `npm run build` 不生成该清单，日常入口会要求执行一次 `--build`。端口冲突时退出，不停止已有服务；`Ctrl-C` 只结束该入口创建的两个进程。
 
+需要保存日常服务日志时，在项目根目录运行以下命令。日志目录已忽略，不使用任务验收目录保存常驻服务日志；命令在当前终端运行，仍可用 `Ctrl-C` 正常结束。
+
+```bash
+mkdir -p data/logs
+python3 scripts/start_daily.py --build >> data/logs/daily.log 2>&1
+```
+
 ## 架构与代码入口
 
 后端采用 FastAPI、Pandas、SQLite 与 Pydantic；前端采用 React、TypeScript、Vite、Tailwind CSS、TanStack Query 与 ECharts。Python 依赖以 [requirements.txt](requirements.txt) 及其引用的子清单为准，子清单变化同样需要从根清单重新安装；前端依赖声明与锁定版本分别见 [package.json](frontend/package.json) 和 [package-lock.json](frontend/package-lock.json)。
@@ -41,6 +48,7 @@ SpotifyStats/
 - [UI风格指南](frontend/UI_STYLE_GUIDE.md)：设计系统及多端布局。
 - [当前技术参考](docs/README.md#维护者与共用参考)：统计、元数据、缓存和AI运行合同。
 - [数据格式参考](data/README.md)：JSON字段、导入管线及运行文件。
+- [维护与验证工具](scripts/README.md)：按用途选择脚本，识别只读、副本维护、正式写入与在线模型调用。
 
 ## 按改动验证
 
