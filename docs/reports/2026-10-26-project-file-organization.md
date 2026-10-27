@@ -271,4 +271,13 @@
 
 修复将两种CLI的实际模块路径作为显式测试参数，account_archive使用`scripts.maintenance.rebuild_account_archive`，governance维持`scripts.rebuild_governance`；原旧库升级、维护顺序与播放记录保留断言不变。额外检查backend测试与脚本中的importlib/runpy动态加载入口，未见其他相同迁移遗漏。本次增加一个必要测试文件到原交付范围，不新增业务逻辑或兼容壳。
 
-本地定向`test_snapshot_rebuild_cli.py`两项通过（0.06秒），环境仍有同一urllib3/LibreSSL警告。日志保存于`data/maintenance/project-file-organization-20261026/merge-dynamic-import-tests.log`；原远端完整作业日志保存在同目录`merge-ci-job.log`。修复提交后等待其远端质量结果，当前尚未合并main或触发生产发布。
+本地定向`test_snapshot_rebuild_cli.py`两项通过（0.06秒），环境仍有同一urllib3/LibreSSL警告。日志保存于`data/maintenance/project-file-organization-20261026/merge-dynamic-import-tests.log`；原远端完整作业日志保存在同目录`merge-ci-job.log`。该修复提交时仍等待远端质量结果，尚未合并main或触发生产发布；后续结果见下节。
+
+
+### 分支CI通过与主线快进整合
+
+修复提交`16ad95cc4ef0661793287c8d18a5988c96c4ce4d`的[质量CI 40518424036](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40518424036)最终为`completed/success`：后端unit 3276通过、2跳过，contract 578通过，后端lint通过，前端98个测试文件通过、1跳过，817项测试通过、4跳过，TypeScript/Vite构建通过。文档审计与其8项工具回归通过；没有把前次失败或跳过改记为通过。完整成功日志与元数据分别保存在本地`merge-ci-success.log`和`merge-ci-success.json`。
+
+确认远端main仍是`2da50438`、工作区干净且分支为其后代后，将本地main快进至`16ad95cc`并切回main。源提交`cbf7ef98`（整理）、`1cbd0ad1`（交付文档）、`16ad95cc`（动态导入测试修复）均以原完整SHA保留，无冲突、无重写；后续本节及状态表的收尾提交仅改文档，随main推送。
+
+main推送会按既有规则触发独立质量CI和自动Production Release。分支CI成功不表示main新SHA的CI或生产发布已经成功，也不表示生产现场验收完成；不改工作流，不使用跳过CI或发布的提交标记。源分支收尾在main包含性与推送核对后处理本地引用；远端源分支保留为已合并引用，本次不额外删除远端分支。
