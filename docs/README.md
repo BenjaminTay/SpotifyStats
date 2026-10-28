@@ -88,6 +88,7 @@
 
 - [设计决策](designs/README.md)、[交付与验证报告](reports/README.md)、[历史归档](archive/README.md)、[月度变更历史](archive/changelog/README.md)。
 - [近期产品化归档](archive/06-productization-closeout/README.md)、[项目截图素材说明](assets/readme/README.md)。
+- [清理后恢复基线重建与生产发布重试](reports/2026-10-28-recovery-baseline-and-release-retry.md)。
 - [项目文件整理交付](reports/2026-10-26-project-file-organization.md)、[已完成实施规划](archive/06-productization-closeout/2026-10-26-project-file-organization-plan.md)。
 - [文档整理与验收记录](reports/2026-10-25-documentation-cleanup-delivery.md#读者分工与命名更新)。
 

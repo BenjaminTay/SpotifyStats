@@ -60,6 +60,8 @@
 
 ## 导入与恢复
 
+- [清理后恢复基线重建与生产发布重试](2026-10-28-recovery-baseline-and-release-retry.md)
+
 - [2026-10-20 本地串流增量导入](2026-10-20-local-streaming-incremental-import.md)
 - [导入事故复盘与治理修复验收](2026-09-21-import-incident-and-remediation.md)
 - [L1 导入防复发、时长解析与人工归并刷新收口](2026-09-13-l1-import-duration-and-manual-merge-closeout.md)
