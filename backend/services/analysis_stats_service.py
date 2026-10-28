@@ -6,7 +6,7 @@ import sqlite3
 import unicodedata
 from collections.abc import Sequence
 from datetime import date, timedelta
-from functools import lru_cache
+from functools import lru_cache, partial
 from typing import Any
 
 import pandas as pd
@@ -1101,6 +1101,15 @@ def _get_analysis_charts_cached(
         conn.close()
 
 
+# Keep SQL input narrow before interval reconstruction and artist fan-out.
+# Source album identity is required by L1 album charts; effective credits add
+# artist_id themselves, so only the generic loader selects t.artist_id.
+_CHART_PLAY_COLUMNS = (
+    "p.play_id, p.ts, p.ts_date, p.ms_played, p.track_id, p.source_album_id, "
+    "t.track_name, t.album_id AS track_album_id, a.artist_name, al.album_name, stm.duration_ms"
+)
+
+
 def _build_analysis_charts(
     conn: sqlite3.Connection,
     min_ms: int,
@@ -1134,7 +1143,7 @@ def _build_analysis_charts(
             end_date,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
-            _loader=load_plays_for_artists,
+            _loader=partial(load_plays_for_artists, columns=_CHART_PLAY_COLUMNS),
         )
     else:
         _, df, resolved = load_period_plays(
@@ -1147,6 +1156,11 @@ def _build_analysis_charts(
             end_date,
             dynamic_threshold=dynamic_threshold,
             max_merge_gap_minutes=max_merge_gap_minutes,
+            _loader=partial(
+                load_plays,
+                columns=_CHART_PLAY_COLUMNS
+                + ", t.artist_id, al_src.album_name AS source_album_name",
+            ),
         )
     total, rows = chart_rows(
         conn,

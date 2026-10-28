@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from functools import partial
 
 import pandas as pd
 
@@ -58,6 +59,8 @@ def test_artist_chart_loads_only_the_credited_artist_frame(monkeypatch) -> None:
             offset=0,
         )
 
-    assert calls == [load_plays_for_artists]
+    assert len(calls) == 1
+    assert isinstance(calls[0], partial)
+    assert calls[0].func is load_plays_for_artists
     assert result["total"] == 1
     assert result["rows"][0]["artist_name"] == "Artist"

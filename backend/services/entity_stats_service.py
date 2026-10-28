@@ -1402,7 +1402,7 @@ def _build_artist_stats(
             loader=(
                 partial(load_plays_for_artists, columns=_ARTIST_STATS_PLAY_COLUMNS)
                 if published_context is not None
-                else None
+                else partial(load_plays, columns=_ARTIST_STATS_PLAY_COLUMNS + ", t.artist_id")
             ),
         )
     else:
@@ -1584,7 +1584,11 @@ def get_artist_personal_ranking(
             }
         )
         loader = _scoped_play_loader(
-            conn, track_ids, music_only=music_only, loader=load_plays_for_artists
+            conn,
+            track_ids,
+            music_only=music_only,
+            # Reuse the same scoped credited frame as published artist stats.
+            loader=partial(load_plays_for_artists, columns=_ARTIST_STATS_PLAY_COLUMNS),
         )
     all_df, current_df, resolved = load_period_plays(
         conn,
