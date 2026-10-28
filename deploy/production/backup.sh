@@ -16,13 +16,43 @@ compose() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
+mkdir -p backups
+chmod 700 backups
+if [[ "${1:-}" == "--scheduled" ]]; then
+  # The daily maintenance timer makes one backup per Sunday-to-Saturday week.
+  # A missed Sunday is caught up on the next daily run.
+  due="$(python3 - "$DEPLOY_DIR/backups" <<'PY'
+import datetime as dt
+import re
+import sys
+from pathlib import Path
+
+now = dt.datetime.now()
+start = (now - dt.timedelta(days=(now.weekday() + 1) % 7)).replace(
+    hour=0, minute=0, second=0, microsecond=0
+).timestamp()
+recent = any(
+    p.is_file() and not p.is_symlink() and p.stat().st_mtime >= start
+    for p in Path(sys.argv[1]).iterdir()
+    if re.fullmatch(r"spotify-stats-[0-9]{8}T[0-9]{6}Z\.db(?:\.gz)?", p.name)
+)
+print("skip" if recent else "due")
+PY
+)"
+  if [[ "$due" == "skip" ]]; then
+    echo "本周已有普通备份，跳过备份生成。"
+    exit 0
+  fi
+elif [[ $# -ne 0 ]]; then
+  echo "用法：backup.sh [--scheduled]" >&2
+  exit 2
+fi
+
 if ! compose ps --status running --services | grep -qx backend; then
   echo "Backend 容器未运行，无法执行 SQLite 在线备份。" >&2
   exit 1
 fi
 
-mkdir -p backups
-chmod 700 backups
 backup_name="${SPOTIFY_STATS_BACKUP_NAME:-spotify-stats-$(date -u +%Y%m%dT%H%M%SZ).db}"
 if [[ ! "$backup_name" =~ ^spotify-stats-[A-Za-z0-9._-]+\.db$ ]]; then
   echo "SPOTIFY_STATS_BACKUP_NAME 必须是安全的 spotify-stats-*.db 文件名。" >&2
@@ -55,20 +85,18 @@ if [[ "$backup_name" =~ ^spotify-stats-[0-9]{8}T[0-9]{6}Z\.db$ ]]; then
   backup_name="$backup_name.gz"
 fi
 
-retention_days="$(sed -n 's/^BACKUP_RETENTION_DAYS=//p' "$ENV_FILE" | tail -n 1)"
-retention_days="${retention_days:-28}"
-if [[ ! "$retention_days" =~ ^[0-9]+$ ]]; then
-  echo "BACKUP_RETENTION_DAYS 必须是非负整数。" >&2
-  exit 1
-fi
+# Rotate only ordinary snapshots, and only after the new backup succeeded.
+python3 - "$DEPLOY_DIR/backups" <<'PY'
+import re
+import sys
+from pathlib import Path
 
-# Only expire ordinary scheduled snapshots. Release, import, and manually named
-# recovery points also use the spotify-stats-*.db prefix and need separate review.
-find backups -maxdepth 1 -type f -mtime "+$retention_days" -print0 |
-  while IFS= read -r -d '' path; do
-    name="${path##*/}"
-    if [[ "$name" =~ ^spotify-stats-[0-9]{8}T[0-9]{6}Z\.db(\.gz)?$ ]]; then
-      rm -- "$path"
-    fi
-  done
+ordinary = [
+    p for p in Path(sys.argv[1]).iterdir()
+    if p.is_file() and not p.is_symlink()
+    and re.fullmatch(r"spotify-stats-[0-9]{8}T[0-9]{6}Z\.db(?:\.gz)?", p.name)
+]
+for path in sorted(ordinary, key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)[2:]:
+    path.unlink()
+PY
 echo "SQLite 备份完成：$DEPLOY_DIR/backups/$backup_name"

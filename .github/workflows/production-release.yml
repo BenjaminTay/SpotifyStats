@@ -30,6 +30,8 @@ on:
       - "deploy/production/activate-release-images.sh"
       - "deploy/production/cleanup-release-files.py"
       - "deploy/production/backup.sh"
+      - "deploy/production/install-backup-timer.sh"
+      - "deploy/production/.env.example"
       - "backend/tests/unit/test_release_file_cleanup.py"
       - "backend/tests/unit/test_production_image_transport.py"
       - "backend/tests/unit/test_image_transport_cas.py"

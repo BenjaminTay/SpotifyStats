@@ -151,25 +151,24 @@ docker compose -f compose.yml exec -T backend python scripts/backfill_cover_thum
 5. 执行 `./deploy.sh <commit-sha>`，再运行 `./verify.sh`。
 6. 最后按需单独配置外部 HTTPS 入口。Tailscale 是可选项；只有明确需要时才运行
    `configure-tailscale.sh` 或 `configure-public-funnel.sh`。
-7. 运行 `./install-backup-timer.sh` 安装每周日 03:20（另有最多 20 分钟随机延迟）的 SQLite 在线备份。服务器 `.env` 中的 `BACKUP_RETENTION_DAYS=28` 只清理普通定时备份；普通周备份完整性检查通过后自动压缩为 `.db.gz`，轮转同时识别 `.db` 和 `.db.gz`，新备份成功后才清理过期文件。发布前和恢复前备份不会被普通轮转清理。
-
-重要数据导入前，先运行 `SPOTIFY_STATS_BACKUP_NAME="spotify-stats-pre-import-$(date -u +%Y%m%dT%H%M%SZ).db" ./backup.sh` 并确认成功；导入完成后再以 `spotify-stats-post-import-` 前缀运行一次。普通周备份之间的其他写入最多可能损失约一周。修改本文件或 timer 模板后，须重新安装 timer，并用 `systemctl cat spotify-stats-backup.timer` 核对服务器生效规则。
+7. 运行 `./install-backup-timer.sh` 安装现有维护定时器：每天03:20（另有最多20分钟随机延迟）清理一次；同一个服务每周生成一次SQLite在线备份。本周（日历周按周日开始）已有普通备份则跳过备份，错过周日会在下次每日运行补齐。
 
 ### 发布文件收尾
 
-正式 workflow 在部署和健康门禁成功、CAS current/previous 更新及本次上传暂存清理完成后，运行 `cleanup-release-files.py --revision <完整SHA> --apply`。它只处理有固定命名的自动发布文件：主库及 Analysis/Billboard 的 `*-pre-release-<12位SHA>-<UTC时间>.db[.gz]`、`music-detail/billboard/versus-ranks-<完整SHA>.json` 和旧上传目录中的 `docker-save.tar`。
+只保留两类数据保护文件，统一使用已有 `spotify-stats-backup.service/.timer`，不增加常驻服务或另一套定时任务：
 
-- 发布恢复材料只保留 **current/previous 两个版本**，每版保留最新一套同时间戳的主库与 Analysis/Billboard 发布前备份及对应成品清单；同版重试的旧套件也在48小时缓冲后清理。最新套件缺少已有旁库时拒绝清理。
-- 其他版本的上述文件至少经过 **48 小时**才清理，给待发布准备和失败诊断留出缓冲。打开中的文件、有非空 WAL 的数据库及符号链接跳过；current/previous 状态不一致或恢复材料缺失时拒绝清理。
-- 三类统一管理：①普通备份每周一次、保留28天并压缩；②当前/上一版本各一套完整恢复材料；③进行中的临时文件，完成后留48小时再清理。运行库、当前 `music-search-resume.db`、CAS blobs 和正式镜像回滚归档不由该工具删除。历史人工命名保护点经核对已被两版恢复点覆盖后人工清理，不永久累积。
+- **日常备份：**SQLite Online Backup通过完整性检查后压缩为 `.db.gz`，仅保留最近 **2份** 普通备份。新备份失败不删除旧备份；人工命名的发布/导入保护点不参与普通轮转。旧 `BACKUP_RETENTION_DAYS` 参数不再使用，可从 `.env` 删除。
+- **操作恢复和临时材料：**自动命名的发布前主库/Analysis/Billboard备份保留 **48小时**；按文件名封存时间与文件修改时间的较新者计时，避免刚封存的副本继承源库旧mtime后被误删。导入或维护任务的 `tmp/`、`originals-*/`、`recovery/` 在完成验收、相关进程退出后，于操作目录执行 `touch .cleanup-ready`，满48小时后由每日收尾清理；不再永久保留当前/上一版本的数据库保护副本。脚本和小型日志放在这三个数据目录之外。
 
-导入、发布演练和验证统一采用 `backups/<操作名>/tmp/` 保存可再生成的副本与成品。原库、旁库和原文件身份恢复点放在同级 `originals-*/` 或 `recovery/`，日志与证明文件放在操作目录。操作验收完成、所有相关进程退出后，执行 `touch backups/<操作名>/tmp/.cleanup-ready`；现有清理步骤会在标记满48小时后删除其中的普通文件。没有标记、标记后又写入文件、含符号链接或混入 `originals*`/`recovery*` 的临时目录会保留；打开文件及非空WAL仍跳过。不依据任意旧目录名称或日期猜测是否可删，历史目录先人工审核。本规则复用现有发布收尾，不增加定时任务；没有后续发布时，临时文件会保留到下一次成功发布收尾或人工调用该工具。
+新操作只需一个完成标记。旧 `tmp/.cleanup-ready` 和 `.recovery-revision` 标记继续兼容；未标记、标记后又写入、含符号链接的目录不猜测删除。`tmp/` 若混入真实 `originals-*/` 或 `recovery/` 目录会保留，但普通源码文件 `recovery.py` 不会误触保护。原文件恢复点在保留期间仍需保持七库、WAL/SHM、首页目录及原inode一起恢复；过期清理后不能再使用该点回滚。
 
-联合恢复点保持原文件路径和inode：七库、WAL/SHM及首页目录保留在操作目录的 `originals-*/`，必要的离线快照放在同级 `recovery/`，日志另存。验收完成后，在操作目录写入 `.recovery-revision`，内容为所属版本的完整SHA。工具始终保留current/previous的注册恢复点；该版本离开两版保留集合、标记已满48小时且没有后续写入后，才清理其中的旧恢复数据，保留小型脚本和证据。未注册目录不自动猜测用途，完成任务时必须明确登记或清理。清理同时持有发布和维护锁，跳过符号链接、打开文件与非空WAL；不停止应用。
+清理脚本还会回收超过48小时且不属于current/previous的成品清单和旧上传包；保留current/previous镜像归档、成品清单、运行库、当前搜索续建库、CAS blobs及用户数据。镜像及发布状态不一致、镜像归档缺失时仍拒绝清理。**数据库历史允许为空**，主动清空不会再以“旧数据库备份缺失”阻塞后续收尾；发布自身创建新Online Backup、源数据围栏、健康检查与联合失败回滚的门禁不变。
 
-不带 `--apply` 时只输出删除预览。例如在服务器执行 `sudo python3 /opt/spotify-stats/cleanup-release-files.py --revision <当前完整SHA>`；核对后加 `--apply`。清理失败会在 workflow 中明确报错，已健康的应用不因空间收尾失败回滚。该步骤随包含本改动的 workflow 发布后执行，无额外 timer 或常驻服务。
+`cleanup-release-files.py` 默认只预览，加 `--apply` 才删除。每天服务以root执行清理以正确识别所有进程占用，再以发布账号执行周备份；同时持发布/维护锁，打开文件和非空WAL跳过。手动可执行 `sudo python3 /opt/spotify-stats/cleanup-release-files.py`；默认读取当前 `.current-image-tag`，也可显式传 `--revision <完整SHA>`。正式workflow仍在部署成功、CAS状态激活及上传暂存收尾后调用同一工具。
 
-历史 `.db.gz` 恢复点先用 `gzip -dk -- /绝对路径/备份.db.gz` 解压，再把生成的 `.db` 交给原有恢复流程。压缩前后内容必须一致，不能用压缩运行中的数据库代替 SQLite Online Backup。
+脚本或timer修改后须重新运行安装器并用 `systemctl cat spotify-stats-backup.service spotify-stats-backup.timer` 核对。不要用任意目录名或整盘日期匹配代替明确的完成标记；重要操作临时创建的人工保护点完成后移入该操作的 `recovery/` 或明确清除，避免散落在备份根目录。
+
+压缩快照恢复时先 `gzip -dk -- /绝对路径/备份.db.gz` 解压，再按现有恢复流程执行。不得压缩运行库或用单库覆盖联合恢复点。
 
 建议预先生成网关密钥：
 

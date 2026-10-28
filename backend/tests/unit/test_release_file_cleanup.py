@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,7 +58,7 @@ def test_bounded_versions_preserve_manual_weekly_and_recent_preparations(tmp_pat
     assert all(
         str(p) not in paths for p in (weekly, manual, resume, new_manifest, retained_manifest)
     )
-    assert len(paths) == 5
+    assert len(paths) == 7
     assert old_manifest.exists()  # Preview never mutates.
 
 
@@ -115,7 +116,8 @@ def test_workflow_packages_helper_and_cleans_only_after_success():
         "Activate CAS current and previous retention after successful deploy"
     )
     assert "cleanup-release-files.py --revision '$GITHUB_SHA' --apply" in workflow
-    assert '      - "deploy/production/backup.sh"' in workflow.split("permissions:")[0]
+    for name in ("backup.sh", "install-backup-timer.sh", ".env.example"):
+        assert f'      - "deploy/production/{name}"' in workflow.split("permissions:")[0]
 
 
 def marked_tmp(root, name, age=3 * 86400):
@@ -175,7 +177,7 @@ def test_unsafe_or_unfinished_tmp_is_kept(tmp_path, condition):
     assert str(candidate) not in paths
 
 
-def test_only_latest_complete_set_per_retained_revision_survives(tmp_path):
+def test_release_scratch_expires_even_for_current_previous(tmp_path):
     root = setup_root(tmp_path)
     old = write(root, f"spotify-stats-pre-release-{'a' * 12}-20261001T000000Z.db")
     duplicate = write(root, f"spotify-stats-pre-release-{'a' * 12}-20261020T000000Z.db.gz")
@@ -184,14 +186,13 @@ def test_only_latest_complete_set_per_retained_revision_survives(tmp_path):
     result = module.plan(root, "a" * 40, NOW)
     paths = {row["path"] for row in result["files"]}
     assert str(old) in paths and str(duplicate) in paths
-    assert str(analysis) in result["retained_backup_files"]
+    assert str(analysis) in paths
     assert str(recent) not in paths
     analysis.rename(analysis.with_name(analysis.name.replace("20261020", "20261019")))
-    with pytest.raises(ValueError, match="incomplete"):
-        module.plan(root, "a" * 40, NOW)
+    module.plan(root, "a" * 40, NOW)
 
 
-def test_registered_joint_recovery_expires_only_outside_current_previous(tmp_path):
+def test_completed_recovery_expires_after_grace_for_all_versions(tmp_path):
     root = setup_root(tmp_path)
     files = {}
     for char in "abc":
@@ -206,7 +207,7 @@ def test_registered_joint_recovery_expires_only_outside_current_previous(tmp_pat
         (folder / "acceptance.json").write_text("{}")
         files[char] = original
     paths = {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
-    assert str(files["a"]) not in paths and str(files["b"]) not in paths
+    assert str(files["a"]) in paths and str(files["b"]) in paths
     assert str(files["c"]) in paths
     assert not any(path.endswith("acceptance.json") for path in paths)
     marker = files["c"].parent.parent / ".recovery-revision"
@@ -236,10 +237,10 @@ def test_registered_recovery_refuses_invalid_revision_and_skips_symlinks(tmp_pat
     assert str(candidate) not in {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
 
 
-def test_scheduled_rotation_expires_compressed_ordinary_backups_only(tmp_path):
+def test_scheduled_rotation_keeps_two_compressed_ordinary_backups_only(tmp_path):
     script = tmp_path / "backup.sh"
     shutil.copyfile(SOURCE.parent / "backup.sh", script)
-    (tmp_path / ".env").write_text("BACKUP_RETENTION_DAYS=28\n")
+    (tmp_path / ".env").touch()
     backup_dir = tmp_path / "backups"
     backup_dir.mkdir()
     names = [
@@ -272,3 +273,90 @@ def test_scheduled_rotation_expires_compressed_ordinary_backups_only(tmp_path):
     assert (backup_dir / names[2]).exists() and (backup_dir / names[3]).exists()
     assert len(list(backup_dir.glob("*.db.gz"))) == 3
     assert not list(backup_dir.glob("*.db"))
+
+
+def test_empty_and_partially_reset_database_backup_history_are_valid(tmp_path):
+    root = setup_root(tmp_path)
+    for p in (root / "backups").glob("*.db"):
+        p.unlink()
+    assert module.plan(root, "a" * 40, NOW)["files"] == []
+    recent = write(root, f"spotify-stats-pre-release-{'a' * 12}-20261020T000000Z.db", age=60)
+    assert module.plan(root, "a" * 40, NOW)["files"] == []
+    assert recent.exists()
+
+
+def test_new_release_backup_with_preserved_old_mtime_gets_full_grace(tmp_path):
+    root = setup_root(tmp_path)
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(NOW - 60))
+    p = write(root, f"spotify-stats-pre-release-{'a' * 12}-{stamp}.db", age=10 * 86400)
+    assert str(p) not in {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
+
+
+def test_single_operation_marker_cleans_scratch_and_recovery_but_keeps_logs(tmp_path):
+    root = setup_root(tmp_path)
+    candidate, legacy_marker = marked_tmp(root, "finished")
+    legacy_marker.unlink()
+    operation = candidate.parent.parent
+    marker = operation / ".cleanup-ready"
+    marker.touch()
+    os.utime(marker, (NOW - 3 * 86400, NOW - 3 * 86400))
+    code = operation / "tmp/code/backend/domains/agent_runtime/recovery.py"
+    original = operation / "originals-example/spotify_stats.db"
+    for p in (code, original):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"fixture")
+        os.utime(p, (NOW - 4 * 86400, NOW - 4 * 86400))
+    log = operation / "acceptance.json"
+    log.write_text("{}")
+    paths = {row["path"] for row in module.plan(root, "a" * 40, NOW)["files"]}
+    assert all(str(p) in paths for p in (candidate, code, original))
+    assert str(log) not in paths and str(marker) not in paths
+
+
+def test_daily_command_defaults_to_installed_revision_and_runs_without_backup_history(tmp_path):
+    root = setup_root(tmp_path)
+    for p in (root / "backups").glob("*.db"):
+        p.unlink()
+    result = subprocess.run(
+        [sys.executable, str(SOURCE), "--deploy-dir", str(root)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert json.loads(result.stdout)["files"] == []
+
+
+def test_daily_timer_reuses_one_service_and_checks_weekly_backup_only(tmp_path):
+    installer = (SOURCE.parent / "install-backup-timer.sh").read_text()
+    assert "OnCalendar=*-*-* 03:20:00" in installer
+    assert (
+        "ExecStartPre=+/usr/bin/python3 $DEPLOY_DIR/cleanup-release-files.py --apply" in installer
+    )
+    assert "ExecStart=$DEPLOY_DIR/backup.sh --scheduled" in installer
+    script = tmp_path / "backup.sh"
+    shutil.copyfile(SOURCE.parent / "backup.sh", script)
+    (tmp_path / ".env").touch()
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    (backups / "spotify-stats-20261028T000000Z.db.gz").touch()
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    docker = binary / "docker"
+    docker.write_text("#!/bin/sh\nexit 77\n")
+    docker.chmod(0o755)
+    result = subprocess.run(
+        ["bash", str(script), "--scheduled"],
+        env={**os.environ, "PATH": str(binary) + os.pathsep + os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0  # No Docker call when this week's snapshot exists.
+    old = time.time() - 8 * 86400
+    snapshot = next(backups.iterdir())
+    os.utime(snapshot, (old, old))
+    result = subprocess.run(
+        ["bash", str(script), "--scheduled"],
+        env={**os.environ, "PATH": str(binary) + os.pathsep + os.environ["PATH"]},
+        capture_output=True,
+    )
+    assert result.returncode != 0  # A missed week attempts Docker rather than skipping.

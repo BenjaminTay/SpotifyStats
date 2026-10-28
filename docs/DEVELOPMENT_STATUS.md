@@ -31,7 +31,7 @@
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成；分阶段、preflight、排他锁与去重已交付，三次低干扰稳定验收及安全续跑/分片尚无闭环 | P1：后续有对应需求时根据当前计时和慢测试profile处理；旧单次24分22秒不等于三次稳定收口 | [门禁计划](plans/fullstack-verification-performance.md)、[问题台账](issues/README.md) | 2026-10-07（历史证据，未新增测试） |
 | SS-2026-08-06-005 | PWA双平台与真实OAuth | 工程已实现，iPhone/Android安装、键盘、安全区、返回及真实consent回跳仍缺验收闭环 | P1（需要移动发布时）：按目标终端分别验收，不以模拟视口或CI推定 | [PWA路线](plans/appification-and-mobile-distribution.md) | 2026-10-02（文档记录，未真机验收） |
 | ACCEPT-01 | 真实模型及私有外部入口 | 生产LLM仍待独立验收；10-24展示HTTPS及SSH隧道页面已通过，但Tailscale私有域名DNS直连未通过 | 分别核查模型与私有域名外部条件；不重开已交付的5项目代码/数据范围 | [最新入口边界](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收)、[验证规则](reference/fullstack-verification.md) | 2026-10-24（入口报告；模型未新增核验） |
-| DONE-09（运行观察） | 新周备份压缩规则的真实定时执行 | 脚本已安装交付、隔离验证通过；10-23记录仍待10-25首次真实周调度，尚无后续执行收据 | 正常调度后读取既有日志/产物确认压缩及28天轮转；不把待观察写成脚本未实现 | [备份规则](../deploy/production/README.md)、[变更记录](CHANGELOG.md#2026-10-23-备份与恢复文件管理) | 2026-10-23（本轮仅核对文档） |
+| DONE-09（运行观察） | 简化后每日清理/每周备份的首次真实调度 | 10月25日旧周备份压缩、10月28日新服务首次追补成功；首轮误清的3个封存副本已从独立基线恢复并逐份核对SHA256，封存时间宽限期已修复 | 下一次为10月29日每日维护；同一周已有备份会跳过生成，继续观察正常调度 | [备份规则](../deploy/production/README.md#发布文件收尾) | 2026-10-28 |
 | DATA-01 | 存量L1身份歧义审核 | 证据不足项仍需人工审核；历史约600条review、21个冲突不是当前数量，10-20已确认的33首署名阻塞已另行解决 | P2：有新的具体治理需求时先读取现库差异和证据；不重复处理已批准身份/署名决定 | [L1边界](reports/2026-09-13-l1-import-duration-and-manual-merge-closeout.md)、[后续署名交付](reports/2026-10-21-album-song-performance-attribution.md#最终发布与生产验收) | 2026-10-25（报告对照，未统计现库队列） |
 | DATA-03 | Album/艺人身份证据不足项 | 未能唯一解析的身份仍待证据；10-03的13个Album/17条未解析行仅是历史样本，不能直接当作当前余量 | P2：按稳定身份与来源证据审核，不猜canonical或自动批准关系 | [原身份边界](reports/2026-10-03-album-metadata-delivery.md#专辑目录与艺人证据生产交付)、[最新来源/身份边界](reports/2026-10-24-release-cycle-review-and-delivery.md#发行周期共用能力六项目副本验收与五项生产交付) | 2026-10-25（仅文档对照，未重测数据） |
 
@@ -86,7 +86,7 @@
 | DONE-06 | 日常轻量启动、构建输入清单、预热分层、重型任务排他与长期资源优化 | 已实现；提交 `a0df33a4`，集成 `c1acbec6`；[资源专项与完整全栈](reports/2026-09-22-runtime-resource-optimization.md) |
 | DONE-07 | V6 统一模型步骤、持久恢复、预算与租约、冻结年报上下文、审核章节渐进交付及 SSE 恢复 | 已实现；提交 `8edcd1c8`，集成 `1f5863a8`；[真实模型及最终全栈](reports/2026-09-22-ai-agent-v6-baseline-and-acceptance.md#ai-agent-v6-统一运行时与渐进报告最终本地验收) |
 | DONE-08 | 160/320/640px WebP、按尺寸/DPR 加载、新下载生成、缺失回退及有界补建；CI 浏览器依赖延迟导入 | 已实现；历史 `84168eba` / `194fd113`，扩展 `f139ec4d` / `814ea7cb`；[封面验收](reports/2026-10-03-cover-image-optimization-acceptance.md) |
-| DONE-09 | 三类备份：周备份压缩保留28天；current/previous各一套恢复材料；完成临时副本留48小时 | 脚本已在腾讯云单独安装；23项受影响测试及服务器隔离验证通过；[生产备份与收尾规则](../deploy/production/README.md) |
+| DONE-09 | 精简备份：每周压缩一份仅留2份；现有timer每天清理；已完成恢复/临时材料48小时；支持历史清空 | 10月28日脚本与现有timer已单独更新，28项专项及服务器隔离验证通过，首次追补周备份成功。其他会话的恢复基线/发布重试独立进行，本事项不部署应用；[备份规则](../deploy/production/README.md#发布文件收尾) |
 | PLAN-2026-10-02-001 | 合作曲排行按有效署名统一三个榜、全部参与艺人、占比与 L3 实际版本过滤 | S1–S6 已完成；`fa683d97` 已推送；[验收报告](reports/2026-10-02-collaboration-ranking-acceptance.md) |
 | SS-2026-09-24-001 | 专辑完整分页、可靠发行位置与只读消费者 | 固定输入4f9a01ff，业务8464ffa6；已实现、完整本地验收；[最终集成](reports/2026-10-03-album-metadata-delivery.md#专辑证据与最新封面主线最终本地集成验收) |
 | SS-2026-09-24-002 | Album有序稳定ID、canonical解析、人工优先与冲突保留 | 固定输入8f638494；已实现、完整本地验收；[专项](reports/2026-10-02-album-artist-evidence-verification.md) |

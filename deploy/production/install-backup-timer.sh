@@ -5,7 +5,7 @@ DEPLOY_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 sudo tee /etc/systemd/system/spotify-stats-backup.service >/dev/null <<EOF
 [Unit]
-Description=SpotifyStats SQLite online backup
+Description=SpotifyStats daily cleanup and weekly SQLite backup
 After=docker.service
 Requires=docker.service
 
@@ -13,15 +13,16 @@ Requires=docker.service
 Type=oneshot
 User=$USER
 WorkingDirectory=$DEPLOY_DIR
-ExecStart=$DEPLOY_DIR/backup.sh
+ExecStartPre=+/usr/bin/python3 $DEPLOY_DIR/cleanup-release-files.py --apply
+ExecStart=$DEPLOY_DIR/backup.sh --scheduled
 EOF
 
 sudo tee /etc/systemd/system/spotify-stats-backup.timer >/dev/null <<'EOF'
 [Unit]
-Description=Run SpotifyStats backup weekly
+Description=Run SpotifyStats maintenance daily
 
 [Timer]
-OnCalendar=Sun *-*-* 03:20:00
+OnCalendar=*-*-* 03:20:00
 RandomizedDelaySec=20m
 Persistent=true
 

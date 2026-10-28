@@ -1,6 +1,7 @@
-"""Keep current/previous release recovery and expire explicitly completed operations."""
+"""Expire release scratch files and completed recovery points after 48 hours."""
 
 import argparse
+import calendar
 import fcntl
 import json
 import re
@@ -18,13 +19,15 @@ GRACE_SECONDS = 48 * 3600
 
 
 def completed_temporary_files(backups, now):
-    """Operations opt in by marking only their disposable tmp/ directory as ready."""
+    """Accept a root completion marker or the legacy disposable tmp/ marker."""
     candidates = []
     for operation in backups.iterdir():
         if operation.is_symlink() or not operation.is_dir():
             continue
         temporary = operation / "tmp"
-        marker = temporary / ".cleanup-ready"
+        marker = operation / ".cleanup-ready"
+        if not marker.exists():
+            marker = temporary / ".cleanup-ready"
         if (
             temporary.is_symlink()
             or not temporary.is_dir()
@@ -39,34 +42,40 @@ def completed_temporary_files(backups, now):
         # Refuse mixed recovery directories or a directory reopened after completion.
         if any(
             p.is_symlink()
-            or any(
-                part.startswith(("originals", "recovery"))
-                for part in p.relative_to(temporary).parts
+            or (
+                p.is_dir()
+                and any(
+                    part == "recovery" or part.startswith("originals-")
+                    for part in p.relative_to(temporary).parts
+                )
             )
             for p in tree
         ):
             continue
-        files = [p for p in tree if p.is_file() and p != marker]
+        files = [p for p in tree if p.is_file() and p.name != ".cleanup-ready"]
         if any(p.stat().st_mtime > marked_at for p in files):
             continue
         candidates.extend(p for p in files if not p.name.endswith(("-wal", "-shm")))
     return candidates
 
 
-def retired_recovery_files(backups, retained, now):
-    """An explicit revision marker lets old joint recovery points follow retention."""
+def completed_recovery_files(backups, now):
+    """A completion marker expires recovery data without keeping generations forever."""
     candidates = []
     for operation in backups.iterdir():
         if operation.is_symlink() or not operation.is_dir():
             continue
-        marker = operation / ".recovery-revision"
+        marker = operation / ".cleanup-ready"
+        if not marker.exists():
+            marker = operation / ".recovery-revision"  # Older completion convention.
         if marker.is_symlink() or not marker.is_file():
             continue
-        revision = marker.read_text().strip()
-        if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        if marker.name == ".recovery-revision" and not re.fullmatch(
+            r"[0-9a-f]{40}", marker.read_text().strip()
+        ):
             raise ValueError(f"Invalid recovery revision: {marker}")
         marked_at = marker.stat().st_mtime
-        if revision[:12] in retained or now - marked_at < GRACE_SECONDS:
+        if now - marked_at < GRACE_SECONDS:
             continue
         for folder in operation.iterdir():
             if folder.name != "recovery" and not folder.name.startswith("originals-"):
@@ -99,7 +108,6 @@ def plan(root, revision, now=None):
     if (root / ".current-image-tag").read_text().strip() != revision:
         raise ValueError("Deployment marker differs from retention state")
     protected = set()
-    retained_backups = set()
     for slot in ("current", "previous"):
         record = state.get(slot)
         if not record:
@@ -110,28 +118,10 @@ def plan(root, revision, now=None):
         if not Path(record["archive_path"]).is_file():
             raise ValueError("Retained image archive is missing")
         protected.add(tag[:12])
-        main_backups = [
-            p
-            for p in backups.glob(f"spotify-stats-pre-release-{tag[:12]}-*.db*")
-            if p.is_file() and not p.is_symlink() and BACKUP.fullmatch(p.name)
-        ]
-        if not main_backups:
-            raise ValueError("Retained database backup is missing")
-        stamp = max(BACKUP.fullmatch(p.name)[2] for p in main_backups)
-        for family in ("spotify-stats", "analysis", "billboard"):
-            copies = [
-                p
-                for p in backups.glob(f"{family}-pre-release-{tag[:12]}-{stamp}.db*")
-                if p.is_file() and not p.is_symlink() and BACKUP.fullmatch(p.name)
-            ]
-            if copies:
-                retained_backups.add(min(copies, key=lambda p: p.name.endswith(".gz")))
-            elif any(backups.glob(f"{family}-pre-release-{tag[:12]}-*.db*")):
-                raise ValueError("Latest retained backup set is incomplete")
     keep = set(protected)
     candidates = []
     for p in backups.iterdir():
-        if BACKUP.fullmatch(p.name) and p not in retained_backups:
+        if BACKUP.fullmatch(p.name):
             candidates.append(p)
         match = MANIFEST.fullmatch(p.name)
         if match and match[1][:12] not in keep:
@@ -148,13 +138,18 @@ def plan(root, revision, now=None):
                     if not (folder / mode).is_symlink():
                         candidates.append(folder / mode / "docker-save.tar")
     candidates.extend(completed_temporary_files(backups, now))
-    candidates.extend(retired_recovery_files(backups, keep, now))
+    candidates.extend(completed_recovery_files(backups, now))
     files = []
     for p in sorted(candidates):
         if p.is_symlink() or not p.is_file():
             continue
         s = p.stat()
-        if now - s.st_mtime < GRACE_SECONDS:
+        created = s.st_mtime
+        match = BACKUP.fullmatch(p.name)
+        if match:
+            # A newly sealed copy can preserve its source database's old mtime.
+            created = max(created, calendar.timegm(time.strptime(match[2], "%Y%m%dT%H%M%SZ")))
+        if now - created < GRACE_SECONDS:
             continue
         files.append(
             {"path": str(p), "bytes": s.st_size, "mtime_ns": s.st_mtime_ns, "inode": s.st_ino}
@@ -162,7 +157,6 @@ def plan(root, revision, now=None):
     return {
         "revision": revision,
         "keep_release_prefixes": sorted(keep),
-        "retained_backup_files": sorted(str(p) for p in retained_backups),
         "files": files,
         "bytes": sum(row["bytes"] for row in files),
     }
@@ -207,11 +201,9 @@ def apply_plan(result):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deploy-dir", type=Path, default=Path(__file__).absolute().parent)
-    parser.add_argument("--revision", required=True)
+    parser.add_argument("--revision", help="Default: installed .current-image-tag")
     parser.add_argument("--apply", action="store_true", help="Delete; default is preview only")
     args = parser.parse_args()
-    if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
-        parser.error("revision must be a full Git SHA")
     root = args.deploy_dir.absolute()
     with ExitStack() as stack:
         lock_paths = [root / "releases/locks" / name for name in ("cas.lock", "retention.lock")]
@@ -222,7 +214,10 @@ def main():
         for path in lock_paths:
             lock = stack.enter_context(path.open("a+b"))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        result = plan(root, args.revision)
+        revision = args.revision or (root / ".current-image-tag").read_text().strip()
+        if not re.fullmatch(r"[0-9a-f]{40}", revision):
+            parser.error("revision must be a full Git SHA")
+        result = plan(root, revision)
         if args.apply:
             result["execution"] = apply_plan(result)
         print(json.dumps(result, ensure_ascii=False, indent=2))
