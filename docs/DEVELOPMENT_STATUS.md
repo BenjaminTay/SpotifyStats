@@ -2,19 +2,19 @@
 
 面向维护者与协作Agent，统一记录当前事项、交付边界和下一步。产品介绍见[项目首页](../README.md)，使用方法见[使用指南](user-guide.md)。
 
-文档核对：2026-10-28。文档整理基线为 `509a88f3`；生产结论引用各报告当时的记录，未因文档整理重新采样。实现、本地应用、提交、推送、部署、观察和外部验收分别记录。本轮文档整理已完成本地验收，71312b6a已推送且两条远端CI成功；最新CI及主线整合边界见[CI确认与主线整合](reports/2026-10-25-documentation-cleanup-delivery.md#ci确认与主线整合)。
+文档核对：2026-10-29。文档整理基线为 `509a88f3`；生产结论引用各报告当时的记录，未因文档整理重新采样。实现、本地应用、提交、推送、部署、观察和外部验收分别记录。本轮文档整理已完成本地验收，71312b6a已推送且两条远端CI成功；最新CI及主线整合边界见[CI确认与主线整合](reports/2026-10-25-documentation-cleanup-delivery.md#ci确认与主线整合)。
 
 ## 当前概况
 
 核心产品已经具备个人音乐头版、播放分析、音乐档案、年度总结、个人 Billboard、音乐查找和实体详情。最近一轮已完成专辑旗下单曲成绩、发行周期来源/日期、Title归属保护及限定发行参照能力的生产交付，备份规则与分支清理也已单独收尾。
 
-最新应用发布为10-28的 `c6f8ea73`、schema96，已重建当前版新恢复基线并成功重试发布，见[恢复与发布验收](reports/2026-10-28-recovery-baseline-and-release-retry.md)。10-24的 `dacdb862` 已交付确认5项目及4参照/2日期；原始记录、项目成员、7015条发布归属、Spotify声明和原六指标UI保持。前批4项日期只在本地应用，生产待审23项、本地19项是两套环境的不同边界；未批准的录音映射和The Moment归属继续暂缓。以下版本、数量和健康结论均归属各报告当时的验证，不冒充本轮生产现场检查。
+最新应用发布为10-28的 `6a5e3d69`、schema96；排行/艺人读取窄列修复已发布，10-29独立运行门禁与17HTTP通过，14条业务正文与固定基线一致，见[窄列修复交付](reports/2026-10-19-minimal-memory-production-delivery.md#2026-10-29-窄列修复发布与独立验收收尾)。同日先前的c6f8ea73恢复基线重建和发布重试已单独完成，见[恢复与发布验收](reports/2026-10-28-recovery-baseline-and-release-retry.md)。10-24的 `dacdb862` 已交付确认5项目及4参照/2日期；原始记录、项目成员、7015条发布归属、Spotify声明和原六指标UI保持。前批4项日期只在本地应用，生产待审23项、本地19项是两套环境的不同边界；未批准的录音映射和The Moment归属继续暂缓。以下版本、数量和健康结论均归属各报告当时的验证，不冒充本轮生产现场检查。
 
 | 状态维度 | 已确认结论 | 证据范围 |
 | --- | --- | --- |
-| 实现与仓库 | 本地/远端main为16fb5e13（备份简化修复），应用发布仍为c6f8ea73；整理源cbf7ef98、1cbd0ad1、16ad95cc原SHA进入主线；业务交付链保持，独立移动端555195c2仍待按当前main提取；前轮恢复发布报告随e43d9372本地提交，本轮窄列候选进入Git交付，备份脚本已单独安装，质量CI及No Deploy成功 | [最新交付](reports/2026-10-28-recovery-baseline-and-release-retry.md)、[主线整合](reports/2026-10-26-project-file-organization.md#分支ci通过与主线快进整合) |
-| CI | 16fb5e13质量CI与No Deploy成功；c6f8ea73质量CI成功；Production Release 40520933594第2次尝试成功，三模式/构建结果复用；第1次容量拒绝保留 | [最新备份CI](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40653044548)、[应用质量CI](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40520933529)、[正式Release](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40520933594/attempts/2)、[独立验收](reports/2026-10-28-recovery-baseline-and-release-retry.md) |
-| 生产发布 | c6f8ea73/schema96、dual/public；三容器healthy、精确搜索/排名/Billboard及详情投影通过，9HTTP与12项双视口页面检查通过；新完整恢复基线与current/previous一致；10-24确认5项目保持，前批4日期未搭入 | [恢复基线与发布验收](reports/2026-10-28-recovery-baseline-and-release-retry.md)；长期内存、私有DNS、真实模型及终端继续独立跟踪 |
+| 实现与仓库 | 业务main/应用发布基线为6a5e3d69，前轮恢复报告e43d9372已推送；本轮文档另行收尾。窄列修复已交付，独立移动端555195c2仍待按当前main提取 | [窄列交付](reports/2026-10-19-minimal-memory-production-delivery.md#2026-10-29-窄列修复发布与独立验收收尾)、[恢复交付](reports/2026-10-28-recovery-baseline-and-release-retry.md) |
+| CI | 6a5e3d69质量CI和正式Release均completed/success；3281 unit、578 contract、817前端及构建、28部署契约和三模式门禁通过。此后纯文档提交的CI状态另行核对，不等于应用重新发布 | [质量CI](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40664122082)、[正式Release](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40664122222) |
+| 生产发布 | 6a5e3d69/schema96、dual/public；三容器healthy，10-29独立搜索/排名/详情/Billboard门禁及17HTTP通过，14条业务正文一致；current=6a5e3d69、previous=c6f8ea73，发布容量及恢复门禁通过；既有数据治理范围保持 | [窄列修复交付](reports/2026-10-19-minimal-memory-production-delivery.md#2026-10-29-窄列修复发布与独立验收收尾)；长期内存、私有DNS、模型及真实终端继续独立跟踪 |
 | 默认完整全栈 | 已有历史完整门禁按各自源码和输入版本保留；最近发行周期交付为受影响回归、CI及生产专项，不称当前main新跑过默认完整全栈 | [历史联合全栈](reports/2026-10-07-release-date-and-empty-stats-acceptance.md#发行日期精度与详情空统计联合集成验收)、[最新验收范围](reports/2026-10-24-release-cycle-review-and-delivery.md#发行周期共用能力六项目副本验收与五项生产交付) |
 | 真实模型、终端与入口 | 最新5项目有桌面/390×844及展示HTTPS额外81HTTP证据；私有网关经SSH隧道验收，私有Tailscale域名DNS直连未通过 | [入口边界](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收)；生产LLM、真实OAuth与物理手机仍单独验收 |
 
@@ -27,11 +27,10 @@
 | SS-2026-10-23-002（生产范围） | 4项已确认日期的生产应用 | 本地应用与验收已收口；42144、41610、42108、41913四项日期仍未在生产应用，不属于dacdb862确认5项目范围 | 待明确生产交付指令；按生产自身fresh副本及既有保护/快照合同处理，不重复开发已完成能力 | [本地应用](reports/2026-10-23-release-cycle-next-batch-review.md#用户确认后的本地正式应用与验收)、[最新生产边界](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收) | 2026-10-24（报告记录） |
 | SS-2026-10-21-005 | 移动端长时间轴排名趋势孤立点不可见 | OPEN / 待主线整合；555195c2历史本地候选随be175498归档，尚未进入main或生产 | P2：按当前main提取RankTrendChart及定向回归，复核后单独交付；不整体恢复混合分支 | [问题台账](archive/06-productization-closeout/2026-10-25-issue-register-history.md#2026-10-21-移动端排名趋势孤立点不可见)、[恢复入口](reports/2026-10-21-versus-release-cycle-repair-acceptance.md#2026-10-25混合研发分支归档清理) | 2026-10-25（源码与待办核对，未重新验收） |
 | SS-2026-10-11-001 | 手机播放统计加载时弹层状态丢失 | OPEN；加载中打开时间弹层后，数据返回导致控件重新挂载、弹层关闭，尚未产品修复 | P2：独立保持控件及编辑状态连续性；既有门禁通过不能关闭该产品问题 | [台账](issues/README.md)、[受控复现](reports/2026-10-09-music-detail-chart-performance-acceptance.md) | 2026-10-11（复现证据；本轮未重测） |
-| SS-2026-10-08-001 | 后端内存稳定性 | OPEN；10-28窄列候选已本地实现/验证：固定排行/艺人窗读取后RSS约909→653、504→409MiB，14条响应正文逐条一致、34项回归通过；尚未提交或部署，未完整解释生产2.38GiB | P1：候选READY，两个业务文件及定向测试可审阅；获准提交/发布后交付，发布前复核容量/恢复基线，生产长期稳定性继续正常观察；无活跃实验 | [窄列候选](reports/2026-10-19-minimal-memory-production-delivery.md#2026-10-28-排行与艺人读取的窄列候选)、[精简计划](plans/performance-and-memory-closeout.md) | 2026-10-28（本地候选通过，未提交/部署） |
+| SS-2026-10-08-001 | 后端内存稳定性 | OPEN / OBSERVING；窄列修复6a5e3d69已发布，代码与本轮交付CLOSED。10-29三容器约21小时健康、无OOM/额外重启，独立门禁与17HTTP通过；短时采样与已运行时长不代表长期正常使用覆盖 | P1：仅正常使用观察；不再把已交付补丁列为待提交/待发布，不追加优化或资源矩阵。再次出现具体容量/体验回退时记录现版本与场景再决定 | [本轮发布与验收](reports/2026-10-19-minimal-memory-production-delivery.md#2026-10-29-窄列修复发布与独立验收收尾)、[精简计划](plans/performance-and-memory-closeout.md) | 2026-10-29（已发布验收，长期观察OPEN） |
 | SS-2026-08-24-004 | 全栈门禁耗时与重跑成本 | 部分完成；分阶段、preflight、排他锁与去重已交付，三次低干扰稳定验收及安全续跑/分片尚无闭环 | P1：后续有对应需求时根据当前计时和慢测试profile处理；旧单次24分22秒不等于三次稳定收口 | [门禁计划](plans/fullstack-verification-performance.md)、[问题台账](issues/README.md) | 2026-10-07（历史证据，未新增测试） |
 | SS-2026-08-06-005 | PWA双平台与真实OAuth | 工程已实现，iPhone/Android安装、键盘、安全区、返回及真实consent回跳仍缺验收闭环 | P1（需要移动发布时）：按目标终端分别验收，不以模拟视口或CI推定 | [PWA路线](plans/appification-and-mobile-distribution.md) | 2026-10-02（文档记录，未真机验收） |
 | ACCEPT-01 | 真实模型及私有外部入口 | 生产LLM仍待独立验收；10-24展示HTTPS及SSH隧道页面已通过，但Tailscale私有域名DNS直连未通过 | 分别核查模型与私有域名外部条件；不重开已交付的5项目代码/数据范围 | [最新入口边界](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收)、[验证规则](reference/fullstack-verification.md) | 2026-10-24（入口报告；模型未新增核验） |
-| DONE-09（运行观察） | 简化后每日清理/每周备份的首次真实调度 | 10月25日旧周备份压缩、10月28日新服务首次追补成功；首轮误清的3个封存副本已从独立基线恢复并逐份核对SHA256，封存时间宽限期已修复 | 下一次为10月29日每日维护；同一周已有备份会跳过生成，继续观察正常调度 | [备份规则](../deploy/production/README.md#发布文件收尾) | 2026-10-28 |
 | DATA-01 | 存量L1身份歧义审核 | 证据不足项仍需人工审核；历史约600条review、21个冲突不是当前数量，10-20已确认的33首署名阻塞已另行解决 | P2：有新的具体治理需求时先读取现库差异和证据；不重复处理已批准身份/署名决定 | [L1边界](reports/2026-09-13-l1-import-duration-and-manual-merge-closeout.md)、[后续署名交付](reports/2026-10-21-album-song-performance-attribution.md#最终发布与生产验收) | 2026-10-25（报告对照，未统计现库队列） |
 | DATA-03 | Album/艺人身份证据不足项 | 未能唯一解析的身份仍待证据；10-03的13个Album/17条未解析行仅是历史样本，不能直接当作当前余量 | P2：按稳定身份与来源证据审核，不猜canonical或自动批准关系 | [原身份边界](reports/2026-10-03-album-metadata-delivery.md#专辑目录与艺人证据生产交付)、[最新来源/身份边界](reports/2026-10-24-release-cycle-review-and-delivery.md#发行周期共用能力六项目副本验收与五项生产交付) | 2026-10-25（仅文档对照，未重测数据） |
 
@@ -69,7 +68,8 @@
 
 | ID | 已交付能力 | 状态与证据 |
 | --- | --- | --- |
-| SS-2026-10-28-001 | 清理后新完整恢复基线与生产发布重试 | CLOSED / RELEASED；负责人为当前聊天Codex；新七库/原inode及完整运行资料封存、保留记录修复通过；c6f8ea73发布第2次尝试成功，独立生产门禁、9HTTP及12项桌面/手机页面检查通过；current=c6f8ea73、previous=dacdb862；报告已随e43d9372本地提交，旧f153历史数据库缺失如实保留；最后核验2026-10-28；[报告](reports/2026-10-28-recovery-baseline-and-release-retry.md) |
+| SS-2026-10-08-001（10-28窄列交付） | 排行与艺人读取内存开销降低 | CLOSED / RELEASED；6a5e3d69已推送、质量CI与发布成功，10-29独立门禁、17HTTP及14条业务正文对照通过；长期正常使用观察单独保留OPEN；[交付](reports/2026-10-19-minimal-memory-production-delivery.md#2026-10-29-窄列修复发布与独立验收收尾) |
+| SS-2026-10-28-001 | 清理后新完整恢复基线与生产发布重试 | CLOSED / RELEASED；负责人为当前聊天Codex；新七库/原inode及完整运行资料封存、保留记录修复通过；c6f8ea73发布第2次尝试成功，独立生产门禁、9HTTP及12项桌面/手机页面检查通过；current=c6f8ea73、previous=dacdb862；报告已随e43d9372推送，旧f153历史数据库缺失如实保留；最后核验2026-10-28；[报告](reports/2026-10-28-recovery-baseline-and-release-retry.md) |
 | SS-2026-10-26-001 | 本地文件整理、日志迁移与退役代码清理 | CLOSED / INTEGRATED；负责人为当前聊天Codex；完成旧产物清理、18脚本迁移、2工具删除、61前端文件退役及有效测试迁移，补齐两处后端测试导入；源cbf7ef98、1cbd0ad1、16ad95cc原样快进main，文档收尾随main推送；分支CI 40518424036全部成功（3276 unit、578 contract、817前端测试及构建/lint）；main c6f8ea73质量CI及10-28生产发布第2次尝试成功，独立验收见[本轮交付](reports/2026-10-28-recovery-baseline-and-release-retry.md)；最后核验2026-10-28；[主线整合](reports/2026-10-26-project-file-organization.md#分支ci通过与主线快进整合) |
 | SS-2026-10-25-001 | 项目文档整理与更新 | CLOSED / LOCAL DOC VERIFIED；读者分工、命名、安装与授权说明、Agent提交入口及全部文档复验通过，正式Markdown保持242份；71312b6a已统一推送，两条CI成功；按[主线整合合同](reports/2026-10-25-documentation-cleanup-delivery.md#ci确认与主线整合)补齐发布忽略路径，并在最新提交CI通过后快进main，不部署；具体版本与远端结果以Git／Actions记录为准 |
 | SS-2026-10-24-001 | 目标艺人列名、非占有发行参照、显式日期冲突审核与确认5项目 | CLOSED / RELEASED；schema96与dacdb862已交付；[交付](reports/2026-10-24-release-cycle-review-and-delivery.md#用户授权后的提交生产发布与上线验收) |
@@ -87,7 +87,7 @@
 | DONE-06 | 日常轻量启动、构建输入清单、预热分层、重型任务排他与长期资源优化 | 已实现；提交 `a0df33a4`，集成 `c1acbec6`；[资源专项与完整全栈](reports/2026-09-22-runtime-resource-optimization.md) |
 | DONE-07 | V6 统一模型步骤、持久恢复、预算与租约、冻结年报上下文、审核章节渐进交付及 SSE 恢复 | 已实现；提交 `8edcd1c8`，集成 `1f5863a8`；[真实模型及最终全栈](reports/2026-09-22-ai-agent-v6-baseline-and-acceptance.md#ai-agent-v6-统一运行时与渐进报告最终本地验收) |
 | DONE-08 | 160/320/640px WebP、按尺寸/DPR 加载、新下载生成、缺失回退及有界补建；CI 浏览器依赖延迟导入 | 已实现；历史 `84168eba` / `194fd113`，扩展 `f139ec4d` / `814ea7cb`；[封面验收](reports/2026-10-03-cover-image-optimization-acceptance.md) |
-| DONE-09 | 精简备份：每周压缩一份仅留2份；现有timer每天清理；已完成恢复/临时材料48小时；支持历史清空 | 10月28日脚本与现有timer已单独更新，28项专项及服务器隔离验证通过，首次追补周备份成功。其他会话的恢复基线/发布重试独立进行，本事项不部署应用；[备份规则](../deploy/production/README.md#发布文件收尾) |
+| DONE-09 | 精简备份：每周压缩一份仅留2份；现有timer每天清理；已完成恢复/临时材料48小时；支持历史清空 | 10月28日脚本与现有timer已单独更新，28项专项及服务器隔离验证通过，首次追补周备份成功。其他会话的恢复基线/发布重试独立进行，本事项不部署应用；[备份规则](../deploy/production/README.md#发布文件收尾)；10-29 03:36:37首次正常日调度退出0，零删除，本周已有备份按规则跳过，观察收口 |
 | PLAN-2026-10-02-001 | 合作曲排行按有效署名统一三个榜、全部参与艺人、占比与 L3 实际版本过滤 | S1–S6 已完成；`fa683d97` 已推送；[验收报告](reports/2026-10-02-collaboration-ranking-acceptance.md) |
 | SS-2026-09-24-001 | 专辑完整分页、可靠发行位置与只读消费者 | 固定输入4f9a01ff，业务8464ffa6；已实现、完整本地验收；[最终集成](reports/2026-10-03-album-metadata-delivery.md#专辑证据与最新封面主线最终本地集成验收) |
 | SS-2026-09-24-002 | Album有序稳定ID、canonical解析、人工优先与冲突保留 | 固定输入8f638494；已实现、完整本地验收；[专项](reports/2026-10-02-album-artist-evidence-verification.md) |

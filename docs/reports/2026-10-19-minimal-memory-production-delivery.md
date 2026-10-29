@@ -2,6 +2,8 @@
 
 日期：2026-10-19。事项：SS-2026-10-08-001。**本轮开发与发布正式收口（CLOSED / RELEASED），OOM稳定性保持OPEN / OBSERVING。** 本次沿用[精简计划](../plans/performance-and-memory-closeout.md)，不再追加优化或实验。
 
+最新进展：10-28窄列修复已随6a5e3d69发布，10-29完成独立验收；见[本轮交付收尾](#2026-10-29-窄列修复发布与独立验收收尾)。10-19至10-28各节保留各自阶段边界。
+
 ## 版本与采用范围
 
 生产于北京时间15:41完成发布，API、完全版Web和公开Web的实际镜像revision均为 `f1280ac135de37bb730bcec2cdc0fa6bf7d9b428`，三容器healthy。来源映射为：
@@ -182,3 +184,26 @@ Ruff检查与格式检查通过，文档审计及差异检查通过。三个owne
 用户在获知“下一步提交并发布当前补丁”后要求继续，本阶段按既定范围推进Git交付与正式发布。提交范围为两个业务文件、两份定向测试及必要状态/计划/报告/更新记录；前轮恢复发布报告与索引单独提交，避免混为本次业务修复。项目首页、AGENTS/CLAUDE和架构合同无需更改，AGENTS与CLAUDE一致。复用已有34项回归和14条真实副本响应对照，不重复资源实验；提交hooks与必需CI仍执行。
 
 发布前只读核对（2026-10-28 09:23:52 UTC）：当前c6f8ea73、previous dacdb862、三容器healthy，新恢复基线manifest存在；磁盘16410MiB，可用内存583MiB，低于正常发布640MiB门槛。没有重启服务或降低门槛；在CI结束后重新核验并按正式流程处理。此时尚未提交、推送或发布候选。
+
+
+## 2026-10-29 窄列修复发布与独立验收收尾
+
+### Git与正式发布
+
+- 前轮恢复发布证据独立提交`e43d9372`；本轮两个业务文件、两份定向测试和必要文档提交`6a5e3d69cf14df9161d6a3676f41377d6fe47673`，同一main推送。提交hooks全部通过；首次mypy指出测试中object缺少partial类型收窄，补充isinstance后单项测试及全部hooks通过，业务文件仍与隔离测量候选一致。
+- [质量CI 40664122082](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40664122082)与[Production Release 40664122222](https://github.com/BenjaminTay/SpotifyStats/actions/runs/40664122222)均completed/success。正式发布内的质量结果为3281 unit通过/2 skip、578 contract通过、817前端测试通过/4 skip及构建通过、28项生产部署契约通过；full/showcase/dual三模式门禁和镜像构建全部成功。没有把历史默认完整全栈结果当作本轮重新执行。
+- 发布于2026-10-28 17:58:45（北京时间）完成；部署作业122743270154。API、完全版Web、公开Web均为6a5e3d69，schema96、dual/public保持；current=6a5e3d69、previous=c6f8ea73，两版镜像归档存在，CAS激活和正式收尾成功。
+- 早期可用内存583MiB低于640MiB门槛。镜像传输阶段再次核对为1124MiB，条件性同版重启没有执行；没有手动重启旧Backend、清缓存、调参或降低准入。正式副本预检内存before/after为2041/2019MiB，磁盘均13251MiB（要求5347MiB），全部通过；四份统计精确复用、候选仅revalidated，数据库字节不变、orphan=0、integrity_check=ok，未冷建统计。
+
+### 10月29日独立验收
+
+上轮在正式发布成功后被中断，独立验收没有完成收据；本轮恢复时先确认线上版本及运行状态，再完成以下验收，未重复部署。
+
+1. `verify.sh`独立通过：schema96、搜索v13四变体4/4、聚合v6、orphan=0；精确/模糊/CJK/短CJK搜索、四套默认排名exact-ready、loopback网关与展示写入限制通过。另独立执行现有详情和Billboard运行门禁，均退出0。
+2. 固定7条排行及7条艺人统计/排名请求全部200且正文SHA256逐条匹配修改前固定副本基线（14/14）；私有/展示loopback健康及展示HTTPS健康3项全部200，合计17个HTTP。私密输入中还含source元数据，验收脚本首次误把元数据当URL，在发出HTTP前报错；修正为只读取charts/artists两组后通过，原错误日志保留。这不是生产业务失败。
+3. 三容器持续健康约21小时，OOMKilled=false、RestartCount=0；验收后宿主MemAvailable=2081MiB。一次只读进程快照Backend RSS=822964KiB（约804MiB），采样处于本轮请求期间，不能冒充所有请求后的峰值、同负载A/B或长期稳定。正常使用覆盖量未单独统计，因此保持稳定性OPEN / OBSERVING。
+4. 顺带核对既有维护timer的首次正常日调度：10-29 03:36:37退出0，日志确认清理零候选、零删除；本周已有普通备份，跳过重复生成。DONE-09调度观察收口，不再列为当前未完成开发；既有每周2份/48小时规则保持。
+
+本轮业务发布与约定独立验收CLOSED / RELEASED；SS-2026-10-08-001仅保留长期正常使用观察，不扩展新的优化、压力测试或旧资源矩阵。没有新的研发分支/工作树，也没有活跃测试容器。此后的Git收尾只提交本节及当前状态/计划/更新记录，不触发新的生产发布。
+
+私有证据：`data/maintenance/memory-isolation-20261028/candidate/release/`内的`quality.log`、`deploy.log`、`production-preflight.json`、`capacity-restart.log`、`independent-verify.log`、`http-acceptance.json`及原错误日志。GitHub连接器查询中途传输失败后改用本机CLI获取同一运行，不影响实际发布结果。未重新跑浏览器矩阵、物理手机、OAuth或模型验收。
